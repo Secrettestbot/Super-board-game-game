@@ -335,13 +335,13 @@ class MainMenu:
             game.move_history = data.get('move_history', [])
             game.load_state(data.get('game_state', {}))
 
-            # Delete save file after loading
+            result = game.play()
+
+            # Delete save file after game completes (suspended games create new saves)
             try:
                 os.remove(fpath)
             except OSError:
                 pass
-
-            game.play()
         except Exception as e:
             print(f"Error resuming game: {e}")
             import traceback
