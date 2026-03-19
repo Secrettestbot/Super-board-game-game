@@ -211,11 +211,10 @@ class CheckersGame(BaseGame):
                 # Landing squares beyond the captured piece
                 lr, lc = cap_r + dr, cap_c + dc
                 while self._in_bounds(lr, lc) and (self.board[lr][lc] == EMPTY or (lr, lc) == (r, c)) and (lr, lc) not in removed:
-                    if (lr, lc) != (r, c) or True:
-                        # The piece can return to its starting square only if it
-                        # is truly empty (which it will be during the jump).
-                        if self.board[lr][lc] == EMPTY or (lr, lc) == (r, c):
-                            results.append((lr, lc, cap_r, cap_c))
+                    # The piece can land on empty squares, or on its own
+                    # starting square (which will be empty during the jump).
+                    if self.board[lr][lc] == EMPTY or (lr, lc) == (r, c):
+                        results.append((lr, lc, cap_r, cap_c))
                     lr += dr
                     lc += dc
             else:

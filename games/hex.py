@@ -147,13 +147,13 @@ class HexGame(BaseGame):
         # Check player 1 (X): top row to bottom row
         if self._check_connection(1):
             self.game_over = True
-            self.winner = self.current_player
+            self.winner = 1
             return
 
         # Check player 2 (O): left column to right column
         if self._check_connection(2):
             self.game_over = True
-            self.winner = self.current_player
+            self.winner = 2
             return
 
     def _check_connection(self, player):
