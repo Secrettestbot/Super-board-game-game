@@ -90,11 +90,11 @@ class DominoesGame(BaseGame):
 
         print("  Board:")
         # Build a text representation of the chain
-        # Doubles are shown vertically as [X] stacked, others as [a|b]
+        # Doubles shown as [X], others as [a|b]
         parts = []
         for a, b, is_double in self.chain:
             if is_double:
-                parts.append(f"[{a}|{b}]")
+                parts.append(f"[{a}]")
             else:
                 parts.append(f"[{a}|{b}]")
 
