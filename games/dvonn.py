@@ -10,40 +10,54 @@ BLACK = 'B'
 DVONN = 'R'  # Red DVONN pieces
 
 
-# Hex directions for the elongated hex board.
-# Using offset coordinates where even rows are flush left and odd rows shift right.
-# Directions depend on whether the row is even or odd.
-# We use axial-style addressing: (row, col) with row 0..4 and col 0..max_col_for_row.
-# For an elongated hex board, the six neighbor directions are:
-#   For even rows: NW=(-1,-1), NE=(-1,0), W=(0,-1), E=(0,1), SW=(1,-1), SE=(1,0)
-#   For odd rows:  NW=(-1,0), NE=(-1,1), W=(0,-1), E=(0,1), SW=(1,0), SE=(1,1)
+# Six canonical hex direction indices (used for consistent straight-line movement).
+# We define directions abstractly and compute actual neighbor offsets per row parity.
+# Direction 0: East       (same row, col+1)
+# Direction 1: West       (same row, col-1)
+# Direction 2: NE         (row above, right neighbor)
+# Direction 3: NW         (row above, left neighbor)
+# Direction 4: SE         (row below, right neighbor)
+# Direction 5: SW         (row below, left neighbor)
 
-def _hex_neighbors(row, col, row_offsets):
-    """Return the six hex neighbors of (row, col) on the elongated hex board.
+# For even-offset rows (offset=0 or even): row above/below neighbors differ from odd-offset rows.
+# We use the row_offsets dict to compute neighbors consistently.
 
-    row_offsets: dict mapping row -> starting column offset for that row.
-    We use offset hex coordinates where the offset for each row determines
-    the neighbor calculation.
+
+def _hex_neighbors_with_dirs(row, col, row_offsets):
+    """Return list of (direction_index, (nr, nc)) for the six hex neighbors.
+
+    direction_index is stable across rows so that stepping in the same
+    direction repeatedly produces a straight line on the hex board.
+
+    Directions:
+      0: East  (same row, col+1)
+      1: West  (same row, col-1)
+      2: NE    (row-1, right-side neighbor)
+      3: NW    (row-1, left-side neighbor)
+      4: SE    (row+1, right-side neighbor)
+      5: SW    (row+1, left-side neighbor)
     """
-    neighbors = []
-    # Determine if this row is "shifted" relative to the row above/below
     my_offset = row_offsets.get(row, 0)
+    neighbors = []
 
-    # Same row neighbors
-    neighbors.append((row, col - 1))  # West
-    neighbors.append((row, col + 1))  # East
+    # East / West (same row)
+    neighbors.append((0, (row, col + 1)))
+    neighbors.append((1, (row, col - 1)))
 
-    # Row above (row - 1) and row below (row + 1)
-    for dr in [-1, 1]:
-        nr = row + dr
-        if nr not in row_offsets:
-            continue
-        neighbor_offset = row_offsets[nr]
-        # The offset difference determines which columns are adjacent
-        diff = my_offset - neighbor_offset
-        # The two neighbors in the adjacent row
-        neighbors.append((nr, col + diff))
-        neighbors.append((nr, col + diff - 1))
+    # Row above (row - 1)
+    if (row - 1) in row_offsets:
+        above_offset = row_offsets[row - 1]
+        diff = my_offset - above_offset
+        # The two neighbors in the row above
+        neighbors.append((2, (row - 1, col + diff)))      # NE (rightward)
+        neighbors.append((3, (row - 1, col + diff - 1)))   # NW (leftward)
+
+    # Row below (row + 1)
+    if (row + 1) in row_offsets:
+        below_offset = row_offsets[row + 1]
+        diff = my_offset - below_offset
+        neighbors.append((4, (row + 1, col + diff)))      # SE (rightward)
+        neighbors.append((5, (row + 1, col + diff - 1)))   # SW (leftward)
 
     return neighbors
 
@@ -81,59 +95,45 @@ class DvonnGame(BaseGame):
     max_players = 2
     variations = {
         "standard": "Standard DVONN (49 spaces)",
-        "quick": "Quick DVONN (smaller board, 2 DVONN pieces)",
+        "quick": "Quick DVONN (smaller board, 29 spaces)",
     }
 
     def __init__(self, variation=None):
         super().__init__(variation or "standard")
-        self.board = {}          # (row, col) -> list of pieces, bottom to top, e.g. ['W','R','B']
+        self.board = {}          # (row, col) -> list of pieces bottom-to-top, e.g. ['W','R','B']
         self.valid_positions = set()
         self.row_lengths = []    # length of each row
-        self.row_offsets = {}    # row -> column offset for hex neighbor calc
+        self.row_offsets = {}    # row index -> column offset for hex neighbor calc
         self.num_rows = 0
         self.phase = 'placement'  # 'placement' or 'stacking'
-        self.placement_step = 0   # which placement step we're on (0-indexed)
-        self.num_dvonn = 0        # how many DVONN pieces total
-        self.num_player_pieces = 0  # pieces per player
+        self.placement_step = 0   # which placement step we are on (0-indexed)
+        self.num_dvonn = 0        # total DVONN pieces
+        self._p1_pieces = 0      # white pieces to place
+        self._p2_pieces = 0      # black pieces to place
         self.passed = {1: False, 2: False}  # track consecutive passes
 
     def _init_board(self):
-        """Initialize the board geometry."""
+        """Initialize the board geometry based on variation."""
         if self.variation == "quick":
             self.row_lengths = [5, 6, 7, 6, 5]
             self.num_dvonn = 2
-            self.num_player_pieces = 13  # (29 - 2) / 2 = 13.5 -> use 13 + 14? No: 29 - 2 = 27, not even.
-            # Actually 29 - 2 = 27, which is odd. We need an odd total for alternating placement.
-            # Use 2 DVONN + 13 white + 14 black = 29. But that's uneven.
-            # Better: 3 DVONN on quick too would give 29-3=26, 13 each. But spec says 2.
-            # With 2 DVONN: 27 player pieces. Player 1 gets 14, Player 2 gets 13.
-            # Actually let's just make it work: 29 spaces, 2 DVONN, 14 white, 13 black = 29.
-            # Player who goes first (white) gets the extra piece.
-            self.num_player_pieces = 0  # handled specially
+            # 29 total spaces - 2 DVONN = 27 player pieces
+            # White (P1) gets 14, Black (P2) gets 13 so all spaces are filled
             self._p1_pieces = 14
             self._p2_pieces = 13
         else:
             self.row_lengths = [9, 10, 11, 10, 9]
             self.num_dvonn = 3
-            self.num_player_pieces = 23
             self._p1_pieces = 23
             self._p2_pieces = 23
 
         self.num_rows = len(self.row_lengths)
 
-        # Compute row offsets for the elongated hex board.
-        # The widest row is the middle one. Each row above/below is shifted.
-        # Offset = how many positions the row is indented from the left.
+        # Compute row offsets for hex neighbor calculation.
+        # The widest row (middle) has offset 0; rows above/below are shifted.
         max_len = max(self.row_lengths)
         self.row_offsets = {}
         for r, length in enumerate(self.row_lengths):
-            # Center each row relative to the widest
-            # For hex: the offset determines neighbor alignment
-            # In a standard elongated hex, rows alternate alignment
-            # Rows: 0->9, 1->10, 2->11, 3->10, 4->9
-            # Offset pattern: row 0 offset 1, row 1 offset 1, row 2 offset 0, row 3 offset 0, row 4 offset 0
-            # Actually for the DVONN board shape, let's use:
-            # The board is like a squished hexagon. Offsets for neighbor calculation:
             self.row_offsets[r] = (max_len - length + 1) // 2
 
         self.valid_positions = set()
@@ -144,18 +144,50 @@ class DvonnGame(BaseGame):
     def setup(self):
         """Initialize the board for the placement phase."""
         self._init_board()
-        self.board = {}  # empty board, pieces placed during placement phase
+        self.board = {}
         self.phase = 'placement'
         self.placement_step = 0
         self.passed = {1: False, 2: False}
 
     def _get_neighbors(self, row, col):
-        """Get valid neighboring positions of (row, col)."""
-        raw = _hex_neighbors(row, col, self.row_offsets)
-        return [(r, c) for r, c in raw if (r, c) in self.valid_positions]
+        """Get valid neighboring positions of (row, col) as a list of (r, c)."""
+        return [
+            pos for _, pos in _hex_neighbors_with_dirs(row, col, self.row_offsets)
+            if pos in self.valid_positions
+        ]
+
+    def _get_neighbors_with_dirs(self, row, col):
+        """Get valid neighbors with direction indices: list of (dir_idx, (r, c))."""
+        return [
+            (d, pos) for d, pos in _hex_neighbors_with_dirs(row, col, self.row_offsets)
+            if pos in self.valid_positions
+        ]
+
+    def _step_in_direction(self, start, direction_idx, steps):
+        """Take 'steps' steps from start in the given canonical hex direction.
+
+        Returns the final position, or None if any step goes off the board
+        or lands on an invalid position.
+        """
+        r, c = start
+        for _ in range(steps):
+            # Get all neighbors with their direction indices
+            nbrs = _hex_neighbors_with_dirs(r, c, self.row_offsets)
+            # Find the neighbor in the desired direction
+            found = False
+            for d, (nr, nc) in nbrs:
+                if d == direction_idx:
+                    if (nr, nc) not in self.valid_positions:
+                        return None
+                    r, c = nr, nc
+                    found = True
+                    break
+            if not found:
+                return None
+        return (r, c)
 
     def _is_connected_to_dvonn(self):
-        """Find all positions connected to at least one DVONN piece.
+        """Find all positions connected to at least one DVONN piece via BFS.
 
         Returns the set of connected positions.
         """
@@ -169,9 +201,8 @@ class DvonnGame(BaseGame):
             return set()
 
         # BFS from all DVONN positions
-        visited = set()
+        visited = set(dvonn_positions)
         queue = deque(dvonn_positions)
-        visited.update(dvonn_positions)
 
         while queue:
             r, c = queue.popleft()
@@ -183,7 +214,10 @@ class DvonnGame(BaseGame):
         return visited
 
     def _remove_disconnected(self):
-        """Remove all stacks not connected to a DVONN piece."""
+        """Remove all stacks not connected to a DVONN piece.
+
+        Returns True if any stacks were removed.
+        """
         connected = self._is_connected_to_dvonn()
         to_remove = [pos for pos in self.board if pos not in connected]
         for pos in to_remove:
@@ -193,6 +227,10 @@ class DvonnGame(BaseGame):
     def _get_valid_moves(self, player):
         """Get all valid moves for the given player in stacking phase.
 
+        A player controls a stack if their piece is on top.
+        A stack of height h must move exactly h spaces in a straight line
+        and land on another occupied space.
+
         Returns a list of (from_pos, to_pos) tuples.
         """
         piece = WHITE if player == 1 else BLACK
@@ -201,77 +239,29 @@ class DvonnGame(BaseGame):
         for pos, stack in self.board.items():
             if not stack:
                 continue
-            # A stack is controlled by whoever's piece is on top
-            top = stack[-1]
-            if top != piece:
+            # Stack is controlled by the piece on top
+            if stack[-1] != piece:
                 continue
 
             height = len(stack)
-            # Try all 6 hex directions, move exactly 'height' steps
-            for nr, nc in self._get_neighbors(pos[0], pos[1]):
-                # Determine direction from pos to (nr, nc)
-                dr = nr - pos[0]
-                dc = nc - pos[1]
-                # Move 'height' steps in this direction
-                dest_r = pos[0] + dr * height
-                dest_c = pos[1] + dc * height
-
-                # But we need to account for hex offset changes across rows.
-                # Moving multiple steps in a hex grid with offset coords is tricky.
-                # Instead, step one hex at a time in the same direction.
-                dest = self._step_in_direction(pos, (dr, dc), height)
+            # Try all 6 hex directions
+            for dir_idx, neighbor in self._get_neighbors_with_dirs(pos[0], pos[1]):
+                # Move exactly 'height' steps in this direction
+                dest = self._step_in_direction(pos, dir_idx, height)
                 if dest is None:
                     continue
-
                 # Must land on an occupied space
                 if dest in self.board and len(self.board[dest]) > 0:
                     moves.append((pos, dest))
 
         return moves
 
-    def _step_in_direction(self, start, direction, steps):
-        """Take 'steps' steps from start in the given hex direction.
-
-        direction is (dr, dc) representing a single step from start to a neighbor.
-        However, in offset coordinates, the actual column offset changes depending
-        on the row. So we need to step one at a time.
-
-        Returns the final position, or None if any intermediate step goes off the board.
-        """
-        r, c = start
-        init_dr, init_dc = direction
-
-        # We need to figure out which of the 6 canonical directions this corresponds to.
-        # Then apply that same canonical direction repeatedly.
-        # The canonical directions are defined relative to the offset system.
-        # Let's identify the direction index from the first step.
-        neighbors = _hex_neighbors(r, c, self.row_offsets)
-        target_first = (r + init_dr, c + init_dc)
-
-        # Find which direction index this is
-        dir_idx = None
-        for i, n in enumerate(neighbors):
-            if n == target_first:
-                dir_idx = i
-                break
-
-        if dir_idx is None:
-            return None
-
-        # Now step 'steps' times using the same direction index
-        cr, cc = r, c
-        for _ in range(steps):
-            nbrs = _hex_neighbors(cr, cc, self.row_offsets)
-            if dir_idx >= len(nbrs):
-                return None
-            cr, cc = nbrs[dir_idx]
-            if (cr, cc) not in self.valid_positions:
-                return None
-
-        return (cr, cc)
-
     def _count_pieces(self, player):
-        """Count total pieces controlled by player (pieces in stacks they control)."""
+        """Count total pieces in all stacks controlled by player.
+
+        A stack is controlled by the player whose piece is on top.
+        All pieces in that stack count (including opponent and DVONN pieces).
+        """
         piece = WHITE if player == 1 else BLACK
         count = 0
         for pos, stack in self.board.items():
@@ -287,33 +277,30 @@ class DvonnGame(BaseGame):
         p2_label = f"{self.players[1]} (B)"
 
         if self.phase == 'placement':
-            phase_str = "Placement"
             total = self.num_dvonn + self._p1_pieces + self._p2_pieces
             placed = self.placement_step
-            print(f"  {p1_label} vs {p2_label}  |  Phase: {phase_str} ({placed}/{total} placed)")
+            print(f"  {p1_label} vs {p2_label}  |  Phase: Placement ({placed}/{total} placed)")
         else:
-            phase_str = "Stacking"
             p1_count = self._count_pieces(1)
             p2_count = self._count_pieces(2)
-            print(f"  {p1_label}: {p1_count} pieces  vs  {p2_label}: {p2_count} pieces  |  Phase: {phase_str}")
+            print(f"  {p1_label}: {p1_count} pieces  vs  {p2_label}: {p2_count} pieces  |  Phase: Stacking")
 
         print(f"  Turn {self.turn_number + 1} - {self.players[self.current_player - 1]}'s move")
         print()
 
-        # Column headers
+        # Determine the max row length for column header
         max_len = max(self.row_lengths)
 
-        # Build display
-        # Show column letters for the widest row
-        header = "     "
+        # Column headers
+        header = "      "
         for c in range(max_len):
             header += f" {chr(ord('a') + c)}  "
         print(header)
 
         for r in range(self.num_rows):
             offset = self.row_offsets.get(r, 0)
-            row_str = f"  {r + 1}: "
-            row_str += "  " * offset  # indent for hex offset
+            row_str = f"  {r + 1}:  "
+            row_str += "    " * offset  # indent for hex offset (4 chars per offset)
 
             for c in range(self.row_lengths[r]):
                 pos = (r, c)
@@ -322,14 +309,12 @@ class DvonnGame(BaseGame):
                     top = stack[-1]
                     height = len(stack)
                     if height > 1:
-                        cell = f"{top}{height}"
-                        # Pad to 3 chars
-                        cell = cell.ljust(3)
+                        cell = f"{top}{height:<2}"
                     else:
                         cell = f" {top} "
                 else:
-                    if (r, c) in self.valid_positions:
-                        cell = " .  " if self.phase == 'placement' else "    "
+                    if self.phase == 'placement':
+                        cell = " .  "
                     else:
                         cell = "    "
                 row_str += cell + " " if len(cell) < 4 else cell
@@ -341,7 +326,7 @@ class DvonnGame(BaseGame):
         if self.phase == 'placement':
             print("  Enter a position to place a piece (e.g. 'c3')")
         else:
-            print("  Enter move as 'from to' (e.g. 'c3 e3')")
+            print("  Enter move as 'from to' (e.g. 'c3 e3'), or 'pass' if shown")
         print()
 
     def get_move(self):
@@ -355,8 +340,7 @@ class DvonnGame(BaseGame):
             return self._get_stacking_move(name, player)
 
     def _get_placement_move(self, name, player):
-        """Get a placement move."""
-        # Determine what piece is being placed
+        """Get a placement move during Phase 1."""
         total_dvonn = self.num_dvonn
         if self.placement_step < total_dvonn:
             piece_type = DVONN
@@ -382,7 +366,7 @@ class DvonnGame(BaseGame):
             return ('place', coord, piece_type)
 
     def _get_stacking_move(self, name, player):
-        """Get a stacking phase move."""
+        """Get a stacking phase move during Phase 2."""
         valid_moves = self._get_valid_moves(player)
         if not valid_moves:
             print(f"  {name} has no valid moves. Passing.")
@@ -391,7 +375,7 @@ class DvonnGame(BaseGame):
 
         while True:
             raw = input_with_quit(
-                f"  {name}, enter move (e.g. 'c3 e3'): "
+                f"  {name}, enter move 'from to' (e.g. 'c3 e3'): "
             ).strip()
             parts = raw.split()
             if len(parts) != 2:
@@ -417,8 +401,8 @@ class DvonnGame(BaseGame):
 
             if (from_coord, to_coord) not in valid_moves:
                 height = len(stack)
-                print(f"  Invalid move. Stack height is {height}, must move exactly {height} "
-                      f"spaces in a straight line onto another stack.")
+                print(f"  Invalid move. Stack height is {height}; must move exactly {height} "
+                      f"spaces in a straight hex line onto another stack.")
                 continue
 
             return ('move', from_coord, to_coord)
@@ -459,16 +443,16 @@ class DvonnGame(BaseGame):
             if (from_pos, to_pos) not in valid_moves:
                 return False
 
-            # Move the stack
+            # Move the stack: place moving stack ON TOP of destination stack
             moving_stack = self.board.pop(from_pos)
             if to_pos not in self.board:
                 return False
             self.board[to_pos] = self.board[to_pos] + moving_stack
 
-            # Remove disconnected stacks
+            # Remove stacks disconnected from any DVONN piece
             self._remove_disconnected()
 
-            # Reset pass tracking since a move was made
+            # Reset pass tracking since a valid move was made
             self.passed = {1: False, 2: False}
 
             return True
@@ -476,7 +460,7 @@ class DvonnGame(BaseGame):
         return False
 
     def switch_player(self):
-        """Switch player, handling placement phase logic."""
+        """Switch to the next player, handling placement phase logic."""
         if self.phase == 'placement' and self.placement_step <= self.num_dvonn:
             # During DVONN piece placement, alternate normally
             super().switch_player()
@@ -484,12 +468,14 @@ class DvonnGame(BaseGame):
             super().switch_player()
 
     def check_game_over(self):
-        """Check if the game is over."""
+        """Check if the game is over.
+
+        The game ends when neither player can move. The player controlling
+        the most total pieces (in stacks where their piece is on top) wins.
+        """
         if self.phase == 'placement':
             return
 
-        # If current player just passed, check if the other player can move
-        # Game ends when neither player can move
         p1_moves = self._get_valid_moves(1)
         p2_moves = self._get_valid_moves(2)
 
@@ -506,21 +492,19 @@ class DvonnGame(BaseGame):
 
     def get_state(self):
         """Return serializable game state for saving."""
-        # Convert board to serializable format
         board_data = {}
         for (r, c), stack in self.board.items():
-            board_data[f"{r},{c}"] = stack
+            board_data[f"{r},{c}"] = list(stack)
 
         return {
             'board': board_data,
             'valid_positions': [list(p) for p in sorted(self.valid_positions)],
-            'row_lengths': self.row_lengths,
+            'row_lengths': list(self.row_lengths),
             'row_offsets': {str(k): v for k, v in self.row_offsets.items()},
             'num_rows': self.num_rows,
             'phase': self.phase,
             'placement_step': self.placement_step,
             'num_dvonn': self.num_dvonn,
-            'num_player_pieces': self.num_player_pieces,
             'p1_pieces': self._p1_pieces,
             'p2_pieces': self._p2_pieces,
             'passed': {str(k): v for k, v in self.passed.items()},
@@ -531,16 +515,15 @@ class DvonnGame(BaseGame):
         self.board = {}
         for key, stack in state['board'].items():
             parts = key.split(',')
-            self.board[(int(parts[0]), int(parts[1]))] = stack
+            self.board[(int(parts[0]), int(parts[1]))] = list(stack)
 
         self.valid_positions = set(tuple(p) for p in state['valid_positions'])
-        self.row_lengths = state['row_lengths']
+        self.row_lengths = list(state['row_lengths'])
         self.row_offsets = {int(k): v for k, v in state['row_offsets'].items()}
         self.num_rows = state['num_rows']
         self.phase = state['phase']
         self.placement_step = state['placement_step']
         self.num_dvonn = state['num_dvonn']
-        self.num_player_pieces = state['num_player_pieces']
         self._p1_pieces = state['p1_pieces']
         self._p2_pieces = state['p2_pieces']
         self.passed = {int(k): v for k, v in state['passed'].items()}
@@ -605,10 +588,12 @@ PHASE 2: STACKING
   - The moving stack is placed on top of the destination stack,
     creating a taller combined stack.
 
-  CONNECTION RULE:
+  CONNECTION RULE (most important rule!):
   - After each move, any stack that is NOT connected to at
     least one DVONN piece (through a chain of adjacent
     occupied spaces) is immediately removed from the game.
+  - This is checked using breadth-first search from all
+    DVONN piece positions.
   - This is the key strategic element: you can isolate and
     eliminate your opponent's stacks!
 
@@ -623,16 +608,20 @@ WINNING
   pieces in all stacks they control (where their piece is on
   top). The player with more pieces wins.
 
-  Note: DVONN pieces count toward the total! If you control
-  a stack containing DVONN pieces, those count for you.
+  Note: ALL pieces in a controlled stack count, including
+  DVONN pieces and opponent's pieces buried in the stack.
+  If you control a stack of 5 pieces, that is 5 points for
+  you regardless of the composition of the stack.
+
+  If both players control the same total, the game is a draw.
 
 --------------------------------------------------------------
 DISPLAY
 --------------------------------------------------------------
   The board shows pieces with their colors:
-    W  = White piece (Player 1)
-    B  = Black piece (Player 2)
-    R  = DVONN piece (red, neutral)
+    W  = White piece (Player 1), single piece
+    B  = Black piece (Player 2), single piece
+    R  = DVONN piece (red, neutral), single piece
     .  = Empty space (placement phase only)
 
   When stacks are taller than 1, the height is shown:
@@ -644,10 +633,11 @@ DISPLAY
 INPUT FORMAT
 --------------------------------------------------------------
   Placement phase:
-    Enter a position: c3
+    Enter a position to place a piece: c3
 
   Stacking phase:
-    Enter from and to positions: c3 e3
+    Enter source and destination: c3 e3
+    (moves stack at c3 to land on stack at e3)
 
   Coordinates use letter for column, number for row.
   Row 1 is at the top, columns start from 'a' on the left.
@@ -655,16 +645,23 @@ INPUT FORMAT
 --------------------------------------------------------------
 STRATEGY HINTS
 --------------------------------------------------------------
-  - Place DVONN pieces centrally so they're hard to isolate.
-  - During placement, think ahead to the stacking phase.
-  - Tall stacks are powerful (move far) but inflexible.
-  - Single pieces are vulnerable but highly mobile.
+  - Place DVONN pieces centrally so they are hard to isolate.
+  - During placement, think ahead to the stacking phase and
+    position your pieces near DVONN pieces.
+  - Tall stacks move far, which can be powerful for reaching
+    distant targets, but they are inflexible since they must
+    move exactly their height.
+  - Single pieces are vulnerable to being captured but are
+    highly mobile (move exactly 1 space).
   - Disconnecting opponent stacks from DVONN pieces is the
-    primary way to gain advantage.
+    primary way to gain a large advantage. Look for cutting
+    moves that isolate groups of opponent stacks.
   - Control DVONN pieces! If your piece is on top of a DVONN
-    piece's stack, that connection point is secure.
-  - In the endgame, focus on consolidating your stacks while
-    trying to isolate your opponent's.
+    piece's stack, that connection point is secure for you.
+  - In the endgame, consolidate your stacks into fewer, taller
+    stacks while trying to isolate your opponent's.
+  - A stack controlled by neither player (DVONN on top) cannot
+    be moved by either player -- these act as blocking pillars.
 
 --------------------------------------------------------------
 CONTROLS
