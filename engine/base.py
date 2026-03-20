@@ -60,6 +60,7 @@ class BaseGame(ABC):
         self.winner = None
         self.move_history = []
         self.turn_number = 0
+        self._resumed = False
 
     @abstractmethod
     def setup(self):
@@ -147,7 +148,8 @@ class BaseGame(ABC):
 
     def play(self):
         """Main game loop."""
-        self.setup()
+        if not self._resumed:
+            self.setup()
         while not self.game_over:
             clear_screen()
             self.display()
@@ -170,6 +172,18 @@ class BaseGame(ABC):
                 print(self.get_tutorial())
                 input("\nPress Enter to continue...")
                 continue
+            except KeyboardInterrupt:
+                print("\n\nInterrupted! Save before quitting? (y/n): ", end="")
+                try:
+                    ans = input().strip().lower()
+                    if ans == 'y':
+                        slot = self.save_game()
+                        print(f"Game saved as '{slot}'")
+                    print("Returning to menu...")
+                    input("Press Enter to continue...")
+                except KeyboardInterrupt:
+                    pass
+                return None
 
             if self.make_move(move):
                 self.move_history.append(str(move))

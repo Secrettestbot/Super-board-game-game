@@ -153,7 +153,10 @@ GAME_REGISTRY = [
 class MainMenu:
     """Main menu for the board game platform."""
 
+    GAMES_PER_PAGE = 15
+
     def run(self):
+        self.page = 0
         while True:
             clear_screen()
             self.show_banner()
@@ -166,10 +169,20 @@ class MainMenu:
                 self.resume_game_menu()
             elif choice == 'l':
                 self.game_list_menu()
+            elif choice == 'n':
+                total_pages = (len(GAME_REGISTRY) + self.GAMES_PER_PAGE - 1) // self.GAMES_PER_PAGE
+                if self.page < total_pages - 1:
+                    self.page += 1
+            elif choice == 'p':
+                if self.page > 0:
+                    self.page -= 1
             elif choice.isdigit():
                 idx = int(choice) - 1
                 if 0 <= idx < len(GAME_REGISTRY):
                     self.launch_game(idx)
+                else:
+                    print(f"\n  Invalid selection. Enter 1-{len(GAME_REGISTRY)}.")
+                    input("  Press Enter to continue...")
 
     def show_banner(self):
         print("=" * 60)
@@ -184,31 +197,78 @@ class MainMenu:
         print("=" * 60)
 
     def show_main_menu(self):
-        print("\n  MAIN MENU")
+        total = len(GAME_REGISTRY)
+        total_pages = (total + self.GAMES_PER_PAGE - 1) // self.GAMES_PER_PAGE
+        start = self.page * self.GAMES_PER_PAGE
+        end = min(start + self.GAMES_PER_PAGE, total)
+
+        print(f"\n  GAMES (Page {self.page + 1}/{total_pages})")
         print("  ---------")
-        for i, (name, _, _, desc, _) in enumerate(GAME_REGISTRY):
+        for i in range(start, end):
+            name, _, _, desc, _ = GAME_REGISTRY[i]
             print(f"  {i+1:2}. {name:<24} - {desc}")
         print()
+        nav_parts = []
+        if self.page > 0:
+            nav_parts.append("[P] Prev page")
+        if self.page < total_pages - 1:
+            nav_parts.append("[N] Next page")
+        if nav_parts:
+            print(f"  {' | '.join(nav_parts)}")
         print(f"  [R] Resume a saved game")
         print(f"  [L] List all games & variations")
         print(f"  [Q] Quit")
         print()
-        return input("  Select (1-{}, R, L, Q): ".format(len(GAME_REGISTRY))).strip().lower()
+        return input(f"  Select (1-{total}, R, L, Q): ").strip().lower()
 
     def game_list_menu(self):
-        clear_screen()
-        print("=" * 60)
-        print("  ALL GAMES AND VARIATIONS")
-        print("=" * 60)
-        for name, _, _, desc, variations in GAME_REGISTRY:
-            print(f"\n  {name}")
-            print(f"  {'-'*len(name)}")
-            print(f"  {desc}")
-            print(f"  Variations:")
-            for vkey, vname in variations.items():
-                print(f"    - {vname}")
-        print()
-        input("  Press Enter to return to menu...")
+        page = 0
+        games_per_page = 8
+        total_pages = (len(GAME_REGISTRY) + games_per_page - 1) // games_per_page
+
+        while True:
+            clear_screen()
+            start = page * games_per_page
+            end = min(start + games_per_page, len(GAME_REGISTRY))
+
+            print("=" * 60)
+            print(f"  ALL GAMES AND VARIATIONS (Page {page + 1}/{total_pages})")
+            print("=" * 60)
+            for i in range(start, end):
+                name, _, _, desc, variations = GAME_REGISTRY[i]
+                print(f"\n  {i+1:2}. {name}")
+                print(f"      {desc}")
+                for vkey, vname in variations.items():
+                    print(f"        - {vname}")
+            print()
+            nav_parts = []
+            if page > 0:
+                nav_parts.append("[P] Prev")
+            if page < total_pages - 1:
+                nav_parts.append("[N] Next")
+            nav_parts.append("[B] Back to menu")
+            print(f"  {' | '.join(nav_parts)}")
+            print(f"  Or enter a game number (1-{len(GAME_REGISTRY)}) to play")
+            print()
+            choice = input("  Choice: ").strip().lower()
+
+            if choice == 'b':
+                return
+            elif choice == 'n' and page < total_pages - 1:
+                page += 1
+            elif choice == 'p' and page > 0:
+                page -= 1
+            elif choice.isdigit():
+                idx = int(choice) - 1
+                if 0 <= idx < len(GAME_REGISTRY):
+                    self.launch_game(idx)
+                    return
+                else:
+                    print(f"\n  Invalid selection. Enter 1-{len(GAME_REGISTRY)}.")
+                    input("  Press Enter to continue...")
+            else:
+                print(f"\n  Invalid choice.")
+                input("  Press Enter to continue...")
 
     def launch_game(self, idx):
         entry = GAME_REGISTRY[idx]
@@ -241,9 +301,13 @@ class MainMenu:
                 if 0 <= vidx < len(variation_keys):
                     variation = variation_keys[vidx]
                 else:
-                    return
+                    print(f"\n  Invalid choice. Enter 1-{len(variation_keys)}.")
+                    input("  Press Enter to continue...")
+                    return self.launch_game(idx)
             except ValueError:
-                return
+                print(f"\n  Invalid choice.")
+                input("  Press Enter to continue...")
+                return self.launch_game(idx)
         else:
             variation = variation_keys[0]
             print("  [P] Play")
@@ -256,7 +320,9 @@ class MainMenu:
                 self.show_tutorial(module_path, class_name, variation)
                 return self.launch_game(idx)
             if choice != 'p':
-                return
+                print("\n  Invalid choice. Enter P, T, or B.")
+                input("  Press Enter to continue...")
+                return self.launch_game(idx)
 
         # Load and start game
         try:
@@ -283,63 +349,76 @@ class MainMenu:
             input("Press Enter to continue...")
 
     def resume_game_menu(self):
-        clear_screen()
-        print("=" * 60)
-        print("  SAVED GAMES")
-        print("=" * 60)
+        while True:
+            clear_screen()
+            print("=" * 60)
+            print("  SAVED GAMES")
+            print("=" * 60)
 
-        if not os.path.exists(SAVE_DIR):
-            print("\n  No saved games found.")
-            input("  Press Enter to return to menu...")
-            return
+            if not os.path.exists(SAVE_DIR):
+                print("\n  No saved games found.")
+                input("  Press Enter to return to menu...")
+                return
 
-        saves = []
-        for f in sorted(os.listdir(SAVE_DIR)):
-            if f.endswith('.json'):
-                filepath = os.path.join(SAVE_DIR, f)
+            saves = []
+            for f in sorted(os.listdir(SAVE_DIR)):
+                if f.endswith('.json'):
+                    filepath = os.path.join(SAVE_DIR, f)
+                    try:
+                        with open(filepath) as fh:
+                            data = json.load(fh)
+                        saves.append((f, filepath, data))
+                    except Exception:
+                        pass
+
+            if not saves:
+                print("\n  No saved games found.")
+                input("  Press Enter to return to menu...")
+                return
+
+            for i, (fname, fpath, data) in enumerate(saves):
+                ts = time.strftime('%Y-%m-%d %H:%M', time.localtime(data.get('timestamp', 0)))
+                gname = data.get('game_name', 'Unknown')
+                var = data.get('variation', '')
+                turn = data.get('turn_number', 0)
+                print(f"  {i+1}. {gname} ({var}) - Turn {turn} - {ts}")
+
+            print(f"\n  [D] Delete a save")
+            print(f"  [B] Back")
+            choice = input("\n  Select save to resume (1-{}, D, B): ".format(len(saves))).strip().lower()
+
+            if choice == 'b':
+                return
+            if choice == 'd':
+                dchoice = input("  Enter number to delete: ").strip()
                 try:
-                    with open(filepath) as fh:
-                        data = json.load(fh)
-                    saves.append((f, filepath, data))
-                except Exception:
-                    pass
-
-        if not saves:
-            print("\n  No saved games found.")
-            input("  Press Enter to return to menu...")
-            return
-
-        for i, (fname, fpath, data) in enumerate(saves):
-            ts = time.strftime('%Y-%m-%d %H:%M', time.localtime(data.get('timestamp', 0)))
-            gname = data.get('game_name', 'Unknown')
-            var = data.get('variation', '')
-            turn = data.get('turn_number', 0)
-            print(f"  {i+1}. {gname} ({var}) - Turn {turn} - {ts}")
-
-        print(f"\n  [D] Delete a save")
-        print(f"  [B] Back")
-        choice = input("\n  Select save to resume: ").strip().lower()
-
-        if choice == 'b':
-            return
-        if choice == 'd':
-            dchoice = input("  Enter number to delete: ").strip()
-            try:
-                didx = int(dchoice) - 1
-                if 0 <= didx < len(saves):
-                    os.remove(saves[didx][1])
-                    print("  Save deleted.")
+                    didx = int(dchoice) - 1
+                    if 0 <= didx < len(saves):
+                        os.remove(saves[didx][1])
+                        print("  Save deleted.")
+                        input("  Press Enter to continue...")
+                    else:
+                        print(f"  Invalid selection. Enter 1-{len(saves)}.")
+                        input("  Press Enter to continue...")
+                except ValueError:
+                    print("  Invalid input.")
                     input("  Press Enter to continue...")
-            except (ValueError, OSError):
-                pass
-            return
+                except OSError as e:
+                    print(f"  Error deleting save: {e}")
+                    input("  Press Enter to continue...")
+                continue  # Loop back to show updated list
 
-        try:
-            sidx = int(choice) - 1
-            if 0 <= sidx < len(saves):
-                self.resume_save(saves[sidx])
-        except ValueError:
-            pass
+            try:
+                sidx = int(choice) - 1
+                if 0 <= sidx < len(saves):
+                    self.resume_save(saves[sidx])
+                    return
+                else:
+                    print(f"\n  Invalid selection. Enter 1-{len(saves)}.")
+                    input("  Press Enter to continue...")
+            except ValueError:
+                print("\n  Invalid input.")
+                input("  Press Enter to continue...")
 
     def resume_save(self, save_tuple):
         fname, fpath, data = save_tuple
@@ -359,6 +438,7 @@ class MainMenu:
             game.turn_number = data.get('turn_number', 0)
             game.move_history = data.get('move_history', [])
             game.load_state(data.get('game_state', {}))
+            game._resumed = True
 
             result = game.play()
 

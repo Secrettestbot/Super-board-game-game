@@ -14,9 +14,14 @@ def clear_screen():
 
 
 def main():
-    clear_screen()
-    menu = MainMenu()
-    menu.run()
+    try:
+        clear_screen()
+        menu = MainMenu()
+        menu.run()
+    except KeyboardInterrupt:
+        clear_screen()
+        print("\nThanks for playing! Goodbye.")
+        sys.exit(0)
 
 
 if __name__ == '__main__':
