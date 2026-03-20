@@ -391,11 +391,11 @@ SETUP
 
   Standard set per player:
     3x size-1, 3x size-2, 3x size-3, 2x size-4, 1x size-5
-    (Total: 36 squares worth of pieces)
+    (Total: 31 squares worth of pieces)
 
   Simple set per player:
     2x size-1, 2x size-2, 2x size-3, 1x size-4, 1x size-5
-    (Total: 23 squares worth of pieces)
+    (Total: 21 squares worth of pieces)
 
 --------------------------------------------------------------
 PIECE SHAPES

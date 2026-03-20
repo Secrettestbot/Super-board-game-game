@@ -441,8 +441,8 @@ class KonaneGame(BaseGame):
   -----------
   After making a jump, if the same piece can
   continue jumping in THE SAME DIRECTION, it
-  may (and must) do so. Multi-jumps must all
-  be in the same direction.
+  may do so. Multi-jumps must all be in the
+  same direction.
 
   Enter multi-jumps by specifying the final
   destination: "a1 a5" jumps over two pieces
