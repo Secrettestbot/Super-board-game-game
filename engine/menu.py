@@ -297,6 +297,9 @@ GAME_REGISTRY = [
     ("Trax", "games.trax", "TraxGame",
      "Connection game with forced tile plays",
      {"standard": "Standard Trax", "small": "Small Trax (win with loop or 6-line)"}),
+    ("Parcheesi", "games.parcheesi", "ParcheesiGame",
+     "Classic cross-board race game with dice",
+     {"standard": "Standard Parcheesi (4 pawns)", "quick": "Quick Game (2 pawns)"}),
 ]
 
 
