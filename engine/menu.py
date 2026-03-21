@@ -170,6 +170,21 @@ GAME_REGISTRY = [
     ("Kamisado", "games.kamisado", "KamisadoGame",
      "Color-based movement restriction strategy game",
      {"standard": "Standard Kamisado", "sumo": "Sumo Kamisado (best of 3, push mechanic)"}),
+    ("Santorini", "games.santorini", "SantoriniGame",
+     "Move workers and build towers -- reach the top to win",
+     {"standard": "Standard Santorini", "simple": "Simple (no god powers)"}),
+    ("TwixT", "games.twixt", "TwixTGame",
+     "Connection game with knight-move peg links",
+     {"standard": "Standard (24x24)", "small": "Small (12x12)"}),
+    ("ZÈRTZ", "games.zertz", "ZertzGame",
+     "GIPF project marble capture on a shrinking board",
+     {"standard": "Standard (37 spaces)", "quick": "Quick (19 spaces)"}),
+    ("Quixo", "games.quixo", "QuixoGame",
+     "Slide border cubes to get five in a row",
+     {"standard": "Standard 5x5 Quixo"}),
+    ("Mijnlieff", "games.mijnlieff", "MijnlieffGame",
+     "Tactical placement where your piece restricts your opponent",
+     {"standard": "Standard Mijnlieff"}),
 ]
 
 
