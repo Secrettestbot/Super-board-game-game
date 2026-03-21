@@ -3,13 +3,13 @@
 A comprehensive collection of classic board games playable in the terminal.
 
 ## Features
-- 93 classic board games with multiple variations
+- 108 classic board games with multiple variations
 - Integrated tutorials for every game
 - Suspend and resume games at any time
 - Game variations for added replayability
 - Two-player local play
 
-## Games Included (93 Games)
+## Games Included (108 Games)
 
 ### Strategy & Classic
 - Chess (Standard, Chess960, King of the Hill, Three-Check)
@@ -122,6 +122,23 @@ A comprehensive collection of classic board games playable in the terminal.
 - Onitama (Standard, Sensei's Path)
 - Amazons (Standard 10x10, Small 6x6)
 - Yote (Standard 5x6, Small 4x5)
+
+### New Additions
+- Patchwork (Standard 9x9, Simple 7x7)
+- Jaipur (Standard best-of-3, Quick single round)
+- Battle Line (Standard troops, Tactics with special cards)
+- Liar's Dice / Perudo (Standard ones-wild, Exact)
+- Qwirkle (Standard 6x6, Simple 4x4)
+- Ingenious (Standard base-6, Small base-4)
+- Gobblet (Standard 4x4, Junior 3x3)
+- Fox in the Forest (Standard with powers, Simple)
+- Hanamikoji (Standard 7 geishas, Simple 5 geishas)
+- Coloretto (Standard 7 colors, Simple 5 colors)
+- No Thanks (Standard 3-35, Short 3-25)
+- Sushi Go (Standard, Party with extra cards)
+- Air, Land & Sea (Standard with powers, Simple)
+- Minesweeper (Beginner 9x9, Intermediate 16x16, Expert 16x30)
+- Sudoku (Easy, Medium, Hard)
 
 ## Running
 ```bash

@@ -101,7 +101,7 @@ class AirLandSeaGame(BaseGame):
         """Total strength in a theater for a player."""
         total = 0
         for card_idx, face_up in self.theaters[theater][player]:
-            total += self._effective_strength(card_idx, face_up)
+            total += self._effective_strength_for_token(card_idx, face_up)
         return total
 
     def _theater_winner(self, theater):
@@ -648,13 +648,6 @@ class AirLandSeaGame(BaseGame):
         if card_idx == -1:  # reinforcement token
             return 3
         return self._effective_strength(card_idx, face_up)
-
-    def _theater_strength(self, theater, player):
-        """Total strength in a theater for a player."""
-        total = 0
-        for card_idx, face_up in self.theaters[theater][player]:
-            total += self._effective_strength_for_token(card_idx, face_up)
-        return total
 
     # -------------------------------------------------------- save / load
     def get_state(self):
