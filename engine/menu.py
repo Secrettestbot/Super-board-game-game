@@ -316,6 +316,13 @@ GAME_REGISTRY = [
      "Tile-matching game of lines and colors",
      {"standard": "Standard Qwirkle (6 shapes x 6 colors)",
       "simple": "Simplified (4 shapes x 4 colors)"}),
+    ("Minesweeper", "games.minesweeper", "MinesweeperGame",
+     "Classic mine-finding puzzle game",
+     {"beginner": "Beginner (9x9, 10 mines)", "intermediate": "Intermediate (16x16, 40 mines)",
+      "expert": "Expert (16x30, 99 mines)"}),
+    ("Sushi Go!", "games.sushi_go", "SushiGoGame",
+     "Card drafting game with cute sushi artwork",
+     {"standard": "Standard Sushi Go!", "party": "Party (with Tofu, Eel, Edamame)"}),
 ]
 
 
