@@ -234,6 +234,9 @@ GAME_REGISTRY = [
     ("Coup", "games.coup", "CoupGame",
      "Bluffing and deduction card game",
      {"standard": "Standard Coup", "reformation": "Reformation (with Inquisitor)"}),
+    ("Lost Cities", "games.lost_cities", "LostCitiesGame",
+     "Expedition card game -- risk vs reward",
+     {"standard": "Standard Lost Cities", "extended": "Extended (6 expeditions)"}),
 ]
 
 
