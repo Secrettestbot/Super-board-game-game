@@ -246,6 +246,9 @@ GAME_REGISTRY = [
     ("Shut the Box", "games.shut_the_box", "ShutTheBoxGame",
      "Dice and tiles number-matching game",
      {"standard": "Standard (tiles 1-9)", "twelve": "Extended (tiles 1-12)"}),
+    ("Pickomino", "games.pickomino", "PickominoGame",
+     "Dice-rolling tile-claiming worm game",
+     {"standard": "Standard Pickomino", "simple": "Simple (fewer tiles)"}),
 ]
 
 
