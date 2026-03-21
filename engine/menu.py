@@ -216,6 +216,15 @@ GAME_REGISTRY = [
     ("Cribbage", "games.cribbage", "CribbageGame",
      "Classic card game with pegging and hand scoring",
      {"standard": "Standard Cribbage (121 points)", "short": "Short Game (61 points)"}),
+    ("Lines of Action", "games.lines_of_action", "LinesOfActionGame",
+     "Connect all your pieces into one group",
+     {"standard": "Standard (8x8)", "scrambled": "Scrambled Eggs (alternate start)"}),
+    ("Hearts", "games.hearts", "HeartsGame",
+     "Classic trick-taking card game -- avoid hearts",
+     {"standard": "Standard Hearts (100 points)", "short": "Short Game (50 points)"}),
+    ("Chinese Checkers", "games.chinese_checkers", "ChineseCheckersGame",
+     "Hop and jump across the star-shaped board",
+     {"standard": "Standard (10-piece triangles)", "small": "Small (6-piece triangles)"}),
 ]
 
 
