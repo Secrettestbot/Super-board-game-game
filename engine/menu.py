@@ -243,6 +243,9 @@ GAME_REGISTRY = [
     ("Spades", "games.spades", "SpadesGame",
      "Trick-taking card game with bidding and trumps",
      {"standard": "Standard Spades (500 points)", "short": "Short Game (200 points)"}),
+    ("Shut the Box", "games.shut_the_box", "ShutTheBoxGame",
+     "Dice and tiles number-matching game",
+     {"standard": "Standard (tiles 1-9)", "twelve": "Extended (tiles 1-12)"}),
 ]
 
 
