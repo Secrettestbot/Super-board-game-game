@@ -288,6 +288,15 @@ GAME_REGISTRY = [
     ("Skull", "games.skull", "SkullGame",
      "Bluffing disc game -- roses and skulls",
      {"standard": "Standard Skull", "extended": "Extended (5 discs)"}),
+    ("Love Letter", "games.love_letter", "LoveLetterGame",
+     "Deduction card game -- deliver your letter to the princess",
+     {"standard": "Standard Love Letter", "premium": "Premium Edition (extra cards)"}),
+    ("Kingdomino", "games.kingdomino", "KingdominoGame",
+     "Tile-drafting territory building game",
+     {"standard": "Standard Kingdomino", "queendomino": "Queendomino (with buildings)"}),
+    ("Trax", "games.trax", "TraxGame",
+     "Connection game with forced tile plays",
+     {"standard": "Standard Trax", "small": "Small Trax (win with loop or 6-line)"}),
 ]
 
 
