@@ -108,7 +108,10 @@ class MastermindGame(BaseGame):
     def display(self):
         """Display game board with all previous guesses and feedback."""
         if self.phase == "setup" and not self.secret_code:
-            self._setup_code_interactive()
+            print(f"\n{'='*50}")
+            print(f"  MASTERMIND ({self.label}) - Waiting for code setup...")
+            print(f"{'='*50}")
+            return
         guess_num = len(self.guesses) + 1
         print(f"\n{'='*50}")
         print(f"  === Mastermind ({self.label}) ===")
@@ -141,7 +144,10 @@ class MastermindGame(BaseGame):
 
     # --------------------------------------------------------------- get_move
     def get_move(self):
-        """Prompt codebreaker for a guess."""
+        """Prompt codebreaker for a guess, or run code setup if needed."""
+        if self.phase == "setup" and not self.secret_code:
+            self._setup_code_interactive()
+            return "__SETUP_DONE__"
         example = "".join(self.colors[:self.code_length])
         print(f"  Enter guess (e.g., {example}):")
         raw = input_with_quit(f"  {self.players[1]}'s guess: ").strip().upper()
@@ -150,6 +156,8 @@ class MastermindGame(BaseGame):
     # --------------------------------------------------------------- make_move
     def make_move(self, move):
         """Validate guess and compute feedback. Returns True if valid."""
+        if move == "__SETUP_DONE__":
+            return True
         guess = list(move)
 
         # Validate length

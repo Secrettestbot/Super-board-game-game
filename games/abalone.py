@@ -506,7 +506,7 @@ class AbaloneGame(BaseGame):
         """Return serializable game state."""
         # Convert tuple keys to strings for JSON serialization
         board_serialized = {f"{q},{r}": p for (q, r), p in self.board.items()}
-        valid_serialized = [list(c) for c in self.valid_cells]
+        valid_serialized = sorted([list(c) for c in self.valid_cells])
         return {
             "board": board_serialized,
             "valid_cells": valid_serialized,

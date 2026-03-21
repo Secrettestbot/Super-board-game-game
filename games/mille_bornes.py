@@ -563,7 +563,7 @@ class MilleBornesGame(BaseGame):
         print(f"\n  {self.players[target_player_num - 1]}: "
               f"You have {matching_safety}! Play as Coup Fourre? (coupe/no): ")
         try:
-            response = input("  > ").strip().lower()
+            response = input_with_quit("  > ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             return
 

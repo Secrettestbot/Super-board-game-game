@@ -402,7 +402,7 @@ class StrategoGame(BaseGame):
         return {
             "board_size": self.board_size,
             "board": self.board,
-            "lakes": [list(pos) for pos in self.lakes],
+            "lakes": sorted([list(pos) for pos in self.lakes]),
             "last_battle_msg": self.last_battle_msg,
         }
 
