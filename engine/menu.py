@@ -249,6 +249,9 @@ GAME_REGISTRY = [
     ("Gin Rummy", "games.gin_rummy", "GinRummyGame",
      "Classic card game with melds and knocking",
      {"standard": "Standard Gin Rummy", "oklahoma": "Oklahoma Gin (variable knock value)"}),
+    ("Rummikub", "games.rummikub", "RummikubGame",
+     "Tile rummy with table rearrangement",
+     {"standard": "Standard Rummikub", "simple": "Simple (no jokers)"}),
 ]
 
 
