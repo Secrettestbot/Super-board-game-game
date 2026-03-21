@@ -273,6 +273,12 @@ GAME_REGISTRY = [
     ("Sequence", "games.sequence", "SequenceGame",
      "Card and board game -- make sequences of 5",
      {"standard": "Standard Sequence (10x10)", "small": "Quick Sequence (7x7)"}),
+    ("Carcassonne", "games.carcassonne", "CarcassonneGame",
+     "Tile-laying game with meeples and scoring",
+     {"standard": "Standard Carcassonne", "simple": "Simple (roads and cities only)"}),
+    ("Word Game", "games.word_game", "WordGame",
+     "Crossword-style tile placement word game",
+     {"standard": "Standard (15x15)", "quick": "Quick (11x11)"}),
 ]
 
 
