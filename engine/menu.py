@@ -329,6 +329,9 @@ GAME_REGISTRY = [
     ("Patchwork", "games.patchwork", "PatchworkGame",
      "Two-player quilt-building board game",
      {"standard": "Standard Patchwork (9x9 board)", "simple": "Simplified (fewer patches, 7x7 board)"}),
+    ("Air, Land & Sea", "games.air_land_sea", "AirLandSeaGame",
+     "Control theaters of war with tactical card play",
+     {"standard": "Standard (with card powers)", "simple": "Simple (no card powers)"}),
 ]
 
 
