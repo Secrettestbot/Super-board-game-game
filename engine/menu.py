@@ -258,6 +258,21 @@ GAME_REGISTRY = [
     ("Boggle", "games.boggle", "BoggleGame",
      "Word-finding in a grid of letter dice",
      {"standard": "Standard Boggle (4x4)", "big": "Big Boggle (5x5)"}),
+    ("Blackjack", "games.blackjack", "BlackjackGame",
+     "Casino card game -- beat the dealer to 21",
+     {"standard": "Standard Blackjack", "pontoon": "Pontoon (British variant)"}),
+    ("Canadian Checkers", "games.canadian_checkers", "CanadianCheckersGame",
+     "12x12 draughts with flying kings",
+     {"standard": "Standard Canadian (12x12)", "quick": "Quick (10x10, 15 pieces)"}),
+    ("Hanabi", "games.hanabi", "HanabiGame",
+     "Cooperative card game -- build fireworks together",
+     {"standard": "Standard Hanabi (5 colors)", "simple": "Simple (4 colors)"}),
+    ("Pig", "games.pig", "PigGame",
+     "Push-your-luck dice game",
+     {"standard": "Standard Pig (1 die)", "two_dice": "Two-Dice Pig", "big_pig": "Big Pig (lose all on 1)"}),
+    ("Sequence", "games.sequence", "SequenceGame",
+     "Card and board game -- make sequences of 5",
+     {"standard": "Standard Sequence (10x10)", "small": "Quick Sequence (7x7)"}),
 ]
 
 
