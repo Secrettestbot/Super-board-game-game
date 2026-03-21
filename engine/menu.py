@@ -282,6 +282,9 @@ GAME_REGISTRY = [
     ("Mahjong Solitaire", "games.mahjong_solitaire", "MahjongSolitaireGame",
      "Tile matching puzzle with layered formations",
      {"standard": "Standard Turtle Layout", "simple": "Flat Layout (no stacking)"}),
+    ("Euchre", "games.euchre", "EuchreGame",
+     "Trick-taking card game with bower trump system",
+     {"standard": "Standard Euchre", "stick_the_dealer": "Stick the Dealer (must call)"}),
 ]
 
 
