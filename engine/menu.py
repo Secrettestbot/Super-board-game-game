@@ -237,6 +237,12 @@ GAME_REGISTRY = [
     ("Lost Cities", "games.lost_cities", "LostCitiesGame",
      "Expedition card game -- risk vs reward",
      {"standard": "Standard Lost Cities", "extended": "Extended (6 expeditions)"}),
+    ("Othello", "games.othello", "OthelloGame",
+     "Classic disc-flipping strategy with valid move display",
+     {"standard": "Standard (8x8)", "6x6": "Quick (6x6)", "10x10": "Grand (10x10)"}),
+    ("Spades", "games.spades", "SpadesGame",
+     "Trick-taking card game with bidding and trumps",
+     {"standard": "Standard Spades (500 points)", "short": "Short Game (200 points)"}),
 ]
 
 
