@@ -337,6 +337,14 @@ class ColorettoGame(BaseGame):
         s2 = self._score_collection(2)
         print(f"\n  Current scores:  {self.players[0]}: {s1}  |  {self.players[1]}: {s2}")
 
+        # Show breakdown if game is over
+        if self.game_over:
+            print(f"\n  --- Final Scoring ---")
+            for p in (1, 2):
+                print(f"\n  {self.players[p - 1]}:")
+                print(self._score_breakdown(p))
+                print(f"    Total: {self._score_collection(p)} points")
+
         # Log
         if self.log:
             print(f"\n  --- Log ---")
@@ -478,107 +486,6 @@ class ColorettoGame(BaseGame):
             self.winner = 2
         else:
             self.winner = None  # tie
-
-    # -------------------------------------------------------- display final
-
-    def display(self):
-        cp = self.current_player
-        opp = self._opponent()
-
-        print(f"\n{'=' * 58}")
-        title = "COLORETTO"
-        if self.last_round:
-            title += "  [LAST ROUND!]"
-        print(f"  {title}  (Turn {self.turn_number + 1})")
-        print(f"{'=' * 58}")
-
-        # Opponent collection summary
-        opp_colors = {}
-        opp_wild = 0
-        opp_plus2 = 0
-        for c in self.collections[opp]:
-            if c == "Wild":
-                opp_wild += 1
-            elif c == "+2":
-                opp_plus2 += 1
-            else:
-                opp_colors[c] = opp_colors.get(c, 0) + 1
-
-        print(f"\n  {self.players[opp - 1]}'s collection:")
-        if opp_colors or opp_wild or opp_plus2:
-            parts = []
-            for color in sorted(opp_colors.keys()):
-                parts.append(f"{color}:{opp_colors[color]}")
-            if opp_wild:
-                parts.append(f"Wild:{opp_wild}")
-            if opp_plus2:
-                parts.append(f"+2:{opp_plus2}")
-            print(f"    {', '.join(parts)}")
-        else:
-            print("    (empty)")
-        if self.passed[opp]:
-            print("    [Sitting out - already took a row]")
-
-        # Center rows
-        print(f"\n  {'─' * 40}")
-        print(f"  Center Rows (max 3 cards each):")
-        for row_id in sorted(self.rows.keys()):
-            cards = self.rows[row_id]
-            card_str = ", ".join(cards) if cards else "(empty)"
-            full = " [FULL]" if len(cards) >= 3 else ""
-            print(f"    Row {row_id}: [{card_str}]{full}")
-        print(f"  {'─' * 40}")
-
-        # Deck info
-        print(f"\n  Deck: {len(self.deck)} card(s) remaining")
-
-        # Current player collection
-        cp_colors = {}
-        cp_wild = 0
-        cp_plus2 = 0
-        for c in self.collections[cp]:
-            if c == "Wild":
-                cp_wild += 1
-            elif c == "+2":
-                cp_plus2 += 1
-            else:
-                cp_colors[c] = cp_colors.get(c, 0) + 1
-
-        print(f"\n  {self.players[cp - 1]}'s collection (you):")
-        if cp_colors or cp_wild or cp_plus2:
-            parts = []
-            for color in sorted(cp_colors.keys()):
-                parts.append(f"{color}:{cp_colors[color]}")
-            if cp_wild:
-                parts.append(f"Wild:{cp_wild}")
-            if cp_plus2:
-                parts.append(f"+2:{cp_plus2}")
-            print(f"    {', '.join(parts)}")
-        else:
-            print("    (empty)")
-        if self.passed[cp]:
-            print("    [Sitting out - already took a row]")
-
-        # Scores so far
-        s1 = self._score_collection(1)
-        s2 = self._score_collection(2)
-        print(f"\n  Current scores:  {self.players[0]}: {s1}  |  {self.players[1]}: {s2}")
-
-        # Show breakdown if game is over
-        if self.game_over:
-            print(f"\n  --- Final Scoring ---")
-            for p in (1, 2):
-                print(f"\n  {self.players[p - 1]}:")
-                print(self._score_breakdown(p))
-                print(f"    Total: {self._score_collection(p)} points")
-
-        # Log
-        if self.log:
-            print(f"\n  --- Log ---")
-            for line in self.log[-6:]:
-                print(f"  {line}")
-
-        print()
 
     # -------------------------------------------------------- save / load
 
