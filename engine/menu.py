@@ -197,6 +197,16 @@ GAME_REGISTRY = [
     ("Stratego", "games.stratego", "StrategoGame",
      "Hidden-information military strategy game",
      {"standard": "Standard Stratego (10x10)", "quick": "Quick Stratego (8x8, fewer pieces)"}),
+    ("Ataxx", "games.ataxx", "AtaxxGame",
+     "Territory control with cloning and jumping",
+     {"standard": "Standard Ataxx (7x7)", "small": "Small Ataxx (5x5)"}),
+    ("Azul", "games.azul", "AzulGame",
+     "Tile-drafting pattern-building game",
+     {"standard": "Standard Azul", "simple": "Simplified (3 colors, smaller board)"}),
+    ("Kalah", "games.kalah", "KalahGame",
+     "Mancala variant with capture and extra-turn mechanics",
+     {"standard": "Standard Kalah (6 pits, 4 seeds)", "large": "Large Kalah (6 pits, 6 seeds)",
+      "small": "Small Kalah (4 pits, 3 seeds)"}),
 ]
 
 

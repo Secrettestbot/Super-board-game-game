@@ -283,8 +283,6 @@ class BlokusDuoGame(BaseGame):
         if move.lower() == "pass":
             # Verify the player truly cannot move
             if self._can_player_move(player):
-                print("  You still have valid moves available! You cannot pass.")
-                input("  Press Enter to continue...")
                 return False
             self.passed[player] = True
             return True
@@ -324,12 +322,6 @@ class BlokusDuoGame(BaseGame):
 
         # Validate placement
         if not self._is_valid_placement(placed, player):
-            print("  Invalid placement! Check the rules:")
-            print("  - Piece must be within bounds and on empty cells")
-            print("  - First piece must cover your starting dot (*)")
-            print("  - Subsequent pieces must touch a corner of your existing pieces")
-            print("  - Pieces cannot share an edge with your own pieces")
-            input("  Press Enter to continue...")
             return False
 
         # Place the piece
@@ -365,7 +357,6 @@ class BlokusDuoGame(BaseGame):
             print(f"\n  Final scores:")
             print(f"  {self.players[0]} (X): {score1} ({-score1} squares remaining)")
             print(f"  {self.players[1]} (O): {score2} ({-score2} squares remaining)")
-            input("  Press Enter to continue...")
 
     def get_state(self):
         """Return serializable game state."""
