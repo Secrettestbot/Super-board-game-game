@@ -225,6 +225,15 @@ GAME_REGISTRY = [
     ("Chinese Checkers", "games.chinese_checkers", "ChineseCheckersGame",
      "Hop and jump across the star-shaped board",
      {"standard": "Standard (10-piece triangles)", "small": "Small (6-piece triangles)"}),
+    ("Yahtzee", "games.yahtzee", "YahtzeeGame",
+     "Classic dice game with scoring categories",
+     {"standard": "Standard Yahtzee", "triple": "Triple Yahtzee (3 score columns)"}),
+    ("Tsuro", "games.tsuro", "TsuroGame",
+     "Path-building tile game -- stay on the board",
+     {"standard": "Standard Tsuro (6x6)", "small": "Small Tsuro (4x4)"}),
+    ("Coup", "games.coup", "CoupGame",
+     "Bluffing and deduction card game",
+     {"standard": "Standard Coup", "reformation": "Reformation (with Inquisitor)"}),
 ]
 
 
