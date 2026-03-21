@@ -51,8 +51,8 @@ class YinshGame(BaseGame):
     min_players = 2
     max_players = 2
     variations = {
-        "standard": "Standard Yinsh (5 rings, remove 3 to win)",
-        "blitz": "Blitz (3 rings, remove 2 to win)",
+        "standard": "Standard YINSH",
+        "blitz": "Blitz YINSH (first to 2 rings)",
     }
 
     # Hex directions on an 11x11 grid: the six hex directions.
@@ -104,27 +104,10 @@ class YinshGame(BaseGame):
                 if dist <= 5 and not (dist == 5 and (
                     (dr == 5 and dc == 0) or (dr == -5 and dc == 0) or
                     (dr == 0 and dc == 5) or (dr == 0 and dc == -5) or
-                    (dr == 5 and dc == 5) or (dr == -5 and dc == -5)
+                    (dr == 5 and dc == -5) or (dr == -5 and dc == 5)
                 )):
-                    # Exclude the 6 corner points for an 85-point board
-                    # Actually let's include most and trim corners a bit
+                    # Exclude the 6 corner (tip) points for an 85-point board
                     self.valid_positions.add((r, c))
-
-        # Remove some edge points to get a nicer shape -- trim to ~85 points
-        # The exact YINSH board has specific corners trimmed
-        to_remove = set()
-        for r, c in self.valid_positions:
-            neighbors_valid = sum(
-                1 for dr, dc in self.HEX_DIRS
-                if (r + dr, c + dc) in self.valid_positions
-            )
-            # Points at extreme distance with few neighbors
-            dr = r - 5
-            dc = c - 5
-            dist = max(abs(dr), abs(dc), abs(dr + dc))
-            if dist == 5 and neighbors_valid < 2:
-                to_remove.add((r, c))
-        self.valid_positions -= to_remove
 
     def setup(self):
         """Initialize the board and game phase."""
@@ -132,7 +115,7 @@ class YinshGame(BaseGame):
         self.board = {pos: EMPTY for pos in self.valid_positions}
 
         if self.variation == "blitz":
-            self.total_rings = 3
+            self.total_rings = 5
             self.rings_target = 2
         else:
             self.total_rings = 5
@@ -602,7 +585,7 @@ OVERVIEW
 SETUP PHASE
 --------------------------------------------------------------
   Players take turns placing their rings on empty positions.
-  Standard: 5 rings each. Blitz: 3 rings each.
+  Both modes use 5 rings per player.
 
   Input: row,col (e.g. '5,5')
 

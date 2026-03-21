@@ -185,6 +185,21 @@ GAME_REGISTRY = [
     ("Mijnlieff", "games.mijnlieff", "MijnlieffGame",
      "Tactical placement where your piece restricts your opponent",
      {"standard": "Standard Mijnlieff"}),
+    ("YINSH", "games.yinsh", "YinshGame",
+     "GIPF project ring-and-marker flipping game",
+     {"standard": "Standard YINSH (3 rings)", "blitz": "Blitz YINSH (2 rings)"}),
+    ("Carnac", "games.carnac", "CarnacGame",
+     "Domino placement with connected group scoring",
+     {"standard": "Standard Carnac (6x7)", "small": "Small Carnac (5x5)"}),
+    ("Tak", "games.tak", "TakGame",
+     "Stack-based road-building strategy game",
+     {"standard": "5x5 Board (Standard)", "small": "4x4 Board (Quick)", "large": "6x6 Board (Advanced)"}),
+    ("Shobu", "games.shobu", "ShobuGame",
+     "Four-board stone pushing game",
+     {"standard": "Standard Shobu"}),
+    ("Onitama", "games.onitama", "OnitamaGame",
+     "Card-driven martial arts chess",
+     {"standard": "Standard Onitama", "sensei": "Sensei's Path (alternate win)"}),
 ]
 
 

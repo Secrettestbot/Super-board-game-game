@@ -28,9 +28,9 @@ class TakGame(BaseGame):
     min_players = 2
     max_players = 2
     variations = {
-        "5x5": "5x5 Board (Standard)",
-        "4x4": "4x4 Board (Quick)",
-        "6x6": "6x6 Board (Advanced)",
+        "standard": "5x5 Board (Standard)",
+        "small": "4x4 Board (Quick)",
+        "large": "6x6 Board (Advanced)",
     }
 
     # Piece counts per board size: (flats, capstones)
@@ -53,7 +53,8 @@ class TakGame(BaseGame):
 
     def setup(self):
         """Initialize the board and piece reserves."""
-        self.size = int(self.variation.split("x")[0])
+        size_map = {"standard": 5, "small": 4, "large": 6}
+        self.size = size_map.get(self.variation, 5)
         self.board = [[[] for _ in range(self.size)] for _ in range(self.size)]
         flats, caps = self.PIECE_COUNTS[self.size]
         self.pieces = {
