@@ -586,6 +586,7 @@ TRIPLE YAHTZEE:
 COMMANDS:
   roll           - Roll (or reroll) the dice
   keep 1 3 5     - Keep dice 1, 3, and 5
+  all            - Keep all dice (stop rolling)
   score <cat>    - Score in a category
 
   quit / q       - Quit the game
