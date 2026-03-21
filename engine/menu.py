@@ -213,6 +213,9 @@ GAME_REGISTRY = [
     ("Blockade", "games.blockade", "BlockadeGame",
      "Wall-placement race game",
      {"standard": "Standard Blockade (11x14)", "small": "Small Blockade (7x8)"}),
+    ("Cribbage", "games.cribbage", "CribbageGame",
+     "Classic card game with pegging and hand scoring",
+     {"standard": "Standard Cribbage (121 points)", "short": "Short Game (61 points)"}),
 ]
 
 
