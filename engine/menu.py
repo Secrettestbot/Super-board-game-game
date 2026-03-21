@@ -252,6 +252,9 @@ GAME_REGISTRY = [
     ("Rummikub", "games.rummikub", "RummikubGame",
      "Tile rummy with table rearrangement",
      {"standard": "Standard Rummikub", "simple": "Simple (no jokers)"}),
+    ("Mille Bornes", "games.mille_bornes", "MilleBornesGame",
+     "French card racing game with hazards and safeties",
+     {"standard": "Standard Mille Bornes (1000 km)", "short": "Short Race (700 km)"}),
 ]
 
 
