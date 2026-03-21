@@ -306,10 +306,10 @@ class QuoridorGame(BaseGame):
                     if dr != 0 and (mr - r) * dr > 0 and abs(mc - c) <= 1:
                         # A jump in the right vertical direction
                         if abs(mr - r) == 2 or (abs(mr - r) == 1 and abs(mc - c) == 1):
-                            print(f"  Diagonal jump available to ({size_r(self, mr)},{mc+1}). Enter exact position.")
+                            print(f"  Diagonal jump available to ({self.size - mr},{mc+1}). Enter exact position.")
                     elif dc != 0 and (mc - c) * dc > 0 and abs(mr - r) <= 1:
                         if abs(mc - c) == 2 or (abs(mc - c) == 1 and abs(mr - r) == 1):
-                            print(f"  Diagonal jump available to ({size_r(self, mr)},{mc+1}). Enter exact position.")
+                            print(f"  Diagonal jump available to ({self.size - mr},{mc+1}). Enter exact position.")
                 print(f"  Cannot move {direction.upper()} from current position.")
                 valid_strs = [f"({self.size - mr},{mc + 1})" for mr, mc in valid_moves]
                 if valid_moves:

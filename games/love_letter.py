@@ -626,9 +626,7 @@ class LoveLetterGame(BaseGame):
                 returned = [c for i, c in enumerate(combined) if i != keep_idx]
                 self.hands[cp] = [kept]
                 random.shuffle(returned)
-                self.deck = returned + self.deck  # put on bottom (front of list = bottom)
-                # Actually bottom of deck means they go to the end to be drawn last
-                self.deck = self.deck[len(returned):] + returned
+                self.deck = self.deck + returned  # put returned cards on bottom (drawn last)
                 print(f"  You kept {self._card_label(kept)}.")
                 self._add_log(f"  {self.players[cp - 1]} uses Chancellor (drew {len(drawn)}, kept 1).")
                 break

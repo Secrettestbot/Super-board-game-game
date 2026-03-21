@@ -41,20 +41,6 @@ def _build_star_board():
         for c in range(width):
             positions.add((r, start_col + c * 2))
 
-    # Middle diamond (rows 4-12)
-    for r in range(4, 13):
-        if r < 8:
-            width = 13 - (r - 4)
-            start_col = r - 4
-        elif r == 8:
-            width = 9
-            start_col = 4
-        else:
-            width = 9 + (r - 8)
-            start_col = 12 - r
-        # Actually let me compute this more carefully
-        pass
-
     positions.clear()
 
     # Let me use a well-known layout.  The board has 17 rows.

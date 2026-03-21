@@ -87,8 +87,6 @@ class HiveGame(BaseGame):
         """
         # We'll display raw axial coords as letter+number
         # Map q to letters, r to numbers, with offsets so things look nice
-        col_char = chr(ord('a') + q + 26) if q < 0 else chr(ord('a') + q)
-        # Wrap for very large offsets
         col_idx = (q % 26)
         col_char = chr(ord('a') + col_idx)
         row_label = str(r)
