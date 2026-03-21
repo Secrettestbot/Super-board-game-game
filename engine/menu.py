@@ -219,6 +219,9 @@ GAME_REGISTRY = [
     ("Hearts", "games.hearts", "HeartsGame",
      "Classic trick-taking card game -- avoid hearts",
      {"standard": "Standard Hearts (100 points)", "short": "Short Game (50 points)"}),
+    ("The Fox in the Forest", "games.fox_in_forest", "FoxInTheForestGame",
+     "2-player trick-taking card game with fairy-tale powers",
+     {"standard": "Standard (with special card powers)", "simple": "Simple (no special card powers)"}),
     ("Chinese Checkers", "games.chinese_checkers", "ChineseCheckersGame",
      "Hop and jump across the star-shaped board",
      {"standard": "Standard (10-piece triangles)", "small": "Small (6-piece triangles)"}),
@@ -323,6 +326,9 @@ GAME_REGISTRY = [
     ("Sushi Go!", "games.sushi_go", "SushiGoGame",
      "Card drafting game with cute sushi artwork",
      {"standard": "Standard Sushi Go!", "party": "Party (with Tofu, Eel, Edamame)"}),
+    ("Patchwork", "games.patchwork", "PatchworkGame",
+     "Two-player quilt-building board game",
+     {"standard": "Standard Patchwork (9x9 board)", "simple": "Simplified (fewer patches, 7x7 board)"}),
 ]
 
 
