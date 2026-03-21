@@ -279,6 +279,9 @@ GAME_REGISTRY = [
     ("Word Game", "games.word_game", "WordGame",
      "Crossword-style tile placement word game",
      {"standard": "Standard (15x15)", "quick": "Quick (11x11)"}),
+    ("Mahjong Solitaire", "games.mahjong_solitaire", "MahjongSolitaireGame",
+     "Tile matching puzzle with layered formations",
+     {"standard": "Standard Turtle Layout", "simple": "Flat Layout (no stacking)"}),
 ]
 
 
