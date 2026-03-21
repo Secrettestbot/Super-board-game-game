@@ -255,6 +255,9 @@ GAME_REGISTRY = [
     ("Mille Bornes", "games.mille_bornes", "MilleBornesGame",
      "French card racing game with hazards and safeties",
      {"standard": "Standard Mille Bornes (1000 km)", "short": "Short Race (700 km)"}),
+    ("Boggle", "games.boggle", "BoggleGame",
+     "Word-finding in a grid of letter dice",
+     {"standard": "Standard Boggle (4x4)", "big": "Big Boggle (5x5)"}),
 ]
 
 
