@@ -64,13 +64,16 @@ class MastermindGame(BaseGame):
 
     # ------------------------------------------------------------------ setup
     def setup(self):
-        """Codemaker enters the secret code, then screen is cleared."""
+        """Initialize game state. Code entry happens in the play loop."""
+        import random
         self.secret_code = []
         self.guesses = []
         self.feedback = []
         self.phase = "setup"
         self.current_player = 1  # Player 1 is codemaker
 
+    def _setup_code_interactive(self):
+        """Codemaker enters the secret code, then screen is cleared."""
         clear_screen()
         print(f"\n{'='*50}")
         print(f"  MASTERMIND ({self.label}) - Code Setup")
@@ -104,6 +107,8 @@ class MastermindGame(BaseGame):
     # --------------------------------------------------------------- display
     def display(self):
         """Display game board with all previous guesses and feedback."""
+        if self.phase == "setup" and not self.secret_code:
+            self._setup_code_interactive()
         guess_num = len(self.guesses) + 1
         print(f"\n{'='*50}")
         print(f"  === Mastermind ({self.label}) ===")

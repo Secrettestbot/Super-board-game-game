@@ -1,4 +1,4 @@
-"""Pente -- five in a row with custard captures on a Go-style board."""
+"""Pente -- five in a row with custodial captures on a Go-style board."""
 
 from engine.base import BaseGame, input_with_quit, clear_screen
 
@@ -7,7 +7,7 @@ class PenteGame(BaseGame):
     """Pente with standard (19x19) and small (13x13) variations."""
 
     name = "Pente"
-    description = "Five in a row with custard captures"
+    description = "Five in a row with custodial captures"
     min_players = 2
     max_players = 2
     variations = {
@@ -184,14 +184,14 @@ class PenteGame(BaseGame):
         if self.board[row][col] != 0:
             return False
         self.board[row][col] = self.current_player
-        # Check and perform custard captures
+        # Check and perform custodial captures
         self._do_captures(row, col)
         return True
 
     def _do_captures(self, row, col):
-        """Perform custard captures after placing a stone at (row, col).
+        """Perform custodial captures after placing a stone at (row, col).
 
-        A custard capture occurs when the placed stone flanks exactly two
+        A custodial capture occurs when the placed stone flanks exactly two
         consecutive opponent stones against another friendly stone in any
         of the eight directions.
         Pattern: current X X current  (where X is the opponent)
@@ -303,7 +303,7 @@ OVERVIEW
     1. Get FIVE (or more) of your stones in a row
        (horizontally, vertically, or diagonally).
 
-    2. Make FIVE custard captures (removing 10 opponent
+    2. Make FIVE custodial captures (removing 10 opponent
        stones total).
 
   Player 1 plays Black (\u25cf) and always goes first.
