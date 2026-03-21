@@ -332,6 +332,21 @@ GAME_REGISTRY = [
     ("Air, Land & Sea", "games.air_land_sea", "AirLandSeaGame",
      "Control theaters of war with tactical card play",
      {"standard": "Standard (with card powers)", "simple": "Simple (no card powers)"}),
+    ("Battle Line", "games.battle_line", "BattleLineGame",
+     "Tactical card game with 9 flags and formations",
+     {"standard": "Standard (troops only)", "tactics": "With Tactics cards (special powers)"}),
+    ("Coloretto", "games.coloretto", "ColorettoGame",
+     "Set collection card game - pick the best 3 colors",
+     {"standard": "Standard (7 colors, 3 rows)", "simple": "Simple (5 colors, 2 rows)"}),
+    ("Hanamikoji", "games.hanamikoji", "HanamikojiGame",
+     "Win the favor of geishas with careful card play",
+     {"standard": "Standard Hanamikoji", "simple": "Simple (5 geishas, smaller deck)"}),
+    ("Ingenious", "games.ingenious", "IngeniousGame",
+     "Hexagonal tile-laying game - balance your colors to win",
+     {"standard": "Standard (base-6 hex board)", "small": "Small (base-4 hex board)"}),
+    ("Sudoku", "games.sudoku", "SudokuGame",
+     "Classic number puzzle - fill the 9x9 grid",
+     {"easy": "Easy (40+ clues)", "medium": "Medium (30-35 clues)", "hard": "Hard (25-28 clues)"}),
 ]
 
 
