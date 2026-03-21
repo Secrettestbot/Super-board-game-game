@@ -82,7 +82,7 @@ class YahtzeeGame(BaseGame):
     max_players = 2
     variations = {
         "standard": "Standard Yahtzee",
-        "triple": "Triple Yahtzee (3 score columns)",
+        "triple": "Triple Yahtzee (3x score sheet)",
     }
 
     def __init__(self, variation=None):
@@ -272,7 +272,7 @@ class YahtzeeGame(BaseGame):
             elif self.rolls_left > 0:
                 prompt = (f"{self.players[self.current_player - 1]}, "
                           "'roll' to reroll, 'keep 1 3 5' to keep dice, "
-                          "or 'score <category>': ")
+                          "'all' to keep all, or 'score <category>': ")
             else:
                 prompt = (f"{self.players[self.current_player - 1]}, "
                           "no rolls left - 'score <category>': ")
@@ -283,6 +283,12 @@ class YahtzeeGame(BaseGame):
 
             parts = raw.split()
             cmd = parts[0]
+
+            if cmd == 'all':
+                if self.rolls_left == 3:
+                    print("You must roll first!")
+                    continue
+                return ('keep', [1, 2, 3, 4, 5])
 
             if cmd == 'roll':
                 if self.rolls_left <= 0:
@@ -345,7 +351,7 @@ class YahtzeeGame(BaseGame):
                     continue
                 return ('score', category, col)
 
-            print("Commands: 'roll', 'keep 1 3 5', 'score <category>'")
+            print("Commands: 'roll', 'keep 1 3 5', 'all', 'score <category>'")
 
     def make_move(self, move):
         """Apply a move. Returns True if valid (turn may continue internally)."""
