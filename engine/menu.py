@@ -207,6 +207,12 @@ GAME_REGISTRY = [
      "Mancala variant with capture and extra-turn mechanics",
      {"standard": "Standard Kalah (6 pits, 4 seeds)", "large": "Large Kalah (6 pits, 6 seeds)",
       "small": "Small Kalah (4 pits, 3 seeds)"}),
+    ("Splendor", "games.splendor", "SplendorGame",
+     "Gem-trading engine-building game",
+     {"standard": "Standard Splendor (15 points)", "quick": "Quick Game (10 points)"}),
+    ("Blockade", "games.blockade", "BlockadeGame",
+     "Wall-placement race game",
+     {"standard": "Standard Blockade (11x14)", "small": "Small Blockade (7x8)"}),
 ]
 
 
