@@ -246,6 +246,9 @@ GAME_REGISTRY = [
     ("Pickomino", "games.pickomino", "PickominoGame",
      "Dice-rolling tile-claiming worm game",
      {"standard": "Standard Pickomino", "simple": "Simple (fewer tiles)"}),
+    ("Gin Rummy", "games.gin_rummy", "GinRummyGame",
+     "Classic card game with melds and knocking",
+     {"standard": "Standard Gin Rummy", "oklahoma": "Oklahoma Gin (variable knock value)"}),
 ]
 
 
