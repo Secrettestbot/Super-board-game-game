@@ -285,6 +285,9 @@ GAME_REGISTRY = [
     ("Euchre", "games.euchre", "EuchreGame",
      "Trick-taking card game with bower trump system",
      {"standard": "Standard Euchre", "stick_the_dealer": "Stick the Dealer (must call)"}),
+    ("Skull", "games.skull", "SkullGame",
+     "Bluffing disc game -- roses and skulls",
+     {"standard": "Standard Skull", "extended": "Extended (5 discs)"}),
 ]
 
 
