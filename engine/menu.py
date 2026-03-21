@@ -191,15 +191,12 @@ GAME_REGISTRY = [
     ("Carnac", "games.carnac", "CarnacGame",
      "Domino placement with connected group scoring",
      {"standard": "Standard Carnac (6x7)", "small": "Small Carnac (5x5)"}),
-    ("Tak", "games.tak", "TakGame",
-     "Stack-based road-building strategy game",
-     {"standard": "5x5 Board (Standard)", "small": "4x4 Board (Quick)", "large": "6x6 Board (Advanced)"}),
-    ("Shobu", "games.shobu", "ShobuGame",
-     "Four-board stone pushing game",
-     {"standard": "Standard Shobu"}),
-    ("Onitama", "games.onitama", "OnitamaGame",
-     "Card-driven martial arts chess",
-     {"standard": "Standard Onitama", "sensei": "Sensei's Path (alternate win)"}),
+    ("Blokus Duo", "games.blokus", "BlokusDuoGame",
+     "Polyomino tile placement with corner adjacency",
+     {"standard": "Standard Blokus Duo (14x14)", "small": "Mini Blokus (10x10, fewer pieces)"}),
+    ("Stratego", "games.stratego", "StrategoGame",
+     "Hidden-information military strategy game",
+     {"standard": "Standard Stratego (10x10)", "quick": "Quick Stratego (8x8, fewer pieces)"}),
 ]
 
 
