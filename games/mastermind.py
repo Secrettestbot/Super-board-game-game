@@ -99,7 +99,7 @@ class MastermindGame(BaseGame):
         clear_screen()
         print(f"\n  Secret code has been set!")
         print(f"  Hand the device to {self.players[1]} (Codebreaker).")
-        input("  Press Enter when ready...")
+        input_with_quit("  Press Enter when ready...")
 
         self.phase = "guessing"
         self.current_player = 2  # Player 2 is codebreaker
@@ -163,13 +163,13 @@ class MastermindGame(BaseGame):
         # Validate length
         if len(guess) != self.code_length:
             print(f"  Guess must be exactly {self.code_length} characters long.")
-            input("  Press Enter to try again...")
+            input_with_quit("  Press Enter to try again...")
             return False
 
         # Validate colors
         if not all(c in self.colors for c in guess):
             print(f"  Invalid color(s). Use only: {' '.join(self.colors)}")
-            input("  Press Enter to try again...")
+            input_with_quit("  Press Enter to try again...")
             return False
 
         # Compute feedback

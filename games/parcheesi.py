@@ -298,7 +298,7 @@ class ParcheesiGame(BaseGame):
             self.doubles_count += 1
             if self.doubles_count >= 3:
                 print("  Three doubles in a row! Furthest pawn returns to nest.")
-                input("  Press Enter to continue...")
+                input_with_quit("  Press Enter to continue...")
                 return ("triple_doubles",)
             self.extra_turn = True
             print("  You get another turn!")
@@ -311,7 +311,7 @@ class ParcheesiGame(BaseGame):
             if not self._any_moves_available(p):
                 if self.dice_available:
                     print(f"  No legal moves with remaining dice {self.dice_available}.")
-                    input("  Press Enter to continue...")
+                    input_with_quit("  Press Enter to continue...")
                 break
 
             nest_pawns = [i for i, st in enumerate(self.pawns[p]) if st == "nest"]
@@ -591,12 +591,12 @@ class ParcheesiGame(BaseGame):
                 from engine.base import QuitGame, SuspendGame, ShowHelp, ShowTutorial
                 if isinstance(e, QuitGame):
                     print("\nGame ended.")
-                    input("Press Enter to return to menu...")
+                    input_with_quit("Press Enter to return to menu...")
                     return None
                 elif isinstance(e, SuspendGame):
                     slot = self.save_game()
                     print(f"\nGame saved as '{slot}'")
-                    input("Press Enter to return to menu...")
+                    input_with_quit("Press Enter to return to menu...")
                     return 'suspended'
                 elif isinstance(e, ShowHelp):
                     self.show_help()
@@ -604,7 +604,7 @@ class ParcheesiGame(BaseGame):
                 elif isinstance(e, ShowTutorial):
                     clear_screen()
                     print(self.get_tutorial())
-                    input("\nPress Enter to continue...")
+                    input_with_quit("\nPress Enter to continue...")
                     continue
                 raise
 
@@ -616,14 +616,14 @@ class ParcheesiGame(BaseGame):
                     self.switch_player()
             else:
                 print("  Invalid move! Try again.")
-                input("  Press Enter to continue...")
+                input_with_quit("  Press Enter to continue...")
 
         clear_screen()
         self.display()
         if self.winner:
             print(f"\n*** {self.players[self.winner - 1]} wins! "
                   f"All pawns reached home! ***")
-        input("\nPress Enter to return to menu...")
+        input_with_quit("\nPress Enter to return to menu...")
         return self.winner
 
     # -------------------------------------------------------------- tutorial

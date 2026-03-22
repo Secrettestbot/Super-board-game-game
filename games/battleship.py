@@ -223,7 +223,7 @@ class BattleshipGame(BaseGame):
                 self.placement_index = 0
                 print(f"\n  {self.players[0]} has placed all ships!")
                 print(f"  Hand the device to {self.players[1]}.")
-                input("  Press Enter when ready...")
+                input_with_quit("  Press Enter when ready...")
                 clear_screen()
             else:
                 # Both players done, move to shooting phase
@@ -231,7 +231,7 @@ class BattleshipGame(BaseGame):
                 self.current_player = 1
                 print(f"\n  All ships placed! Battle begins!")
                 print(f"  Hand the device to {self.players[0]}.")
-                input("  Press Enter when ready...")
+                input_with_quit("  Press Enter when ready...")
                 clear_screen()
         return True
 
@@ -242,7 +242,7 @@ class BattleshipGame(BaseGame):
         # Check if already shot there
         if self.tracking[p][r][c] != EMPTY:
             print("  You already fired there!")
-            input("  Press Enter to try again...")
+            input_with_quit("  Press Enter to try again...")
             return False
         # Check hit or miss
         if self.boards[opp][r][c] == SHIP:
@@ -269,11 +269,11 @@ class BattleshipGame(BaseGame):
             self.boards[opp][r][c] = MISS
             self.tracking[p][r][c] = MISS
             print(f"\n  Miss.")
-        input("  Press Enter to continue...")
+        input_with_quit("  Press Enter to continue...")
         # Clear screen before switching turns
         clear_screen()
         print(f"\n  Hand the device to {self.players[(p % 2)]}")
-        input("  Press Enter when ready...")
+        input_with_quit("  Press Enter when ready...")
         return True
 
     # --------------------------------------------------------- check_game_over
@@ -341,12 +341,12 @@ class BattleshipGame(BaseGame):
                 if isinstance(e, (QuitGame, SuspendGame, ShowHelp, ShowTutorial)):
                     if isinstance(e, QuitGame):
                         print("\nGame ended.")
-                        input("Press Enter to return to menu...")
+                        input_with_quit("Press Enter to return to menu...")
                         return None
                     elif isinstance(e, SuspendGame):
                         slot = self.save_game()
                         print(f"\nGame saved as '{slot}'")
-                        input("Press Enter to return to menu...")
+                        input_with_quit("Press Enter to return to menu...")
                         return 'suspended'
                     elif isinstance(e, ShowHelp):
                         self.show_help()
@@ -354,7 +354,7 @@ class BattleshipGame(BaseGame):
                     elif isinstance(e, ShowTutorial):
                         clear_screen()
                         print(self.get_tutorial())
-                        input("\nPress Enter to continue...")
+                        input_with_quit("\nPress Enter to continue...")
                         continue
                 raise
 
@@ -367,13 +367,13 @@ class BattleshipGame(BaseGame):
             else:
                 if move is not None:
                     print("  Invalid move! Try again.")
-                    input("  Press Enter to continue...")
+                    input_with_quit("  Press Enter to continue...")
 
         clear_screen()
         self.display()
         if self.winner:
             print(f"\n*** {self.players[self.winner - 1]} wins! All enemy ships sunk! ***")
-        input("\nPress Enter to return to menu...")
+        input_with_quit("\nPress Enter to return to menu...")
         return self.winner
 
     # -------------------------------------------------------------- tutorial

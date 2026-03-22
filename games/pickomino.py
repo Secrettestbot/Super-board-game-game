@@ -221,7 +221,7 @@ class PickominoGame(BaseGame):
             available_faces = set(self.current_roll) - set(self.chosen_faces)
             if not available_faces:
                 print("  *** BUST! No new face value available in your roll! ***")
-                input("  Press Enter to continue...")
+                input_with_quit("  Press Enter to continue...")
                 self._handle_bust()
                 return
 
@@ -270,7 +270,7 @@ class PickominoGame(BaseGame):
                     self._claim_tile()
                 else:
                     print("  *** BUST! No worm dice kept - cannot claim a tile! ***")
-                    input("  Press Enter to continue...")
+                    input_with_quit("  Press Enter to continue...")
                     self._handle_bust()
                 return
 
@@ -305,7 +305,7 @@ class PickominoGame(BaseGame):
 
         if not has_worm:
             print("  *** BUST! No worm dice - cannot claim! ***")
-            input("  Press Enter to continue...")
+            input_with_quit("  Press Enter to continue...")
             self._handle_bust()
             return
 
@@ -322,7 +322,7 @@ class PickominoGame(BaseGame):
 
         if not available and not can_steal:
             print(f"  *** BUST! No tile available for total {total}! ***")
-            input("  Press Enter to continue...")
+            input_with_quit("  Press Enter to continue...")
             self._handle_bust()
             return
 
@@ -342,14 +342,14 @@ class PickominoGame(BaseGame):
                     tile = self.player_stacks[opponent].pop()
                     self.player_stacks[self.current_player].append(tile)
                     print(f"  Stole tile [{tile}] from {self.players[opponent - 1]}!")
-                    input("  Press Enter to continue...")
+                    input_with_quit("  Press Enter to continue...")
                     return
                 elif raw == 'center':
                     tile = best_center
                     self.center_tiles.remove(tile)
                     self.player_stacks[self.current_player].append(tile)
                     print(f"  Claimed tile [{tile}] ({_worms_for_tile(tile)} worms)!")
-                    input("  Press Enter to continue...")
+                    input_with_quit("  Press Enter to continue...")
                     return
                 else:
                     print("  Enter 'steal' or 'center'.")
@@ -357,14 +357,14 @@ class PickominoGame(BaseGame):
             tile = self.player_stacks[opponent].pop()
             self.player_stacks[self.current_player].append(tile)
             print(f"  Stole tile [{tile}] from {self.players[opponent - 1]}!")
-            input("  Press Enter to continue...")
+            input_with_quit("  Press Enter to continue...")
         else:
             # Take highest available center tile <= total
             tile = available[-1]
             self.center_tiles.remove(tile)
             self.player_stacks[self.current_player].append(tile)
             print(f"  Claimed tile [{tile}] ({_worms_for_tile(tile)} worms)!")
-            input("  Press Enter to continue...")
+            input_with_quit("  Press Enter to continue...")
 
     def _handle_bust(self):
         """Handle a bust: lose top tile, highest center tile goes face-down."""
@@ -381,7 +381,7 @@ class PickominoGame(BaseGame):
             self.center_tiles.remove(highest)
             self.facedown_tiles.append(highest)
             print(f"  Tile [{highest}] flipped face-down (removed from game).")
-            input("  Press Enter to continue...")
+            input_with_quit("  Press Enter to continue...")
 
     # ------------------------------------------------------------------ #
     #  Game over

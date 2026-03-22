@@ -640,7 +640,7 @@ class AirLandSeaGame(BaseGame):
             self.winner = 2
             return
 
-        input("  Press Enter to start next round...")
+        input_with_quit("  Press Enter to start next round...")
         self._start_new_round()
 
     def _effective_strength_for_token(self, card_idx, face_up):

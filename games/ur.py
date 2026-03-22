@@ -302,20 +302,20 @@ class UrGame(BaseGame):
 
         if roll == 0:
             print("  Rolled 0 - no move possible. Turn passes.")
-            input("  Press Enter to continue...")
+            input_with_quit("  Press Enter to continue...")
             return ("no_move", roll)
 
         legal = self._get_legal_moves(player, roll)
 
         if not legal:
             print("  No legal moves available. Turn passes.")
-            input("  Press Enter to continue...")
+            input_with_quit("  Press Enter to continue...")
             return ("no_move", roll)
 
         if len(legal) == 1:
             idx, desc = legal[0]
             print(f"  Only move: {sym}{idx + 1} ({desc})")
-            input("  Press Enter to continue...")
+            input_with_quit("  Press Enter to continue...")
             return ("move", roll, idx)
 
         # Multiple choices - let player pick
@@ -464,12 +464,12 @@ class UrGame(BaseGame):
                 from engine.base import QuitGame, SuspendGame, ShowHelp, ShowTutorial
                 if isinstance(e, QuitGame):
                     print("\nGame ended.")
-                    input("Press Enter to return to menu...")
+                    input_with_quit("Press Enter to return to menu...")
                     return None
                 elif isinstance(e, SuspendGame):
                     slot = self.save_game()
                     print(f"\nGame saved as '{slot}'")
-                    input("Press Enter to return to menu...")
+                    input_with_quit("Press Enter to return to menu...")
                     return 'suspended'
                 elif isinstance(e, ShowHelp):
                     self.show_help()
@@ -477,7 +477,7 @@ class UrGame(BaseGame):
                 elif isinstance(e, ShowTutorial):
                     clear_screen()
                     print(self.get_tutorial())
-                    input("\nPress Enter to continue...")
+                    input_with_quit("\nPress Enter to continue...")
                     continue
                 raise
 
@@ -490,14 +490,14 @@ class UrGame(BaseGame):
             else:
                 if move is not None:
                     print("  Invalid move! Try again.")
-                    input("  Press Enter to continue...")
+                    input_with_quit("  Press Enter to continue...")
 
         clear_screen()
         self.display()
         if self.winner:
             print(f"\n*** {self.players[self.winner - 1]} wins! "
                   f"All pieces borne off! ***")
-        input("\nPress Enter to return to menu...")
+        input_with_quit("\nPress Enter to return to menu...")
         return self.winner
 
     # -------------------------------------------------------------- tutorial

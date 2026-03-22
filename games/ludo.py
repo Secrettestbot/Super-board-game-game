@@ -177,13 +177,13 @@ class LudoGame(BaseGame):
 
         if not movable:
             print("  No pieces can move with this roll.")
-            input("  Press Enter to continue...")
+            input_with_quit("  Press Enter to continue...")
             return ("no_move", roll)
 
         if len(movable) == 1:
             choice = movable[0]
             print(f"  Only piece {PLAYER_SYMBOLS[p]}{choice + 1} can move.")
-            input("  Press Enter to continue...")
+            input_with_quit("  Press Enter to continue...")
             return ("move", roll, choice)
 
         # Let player choose
@@ -404,12 +404,12 @@ class LudoGame(BaseGame):
                 from engine.base import QuitGame, SuspendGame, ShowHelp, ShowTutorial
                 if isinstance(e, QuitGame):
                     print("\nGame ended.")
-                    input("Press Enter to return to menu...")
+                    input_with_quit("Press Enter to return to menu...")
                     return None
                 elif isinstance(e, SuspendGame):
                     slot = self.save_game()
                     print(f"\nGame saved as '{slot}'")
-                    input("Press Enter to return to menu...")
+                    input_with_quit("Press Enter to return to menu...")
                     return 'suspended'
                 elif isinstance(e, ShowHelp):
                     self.show_help()
@@ -417,7 +417,7 @@ class LudoGame(BaseGame):
                 elif isinstance(e, ShowTutorial):
                     clear_screen()
                     print(self.get_tutorial())
-                    input("\nPress Enter to continue...")
+                    input_with_quit("\nPress Enter to continue...")
                     continue
                 raise
 
@@ -430,14 +430,14 @@ class LudoGame(BaseGame):
             else:
                 if move is not None:
                     print("  Invalid move! Try again.")
-                    input("  Press Enter to continue...")
+                    input_with_quit("  Press Enter to continue...")
 
         clear_screen()
         self.display()
         if self.winner:
             print(f"\n*** {self.players[self.winner - 1]} wins! "
                   f"All pieces reached home! ***")
-        input("\nPress Enter to return to menu...")
+        input_with_quit("\nPress Enter to return to menu...")
         return self.winner
 
     # -------------------------------------------------------------- tutorial

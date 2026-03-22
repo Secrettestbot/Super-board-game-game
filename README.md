@@ -3,13 +3,13 @@
 A comprehensive collection of classic board games playable in the terminal.
 
 ## Features
-- 108 classic board games with multiple variations
+- 115 classic board games with multiple variations
 - Integrated tutorials for every game
 - Suspend and resume games at any time
 - Game variations for added replayability
 - Two-player local play
 
-## Games Included (108 Games)
+## Games Included (115 Games)
 
 ### Strategy & Classic
 - Chess (Standard, Chess960, King of the Hill, Three-Check)
@@ -139,6 +139,13 @@ A comprehensive collection of classic board games playable in the terminal.
 - Air, Land & Sea (Standard with powers, Simple)
 - Minesweeper (Beginner 9x9, Intermediate 16x16, Expert 16x30)
 - Sudoku (Easy, Medium, Hard)
+- Seven Wonders Duel (Standard 3 ages, Quick 2 ages)
+- Catan Dice (Standard 15 rounds, Short 10 rounds)
+- Ticket to Ride Card (Standard, Express)
+- Puerto Rico Card (Standard 12 rounds, Quick 8 rounds)
+- Race for the Galaxy (Standard, Quick)
+- Codenames Duet (Standard 25 words, Mini 16 words)
+- Blokus Duo (Standard 14x14, Small 10x10)
 
 ## Running
 ```bash

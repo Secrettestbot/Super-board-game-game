@@ -462,7 +462,7 @@ class KingdominoGame(BaseGame):
             # Check if any valid placement exists
             if not self._has_any_valid_placement(player_idx, tile['half1'], tile['half2']):
                 print(f"\n  No valid placement for this tile. It will be discarded.")
-                input("  Press Enter to continue...")
+                input_with_quit("  Press Enter to continue...")
                 return {'action': 'discard', 'player': player_idx + 1}
 
             print(f"\n  {self.players[player_idx]} - place tile {tile['number']}: {self._format_tile(tile)}")

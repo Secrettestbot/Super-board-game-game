@@ -398,13 +398,13 @@ class PatchworkGame(BaseGame):
             # Check if player can afford it
             if self.buttons[active] < cost:
                 print(f"  Not enough buttons! You have {self.buttons[active]}, need {cost}.")
-                input("  Press Enter to continue...")
+                input_with_quit("  Press Enter to continue...")
                 return False
 
             # Check if any valid placement exists
             if not self._has_any_valid_placement(active, shape):
                 print("  No valid placement exists for this patch on your quilt!")
-                input("  Press Enter to continue...")
+                input_with_quit("  Press Enter to continue...")
                 return False
 
             # Get placement
@@ -417,7 +417,7 @@ class PatchworkGame(BaseGame):
 
             if not self._can_place_patch(active, transformed, row_off, col_off):
                 print("  Invalid placement! Patch doesn't fit there.")
-                input("  Press Enter to continue...")
+                input_with_quit("  Press Enter to continue...")
                 return False
 
             # Apply the move

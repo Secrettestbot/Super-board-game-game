@@ -215,7 +215,7 @@ class SequenceGame(BaseGame):
                     hand.pop(card_idx)
                     if self.deck:
                         hand.append(self.deck.pop())
-                    input("  Press Enter to continue...")
+                    input_with_quit("  Press Enter to continue...")
                     return None  # Signal to skip turn processing
 
             # For Jacks, position is required

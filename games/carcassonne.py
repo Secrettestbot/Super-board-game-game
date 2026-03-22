@@ -320,7 +320,7 @@ class CarcassonneGame(BaseGame):
                     break
             if not any_valid:
                 print("  No valid placement for this tile. Discarding and drawing next.")
-                input("  Press Enter to continue...")
+                input_with_quit("  Press Enter to continue...")
                 return "skip"
 
             while True:

@@ -468,7 +468,7 @@ class JaipurGame(BaseGame):
         # Report the sale
         bonus_str = f" + {bonus} bonus" if bonus else ""
         print(f"  Sold {count} {good.capitalize()} for {points} points{bonus_str} = {total} total!")
-        input("  Press Enter to continue...")
+        input_with_quit("  Press Enter to continue...")
 
         return True
 
@@ -558,10 +558,10 @@ class JaipurGame(BaseGame):
             self.game_over = True
 
         if match_over:
-            input("\n  Press Enter to see final results...")
+            input_with_quit("\n  Press Enter to see final results...")
         else:
             self.round_number += 1
-            input("\n  Press Enter to start the next round...")
+            input_with_quit("\n  Press Enter to start the next round...")
             self._setup_round()
 
     def get_state(self):

@@ -259,7 +259,7 @@ class DominoesGame(BaseGame):
             self.hands[player_idx].append(drawn)
             print(f"  Drew tile [{drawn[0]}|{drawn[1]}]")
             self.passed[player_idx] = False
-            input("  Press Enter to continue...")
+            input_with_quit("  Press Enter to continue...")
             return True
 
         if action == "pass":

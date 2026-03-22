@@ -215,7 +215,7 @@ class SpadesGame(BaseGame):
                 bid = int(move)
                 if bid < 1 or bid > 13:
                     print("  Bid must be between 1 and 13 (or 'nil').")
-                    input("  Press Enter to continue...")
+                    input_with_quit("  Press Enter to continue...")
                     return False
                 self.bids[cp] = bid
                 self.nil_bids[cp] = False
@@ -251,7 +251,7 @@ class SpadesGame(BaseGame):
         card = hand[idx]
         if card not in playable:
             print("  That card cannot be played right now!")
-            input("  Press Enter to continue...")
+            input_with_quit("  Press Enter to continue...")
             return False
 
         # Play the card

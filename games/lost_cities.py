@@ -372,7 +372,7 @@ class LostCitiesGame(BaseGame):
 
         if self.round_number < self.total_rounds:
             self.round_number += 1
-            input("\n  Press Enter to start the next round...")
+            input_with_quit("\n  Press Enter to start the next round...")
             self._setup_round()
         else:
             # Game over
@@ -385,7 +385,7 @@ class LostCitiesGame(BaseGame):
                 self.winner = 2
             else:
                 self.winner = None
-            input("\n  Press Enter to see final results...")
+            input_with_quit("\n  Press Enter to see final results...")
 
     def get_state(self):
         """Return serializable game state."""

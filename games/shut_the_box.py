@@ -214,7 +214,7 @@ class ShutTheBoxGame(BaseGame):
                 score = sum(self.tiles_up[player])
                 print(f"  No valid combination! Turn over.")
                 print(f"  Score this round: {score}")
-                input("\n  Press Enter to continue...")
+                input_with_quit("\n  Press Enter to continue...")
                 return ("end_turn", score, False)
 
             # Get player's tile choice
@@ -271,7 +271,7 @@ class ShutTheBoxGame(BaseGame):
                 self.display()
                 print("  *** SHUT THE BOX! ***")
                 print(f"  {self.players[player - 1]} scores 0 - INSTANT WIN!")
-                input("\n  Press Enter to continue...")
+                input_with_quit("\n  Press Enter to continue...")
                 return ("end_turn", 0, True)
 
             # Continue rolling (loop back)

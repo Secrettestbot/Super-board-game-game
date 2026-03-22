@@ -287,7 +287,7 @@ class FoxInTheForestGame(BaseGame):
         card = hand[idx]
         if card not in playable:
             print("  That card cannot be played right now!")
-            input("  Press Enter to continue...")
+            input_with_quit("  Press Enter to continue...")
             return False
 
         # Play the card

@@ -81,7 +81,7 @@ class MinesweeperGame(BaseGame):
         print("    1. Single player (classic)")
         print("    2. Two players (take turns revealing)")
         while True:
-            choice = input("\n  Enter 1 or 2: ").strip()
+            choice = input_with_quit("\n  Enter 1 or 2: ").strip()
             if choice in ("1", "2"):
                 self.num_players = int(choice)
                 break
@@ -222,32 +222,32 @@ class MinesweeperGame(BaseGame):
         parts = move.lower().split()
         if len(parts) != 3:
             print("  Invalid format. Use 'r ROW COL' or 'f ROW COL'.")
-            input("  Press Enter to try again...")
+            input_with_quit("  Press Enter to try again...")
             return False
 
         action = parts[0]
         if action not in ('r', 'f'):
             print("  Action must be 'r' (reveal) or 'f' (flag/unflag).")
-            input("  Press Enter to try again...")
+            input_with_quit("  Press Enter to try again...")
             return False
 
         try:
             row, col = int(parts[1]), int(parts[2])
         except ValueError:
             print("  ROW and COL must be numbers.")
-            input("  Press Enter to try again...")
+            input_with_quit("  Press Enter to try again...")
             return False
 
         if not (0 <= row < self.rows and 0 <= col < self.cols):
             print(f"  Out of bounds. ROW: 0-{self.rows-1}, COL: 0-{self.cols-1}.")
-            input("  Press Enter to try again...")
+            input_with_quit("  Press Enter to try again...")
             return False
 
         if action == 'f':
             # Flag / unflag
             if self.revealed[row][col]:
                 print("  Cannot flag a revealed cell.")
-                input("  Press Enter to try again...")
+                input_with_quit("  Press Enter to try again...")
                 return False
             self.flagged[row][col] = not self.flagged[row][col]
             # Flagging does not consume a turn in 2p mode
@@ -258,12 +258,12 @@ class MinesweeperGame(BaseGame):
         # action == 'r' (reveal)
         if self.revealed[row][col]:
             print("  Cell already revealed.")
-            input("  Press Enter to try again...")
+            input_with_quit("  Press Enter to try again...")
             return False
 
         if self.flagged[row][col]:
             print("  Cell is flagged. Unflag it first with 'f ROW COL'.")
-            input("  Press Enter to try again...")
+            input_with_quit("  Press Enter to try again...")
             return False
 
         # Place mines on first reveal

@@ -577,12 +577,12 @@ class BlackjackGame(BaseGame):
                 from engine.base import QuitGame, SuspendGame, ShowHelp, ShowTutorial
                 if isinstance(e, QuitGame):
                     print("\nGame ended.")
-                    input("Press Enter to return to menu...")
+                    input_with_quit("Press Enter to return to menu...")
                     return None
                 elif isinstance(e, SuspendGame):
                     slot = self.save_game()
                     print(f"\nGame saved as '{slot}'")
-                    input("Press Enter to return to menu...")
+                    input_with_quit("Press Enter to return to menu...")
                     return 'suspended'
                 elif isinstance(e, ShowHelp):
                     self.show_help()
@@ -590,17 +590,17 @@ class BlackjackGame(BaseGame):
                 elif isinstance(e, ShowTutorial):
                     clear_screen()
                     print(self.get_tutorial())
-                    input("\nPress Enter to continue...")
+                    input_with_quit("\nPress Enter to continue...")
                     continue
                 elif isinstance(e, KeyboardInterrupt):
                     print("\n\nInterrupted! Save before quitting? (y/n): ", end="")
                     try:
-                        ans = input().strip().lower()
+                        ans = input_with_quit().strip().lower()
                         if ans == 'y':
                             slot = self.save_game()
                             print(f"Game saved as '{slot}'")
                         print("Returning to menu...")
-                        input("Press Enter to continue...")
+                        input_with_quit("Press Enter to continue...")
                     except KeyboardInterrupt:
                         pass
                     return None
@@ -611,7 +611,7 @@ class BlackjackGame(BaseGame):
                 self.turn_number += 1
                 self.check_game_over()
             else:
-                input("  Press Enter to continue...")
+                input_with_quit("  Press Enter to continue...")
 
         clear_screen()
         self.display()
@@ -621,5 +621,5 @@ class BlackjackGame(BaseGame):
         else:
             print("\n*** It's a draw! ***")
             print(f"  Final chips - You: {self.chips[0]}, Dealer: {self.chips[1]}")
-        input("\nPress Enter to return to menu...")
+        input_with_quit("\nPress Enter to return to menu...")
         return self.winner

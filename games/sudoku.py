@@ -205,7 +205,7 @@ class SudokuGame(BaseGame):
             return ("hint",)
         else:
             print("  Invalid action. Use P, E, or H.")
-            input("  Press Enter to try again...")
+            input_with_quit("  Press Enter to try again...")
             return None
 
     # --------------------------------------------------------------- make_move
@@ -221,7 +221,7 @@ class SudokuGame(BaseGame):
             parsed = self._parse_cell(cell_str)
             if parsed is None:
                 print("  Invalid cell. Use format like A1, B5 (row A-I, col 1-9).")
-                input("  Press Enter to continue...")
+                input_with_quit("  Press Enter to continue...")
                 return False
             r, c = parsed
             try:
@@ -230,15 +230,15 @@ class SudokuGame(BaseGame):
                     raise ValueError
             except ValueError:
                 print("  Number must be 1-9.")
-                input("  Press Enter to continue...")
+                input_with_quit("  Press Enter to continue...")
                 return False
             if self.fixed[r][c]:
                 print("  That cell is a fixed clue and cannot be changed.")
-                input("  Press Enter to continue...")
+                input_with_quit("  Press Enter to continue...")
                 return False
             if self.board[r][c] != 0:
                 print("  Cell is already filled. Erase it first.")
-                input("  Press Enter to continue...")
+                input_with_quit("  Press Enter to continue...")
                 return False
 
             # Check correctness
@@ -256,7 +256,7 @@ class SudokuGame(BaseGame):
                     self.penalties[self.current_player - 1] += 1
                     print(f"  +1 penalty for {self.players[self.current_player - 1]}!")
                 # Don't place the wrong number
-                input("  Press Enter to continue...")
+                input_with_quit("  Press Enter to continue...")
             return True
 
         elif action == "erase":
@@ -264,16 +264,16 @@ class SudokuGame(BaseGame):
             parsed = self._parse_cell(cell_str)
             if parsed is None:
                 print("  Invalid cell. Use format like A1, B5.")
-                input("  Press Enter to continue...")
+                input_with_quit("  Press Enter to continue...")
                 return False
             r, c = parsed
             if self.fixed[r][c]:
                 print("  That cell is a fixed clue and cannot be erased.")
-                input("  Press Enter to continue...")
+                input_with_quit("  Press Enter to continue...")
                 return False
             if self.board[r][c] == 0:
                 print("  Cell is already empty.")
-                input("  Press Enter to continue...")
+                input_with_quit("  Press Enter to continue...")
                 return False
             self.board[r][c] = 0
             print(f"  Erased {chr(ord('A') + r)}{c + 1}.")
@@ -287,7 +287,7 @@ class SudokuGame(BaseGame):
             ]
             if not empty_cells:
                 print("  No empty cells left!")
-                input("  Press Enter to continue...")
+                input_with_quit("  Press Enter to continue...")
                 return False
             r, c = random.choice(empty_cells)
             self.board[r][c] = self.solution[r][c]
@@ -295,7 +295,7 @@ class SudokuGame(BaseGame):
             if self.num_players == 2:
                 self.penalties[self.current_player - 1] += 1
                 print(f"  +1 penalty for using a hint!")
-            input("  Press Enter to continue...")
+            input_with_quit("  Press Enter to continue...")
             return True
 
         return False

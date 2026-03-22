@@ -353,7 +353,7 @@ class CribbageGame(BaseGame):
         if move.lower() == 'go':
             if playable:
                 print("  You can still play a card!")
-                input("  Press Enter to continue...")
+                input_with_quit("  Press Enter to continue...")
                 return False
             self.pegging_go[cp] = True
             other = 1 - cp
@@ -386,7 +386,7 @@ class CribbageGame(BaseGame):
         card = hand[idx]
         if card_value(card) + self.pegging_total > 31:
             print("  That card would exceed 31!")
-            input("  Press Enter to continue...")
+            input_with_quit("  Press Enter to continue...")
             return False
 
         hand.pop(idx)

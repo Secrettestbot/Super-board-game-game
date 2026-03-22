@@ -263,10 +263,10 @@ class WordGame(BaseGame):
             self.scores[challenged_player - 1] -= self.last_play_score
             print(f"  Word removed! {self.players[challenged_player - 1]} "
                   f"loses {self.last_play_score} points.")
-            input("  Press Enter to continue...")
+            input_with_quit("  Press Enter to continue...")
         else:
             print(f"  Word kept. {self.players[challenger - 1]} loses their turn.")
-            input("  Press Enter to continue...")
+            input_with_quit("  Press Enter to continue...")
 
         self.last_play = None
         self.last_play_tiles = []
@@ -446,7 +446,7 @@ class WordGame(BaseGame):
         self.last_player = self.current_player
         self.consecutive_passes = 0
 
-        input("  Press Enter to continue...")
+        input_with_quit("  Press Enter to continue...")
         return True
 
     def _calculate_score(self, word, row, col, dr, dc, placed_positions):
