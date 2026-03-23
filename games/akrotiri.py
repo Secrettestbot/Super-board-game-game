@@ -1,6 +1,7 @@
 """Akrotiri - Tile-laying map building with secret temple goals."""
 
 import random
+import copy
 from engine.base import BaseGame, input_with_quit, clear_screen
 
 RESET = '\033[0m'
@@ -11,79 +12,100 @@ YELLOW = '\033[93m'
 CYAN = '\033[96m'
 DIM = '\033[2m'
 BOLD = '\033[1m'
+WHITE = '\033[97m'
 
 # Terrain types
 SEA = '~'
-LAND = '.'
-MOUNTAIN = '^'
-FOREST = 'T'
-MARKET = 'M'
-TEMPLE = '*'
+LAND = '#'
+PORT = 'P'
+TEMPLE_SITE = 'T'
+RESOURCE_FOREST = 'F'
+RESOURCE_STONE = 'S'
+RESOURCE_CLAY = 'C'
 
 TERRAIN_COLORS = {
     SEA: CYAN,
     LAND: GREEN,
-    MOUNTAIN: DIM,
-    FOREST: GREEN + BOLD,
-    MARKET: YELLOW,
-    TEMPLE: RED + BOLD,
+    PORT: YELLOW,
+    TEMPLE_SITE: RED,
+    RESOURCE_FOREST: GREEN,
+    RESOURCE_STONE: DIM,
+    RESOURCE_CLAY: RED,
 }
 
-# Resource types gained from land tiles
-RESOURCES = ['wood', 'stone', 'pottery']
+RESOURCE_NAMES = {
+    RESOURCE_FOREST: 'Wood',
+    RESOURCE_STONE: 'Stone',
+    RESOURCE_CLAY: 'Clay',
+}
 
-# Tile definitions: each tile is a 2x2 grid of terrain
-# Format: ((top-left, top-right), (bottom-left, bottom-right))
-TILE_POOL = [
-    ((SEA, LAND), (LAND, SEA)),
-    ((LAND, SEA), (SEA, LAND)),
-    ((SEA, SEA), (LAND, LAND)),
-    ((LAND, LAND), (SEA, SEA)),
-    ((SEA, LAND), (SEA, LAND)),
-    ((LAND, SEA), (LAND, SEA)),
-    ((LAND, LAND), (LAND, SEA)),
-    ((SEA, LAND), (LAND, LAND)),
-    ((LAND, LAND), (SEA, LAND)),
-    ((LAND, SEA), (LAND, LAND)),
-    ((SEA, SEA), (SEA, LAND)),
-    ((LAND, SEA), (SEA, SEA)),
-    ((SEA, SEA), (LAND, SEA)),
-    ((SEA, LAND), (SEA, SEA)),
-    ((MOUNTAIN, SEA), (LAND, LAND)),
-    ((SEA, MOUNTAIN), (LAND, LAND)),
-    ((LAND, LAND), (MOUNTAIN, SEA)),
-    ((LAND, LAND), (SEA, MOUNTAIN)),
-    ((FOREST, SEA), (SEA, LAND)),
-    ((SEA, FOREST), (LAND, SEA)),
-    ((MARKET, LAND), (SEA, SEA)),
-    ((SEA, SEA), (LAND, MARKET)),
-    ((FOREST, LAND), (LAND, SEA)),
-    ((SEA, LAND), (LAND, FOREST)),
-]
+# Tiles: each tile is a 2x2 grid of terrain types
+# Format: [[top-left, top-right], [bottom-left, bottom-right]]
+def _make_tile_pool():
+    """Generate the pool of map tiles."""
+    tiles = []
+    patterns = [
+        [[LAND, SEA], [SEA, SEA]],
+        [[SEA, LAND], [LAND, SEA]],
+        [[LAND, LAND], [SEA, SEA]],
+        [[SEA, SEA], [LAND, LAND]],
+        [[LAND, SEA], [LAND, SEA]],
+        [[SEA, LAND], [SEA, LAND]],
+        [[LAND, LAND], [LAND, SEA]],
+        [[LAND, LAND], [SEA, LAND]],
+        [[LAND, SEA], [LAND, LAND]],
+        [[SEA, LAND], [LAND, LAND]],
+        [[LAND, LAND], [LAND, LAND]],
+        [[SEA, SEA], [SEA, LAND]],
+    ]
+    # Double the pool for 24 tiles, slight variations with resources
+    resources = [RESOURCE_FOREST, RESOURCE_STONE, RESOURCE_CLAY]
+    for i, pat in enumerate(patterns):
+        tile = copy.deepcopy(pat)
+        tiles.append(tile)
+        # Second copy with a resource on one land cell
+        tile2 = copy.deepcopy(pat)
+        for r in range(2):
+            for c in range(2):
+                if tile2[r][c] == LAND:
+                    tile2[r][c] = resources[i % 3]
+                    break
+            else:
+                continue
+            break
+        tiles.append(tile2)
+    return tiles
 
-# Goal cards: each specifies relative directions from a landmark to find a temple
-# Format: (landmark_terrain, [(direction, distance)], point_value, description)
-GOAL_TEMPLATES = [
-    (MOUNTAIN, [('N', 2)], 3, "2 north of a mountain"),
-    (MOUNTAIN, [('S', 2)], 3, "2 south of a mountain"),
-    (MOUNTAIN, [('E', 2)], 3, "2 east of a mountain"),
-    (MOUNTAIN, [('W', 2)], 3, "2 west of a mountain"),
-    (FOREST, [('N', 1)], 2, "1 north of a forest"),
-    (FOREST, [('S', 1)], 2, "1 south of a forest"),
-    (FOREST, [('E', 1)], 2, "1 east of a forest"),
-    (FOREST, [('W', 1)], 2, "1 west of a forest"),
-    (MARKET, [('N', 1)], 4, "1 north of a market"),
-    (MARKET, [('S', 1)], 4, "1 south of a market"),
-    (MARKET, [('E', 1)], 4, "1 east of a market"),
-    (MARKET, [('W', 1)], 4, "1 west of a market"),
-    (MOUNTAIN, [('N', 1), ('E', 1)], 5, "1 NE of a mountain"),
-    (MOUNTAIN, [('S', 1), ('W', 1)], 5, "1 SW of a mountain"),
-    (FOREST, [('N', 1), ('W', 1)], 4, "1 NW of a forest"),
-    (FOREST, [('S', 1), ('E', 1)], 4, "1 SE of a forest"),
-]
 
-DIRECTION_OFFSETS = {
-    'N': (-1, 0), 'S': (1, 0), 'E': (0, 1), 'W': (0, -1),
+def _generate_goal_cards():
+    """Generate secret temple goal cards.
+
+    Each goal card specifies relative directions from a port to find a temple.
+    Format: (name, directions_list, point_value)
+    Directions: 'N', 'S', 'E', 'W' - each step is one tile (2 cells)
+    """
+    goals = [
+        ("Temple of Apollo", ["N", "N"], 3),
+        ("Temple of Athena", ["E", "N"], 4),
+        ("Temple of Zeus", ["N", "E"], 4),
+        ("Temple of Poseidon", ["W", "N"], 5),
+        ("Temple of Artemis", ["N", "W"], 5),
+        ("Temple of Hermes", ["E", "E"], 3),
+        ("Temple of Ares", ["S", "E"], 4),
+        ("Temple of Hera", ["N", "N", "E"], 6),
+        ("Temple of Demeter", ["E", "N", "N"], 6),
+        ("Temple of Hephaestus", ["W", "W"], 3),
+        ("Temple of Dionysus", ["S", "S"], 3),
+        ("Temple of Aphrodite", ["N", "E", "E"], 6),
+    ]
+    return goals
+
+
+DIRECTION_DELTAS = {
+    'N': (-1, 0),
+    'S': (1, 0),
+    'E': (0, 1),
+    'W': (0, -1),
 }
 
 
@@ -98,481 +120,468 @@ class AkrotiriGame(BaseGame):
     }
 
     def setup(self):
-        tile_count = 24 if self.variation == 'standard' else 16
+        """Initialize the game board and state."""
         # Map is a dict keyed by "r,c" -> terrain char
-        # Start with a 4x4 island in the center of a 12x12 conceptual grid
-        self.map_size = 16
-        self.grid = {}
-        center = self.map_size // 2
-        # Starting island
-        for r in range(center - 1, center + 1):
-            for c in range(center - 1, center + 1):
-                self.grid[f"{r},{c}"] = LAND
-        # Place a market on the starting island
-        self.grid[f"{center},{center}"] = MARKET
+        # The map starts as 6x6 with a central island and surrounding sea
+        self.map_height = 12
+        self.map_width = 16
+        self.terrain = {}
 
-        # Surround with sea
-        for r in range(center - 3, center + 3):
-            for c in range(center - 3, center + 3):
-                key = f"{r},{c}"
-                if key not in self.grid:
-                    self.grid[key] = SEA
+        # Initialize sea
+        for r in range(self.map_height):
+            for c in range(self.map_width):
+                self.terrain[f"{r},{c}"] = SEA
 
-        # Tile draw pool
-        pool = list(TILE_POOL[:tile_count])
-        random.shuffle(pool)
-        # Serialize tiles as lists of lists
-        self.tile_pool = [[list(row) for row in tile] for tile in pool]
-        self.tiles_remaining = len(self.tile_pool)
+        # Central starting island with port
+        mid_r, mid_c = self.map_height // 2, self.map_width // 2
+        for dr in range(-1, 2):
+            for dc in range(-1, 2):
+                self.terrain[f"{mid_r + dr},{mid_c + dc}"] = LAND
+        self.terrain[f"{mid_r},{mid_c}"] = PORT
+        self.terrain[f"{mid_r - 1},{mid_c + 1}"] = RESOURCE_FOREST
+        self.terrain[f"{mid_r + 1},{mid_c - 1}"] = RESOURCE_STONE
 
-        # Players: boats, resources, goals, score, discovered temples
+        # Tile pool
+        all_tiles = _make_tile_pool()
+        random.shuffle(all_tiles)
+        if self.variation == 'quick':
+            self.tile_pool = all_tiles[:16]
+        else:
+            self.tile_pool = all_tiles[:24]
+
+        # Market: 3 face-up tiles
+        self.market = []
+        for _ in range(min(3, len(self.tile_pool))):
+            self.market.append(self.tile_pool.pop())
+
+        # Goal cards
+        all_goals = _generate_goal_cards()
+        random.shuffle(all_goals)
+
+        # Player state
         self.player_data = {}
         for p in [1, 2]:
-            goals = random.sample(GOAL_TEMPLATES, 3)
             self.player_data[str(p)] = {
-                'boat_r': center,
-                'boat_c': center,
-                'resources': {'wood': 0, 'stone': 0, 'pottery': 0},
-                'goals': [
-                    {'landmark': g[0], 'directions': g[1], 'points': g[2], 'desc': g[3], 'completed': False}
-                    for g in goals
-                ],
+                'resources': {RESOURCE_FOREST: 0, RESOURCE_STONE: 0, RESOURCE_CLAY: 0},
+                'goals': [],
+                'discovered_temples': [],
                 'score': 0,
-                'temples_discovered': 0,
+                'boat_pos': [mid_r, mid_c],  # Start at port
+                'actions_remaining': 2,
             }
+            # Deal 3 goal cards each
+            for _ in range(3):
+                if all_goals:
+                    g = all_goals.pop()
+                    self.player_data[str(p)]['goals'].append(list(g))
 
-        # Current tile to place (drawn at start of turn)
-        self.current_tile = None
-        self.phase = 'draw_tile'  # draw_tile, place_tile, move_boat, discover, end_turn
-        self.message = "Game begins! Each turn: place a tile, then move your boat."
-
-    def _get_map_bounds(self):
-        if not self.grid:
-            c = self.map_size // 2
-            return c - 3, c + 3, c - 3, c + 3
-        rows = []
-        cols = []
-        for key in self.grid:
-            r, c = key.split(',')
-            rows.append(int(r))
-            cols.append(int(c))
-        # Also include boat positions
-        for p in ['1', '2']:
-            rows.append(self.player_data[p]['boat_r'])
-            cols.append(self.player_data[p]['boat_c'])
-        return min(rows) - 1, max(rows) + 2, min(cols) - 1, max(cols) + 2
+        self.remaining_goals = [list(g) for g in all_goals]
+        self.phase = 'action'  # 'action' or 'tile'
+        self.message = "Game started! Each turn: do 2 actions, then place a tile."
 
     def display(self):
+        """Display the current game state."""
         clear_screen()
-        p = str(self.current_player)
-        pd = self.player_data[p]
-        print(f"{BOLD}=== AKROTIRI ==={RESET}")
-        print(f"Turn {self.turn_number + 1} | {self.players[self.current_player - 1]}'s turn")
-        print(f"Tiles remaining: {self.tiles_remaining} | Phase: {self.phase}")
-        if self.message:
-            print(f"{YELLOW}{self.message}{RESET}")
-        print()
+        p = self.current_player
+        pd = self.player_data[str(p)]
+        color = BLUE if p == 1 else RED
 
-        min_r, max_r, min_c, max_c = self._get_map_bounds()
+        print(f"{BOLD}{'=' * 60}")
+        print(f"  AKROTIRI - {self.players[p - 1]}'s Turn (Turn {self.turn_number + 1})")
+        print(f"{'=' * 60}{RESET}")
 
-        # Column headers
-        header = "    "
-        for c in range(min_c, max_c):
-            header += f"{c % 100:2d}"
-        print(header)
-
-        for r in range(min_r, max_r):
-            row_str = f"{r:3d} "
-            for c in range(min_c, max_c):
+        # Draw map
+        print(f"\n  {'  ' + ''.join(f'{c:2d}' for c in range(self.map_width))}")
+        for r in range(self.map_height):
+            row_str = f"  {r:2d} "
+            for c in range(self.map_width):
                 key = f"{r},{c}"
-                # Check for boats
+                terr = self.terrain.get(key, SEA)
+                # Check if any boat is here
                 boat_here = None
-                for bp in ['1', '2']:
-                    if self.player_data[bp]['boat_r'] == r and self.player_data[bp]['boat_c'] == c:
+                for bp in [1, 2]:
+                    bpos = self.player_data[str(bp)]['boat_pos']
+                    if bpos[0] == r and bpos[1] == c:
                         boat_here = bp
                 if boat_here:
-                    color = BLUE if boat_here == '1' else RED
-                    row_str += f"{color}B{boat_here}{RESET}"
-                elif key in self.grid:
-                    terrain = self.grid[key]
-                    tc = TERRAIN_COLORS.get(terrain, '')
-                    row_str += f"{tc}{terrain} {RESET}"
+                    bc = BLUE if boat_here == 1 else RED
+                    row_str += f"{bc}\u2588{RESET} "
                 else:
-                    row_str += f"{DIM}  {RESET}"
+                    tc = TERRAIN_COLORS.get(terr, WHITE)
+                    ch = terr
+                    row_str += f"{tc}{ch}{RESET} "
             print(row_str)
 
-        print()
+        # Legend
+        print(f"\n  {CYAN}~{RESET}=Sea  {GREEN}#{RESET}=Land  {YELLOW}P{RESET}=Port  "
+              f"{GREEN}F{RESET}=Wood  {DIM}S{RESET}=Stone  {RED}C{RESET}=Clay  "
+              f"{BLUE}\u2588{RESET}=P1boat  {RED}\u2588{RESET}=P2boat")
+
         # Player info
-        color = BLUE if p == '1' else RED
-        print(f"{color}--- Your Info ---{RESET}")
+        print(f"\n  {color}{self.players[p - 1]}{RESET}")
         res = pd['resources']
-        print(f"  Resources: Wood={res['wood']} Stone={res['stone']} Pottery={res['pottery']}")
-        print(f"  Score: {pd['score']} | Temples found: {pd['temples_discovered']}")
-        print(f"  Boat at: ({pd['boat_r']}, {pd['boat_c']})")
-        print(f"  Goals:")
-        for i, g in enumerate(pd['goals']):
-            status = f"{GREEN}DONE{RESET}" if g['completed'] else f"({g['points']}pts)"
-            print(f"    {i + 1}. Temple {g['desc']} {status}")
+        print(f"  Resources: Wood={res[RESOURCE_FOREST]}  Stone={res[RESOURCE_STONE]}  Clay={res[RESOURCE_CLAY]}")
+        print(f"  Score: {pd['score']}  |  Temples found: {len(pd['discovered_temples'])}")
+        print(f"  Boat at: ({pd['boat_pos'][0]}, {pd['boat_pos'][1]})")
 
-        if self.current_tile:
-            print(f"\n  Current tile to place:")
-            for row in self.current_tile:
-                line = "    "
-                for cell in row:
-                    tc = TERRAIN_COLORS.get(cell, '')
-                    line += f"{tc}{cell} {RESET}"
-                print(line)
+        # Goals (secret - only show to current player)
+        if pd['goals']:
+            print(f"  Secret Goals:")
+            for i, g in enumerate(pd['goals']):
+                dirs = '->'.join(g[1])
+                print(f"    [{i + 1}] {g[0]} (go {dirs} from a port) = {g[2]} pts")
+                cost = self._temple_cost(g[2])
+                print(f"        Cost: {cost}")
 
-        print(f"\n{DIM}Legend: ~=Sea .=Land ^=Mountain T=Forest M=Market *=Temple B#=Boat{RESET}")
-        print()
+        # Market
+        print(f"\n  Tile Market:")
+        for i, tile in enumerate(self.market):
+            t_str = f"[{i + 1}] {tile[0][0]}{tile[0][1]} / {tile[1][0]}{tile[1][1]}"
+            print(f"    {t_str}")
+
+        print(f"\n  Actions remaining: {pd['actions_remaining']}")
+        if self.message:
+            print(f"\n  {YELLOW}>> {self.message}{RESET}")
+
+    def _temple_cost(self, points):
+        """Calculate resource cost to discover a temple based on point value."""
+        if points <= 3:
+            return "1 of any resource"
+        elif points <= 5:
+            return "1 of each of 2 different resources"
+        else:
+            return "1 of each resource (Wood+Stone+Clay)"
+
+    def _can_afford_temple(self, player, points):
+        """Check if player can afford to discover a temple."""
+        res = self.player_data[str(player)]['resources']
+        total = sum(res.values())
+        distinct = sum(1 for v in res.values() if v > 0)
+        if points <= 3:
+            return total >= 1
+        elif points <= 5:
+            return distinct >= 2
+        else:
+            return distinct >= 3
+
+    def _pay_temple_cost(self, player, points):
+        """Deduct resources for temple discovery."""
+        res = self.player_data[str(player)]['resources']
+        if points <= 3:
+            for rtype in [RESOURCE_FOREST, RESOURCE_STONE, RESOURCE_CLAY]:
+                if res[rtype] > 0:
+                    res[rtype] -= 1
+                    return True
+        elif points <= 5:
+            paid = 0
+            for rtype in [RESOURCE_FOREST, RESOURCE_STONE, RESOURCE_CLAY]:
+                if res[rtype] > 0 and paid < 2:
+                    res[rtype] -= 1
+                    paid += 1
+            return paid == 2
+        else:
+            if all(res[rt] > 0 for rt in [RESOURCE_FOREST, RESOURCE_STONE, RESOURCE_CLAY]):
+                for rt in [RESOURCE_FOREST, RESOURCE_STONE, RESOURCE_CLAY]:
+                    res[rt] -= 1
+                return True
+        return False
 
     def get_move(self):
-        p = str(self.current_player)
-        pd = self.player_data[p]
+        """Get a move from the current player."""
+        pd = self.player_data[str(self.current_player)]
 
-        if self.phase == 'draw_tile':
-            if self.tiles_remaining > 0:
-                self.current_tile = self.tile_pool.pop()
-                self.tiles_remaining = len(self.tile_pool)
-                self.phase = 'place_tile'
-                self.message = "Tile drawn! Place it adjacent to existing tiles."
-                return {'action': 'draw'}
+        if pd['actions_remaining'] > 0:
+            print(f"\n  Actions: [m]ove boat, [g]ather resource, [d]iscover temple, [p]ass")
+            choice = input_with_quit("  Your action: ").strip().lower()
+            if choice == 'm':
+                dest = input_with_quit("  Move boat to (row,col): ").strip()
+                return ('move_boat', dest)
+            elif choice == 'g':
+                return ('gather', '')
+            elif choice == 'd':
+                idx = input_with_quit("  Which goal card? (1-3): ").strip()
+                return ('discover', idx)
+            elif choice == 'p':
+                return ('pass_action', '')
             else:
-                self.phase = 'move_boat'
-                self.message = "No tiles left. Move your boat."
-                return {'action': 'skip_draw'}
-
-        if self.phase == 'place_tile':
-            print("Place tile: enter top-left position as 'row,col' (or 'r' to rotate):")
-            val = input_with_quit("  > ")
-            if val.strip().lower() == 'r':
-                return {'action': 'rotate_tile'}
-            try:
-                parts = val.strip().split(',')
-                r, c = int(parts[0].strip()), int(parts[1].strip())
-                return {'action': 'place_tile', 'row': r, 'col': c}
-            except (ValueError, IndexError):
-                return {'action': 'invalid'}
-
-        if self.phase == 'move_boat':
-            print(f"Move boat (currently at {pd['boat_r']},{pd['boat_c']}).")
-            print("Enter destination 'row,col' on sea tiles, or 'skip' to stay:")
-            val = input_with_quit("  > ")
-            if val.strip().lower() == 'skip':
-                return {'action': 'skip_move'}
-            try:
-                parts = val.strip().split(',')
-                r, c = int(parts[0].strip()), int(parts[1].strip())
-                return {'action': 'move_boat', 'row': r, 'col': c}
-            except (ValueError, IndexError):
-                return {'action': 'invalid'}
-
-        if self.phase == 'discover':
-            print("You are adjacent to land. Attempt temple discovery?")
-            print("Enter goal number (1-3) to attempt, or 'skip':")
-            val = input_with_quit("  > ")
-            if val.strip().lower() == 'skip':
-                return {'action': 'skip_discover'}
-            try:
-                goal_idx = int(val.strip()) - 1
-                return {'action': 'discover', 'goal': goal_idx}
-            except (ValueError, IndexError):
-                return {'action': 'invalid'}
-
-        return {'action': 'invalid'}
-
-    def _can_place_tile(self, r, c):
-        """Check if a 2x2 tile can be placed at (r, c)."""
-        # All 4 cells must be empty
-        for dr in range(2):
-            for dc in range(2):
-                key = f"{r + dr},{c + dc}"
-                if key in self.grid:
-                    return False
-        # At least one cell must be adjacent to existing grid
-        adjacent = False
-        for dr in range(2):
-            for dc in range(2):
-                for ar, ac in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                    nr, nc = r + dr + ar, c + dc + ac
-                    # Don't count other cells of this same tile
-                    if 0 <= nr - r <= 1 and 0 <= nc - c <= 1:
-                        continue
-                    key = f"{nr},{nc}"
-                    if key in self.grid:
-                        adjacent = True
-                        break
-                if adjacent:
-                    break
-            if adjacent:
-                break
-        return adjacent
-
-    def _is_sea_connected(self, r1, c1, r2, c2):
-        """Check if boat can travel from (r1,c1) to (r2,c2) via sea tiles."""
-        start = (r1, c1)
-        end = (r2, c2)
-        if start == end:
-            return True
-        # BFS over sea tiles
-        visited = set()
-        queue = [start]
-        visited.add(start)
-        while queue:
-            cr, cc = queue.pop(0)
-            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                nr, nc = cr + dr, cc + dc
-                if (nr, nc) == end:
-                    return True
-                key = f"{nr},{nc}"
-                if (nr, nc) not in visited and key in self.grid and self.grid[key] == SEA:
-                    visited.add((nr, nc))
-                    queue.append((nr, nc))
-        return False
-
-    def _adjacent_land(self, r, c):
-        """Return list of adjacent land tiles."""
-        result = []
-        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-            nr, nc = r + dr, c + dc
-            key = f"{nr},{nc}"
-            if key in self.grid and self.grid[key] not in (SEA, None):
-                result.append((nr, nc))
-        return result
-
-    def _check_goal_at(self, goal, r, c):
-        """Check if a goal can be fulfilled by placing a temple at (r, c)."""
-        landmark = goal['landmark']
-        directions = goal['directions']
-        # The temple location must be reachable from a landmark via the directions
-        # Work backwards: from (r,c), go opposite directions to find the landmark
-        cr, cc = r, c
-        for d_dir, d_dist in directions:
-            # Opposite direction
-            opp = {'N': 'S', 'S': 'N', 'E': 'W', 'W': 'E'}[d_dir]
-            dr, dc = DIRECTION_OFFSETS[opp]
-            cr += dr * d_dist
-            cc += dc * d_dist
-        # Check if there's a landmark at (cr, cc)
-        key = f"{cr},{cc}"
-        if key in self.grid and self.grid[key] == landmark:
-            return True
-        return False
+                return ('invalid', '')
+        else:
+            # Must place a tile
+            print(f"\n  Place a tile from market.")
+            idx = input_with_quit("  Tile number (1-3): ").strip()
+            pos = input_with_quit("  Place at (row,col) for top-left corner: ").strip()
+            rot = input_with_quit("  Rotate? (0/90/180/270): ").strip()
+            return ('place_tile', idx, pos, rot)
 
     def make_move(self, move):
-        if move['action'] == 'invalid':
-            self.message = "Invalid input. Try again."
+        """Apply a move to the game state."""
+        pd = self.player_data[str(self.current_player)]
+
+        if move[0] == 'invalid':
+            self.message = "Invalid command."
             return False
 
-        if move['action'] == 'draw' or move['action'] == 'skip_draw':
+        if move[0] == 'pass_action':
+            pd['actions_remaining'] -= 1
+            self.message = "Passed an action."
+            if pd['actions_remaining'] > 0:
+                # Don't switch player yet
+                return True
             return True
 
-        if move['action'] == 'rotate_tile':
-            if self.current_tile:
-                # Rotate 90 degrees clockwise
-                old = self.current_tile
-                self.current_tile = [
-                    [old[1][0], old[0][0]],
-                    [old[1][1], old[0][1]],
-                ]
-                self.message = "Tile rotated."
-            return False  # Stay in same phase
-
-        if move['action'] == 'place_tile':
-            r, c = move['row'], move['col']
-            if not self._can_place_tile(r, c):
-                self.message = "Cannot place tile there. Must be empty and adjacent to existing map."
+        if move[0] == 'move_boat':
+            try:
+                parts = move[1].replace(' ', '').split(',')
+                tr, tc = int(parts[0]), int(parts[1])
+            except (ValueError, IndexError):
+                self.message = "Invalid coordinates. Use row,col format."
                 return False
+            br, bc = pd['boat_pos']
+            dist = abs(tr - br) + abs(tc - bc)
+            if dist > 3:
+                self.message = "Too far! Boat can move up to 3 cells."
+                return False
+            if not (0 <= tr < self.map_height and 0 <= tc < self.map_width):
+                self.message = "Out of bounds!"
+                return False
+            # Boat must travel through sea or ports
+            terr = self.terrain.get(f"{tr},{tc}", SEA)
+            if terr not in [SEA, PORT]:
+                self.message = "Boat can only move on sea or port cells."
+                return False
+            pd['boat_pos'] = [tr, tc]
+            pd['actions_remaining'] -= 1
+            self.message = f"Boat moved to ({tr},{tc})."
+            if pd['actions_remaining'] > 0:
+                return True
+            return True
+
+        if move[0] == 'gather':
+            br, bc = pd['boat_pos']
+            gathered = False
+            for dr in range(-1, 2):
+                for dc in range(-1, 2):
+                    key = f"{br + dr},{bc + dc}"
+                    terr = self.terrain.get(key, SEA)
+                    if terr in RESOURCE_NAMES:
+                        pd['resources'][terr] += 1
+                        gathered = True
+                        self.message = f"Gathered {RESOURCE_NAMES[terr]}!"
+                        pd['actions_remaining'] -= 1
+                        if pd['actions_remaining'] > 0:
+                            return True
+                        return True
+            if not gathered:
+                self.message = "No resources adjacent to boat!"
+                return False
+
+        if move[0] == 'discover':
+            try:
+                idx = int(move[1]) - 1
+            except (ValueError, IndexError):
+                self.message = "Invalid goal index."
+                return False
+            if idx < 0 or idx >= len(pd['goals']):
+                self.message = "Invalid goal index."
+                return False
+            goal = pd['goals'][idx]
+            gname, dirs, pts = goal[0], goal[1], goal[2]
+
+            # Check if player can afford it
+            if not self._can_afford_temple(self.current_player, pts):
+                self.message = "Not enough resources!"
+                return False
+
+            # Check if boat is at a valid temple location
+            # Temple location: from any port, follow the directions
+            valid = False
+            for r in range(self.map_height):
+                for c in range(self.map_width):
+                    if self.terrain.get(f"{r},{c}") == PORT:
+                        # Follow directions from this port
+                        cr, cc = r, c
+                        reachable = True
+                        for d in dirs:
+                            dr, dc = DIRECTION_DELTAS[d]
+                            cr += dr * 2
+                            cc += dc * 2
+                            if not (0 <= cr < self.map_height and 0 <= cc < self.map_width):
+                                reachable = False
+                                break
+                        if reachable:
+                            terr = self.terrain.get(f"{cr},{cc}", SEA)
+                            if terr in [LAND, RESOURCE_FOREST, RESOURCE_STONE, RESOURCE_CLAY]:
+                                # Boat must be adjacent (within 1 cell)
+                                br, bc = pd['boat_pos']
+                                if abs(br - cr) <= 1 and abs(bc - cc) <= 1:
+                                    valid = True
+                                    # Mark temple on map
+                                    self.terrain[f"{cr},{cc}"] = TEMPLE_SITE
+                                    break
+                if valid:
+                    break
+
+            if not valid:
+                self.message = "No valid temple site near boat matching this goal!"
+                return False
+
+            self._pay_temple_cost(self.current_player, pts)
+            pd['score'] += pts
+            pd['discovered_temples'].append(gname)
+            pd['goals'].pop(idx)
+            # Draw a new goal if available
+            if self.remaining_goals:
+                pd['goals'].append(self.remaining_goals.pop())
+            pd['actions_remaining'] -= 1
+            self.message = f"Discovered {gname} for {pts} points!"
+            if pd['actions_remaining'] > 0:
+                return True
+            return True
+
+        if move[0] == 'place_tile':
+            try:
+                tidx = int(move[1]) - 1
+                parts = move[2].replace(' ', '').split(',')
+                pr, pc = int(parts[0]), int(parts[1])
+                rot = int(move[3]) if move[3] else 0
+            except (ValueError, IndexError):
+                self.message = "Invalid tile placement input."
+                return False
+
+            if tidx < 0 or tidx >= len(self.market):
+                self.message = "Invalid tile index."
+                return False
+
+            tile = copy.deepcopy(self.market[tidx])
+
+            # Apply rotation
+            for _ in range((rot // 90) % 4):
+                tile = [[tile[1][0], tile[0][0]], [tile[1][1], tile[0][1]]]
+
+            # Check placement validity: must be adjacent to existing non-sea tile
+            # and placed on sea cells
+            adjacent_to_land = False
+            for dr in range(2):
+                for dc in range(2):
+                    r, c = pr + dr, pc + dc
+                    if not (0 <= r < self.map_height and 0 <= c < self.map_width):
+                        self.message = "Tile goes out of bounds!"
+                        return False
+                    current = self.terrain.get(f"{r},{c}", SEA)
+                    if current != SEA:
+                        self.message = "Can only place tiles on empty sea cells!"
+                        return False
+                    # Check adjacency to non-sea
+                    for ar, ac in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        adj_key = f"{r + ar},{c + ac}"
+                        adj_terr = self.terrain.get(adj_key, SEA)
+                        if adj_terr != SEA:
+                            adjacent_to_land = True
+
+            if not adjacent_to_land:
+                self.message = "Tile must be placed adjacent to existing land!"
+                return False
+
             # Place the tile
             for dr in range(2):
                 for dc in range(2):
-                    key = f"{r + dr},{c + dc}"
-                    self.grid[key] = self.current_tile[dr][dc]
-            self.current_tile = None
-            # Give resources for land tiles placed
-            p = str(self.current_player)
-            for dr in range(2):
-                for dc in range(2):
-                    terrain = self.grid[f"{r + dr},{c + dc}"]
-                    if terrain == LAND:
-                        res = random.choice(RESOURCES)
-                        self.player_data[p]['resources'][res] += 1
-                    elif terrain == FOREST:
-                        self.player_data[p]['resources']['wood'] += 1
-                    elif terrain == MOUNTAIN:
-                        self.player_data[p]['resources']['stone'] += 1
-                    elif terrain == MARKET:
-                        self.player_data[p]['resources']['pottery'] += 1
-            self.phase = 'move_boat'
-            self.message = "Tile placed! Now move your boat on sea tiles."
-            return False  # Don't switch player yet
+                    self.terrain[f"{pr + dr},{pc + dc}"] = tile[dr][dc]
 
-        if move['action'] == 'skip_move':
-            p = str(self.current_player)
-            pd = self.player_data[p]
-            adj = self._adjacent_land(pd['boat_r'], pd['boat_c'])
-            if adj:
-                self.phase = 'discover'
-                self.message = "You're adjacent to land. Attempt temple discovery?"
-                return False
-            self.phase = 'draw_tile'
-            self.message = ""
-            return True  # End turn
+            self.market.pop(tidx)
+            if self.tile_pool:
+                self.market.append(self.tile_pool.pop())
 
-        if move['action'] == 'move_boat':
-            p = str(self.current_player)
-            pd = self.player_data[p]
-            r, c = move['row'], move['col']
-            key = f"{r},{c}"
-            # Destination must be a sea tile
-            if key not in self.grid or self.grid[key] != SEA:
-                self.message = "Boat must move to a sea tile."
-                return False
-            # Must be reachable via sea
-            if not self._is_sea_connected(pd['boat_r'], pd['boat_c'], r, c):
-                self.message = "Cannot reach that tile by sea."
-                return False
-            pd['boat_r'] = r
-            pd['boat_c'] = c
-            # Check for adjacent land for discovery
-            adj = self._adjacent_land(r, c)
-            if adj:
-                self.phase = 'discover'
-                self.message = "You're adjacent to land! Attempt temple discovery?"
-                return False
-            self.phase = 'draw_tile'
-            self.message = ""
-            return True  # End turn
+            # Reset actions for next player
+            other = 1 if self.current_player == 2 else 2
+            self.player_data[str(other)]['actions_remaining'] = 2
+            self.message = f"Tile placed at ({pr},{pc})."
+            return True
 
-        if move['action'] == 'skip_discover':
-            self.phase = 'draw_tile'
-            self.message = ""
-            return True  # End turn
-
-        if move['action'] == 'discover':
-            p = str(self.current_player)
-            pd = self.player_data[p]
-            goal_idx = move['goal']
-            if goal_idx < 0 or goal_idx >= len(pd['goals']):
-                self.message = "Invalid goal number."
-                return False
-            goal = pd['goals'][goal_idx]
-            if goal['completed']:
-                self.message = "That goal is already completed."
-                return False
-            # Need resources to discover
-            total_res = sum(pd['resources'].values())
-            cost = 2  # Base cost to discover
-            if total_res < cost:
-                self.message = f"Need {cost} total resources to attempt discovery. You have {total_res}."
-                return False
-            # Check adjacent land tiles for valid goal fulfillment
-            adj = self._adjacent_land(pd['boat_r'], pd['boat_c'])
-            found = False
-            temple_pos = None
-            for ar, ac in adj:
-                if self._check_goal_at(goal, ar, ac):
-                    found = True
-                    temple_pos = (ar, ac)
-                    break
-            if not found:
-                self.message = "No valid temple location adjacent. Goal directions don't match any landmark."
-                return False
-            # Spend resources (spend cheapest first)
-            spent = 0
-            for res in RESOURCES:
-                while pd['resources'][res] > 0 and spent < cost:
-                    pd['resources'][res] -= 1
-                    spent += 1
-            # Place temple
-            self.grid[f"{temple_pos[0]},{temple_pos[1]}"] = TEMPLE
-            goal['completed'] = True
-            pd['score'] += goal['points']
-            pd['temples_discovered'] += 1
-            self.message = f"Temple discovered! +{goal['points']} points!"
-            self.phase = 'draw_tile'
-            return True  # End turn
-
+        self.message = "Unknown action."
         return False
 
     def check_game_over(self):
-        # Game ends when all tiles placed and both players have had equal turns
-        if self.tiles_remaining == 0 and self.current_tile is None:
-            # Check if current player has no more actions
-            all_goals_done = True
-            for p in ['1', '2']:
-                for g in self.player_data[p]['goals']:
-                    if not g['completed']:
-                        all_goals_done = False
-            if all_goals_done or self.turn_number >= (24 if self.variation == 'standard' else 16) * 2:
+        """Check if the game is over."""
+        # Game ends when tile pool and market are exhausted
+        if not self.tile_pool and not self.market:
+            self.game_over = True
+            s1 = self.player_data['1']['score']
+            s2 = self.player_data['2']['score']
+            if s1 > s2:
+                self.winner = 1
+            elif s2 > s1:
+                self.winner = 2
+            else:
+                self.winner = None
+            self.message = f"Game over! P1={s1} P2={s2}"
+            return
+
+        # Also check if all goals discovered
+        for p in [1, 2]:
+            if self.player_data[str(p)]['score'] >= 20:
                 self.game_over = True
-                s1 = self.player_data['1']['score']
-                s2 = self.player_data['2']['score']
-                if s1 > s2:
-                    self.winner = 1
-                elif s2 > s1:
-                    self.winner = 2
-                else:
-                    self.winner = None
+                self.winner = p
+                return
 
     def get_state(self):
+        """Return serializable game state."""
         return {
-            'grid': dict(self.grid),
+            'terrain': self.terrain,
             'tile_pool': self.tile_pool,
-            'tiles_remaining': self.tiles_remaining,
-            'current_tile': self.current_tile,
+            'market': self.market,
             'player_data': self.player_data,
+            'remaining_goals': self.remaining_goals,
             'phase': self.phase,
             'message': self.message,
-            'map_size': self.map_size,
+            'map_height': self.map_height,
+            'map_width': self.map_width,
         }
 
     def load_state(self, state):
-        self.grid = state['grid']
+        """Restore game state."""
+        self.terrain = state['terrain']
         self.tile_pool = state['tile_pool']
-        self.tiles_remaining = state['tiles_remaining']
-        self.current_tile = state['current_tile']
+        self.market = state['market']
         self.player_data = state['player_data']
+        self.remaining_goals = state['remaining_goals']
         self.phase = state['phase']
         self.message = state['message']
-        self.map_size = state['map_size']
+        self.map_height = state['map_height']
+        self.map_width = state['map_width']
 
     def get_tutorial(self):
         return f"""{BOLD}=== AKROTIRI TUTORIAL ==={RESET}
 
-Akrotiri is a tile-laying game set in the Mediterranean.
+Akrotiri is a tile-laying game set in the ancient Mediterranean.
 
-{BOLD}OVERVIEW:{RESET}
-  Each turn you draw a 2x2 tile and place it adjacent to the existing map,
-  then move your boat across sea tiles. When near land, you can attempt
-  to discover temples using your secret goal cards.
+{BOLD}OBJECTIVE:{RESET}
+  Score points by discovering hidden temples using secret goal cards.
 
-{BOLD}PHASES:{RESET}
-  1. DRAW & PLACE TILE: A 2x2 tile is drawn. Place it by entering the
-     top-left coordinate (row,col). Type 'r' to rotate the tile first.
-     The tile must be placed on empty spaces adjacent to existing map.
+{BOLD}EACH TURN:{RESET}
+  1. Perform 2 actions (move boat, gather resources, or discover a temple)
+  2. Place a tile from the market onto the map
 
-  2. MOVE BOAT: Move your boat to any sea tile (~) reachable by
-     connected sea tiles. Enter destination as row,col or 'skip'.
+{BOLD}ACTIONS:{RESET}
+  [m]ove boat  - Move your boat up to 3 sea/port cells (Manhattan distance)
+  [g]ather     - Collect a resource adjacent to your boat (F=Wood, S=Stone, C=Clay)
+  [d]iscover   - Discover a temple if your boat is near a valid temple site
+  [p]ass       - Skip an action
 
-  3. DISCOVER TEMPLE: If your boat is adjacent to land, you may
-     attempt to discover a temple using one of your goal cards.
-     Each goal specifies a direction from a landmark (^=Mountain,
-     T=Forest, M=Market). Costs 2 resources.
+{BOLD}DISCOVERING TEMPLES:{RESET}
+  Each goal card shows directions from a port (e.g., N->E means go North then East).
+  Each direction step = 2 cells on the map.
+  Your boat must be adjacent to the resulting land cell.
+  You must pay resources based on the temple's point value:
+    3 pts = 1 resource  |  4-5 pts = 2 different  |  6 pts = all 3
 
-{BOLD}RESOURCES:{RESET}
-  Placing land tiles grants resources (wood, stone, pottery).
-  Resources are spent to discover temples.
+{BOLD}PLACING TILES:{RESET}
+  Choose a tile from the market (1-3) and place its 2x2 grid on sea cells
+  adjacent to existing land. You may rotate (0/90/180/270 degrees).
 
-{BOLD}SCORING:{RESET}
-  Each discovered temple scores the points shown on the goal card.
-  Highest score when all tiles are placed wins!
+{BOLD}GAME END:{RESET}
+  When all tiles are placed or a player reaches 20 points.
+  Highest score wins!
 
-{BOLD}TERRAIN KEY:{RESET}
-  ~ = Sea    . = Land    ^ = Mountain
-  T = Forest  M = Market  * = Temple
-  B1/B2 = Player boats
-
-{BOLD}COMMANDS:{RESET}
-  'q' = Quit  's' = Save  'h' = Help  't' = Tutorial
+{BOLD}CONTROLS:{RESET}
+  Type 'q' to quit, 's' to save, 'h' for help, 't' for tutorial.
 """

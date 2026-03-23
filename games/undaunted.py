@@ -1,670 +1,775 @@
 """Undaunted - Deck-building tactical combat game."""
 
 import random
-
+import copy
 from engine.base import BaseGame, input_with_quit, clear_screen
 
+RESET = '\033[0m'
+RED = '\033[91m'
+BLUE = '\033[94m'
+GREEN = '\033[92m'
+YELLOW = '\033[93m'
+CYAN = '\033[96m'
+MAGENTA = '\033[95m'
+DIM = '\033[2m'
+BOLD = '\033[1m'
+WHITE = '\033[97m'
 
-# Card types with (name, move_range, attack_range, attack_value, special)
-CARD_TYPES = {
-    "Rifleman":         {"move": 1, "attack_range": 1, "attack": 2, "special": None},
-    "Scout":            {"move": 3, "attack_range": 0, "attack": 0, "special": "scout"},
-    "Sniper":           {"move": 0, "attack_range": 3, "attack": 3, "special": None},
-    "Squad Leader":     {"move": 0, "attack_range": 0, "attack": 0, "special": "draw"},
-    "Platoon Sergeant": {"move": 0, "attack_range": 0, "attack": 0, "special": "recruit"},
+# Unit types with their stats
+UNIT_TYPES = {
+    'Rifleman': {
+        'attack': 2,
+        'defense': 1,
+        'movement': 2,
+        'range': 2,
+        'ability': 'Standard combat unit',
+        'symbol': 'R',
+    },
+    'Scout': {
+        'attack': 1,
+        'defense': 1,
+        'movement': 3,
+        'range': 1,
+        'ability': 'Recon: reveals fog of war, draws 1 card',
+        'symbol': 'S',
+    },
+    'Sniper': {
+        'attack': 4,
+        'defense': 0,
+        'movement': 1,
+        'range': 4,
+        'ability': 'Long range attack, ignores cover',
+        'symbol': 'N',
+    },
+    'Machine Gunner': {
+        'attack': 3,
+        'defense': 2,
+        'movement': 1,
+        'range': 2,
+        'ability': 'Suppression: targeted unit cannot act next turn',
+        'symbol': 'M',
+    },
+    'Squad Leader': {
+        'attack': 1,
+        'defense': 1,
+        'movement': 2,
+        'range': 1,
+        'ability': 'Command: play another card from hand',
+        'symbol': 'L',
+    },
+    'Mortar': {
+        'attack': 3,
+        'defense': 0,
+        'movement': 0,
+        'range': 3,
+        'ability': 'Area attack: hits all enemies in target cell',
+        'symbol': 'T',
+    },
+    'Medic': {
+        'attack': 0,
+        'defense': 1,
+        'movement': 2,
+        'range': 0,
+        'ability': 'Recover: return 1 card from casualties to discard',
+        'symbol': 'E',
+    },
+    'Platoon Sergeant': {
+        'attack': 1,
+        'defense': 2,
+        'movement': 2,
+        'range': 1,
+        'ability': 'Inspire: all friendly units in cell get +1 attack this turn',
+        'symbol': 'P',
+    },
 }
 
-TERRAIN_TYPES = {
-    "open":     {"defense": 0, "symbol": "."},
-    "forest":   {"defense": 1, "symbol": "T"},
-    "building": {"defense": 2, "symbol": "#"},
-}
+# Objective markers
+OBJECTIVE = 'O'
+COVER = '+'
+OPEN = '.'
+
+
+def _build_deck(grid_size):
+    """Build a starting deck for a player."""
+    if grid_size == 3:
+        # Skirmish: 20 cards
+        deck = []
+        composition = {
+            'Rifleman': 6,
+            'Scout': 4,
+            'Sniper': 2,
+            'Machine Gunner': 2,
+            'Squad Leader': 2,
+            'Mortar': 1,
+            'Medic': 2,
+            'Platoon Sergeant': 1,
+        }
+    else:
+        # Standard: 30 cards
+        deck = []
+        composition = {
+            'Rifleman': 8,
+            'Scout': 5,
+            'Sniper': 3,
+            'Machine Gunner': 3,
+            'Squad Leader': 3,
+            'Mortar': 2,
+            'Medic': 3,
+            'Platoon Sergeant': 3,
+        }
+
+    for unit_type, count in composition.items():
+        stats = UNIT_TYPES[unit_type]
+        for i in range(count):
+            deck.append({
+                'name': unit_type,
+                'id': f"{unit_type}_{i}",
+                'attack': stats['attack'],
+                'defense': stats['defense'],
+                'movement': stats['movement'],
+                'range': stats['range'],
+                'symbol': stats['symbol'],
+            })
+    random.shuffle(deck)
+    return deck
+
+
+def _build_grid(grid_size):
+    """Build the tactical grid."""
+    grid = {}
+    for r in range(grid_size):
+        for c in range(grid_size):
+            # Randomize terrain
+            if random.random() < 0.3:
+                terrain = COVER
+            else:
+                terrain = OPEN
+            grid[f"{r},{c}"] = {
+                'terrain': terrain,
+                'objective': False,
+                'units': {},  # player_id -> list of unit symbols
+            }
+
+    # Place objectives
+    if grid_size == 4:
+        objectives = [(0, 1), (1, 3), (2, 0), (3, 2), (1, 1)]
+    else:
+        objectives = [(0, 1), (1, 2), (2, 0)]
+
+    for r, c in objectives:
+        grid[f"{r},{c}"]['objective'] = True
+
+    return grid, objectives
 
 
 class UndauntedGame(BaseGame):
-    """Undaunted - Deck-building tactical combat."""
-
     name = "Undaunted"
-    description = "Deck-building tactical combat on a grid with terrain"
+    description = "Deck-building tactical combat on a grid"
     min_players = 2
     max_players = 2
     variations = {
-        "standard": "Standard (4x4 grid, 30-card starting decks)",
-        "skirmish": "Skirmish (3x3 grid, 20-card starting decks)",
+        'standard': 'Standard: 4x4 grid, 30-card decks',
+        'skirmish': 'Skirmish: 3x3 grid, 20-card decks',
     }
 
-    def __init__(self, variation=None):
-        super().__init__(variation)
-        self.grid_size = 4 if self.variation != "skirmish" else 3
-        self.grid = []          # 2D list of terrain types
-        self.objectives = []    # list of (row, col) objective positions
-        self.obj_control = {}   # (row, col) -> player who controls it, or None
-        self.units = {1: [], 2: []}  # list of unit dicts per player
-        self.decks = {1: [], 2: []}
-        self.hands = {1: [], 2: []}
-        self.discard_piles = {1: [], 2: []}
-        self.supply = {1: {}, 2: {}}  # cards available to recruit
-        self.played_card = None  # the card currently being played
-        self.log = []
-        self.phase = "play_card"  # play_card or done
+    def setup(self):
+        """Initialize the game."""
+        if self.variation == 'skirmish':
+            self.grid_size = 3
+        else:
+            self.grid_size = 4
 
-    # ---------------------------------------------------------------- helpers
-    def _add_log(self, msg):
-        self.log.append(msg)
-        if len(self.log) > 12:
-            self.log = self.log[-12:]
+        self.grid, self.objective_positions = _build_grid(self.grid_size)
 
-    def _opponent(self, player=None):
-        if player is None:
-            player = self.current_player
-        return 2 if player == 1 else 1
+        # Player state
+        self.player_data = {}
+        for p in [1, 2]:
+            deck = _build_deck(self.grid_size)
+            hand = deck[:4]
+            draw_pile = deck[4:]
+
+            self.player_data[str(p)] = {
+                'draw_pile': draw_pile,
+                'hand': hand,
+                'discard': [],
+                'casualties': [],
+                'objectives_controlled': 0,
+            }
+
+        # Place starting units on the grid
+        # P1 starts bottom, P2 starts top
+        for p in [1, 2]:
+            if p == 1:
+                start_r = self.grid_size - 1
+            else:
+                start_r = 0
+            for c in range(min(2, self.grid_size)):
+                key = f"{start_r},{c}"
+                if str(p) not in self.grid[key]['units']:
+                    self.grid[key]['units'][str(p)] = []
+                self.grid[key]['units'][str(p)].append('R')  # Start with riflemen
+
+        self.objective_control = {}  # "r,c" -> player who controls
+        self.suppressed = {}  # "r,c" -> {player: True} if units suppressed
+
+        self.message = "Battle begins! Play cards to command your units."
+        self.phase = 'play_card'  # 'play_card'
 
     def _draw_cards(self, player, count):
-        """Draw cards from deck into hand. Reshuffle discard if needed."""
+        """Draw cards for a player, reshuffling discard if needed."""
+        pd = self.player_data[str(player)]
         for _ in range(count):
-            if not self.decks[player]:
-                if not self.discard_piles[player]:
+            if not pd['draw_pile']:
+                if pd['discard']:
+                    pd['draw_pile'] = pd['discard']
+                    pd['discard'] = []
+                    random.shuffle(pd['draw_pile'])
+                else:
                     break
-                self.decks[player] = list(self.discard_piles[player])
-                random.shuffle(self.decks[player])
-                self.discard_piles[player] = []
-            if self.decks[player]:
-                self.hands[player].append(self.decks[player].pop())
+            if pd['draw_pile']:
+                pd['hand'].append(pd['draw_pile'].pop())
 
-    def _unit_at(self, row, col):
-        """Return (player, unit_index) for unit at position, or None."""
-        for p in (1, 2):
-            for i, u in enumerate(self.units[p]):
-                if u["row"] == row and u["col"] == col and u["hp"] > 0:
-                    return (p, i)
-        return None
-
-    def _distance(self, r1, c1, r2, c2):
-        """Manhattan distance."""
-        return abs(r1 - r2) + abs(c1 - c2)
-
-    def _alive_units(self, player):
-        return [u for u in self.units[player] if u["hp"] > 0]
-
-    def _matching_units(self, player, card_type):
-        """Return alive units matching the card type."""
-        return [(i, u) for i, u in enumerate(self.units[player])
-                if u["type"] == card_type and u["hp"] > 0]
-
-    # ---------------------------------------------------------------- setup
-    def setup(self):
-        self.game_over = False
-        self.winner = None
-        self.turn_number = 0
-        self.log = []
-        gs = self.grid_size
-
-        # Generate grid with terrain
-        self.grid = []
-        for r in range(gs):
-            row = []
-            for c in range(gs):
-                roll = random.random()
-                if roll < 0.5:
-                    row.append("open")
-                elif roll < 0.8:
-                    row.append("forest")
-                else:
-                    row.append("building")
-            self.grid.append(row)
-
-        # Place objectives (center tiles + a couple more)
-        self.objectives = []
-        self.obj_control = {}
-        mid = gs // 2
-        if gs == 4:
-            obj_positions = [(1, 1), (1, 2), (2, 1), (2, 2), (0, 3), (3, 0)]
-        else:
-            obj_positions = [(0, 2), (1, 1), (2, 0)]
-        for pos in obj_positions:
-            if pos[0] < gs and pos[1] < gs:
-                self.objectives.append(pos)
-                self.obj_control[pos] = None
-
-        # Place starting units
-        self.units = {1: [], 2: []}
-        if gs == 4:
-            # Player 1 starts bottom rows, Player 2 top rows
-            p1_starts = [
-                {"type": "Rifleman", "row": 3, "col": 0, "hp": 3, "max_hp": 3},
-                {"type": "Rifleman", "row": 3, "col": 1, "hp": 3, "max_hp": 3},
-                {"type": "Scout",    "row": 3, "col": 2, "hp": 2, "max_hp": 2},
-                {"type": "Sniper",   "row": 3, "col": 3, "hp": 2, "max_hp": 2},
-            ]
-            p2_starts = [
-                {"type": "Rifleman", "row": 0, "col": 2, "hp": 3, "max_hp": 3},
-                {"type": "Rifleman", "row": 0, "col": 3, "hp": 3, "max_hp": 3},
-                {"type": "Scout",    "row": 0, "col": 1, "hp": 2, "max_hp": 2},
-                {"type": "Sniper",   "row": 0, "col": 0, "hp": 2, "max_hp": 2},
-            ]
-        else:
-            p1_starts = [
-                {"type": "Rifleman", "row": 2, "col": 0, "hp": 3, "max_hp": 3},
-                {"type": "Scout",    "row": 2, "col": 1, "hp": 2, "max_hp": 2},
-                {"type": "Sniper",   "row": 2, "col": 2, "hp": 2, "max_hp": 2},
-            ]
-            p2_starts = [
-                {"type": "Rifleman", "row": 0, "col": 2, "hp": 3, "max_hp": 3},
-                {"type": "Scout",    "row": 0, "col": 1, "hp": 2, "max_hp": 2},
-                {"type": "Sniper",   "row": 0, "col": 0, "hp": 2, "max_hp": 2},
-            ]
-        self.units[1] = p1_starts
-        self.units[2] = p2_starts
-
-        # Build starting decks
-        if self.variation == "skirmish":
-            deck_comp = {
-                "Rifleman": 6, "Scout": 4, "Sniper": 3,
-                "Squad Leader": 4, "Platoon Sergeant": 3,
-            }
-        else:
-            deck_comp = {
-                "Rifleman": 8, "Scout": 5, "Sniper": 5,
-                "Squad Leader": 6, "Platoon Sergeant": 6,
-            }
-
-        for p in (1, 2):
-            deck = []
-            for card_type, count in deck_comp.items():
-                for _ in range(count):
-                    deck.append(card_type)
-            random.shuffle(deck)
-            self.decks[p] = deck
-            self.hands[p] = []
-            self.discard_piles[p] = []
-            self._draw_cards(p, 4)
-
-        # Supply for recruiting
-        for p in (1, 2):
-            self.supply[p] = {
-                "Rifleman": 4, "Scout": 3, "Sniper": 2,
-            }
-
-        self.phase = "play_card"
-
-    # ---------------------------------------------------------------- display
     def display(self):
+        """Display the current game state."""
         clear_screen()
-        cp = self.current_player
-        opp = self._opponent()
-        gs = self.grid_size
+        p = self.current_player
+        pd = self.player_data[str(p)]
+        color = BLUE if p == 1 else RED
 
-        print(f"\n{'=' * 60}")
-        print(f"  UNDAUNTED  |  Turn {self.turn_number + 1}  |  {self.players[cp - 1]}'s turn")
-        print(f"  Variation: {self.variation.title()}")
-        print(f"{'=' * 60}")
+        print(f"{BOLD}{'=' * 60}")
+        print(f"  UNDAUNTED - {self.players[p - 1]}'s Turn (Turn {self.turn_number + 1})")
+        print(f"{'=' * 60}{RESET}")
 
-        # Objective control summary
-        p1_obj = sum(1 for v in self.obj_control.values() if v == 1)
-        p2_obj = sum(1 for v in self.obj_control.values() if v == 2)
-        total_obj = len(self.objectives)
-        majority = total_obj // 2 + 1
-        print(f"\n  Objectives: {self.players[0]}: {p1_obj}  |  {self.players[1]}: {p2_obj}  |  Need {majority} to win")
+        # Grid
+        print(f"\n  {BOLD}Battlefield ({self.grid_size}x{self.grid_size}):{RESET}")
+        print(f"     {''.join(f'{c:6d}' for c in range(self.grid_size))}")
+        print(f"    +{'------' * self.grid_size}+")
 
-        # Grid display
-        print(f"\n     ", end="")
-        for c in range(gs):
-            print(f"  {c}  ", end="")
-        print()
-        print(f"    +" + "----+" * gs)
-
-        for r in range(gs):
-            print(f"  {r} |", end="")
-            for c in range(gs):
-                terrain = self.grid[r][c]
-                terrain_sym = TERRAIN_TYPES[terrain]["symbol"]
-                unit_info = self._unit_at(r, c)
-                is_obj = (r, c) in self.objectives
-
-                if unit_info:
-                    p, idx = unit_info
-                    u = self.units[p][idx]
-                    type_char = u["type"][0]  # R, S, etc.
-                    player_marker = str(p)
-                    cell = f"{player_marker}{type_char}{u['hp']}"
-                elif is_obj:
-                    ctrl = self.obj_control.get((r, c))
-                    if ctrl:
-                        cell = f"*{ctrl}*"
+        for r in range(self.grid_size):
+            # Top line: terrain and objective
+            line1 = f"  {r} |"
+            for c in range(self.grid_size):
+                key = f"{r},{c}"
+                cell = self.grid[key]
+                terr = cell['terrain']
+                obj = cell['objective']
+                ctrl = self.objective_control.get(key)
+                if obj:
+                    if ctrl == 1:
+                        marker = f"{BLUE}[O]{RESET}"
+                    elif ctrl == 2:
+                        marker = f"{RED}[O]{RESET}"
                     else:
-                        cell = f"*{terrain_sym}*"
+                        marker = f"{YELLOW}[O]{RESET}"
                 else:
-                    cell = f" {terrain_sym} "
+                    marker = f" {terr} "
+                line1 += f" {marker}  |"
+            print(line1)
 
-                print(f"{cell:^4}|", end="")
-            print()
-            print(f"    +" + "----+" * gs)
+            # Bottom line: units
+            line2 = f"    |"
+            for c in range(self.grid_size):
+                key = f"{r},{c}"
+                cell = self.grid[key]
+                units_str = ""
+                for pp in [1, 2]:
+                    ulist = cell['units'].get(str(pp), [])
+                    if ulist:
+                        pc = BLUE if pp == 1 else RED
+                        units_str += f"{pc}{''.join(ulist[:3])}{RESET}"
+                if not units_str:
+                    units_str = "     "
+                else:
+                    # Pad
+                    raw_len = sum(len(cell['units'].get(str(pp), [])) for pp in [1, 2])
+                    units_str += " " * max(0, 5 - raw_len)
+                line2 += f"{units_str}|"
+            print(line2)
+            print(f"    +{'------' * self.grid_size}+")
 
         # Legend
-        print(f"\n  Terrain: . = open, T = forest (+1 def), # = building (+2 def)")
-        print(f"  Units: [player][Type initial][HP]   * = objective")
+        print(f"\n  {YELLOW}[O]{RESET}=Objective  {DIM}+{RESET}=Cover  {DIM}.{RESET}=Open")
+        print(f"  R=Rifleman S=Scout N=Sniper M=MG L=Leader T=Mortar E=Medic P=Sgt")
 
-        # Units summary
-        for p in (1, 2):
-            alive = self._alive_units(p)
-            print(f"\n  {self.players[p - 1]}'s units:")
-            if alive:
-                for u in alive:
-                    print(f"    {u['type']:18s} at ({u['row']},{u['col']})  HP: {u['hp']}/{u['max_hp']}")
-            else:
-                print(f"    (no units alive)")
+        # Control status
+        p1_obj = self.player_data['1']['objectives_controlled']
+        p2_obj = self.player_data['2']['objectives_controlled']
+        total_obj = len(self.objective_positions)
+        print(f"\n  Objectives: {BLUE}P1={p1_obj}{RESET} / {RED}P2={p2_obj}{RESET} "
+              f"(need {total_obj // 2 + 1} to win)")
 
-        # Current player's hand
-        print(f"\n  Your hand ({self.players[cp - 1]}):")
-        if self.hands[cp]:
-            for i, card in enumerate(self.hands[cp], 1):
-                info = CARD_TYPES[card]
-                desc_parts = []
-                if info["move"] > 0:
-                    desc_parts.append(f"move {info['move']}")
-                if info["attack"] > 0:
-                    desc_parts.append(f"atk {info['attack']} rng {info['attack_range']}")
-                if info["special"] == "draw":
-                    desc_parts.append("draw 2 cards")
-                elif info["special"] == "recruit":
-                    desc_parts.append("add card to deck")
-                elif info["special"] == "scout":
-                    desc_parts.append("fast movement")
-                desc = ", ".join(desc_parts) if desc_parts else "command"
-                print(f"    {i}. {card} ({desc})")
-        else:
-            print(f"    (empty)")
+        # Player info
+        print(f"\n  {color}{self.players[p - 1]}:{RESET}")
+        print(f"  Deck: {len(pd['draw_pile'])} | Discard: {len(pd['discard'])} "
+              f"| Casualties: {len(pd['casualties'])}")
 
-        print(f"  Deck: {len(self.decks[cp])} | Discard: {len(self.discard_piles[cp])}")
+        # Hand
+        print(f"\n  {BOLD}Hand:{RESET}")
+        for i, card in enumerate(pd['hand']):
+            print(f"    [{i + 1}] {card['name']} "
+                  f"(ATK:{card['attack']} DEF:{card['defense']} "
+                  f"MOV:{card['movement']} RNG:{card['range']})")
 
-        # Log
-        if self.log:
-            print(f"\n  --- Log ---")
-            for line in self.log[-6:]:
-                print(f"  {line}")
+        if self.message:
+            print(f"\n  {YELLOW}>> {self.message}{RESET}")
 
-        print()
-
-    # ---------------------------------------------------------------- get_move
     def get_move(self):
-        cp = self.current_player
+        """Get a move from the current player."""
+        pd = self.player_data[str(self.current_player)]
 
-        if not self.hands[cp]:
-            # No cards in hand, end turn
-            return ("end_turn",)
+        if not pd['hand']:
+            print("\n  No cards in hand! Turn ends.")
+            return ('end_turn',)
 
-        print(f"  Play a card (1-{len(self.hands[cp])}) or 'end' to end turn and draw:")
+        print(f"\n  Actions: [p]lay card, [e]nd turn")
+        action = input_with_quit("  Choice: ").strip().lower()
 
-        while True:
-            move_input = input_with_quit("  Your choice: ").strip().lower()
+        if action == 'e':
+            return ('end_turn',)
+        elif action == 'p':
+            cidx = input_with_quit(f"  Card number (1-{len(pd['hand'])}): ").strip()
+            print(f"  Use card for: [a]ttack, [m]ove, [c]ontrol objective, [s]pecial ability")
+            use = input_with_quit("  Action: ").strip().lower()
 
-            if move_input in ("end", "e"):
-                return ("end_turn",)
-
-            if not move_input.isdigit():
-                print(f"  Enter a card number (1-{len(self.hands[cp])}) or 'end'.")
-                continue
-
-            card_choice = int(move_input)
-            if card_choice < 1 or card_choice > len(self.hands[cp]):
-                print(f"  Invalid. Choose 1-{len(self.hands[cp])}.")
-                continue
-
-            card_name = self.hands[cp][card_choice - 1]
-            info = CARD_TYPES[card_name]
-
-            # Handle special cards
-            if info["special"] == "draw":
-                return ("play_card", card_choice - 1, "draw")
-
-            if info["special"] == "recruit":
-                return self._get_recruit_move(card_choice - 1)
-
-            # For combat cards, need to choose a unit and action
-            return self._get_unit_action_move(cp, card_choice - 1, card_name, info)
-
-    def _get_recruit_move(self, card_idx):
-        """Get recruit action details."""
-        cp = self.current_player
-        available = {k: v for k, v in self.supply[cp].items() if v > 0}
-        if not available:
-            print("  No cards available to recruit. Card will be discarded.")
-            return ("play_card", card_idx, "recruit_none")
-
-        print("  Choose a card type to add to your deck:")
-        options = list(available.keys())
-        for i, name in enumerate(options, 1):
-            count = available[name]
-            print(f"    {i}. {name} ({count} available)")
-        print(f"    [C] Cancel")
-
-        while True:
-            choice = input_with_quit("  Recruit: ").strip().lower()
-            if choice in ("c", "cancel"):
-                return self.get_move()  # re-prompt
-            if choice.isdigit() and 1 <= int(choice) <= len(options):
-                recruit_type = options[int(choice) - 1]
-                return ("play_card", card_idx, "recruit", recruit_type)
-            print("  Invalid choice.")
-
-    def _get_unit_action_move(self, cp, card_idx, card_name, info):
-        """Get action for a combat/movement card."""
-        matching = self._matching_units(cp, card_name)
-
-        if not matching and card_name in ("Rifleman", "Scout", "Sniper"):
-            print(f"  No alive {card_name} units to activate. Card will be discarded.")
-            return ("play_card", card_idx, "no_unit")
-
-        if not matching:
-            print(f"  No matching units. Card will be discarded.")
-            return ("play_card", card_idx, "no_unit")
-
-        # Choose which unit to activate
-        if len(matching) == 1:
-            unit_idx = matching[0][0]
-            unit = matching[0][1]
-            print(f"  Activating {card_name} at ({unit['row']},{unit['col']})")
+            if use == 'a':
+                target = input_with_quit("  Target cell (row,col): ").strip()
+                return ('attack', cidx, target)
+            elif use == 'm':
+                from_cell = input_with_quit("  Move unit from (row,col): ").strip()
+                to_cell = input_with_quit("  Move unit to (row,col): ").strip()
+                return ('move', cidx, from_cell, to_cell)
+            elif use == 'c':
+                target = input_with_quit("  Control objective at (row,col): ").strip()
+                return ('control', cidx, target)
+            elif use == 's':
+                return ('special', cidx)
+            else:
+                return ('invalid',)
         else:
-            print(f"  Choose which {card_name} to activate:")
-            for i, (idx, u) in enumerate(matching, 1):
-                print(f"    {i}. {card_name} at ({u['row']},{u['col']}) HP:{u['hp']}")
-            while True:
-                choice = input_with_quit("  Unit: ").strip()
-                if choice.isdigit() and 1 <= int(choice) <= len(matching):
-                    unit_idx = matching[int(choice) - 1][0]
-                    unit = matching[int(choice) - 1][1]
-                    break
-                print("  Invalid choice.")
+            return ('invalid',)
 
-        # Choose action: move, attack, or both (Rifleman)
-        actions = []
-        if info["move"] > 0:
-            actions.append("move")
-        if info["attack"] > 0:
-            actions.append("attack")
+    def _find_unit_cell(self, player, unit_symbol):
+        """Find which cell a unit type is in for a player."""
+        for key, cell in self.grid.items():
+            ulist = cell['units'].get(str(player), [])
+            if unit_symbol in ulist:
+                return key
+        return None
 
-        if not actions:
-            return ("play_card", card_idx, "no_unit")
-
-        if len(actions) == 1:
-            action = actions[0]
-        else:
-            print(f"  Choose action:")
-            print(f"    [M] Move (range {info['move']})")
-            print(f"    [A] Attack (atk {info['attack']}, range {info['attack_range']})")
-            print(f"    [C] Cancel")
-            while True:
-                choice = input_with_quit("  Action: ").strip().lower()
-                if choice in ("c", "cancel"):
-                    return self.get_move()
-                if choice in ("m", "move") and "move" in actions:
-                    action = "move"
-                    break
-                if choice in ("a", "attack") and "attack" in actions:
-                    action = "attack"
-                    break
-                print("  Enter M, A, or C.")
-
-        if action == "move":
-            gs = self.grid_size
-            move_range = info["move"]
-            print(f"  Move to (row,col) within range {move_range}:")
-            while True:
-                dest = input_with_quit("  Destination (row,col): ").strip()
-                if dest.lower() in ("c", "cancel"):
-                    return self.get_move()
-                parts = dest.replace(" ", "").split(",")
-                if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
-                    print("  Enter as row,col (e.g. 2,3).")
-                    continue
-                dr, dc = int(parts[0]), int(parts[1])
-                if dr < 0 or dr >= gs or dc < 0 or dc >= gs:
-                    print(f"  Out of bounds. Grid is {gs}x{gs}.")
-                    continue
-                dist = self._distance(unit["row"], unit["col"], dr, dc)
-                if dist > move_range or dist == 0:
-                    print(f"  Out of move range ({move_range}). Distance is {dist}.")
-                    continue
-                if self._unit_at(dr, dc):
-                    print(f"  That tile is occupied.")
-                    continue
-                return ("play_card", card_idx, "move", unit_idx, dr, dc)
-
-        if action == "attack":
-            opp = self._opponent()
-            targets = []
-            for i, u in enumerate(self.units[opp]):
-                if u["hp"] > 0:
-                    dist = self._distance(unit["row"], unit["col"], u["row"], u["col"])
-                    if dist <= info["attack_range"]:
-                        targets.append((i, u, dist))
-            if not targets:
-                print("  No enemy units in range. Card will be discarded.")
-                return ("play_card", card_idx, "no_target")
-
-            print("  Choose target:")
-            for i, (idx, u, dist) in enumerate(targets, 1):
-                terrain = self.grid[u["row"]][u["col"]]
-                tdef = TERRAIN_TYPES[terrain]["defense"]
-                print(f"    {i}. {u['type']} at ({u['row']},{u['col']}) HP:{u['hp']} "
-                      f"terrain:{terrain}(+{tdef}def) dist:{dist}")
-            while True:
-                choice = input_with_quit("  Target: ").strip()
-                if choice.lower() in ("c", "cancel"):
-                    return self.get_move()
-                if choice.isdigit() and 1 <= int(choice) <= len(targets):
-                    target_idx = targets[int(choice) - 1][0]
-                    return ("play_card", card_idx, "attack", unit_idx, target_idx)
-                print("  Invalid choice.")
-
-        return ("play_card", card_idx, "no_unit")
-
-    # ---------------------------------------------------------------- make_move
     def make_move(self, move):
-        cp = self.current_player
-        opp = self._opponent()
+        """Apply a move to the game state."""
+        pd = self.player_data[str(self.current_player)]
+        opp = 2 if self.current_player == 1 else 1
 
-        if move[0] == "end_turn":
+        if move[0] == 'invalid':
+            self.message = "Invalid command."
+            return False
+
+        if move[0] == 'end_turn':
             # Discard remaining hand, draw new hand
-            self.discard_piles[cp].extend(self.hands[cp])
-            self.hands[cp] = []
-            self._draw_cards(cp, 4)
-            self._add_log(f"{self.players[cp - 1]} ends turn and draws cards.")
-            # Control objectives: if a player's unit is on an uncontrolled/enemy objective
-            self._update_objective_control()
+            pd['discard'].extend(pd['hand'])
+            pd['hand'] = []
+            self._draw_cards(self.current_player, 4)
+            self.message = "Turn ended. Drew new hand."
             return True
 
-        if move[0] == "play_card":
-            card_hand_idx = move[1]
-            card_name = self.hands[cp][card_hand_idx]
-            action = move[2]
+        if move[0] == 'attack':
+            try:
+                cidx = int(move[1]) - 1
+                parts = move[2].replace(' ', '').split(',')
+                tr, tc = int(parts[0]), int(parts[1])
+            except (ValueError, IndexError):
+                self.message = "Invalid input."
+                return False
 
-            # Remove card from hand to discard
-            self.hands[cp].pop(card_hand_idx)
-            self.discard_piles[cp].append(card_name)
+            if cidx < 0 or cidx >= len(pd['hand']):
+                self.message = "Invalid card number."
+                return False
 
-            if action == "draw":
-                self._draw_cards(cp, 2)
-                self._add_log(f"{self.players[cp - 1]} plays Squad Leader: draws 2 cards.")
-                return True
+            card = pd['hand'][cidx]
+            target_key = f"{tr},{tc}"
 
-            if action == "recruit":
-                recruit_type = move[3]
-                if self.supply[cp].get(recruit_type, 0) > 0:
-                    self.supply[cp][recruit_type] -= 1
-                    self.discard_piles[cp].append(recruit_type)
-                    self._add_log(f"{self.players[cp - 1]} plays Platoon Sergeant: recruits {recruit_type}.")
-                return True
+            if target_key not in self.grid:
+                self.message = "Invalid cell."
+                return False
 
-            if action == "recruit_none":
-                self._add_log(f"{self.players[cp - 1]} plays Platoon Sergeant: nothing to recruit.")
-                return True
+            target_cell = self.grid[target_key]
+            enemy_units = target_cell['units'].get(str(opp), [])
 
-            if action == "no_unit" or action == "no_target":
-                self._add_log(f"{self.players[cp - 1]} plays {card_name}: no valid target/unit.")
-                return True
+            if not enemy_units:
+                self.message = "No enemy units in target cell!"
+                return False
 
-            if action == "move":
-                unit_idx = move[3]
-                dest_r, dest_c = move[4], move[5]
-                unit = self.units[cp][unit_idx]
-                old_r, old_c = unit["row"], unit["col"]
-                unit["row"] = dest_r
-                unit["col"] = dest_c
-                self._add_log(f"{self.players[cp - 1]} moves {card_name} "
-                              f"({old_r},{old_c})->({dest_r},{dest_c}).")
-                self._update_objective_control()
-                return True
+            # Check range: find attacker's position
+            attacker_pos = self._find_unit_cell(self.current_player, card['symbol'])
+            if not attacker_pos:
+                self.message = f"No {card['name']} on the field to attack with!"
+                return False
 
-            if action == "attack":
-                unit_idx = move[3]
-                target_idx = move[4]
-                attacker = self.units[cp][unit_idx]
-                target = self.units[opp][target_idx]
-                info = CARD_TYPES[card_name]
+            ar, ac = map(int, attacker_pos.split(','))
+            dist = abs(ar - tr) + abs(ac - tc)
+            if dist > card['range']:
+                self.message = f"Target out of range! (range={card['range']}, distance={dist})"
+                return False
 
-                # Roll attack: 1d6 + attack_value vs defense_roll(1d6) + terrain_defense
-                atk_roll = random.randint(1, 6)
-                def_roll = random.randint(1, 6)
-                terrain = self.grid[target["row"]][target["col"]]
-                terrain_def = TERRAIN_TYPES[terrain]["defense"]
+            # Attack resolution
+            attack_power = card['attack']
+            # Cover bonus for defender
+            if target_cell['terrain'] == COVER:
+                defense = 1
+            else:
+                defense = 0
 
-                atk_total = atk_roll + info["attack"]
-                def_total = def_roll + terrain_def
+            # Check suppression
+            supp_key = f"{self.current_player},{attacker_pos}"
+            if supp_key in self.suppressed:
+                self.message = "This unit is suppressed and cannot act!"
+                return False
 
-                if atk_total > def_total:
-                    damage = 1
-                    target["hp"] -= damage
-                    result = "HIT"
-                    if target["hp"] <= 0:
-                        target["hp"] = 0
-                        result = "ELIMINATED"
+            # Sniper ignores cover
+            if card['name'] == 'Sniper':
+                defense = 0
+
+            hit = attack_power > defense + random.randint(0, 1)
+
+            # Remove played card
+            pd['hand'].pop(cidx)
+            pd['discard'].append(card)
+
+            if hit:
+                # Remove an enemy unit from the field
+                killed_symbol = enemy_units.pop(0)
+                if not enemy_units:
+                    target_cell['units'][str(opp)] = []
+
+                # Remove matching card from opponent's deck (casualties)
+                opp_data = self.player_data[str(opp)]
+                casualty_card = None
+                # Check draw pile first
+                for i, c in enumerate(opp_data['draw_pile']):
+                    if c['symbol'] == killed_symbol:
+                        casualty_card = opp_data['draw_pile'].pop(i)
+                        break
+                if not casualty_card:
+                    for i, c in enumerate(opp_data['discard']):
+                        if c['symbol'] == killed_symbol:
+                            casualty_card = opp_data['discard'].pop(i)
+                            break
+                if casualty_card:
+                    opp_data['casualties'].append(casualty_card)
+
+                # Suppression for Machine Gunner
+                if card['name'] == 'Machine Gunner' and enemy_units:
+                    self.suppressed[f"{opp},{target_key}"] = True
+
+                self.message = f"{card['name']} hit! Enemy unit eliminated at ({tr},{tc})!"
+            else:
+                # Suppression for Machine Gunner even on miss
+                if card['name'] == 'Machine Gunner':
+                    self.suppressed[f"{opp},{target_key}"] = True
+                    self.message = f"{card['name']} missed but suppressed enemies at ({tr},{tc})!"
                 else:
-                    result = "MISS"
+                    self.message = f"{card['name']} missed!"
 
-                self._add_log(
-                    f"{self.players[cp - 1]}'s {card_name} attacks {target['type']} "
-                    f"at ({target['row']},{target['col']}): "
-                    f"atk {atk_roll}+{info['attack']}={atk_total} vs "
-                    f"def {def_roll}+{terrain_def}={def_total} -> {result}"
-                )
+            return True
 
-                if result == "ELIMINATED":
-                    self._add_log(f"  {target['type']} eliminated!")
+        if move[0] == 'move':
+            try:
+                cidx = int(move[1]) - 1
+                fparts = move[2].replace(' ', '').split(',')
+                fr, fc = int(fparts[0]), int(fparts[1])
+                tparts = move[3].replace(' ', '').split(',')
+                tr, tc = int(tparts[0]), int(tparts[1])
+            except (ValueError, IndexError):
+                self.message = "Invalid input."
+                return False
 
-                self._update_objective_control()
+            if cidx < 0 or cidx >= len(pd['hand']):
+                self.message = "Invalid card number."
+                return False
+
+            card = pd['hand'][cidx]
+            from_key = f"{fr},{fc}"
+            to_key = f"{tr},{tc}"
+
+            if from_key not in self.grid or to_key not in self.grid:
+                self.message = "Invalid cell."
+                return False
+
+            from_cell = self.grid[from_key]
+            my_units = from_cell['units'].get(str(self.current_player), [])
+
+            if card['symbol'] not in my_units:
+                self.message = f"No {card['name']} in cell ({fr},{fc})!"
+                return False
+
+            dist = abs(fr - tr) + abs(fc - tc)
+            if dist > card['movement']:
+                self.message = f"Too far! Movement={card['movement']}, distance={dist}"
+                return False
+
+            # Check suppression
+            supp_key = f"{self.current_player},{from_key}"
+            if supp_key in self.suppressed:
+                self.message = "This unit is suppressed and cannot move!"
+                return False
+
+            # Move the unit
+            my_units.remove(card['symbol'])
+            if not my_units:
+                from_cell['units'][str(self.current_player)] = []
+            to_cell = self.grid[to_key]
+            if str(self.current_player) not in to_cell['units']:
+                to_cell['units'][str(self.current_player)] = []
+            to_cell['units'][str(self.current_player)].append(card['symbol'])
+
+            # Discard card
+            pd['hand'].pop(cidx)
+            pd['discard'].append(card)
+
+            # Scout ability: draw a card
+            if card['name'] == 'Scout':
+                self._draw_cards(self.current_player, 1)
+                self.message = f"Scout moved to ({tr},{tc}) and drew a card!"
+            else:
+                self.message = f"{card['name']} moved to ({tr},{tc})."
+
+            return True
+
+        if move[0] == 'control':
+            try:
+                cidx = int(move[1]) - 1
+                parts = move[2].replace(' ', '').split(',')
+                tr, tc = int(parts[0]), int(parts[1])
+            except (ValueError, IndexError):
+                self.message = "Invalid input."
+                return False
+
+            if cidx < 0 or cidx >= len(pd['hand']):
+                self.message = "Invalid card number."
+                return False
+
+            target_key = f"{tr},{tc}"
+            if target_key not in self.grid:
+                self.message = "Invalid cell."
+                return False
+
+            cell = self.grid[target_key]
+            if not cell['objective']:
+                self.message = "No objective at that location!"
+                return False
+
+            my_units = cell['units'].get(str(self.current_player), [])
+            enemy_units = cell['units'].get(str(opp), [])
+
+            if not my_units:
+                self.message = "Need a unit at the objective to control it!"
+                return False
+            if enemy_units:
+                self.message = "Cannot control while enemy units present!"
+                return False
+
+            # Check if already controlled
+            prev_controller = self.objective_control.get(target_key)
+            if prev_controller == self.current_player:
+                self.message = "You already control this objective!"
+                return False
+
+            card = pd['hand'].pop(cidx)
+            pd['discard'].append(card)
+
+            if prev_controller:
+                self.player_data[str(prev_controller)]['objectives_controlled'] -= 1
+            self.objective_control[target_key] = self.current_player
+            pd['objectives_controlled'] += 1
+
+            self.message = f"Captured objective at ({tr},{tc})!"
+            return True
+
+        if move[0] == 'special':
+            try:
+                cidx = int(move[1]) - 1
+            except (ValueError, IndexError):
+                self.message = "Invalid input."
+                return False
+
+            if cidx < 0 or cidx >= len(pd['hand']):
+                self.message = "Invalid card number."
+                return False
+
+            card = pd['hand'][cidx]
+
+            if card['name'] == 'Squad Leader':
+                # Draw a card
+                pd['hand'].pop(cidx)
+                pd['discard'].append(card)
+                self._draw_cards(self.current_player, 1)
+                self.message = "Squad Leader: Drew an extra card!"
                 return True
 
+            elif card['name'] == 'Medic':
+                # Recover a card from casualties
+                if not pd['casualties']:
+                    self.message = "No casualties to recover!"
+                    return False
+                pd['hand'].pop(cidx)
+                pd['discard'].append(card)
+                recovered = pd['casualties'].pop(0)
+                pd['discard'].append(recovered)
+                self.message = f"Medic recovered {recovered['name']} from casualties!"
+                return True
+
+            elif card['name'] == 'Platoon Sergeant':
+                # Inspire: boost attack of all friendly in same cell
+                pos = self._find_unit_cell(self.current_player, card['symbol'])
+                if pos:
+                    pd['hand'].pop(cidx)
+                    pd['discard'].append(card)
+                    self.message = f"Platoon Sergeant inspires! +1 attack to all at ({pos})."
+                    return True
+                else:
+                    self.message = "No Platoon Sergeant on the field!"
+                    return False
+
+            elif card['name'] == 'Mortar':
+                # Area attack
+                pd['hand'].pop(cidx)
+                pd['discard'].append(card)
+                pos = self._find_unit_cell(self.current_player, card['symbol'])
+                if pos:
+                    target = input_with_quit("  Mortar target cell (row,col): ").strip()
+                    try:
+                        parts = target.replace(' ', '').split(',')
+                        tr, tc = int(parts[0]), int(parts[1])
+                    except (ValueError, IndexError):
+                        self.message = "Invalid target."
+                        return True  # Card already used
+                    ar, ac = map(int, pos.split(','))
+                    dist = abs(ar - tr) + abs(ac - tc)
+                    if dist <= card['range']:
+                        tkey = f"{tr},{tc}"
+                        if tkey in self.grid:
+                            enemies = self.grid[tkey]['units'].get(str(opp), [])
+                            if enemies:
+                                killed = enemies.pop(0)
+                                # Casualty
+                                opp_data = self.player_data[str(opp)]
+                                for i, c in enumerate(opp_data['draw_pile']):
+                                    if c['symbol'] == killed:
+                                        opp_data['casualties'].append(opp_data['draw_pile'].pop(i))
+                                        break
+                                self.message = f"Mortar strike! Hit at ({tr},{tc})!"
+                            else:
+                                self.message = "Mortar strike missed - no enemies there."
+                        else:
+                            self.message = "Invalid target cell."
+                    else:
+                        self.message = "Target out of mortar range!"
+                else:
+                    self.message = "No mortar on the field!"
+                return True
+
+            else:
+                pd['hand'].pop(cidx)
+                pd['discard'].append(card)
+                self.message = f"{card['name']} used special ability: {UNIT_TYPES[card['name']]['ability']}"
+                return True
+
+        self.message = "Unknown action."
         return False
 
-    def _update_objective_control(self):
-        """Update objective control based on unit positions."""
-        for obj_pos in self.objectives:
-            r, c = obj_pos
-            unit_info = self._unit_at(r, c)
-            if unit_info:
-                player, _ = unit_info
-                self.obj_control[obj_pos] = player
-            # If no unit on it and already controlled, keep control
-
-    # -------------------------------------------------------- check_game_over
     def check_game_over(self):
-        total = len(self.objectives)
-        majority = total // 2 + 1
+        """Check if the game is over."""
+        # Clear suppression at start of checking (after full round)
+        if self.current_player == 1:
+            # Clear P1's suppression (it was set last turn by P2)
+            keys_to_remove = [k for k in self.suppressed if k.startswith("1,")]
+            for k in keys_to_remove:
+                del self.suppressed[k]
+        else:
+            keys_to_remove = [k for k in self.suppressed if k.startswith("2,")]
+            for k in keys_to_remove:
+                del self.suppressed[k]
 
-        p1_obj = sum(1 for v in self.obj_control.values() if v == 1)
-        p2_obj = sum(1 for v in self.obj_control.values() if v == 2)
+        total_obj = len(self.objective_positions)
+        majority = total_obj // 2 + 1
 
-        if p1_obj >= majority:
-            self.game_over = True
-            self.winner = 1
-            return
-        if p2_obj >= majority:
-            self.game_over = True
-            self.winner = 2
-            return
+        for p in [1, 2]:
+            if self.player_data[str(p)]['objectives_controlled'] >= majority:
+                self.game_over = True
+                self.winner = p
+                return
 
-        # Also check if a player has no alive units
-        if not self._alive_units(1):
-            self.game_over = True
-            self.winner = 2
-            return
-        if not self._alive_units(2):
-            self.game_over = True
-            self.winner = 1
-            return
+        # Also check if a player has lost all units (cards)
+        for p in [1, 2]:
+            pd = self.player_data[str(p)]
+            total_cards = len(pd['draw_pile']) + len(pd['hand']) + len(pd['discard'])
+            if total_cards == 0:
+                self.game_over = True
+                self.winner = 1 if p == 2 else 2
+                return
 
-    # -------------------------------------------------------- save / load
     def get_state(self):
+        """Return serializable game state."""
         return {
-            "grid_size": self.grid_size,
-            "grid": self.grid,
-            "objectives": [list(o) for o in self.objectives],
-            "obj_control": {f"{r},{c}": v for (r, c), v in self.obj_control.items()},
-            "units": {
-                str(p): [dict(u) for u in units]
-                for p, units in self.units.items()
-            },
-            "decks": {str(p): list(d) for p, d in self.decks.items()},
-            "hands": {str(p): list(h) for p, h in self.hands.items()},
-            "discard_piles": {str(p): list(d) for p, d in self.discard_piles.items()},
-            "supply": {str(p): dict(s) for p, s in self.supply.items()},
-            "log": list(self.log),
-            "phase": self.phase,
+            'grid_size': self.grid_size,
+            'grid': self.grid,
+            'objective_positions': self.objective_positions,
+            'objective_control': self.objective_control,
+            'player_data': self.player_data,
+            'suppressed': self.suppressed,
+            'message': self.message,
+            'phase': self.phase,
         }
 
     def load_state(self, state):
-        self.grid_size = state["grid_size"]
-        self.grid = state["grid"]
-        self.objectives = [tuple(o) for o in state["objectives"]]
-        self.obj_control = {}
-        for key, v in state["obj_control"].items():
-            r, c = key.split(",")
-            self.obj_control[(int(r), int(c))] = v
-        self.units = {
-            int(p): [dict(u) for u in units]
-            for p, units in state["units"].items()
-        }
-        self.decks = {int(p): list(d) for p, d in state["decks"].items()}
-        self.hands = {int(p): list(h) for p, h in state["hands"].items()}
-        self.discard_piles = {int(p): list(d) for p, d in state["discard_piles"].items()}
-        self.supply = {int(p): dict(s) for p, s in state["supply"].items()}
-        self.log = list(state.get("log", []))
-        self.phase = state.get("phase", "play_card")
+        """Restore game state."""
+        self.grid_size = state['grid_size']
+        self.grid = state['grid']
+        self.objective_positions = state['objective_positions']
+        self.objective_control = state['objective_control']
+        self.player_data = state['player_data']
+        self.suppressed = state['suppressed']
+        self.message = state['message']
+        self.phase = state['phase']
 
-    # ------------------------------------------------------------ tutorial
     def get_tutorial(self):
-        return (
-            f"\n{'=' * 60}\n"
-            f"  UNDAUNTED - Tutorial ({self.variation.title()})\n"
-            f"{'=' * 60}\n\n"
-            f"  OVERVIEW:\n"
-            f"  A deck-building tactical combat game on a "
-            f"{'4x4' if self.variation != 'skirmish' else '3x3'} grid.\n"
-            f"  Build your deck to command squads and control objectives.\n"
-            f"  First to control a majority of objectives wins!\n\n"
-            f"  CARD TYPES:\n"
-            f"  - Rifleman:  Move 1 tile + Attack (atk 2, range 1)\n"
-            f"  - Scout:     Move up to 3 tiles (fast recon)\n"
-            f"  - Sniper:    Long-range attack (atk 3, range 3)\n"
-            f"  - Squad Leader:     Draw 2 extra cards\n"
-            f"  - Platoon Sergeant: Add a card from supply to your deck\n\n"
-            f"  TERRAIN:\n"
-            f"  - Open (.):     No defense bonus\n"
-            f"  - Forest (T):   +1 defense bonus\n"
-            f"  - Building (#): +2 defense bonus\n\n"
-            f"  COMBAT:\n"
-            f"  Attack roll: 1d6 + attack value\n"
-            f"  Defense roll: 1d6 + terrain defense\n"
-            f"  If attack > defense, the target takes 1 damage.\n\n"
-            f"  OBJECTIVES:\n"
-            f"  Marked with * on the grid. Move a unit onto an objective\n"
-            f"  to control it. Control a majority to win!\n\n"
-            f"  TURN:\n"
-            f"  Play cards from your hand to activate units.\n"
-            f"  Type 'end' to discard remaining cards and draw 4 new ones.\n\n"
-            f"  COMMANDS:\n"
-            f"  Type card number to play, 'end' to end turn.\n"
-            f"  Type 'quit' to exit, 'save' to suspend, 'help' for help.\n"
-            f"{'=' * 60}"
-        )
+        return f"""{BOLD}=== UNDAUNTED TUTORIAL ==={RESET}
+
+Undaunted is a deck-building tactical combat game for 2 players.
+
+{BOLD}OBJECTIVE:{RESET}
+  Control a majority of objective markers on the grid to win.
+  Alternatively, eliminate all enemy units (cards).
+
+{BOLD}EACH TURN:{RESET}
+  You start with 4 cards in hand.
+  Play cards one at a time to command units on the field.
+  When done (or out of cards), end your turn and draw 4 new cards.
+
+{BOLD}CARD ACTIONS:{RESET}
+  [a]ttack  - Attack enemies within range of your matching unit
+  [m]ove    - Move your matching unit on the grid
+  [c]ontrol - Capture an objective (unit must be there, no enemies)
+  [s]pecial - Use the unit's special ability
+
+{BOLD}UNIT TYPES:{RESET}
+  R=Rifleman  - Balanced fighter (ATK:2, MOV:2, RNG:2)
+  S=Scout     - Fast recon, draws cards (ATK:1, MOV:3, RNG:1)
+  N=Sniper    - Deadly range, ignores cover (ATK:4, MOV:1, RNG:4)
+  M=Machine Gunner - Suppresses targets (ATK:3, MOV:1, RNG:2)
+  L=Squad Leader  - Play extra cards (Command ability)
+  T=Mortar    - Area attack at range (ATK:3, MOV:0, RNG:3)
+  E=Medic     - Recover casualties to deck
+  P=Platoon Sgt  - Inspires nearby units (+1 ATK)
+
+{BOLD}COMBAT:{RESET}
+  Attack power vs defense + cover + luck.
+  Casualties permanently remove cards from the enemy's deck!
+
+{BOLD}TERRAIN:{RESET}
+  + = Cover (defense bonus)  . = Open ground
+
+{BOLD}CONTROLS:{RESET}
+  Type 'q' to quit, 's' to save, 'h' for help, 't' for tutorial.
+"""
