@@ -623,6 +623,18 @@ GAME_REGISTRY = [
     ("Viticulture Essential", "games.viticulture", "ViticultureGame",
      "Wine-making worker placement: plant vines, harvest, make wine, fill orders",
      {"standard": "Full game - play to 20 VP across up to 7 years", "quick": "Quick game - play to 15 VP across up to 5 years, start with extra resources"}),
+    ("Glass Road", "games.glass_road", "GlassRoadGame",
+     "Card-driven resource management with unique production wheel mechanic",
+     {"standard": "Full game - 4 building periods with all buildings", "quick": "Quick game - 2 building periods, start with extra resources"}),
+    ("Nusfjord", "games.nusfjord", "NusfjordGame",
+     "Fishing village worker placement with fleet, elders, and shares",
+     {"standard": "Full game - 7 rounds with all buildings and elders", "quick": "Quick game - 5 rounds, smaller building deck, start with extra resources"}),
+    ("Trajan", "games.trajan", "TrajanGame",
+     "Mancala-based action selection with 6 action types and set collection",
+     {"standard": "Full game - 4 quarters (16 rounds), full scoring", "quick": "Quick game - 2 quarters (8 rounds), accelerated scoring"}),
+    ("Ora et Labora", "games.ora_et_labora", "OraEtLaboraGame",
+     "Monastery resource conversion with rondel production and building placement",
+     {"standard": "Full game - 12 rounds with all buildings and settlements", "quick": "Quick game - 7 rounds, simpler buildings, extra starting resources"}),
 ]
 
 
