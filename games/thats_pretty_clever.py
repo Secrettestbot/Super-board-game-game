@@ -1,8 +1,4 @@
-"""That's Pretty Clever (Ganz Schon Clever) - Roll dice, pick to score.
-
-Roll 6 colored dice, choose one each turn to mark on your scoring sheet.
-Combos chain into bonus actions. Each color area scores differently.
-"""
+"""That's Pretty Clever - Roll dice, pick to score on colored areas."""
 
 import random
 
@@ -222,43 +218,20 @@ class ThatsPrettyCleverGame(BaseGame):
             total = self._total_score(p)
             print(f"  {self.players[p-1]}: Total={total}{marker}")
             sheet = self.sheets[sp]
-            # Yellow
-            yw = ""
-            for r in range(4):
-                row_s = ""
-                for c in range(4):
-                    if sheet["yellow"][r][c]:
-                        row_s += "X "
-                    else:
-                        row_s += f"{YELLOW_GRID[r][c]} "
-                yw += f"[{row_s.strip()}] "
-            print(f"    Yellow: {yw} = {self._score_color(p, 'yellow')}")
-            # Blue
-            bl = ""
-            for i, v in enumerate(BLUE_CELLS):
-                bl += "X" if sheet["blue"][i] else str(v)
-                bl += " "
-            print(f"    Blue:   {bl.strip()} = {self._score_color(p, 'blue')}")
-            # Green
+            yw = " ".join("X" if sheet["yellow"][r][c] else str(YELLOW_GRID[r][c])
+                         for r in range(4) for c in range(4))
+            print(f"    Y: {yw} ={self._score_color(p, 'yellow')}")
+            bl = " ".join("X" if sheet["blue"][i] else str(v) for i, v in enumerate(BLUE_CELLS))
+            print(f"    B: {bl} ={self._score_color(p, 'blue')}")
             gn = "X " * sheet["green"] + "- " * (len(GREEN_THRESHOLDS) - sheet["green"])
-            print(f"    Green:  {gn.strip()} = {self._score_color(p, 'green')}")
-            # Orange
-            og = ""
-            for i in range(ORANGE_SLOTS):
-                v = sheet["orange"][i]
-                mult = ORANGE_MULTIPLIERS[i]
-                if v is not None:
-                    og += f"{v}" + ("x2" if mult == 2 else "x3" if mult == 3 else "") + " "
-                else:
-                    og += ("_x2 " if mult == 2 else "_x3 " if mult == 3 else "_ ")
-            print(f"    Orange: {og.strip()} = {self._score_color(p, 'orange')}")
-            # Purple
-            pp = ""
-            for i in range(PURPLE_SLOTS):
-                v = sheet["purple"][i]
-                pp += str(v) if v is not None else "_"
-                pp += " "
-            print(f"    Purple: {pp.strip()} = {self._score_color(p, 'purple')}")
+            print(f"    G: {gn.strip()} ={self._score_color(p, 'green')}")
+            og = " ".join((f"{sheet['orange'][i]}" if sheet["orange"][i] is not None else "_") +
+                          ("x2" if ORANGE_MULTIPLIERS[i] == 2 else "x3" if ORANGE_MULTIPLIERS[i] == 3 else "")
+                          for i in range(ORANGE_SLOTS))
+            print(f"    O: {og} ={self._score_color(p, 'orange')}")
+            pp = " ".join(str(sheet["purple"][i]) if sheet["purple"][i] is not None else "_"
+                          for i in range(PURPLE_SLOTS))
+            print(f"    P: {pp} ={self._score_color(p, 'purple')}")
             print(f"    Foxes: {sheet['foxes']}")
             print()
 

@@ -267,45 +267,29 @@ class CartographersHeroesGame(BaseGame):
         print(f"  Season: {season} | Time: {self.time_spent}/{SEASON_TIME_LIMITS[min(self.season, 3)]}")
         print(f"{'=' * 60}")
 
-        # Goals
-        print("  Scoring Goals:")
-        for i, g in enumerate(self.goals):
-            active = ""
-            # Each season scores 2 goals: season 0->goals 0,1; season 1->goals 1,2; etc.
-            s = self.season
-            if s < 4 and i in [(s) % 4, (s + 1) % 4]:
-                active = " [ACTIVE]"
-            print(f"    {chr(65+i)}) {g['name']}: {g['desc']}{active}")
+        s = self.season
+        print("  Goals: " + " | ".join(
+            f"{chr(65+i)}) {g['name']}" + (" *" if s < 4 and i in [s % 4, (s+1) % 4] else "")
+            for i, g in enumerate(self.goals)))
         print()
-
-        # Show both grids side by side
-        cp = self.current_player
         for p in [1, 2]:
             sp = str(p)
-            marker = " <<" if p == cp else ""
+            marker = " <<" if p == self.current_player else ""
             total = sum(self.season_scores[sp]) if self.season_scores[sp] else 0
             print(f"  {self.players[p-1]} (total={total}){marker}")
             grid = self.grids[sp]
-            header = "    " + " ".join(f"{c:2d}" for c in range(self.GRID_SIZE))
-            print(header)
+            print("    " + " ".join(f"{c:2d}" for c in range(self.GRID_SIZE)))
             for r in range(self.GRID_SIZE):
-                row_s = f"  {r:2d} "
-                for c in range(self.GRID_SIZE):
-                    row_s += f" {TERRAIN_SYMBOLS.get(grid[r][c], '?')} "
-                print(row_s)
+                print(f"  {r:2d}  " + " ".join(
+                    f"{TERRAIN_SYMBOLS.get(grid[r][c], '?'):2s}" for c in range(self.GRID_SIZE)))
             print()
-
         if self.current_card:
             card = self.current_card
+            shape_str = self._shape_str(card["shapes"][0])
             if card.get("is_monster"):
-                print(f"  Monster Card: {card['name']}")
-                shape_str = self._shape_str(card["shapes"][0])
-                print(f"  Shape: {shape_str}")
+                print(f"  Monster: {card['name']} Shape: {shape_str}")
             else:
-                terrains = "/".join(card["terrains"])
-                print(f"  Explore Card: {card['name']} (time={card['time']}, terrain={terrains})")
-                shape_str = self._shape_str(card["shapes"][0])
-                print(f"  Shape: {shape_str}")
+                print(f"  Card: {card['name']} (t={card['time']}, {'/'.join(card['terrains'])}) {shape_str}")
         print()
         if self.log:
             print(f"  Last: {self.log[-1]}")

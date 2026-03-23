@@ -13,64 +13,19 @@ from engine.base import BaseGame, input_with_quit, clear_screen
 COLORS = ["Red", "Yellow", "Blue", "Green", "Orange"]
 COLOR_ABBREV = {"Red": "R", "Yellow": "Y", "Blue": "B", "Green": "G", "Orange": "O"}
 
-_C = {"R": "Red", "Y": "Yellow", "B": "Blue", "G": "Green", "O": "Orange"}
+_CM = {"R": "Red", "Y": "Yellow", "B": "Blue", "G": "Green", "O": "Orange"}
+def _mk(rows):
+    return [[_CM[c] for c in r] for r in rows]
 
-def _expand(rows):
-    return [[_C[ch] for ch in row] for row in rows]
-
-STANDARD_LAYOUT = _expand([
-    "RRYYYBB", "RRRYB BB"[:7].replace(" ",""), "ORRYBBG", "OORYB GG"[:7].replace(" ",""),
-    "OOOYGGG", "OORYB GG"[:7].replace(" ",""), "ORRYBBG", "RRRYBBB",
-    "RRYYYBB", "RYYG GGB"[:7].replace(" ",""), "YYGGGBB", "YGGOO BB"[:7].replace(" ",""),
-    "GGOOO BB"[:7].replace(" ",""), "GOORRR B"[:7].replace(" ",""), "OORRRRR",
-])
-# Fix the layout with explicit strings
-STANDARD_LAYOUT = _expand([
-    "RRYYYBB", "RRRYBBB", "ORRYBBG", "OORYBGG",
-    "OOOYGGG", "OORYBGG", "ORRYBBG", "RRRYBBB",
-    "RRYYYBB", "RYYG GGB"[:7], "YYGGGBB", "YGGOOBB",
-    "GGOOO BB"[:7], "GOORRR B"[:7], "OORRRRR",
-])
-STANDARD_LAYOUT = _expand([
+STANDARD_LAYOUT = _mk([
     "RRYYYBB", "RRRYBBB", "ORRYBBG", "OORYBGG", "OOOYGGG",
-    "OORYBGG", "ORRYBBG", "RRRYBBB", "RRYYYBB", "RYYG GGB"[:7],
-    "YYGGGBB", "YGGOOBB", "GGOOBBB"[:7], "GOORRRB", "OORRRRR",
-])
-# Just define them directly and correctly
-STANDARD_LAYOUT = [
-    ["Red","Red","Yellow","Yellow","Yellow","Blue","Blue"],
-    ["Red","Red","Red","Yellow","Blue","Blue","Blue"],
-    ["Orange","Red","Red","Yellow","Blue","Blue","Green"],
-    ["Orange","Orange","Red","Yellow","Blue","Green","Green"],
-    ["Orange","Orange","Orange","Yellow","Green","Green","Green"],
-    ["Orange","Orange","Red","Yellow","Blue","Green","Green"],
-    ["Orange","Red","Red","Yellow","Blue","Blue","Green"],
-    ["Red","Red","Red","Yellow","Blue","Blue","Blue"],
-    ["Red","Red","Yellow","Yellow","Yellow","Blue","Blue"],
-    ["Red","Yellow","Yellow","Green","Green","Green","Blue"],
-    ["Yellow","Yellow","Green","Green","Green","Blue","Blue"],
-    ["Yellow","Green","Green","Orange","Orange","Blue","Blue"],
-    ["Green","Green","Orange","Orange","Orange","Blue","Blue"],
-    ["Green","Orange","Orange","Red","Red","Red","Blue"],
-    ["Orange","Orange","Red","Red","Red","Red","Red"],
-]
-SECOND_LAYOUT = [
-    ["Blue","Blue","Green","Green","Green","Red","Red"],
-    ["Blue","Blue","Blue","Green","Red","Red","Red"],
-    ["Yellow","Blue","Blue","Green","Red","Red","Orange"],
-    ["Yellow","Yellow","Blue","Green","Red","Orange","Orange"],
-    ["Yellow","Yellow","Yellow","Green","Orange","Orange","Orange"],
-    ["Yellow","Yellow","Red","Green","Blue","Orange","Orange"],
-    ["Yellow","Red","Red","Green","Blue","Blue","Orange"],
-    ["Red","Red","Red","Green","Blue","Blue","Blue"],
-    ["Red","Red","Green","Green","Green","Blue","Blue"],
-    ["Red","Green","Green","Orange","Orange","Orange","Blue"],
-    ["Green","Green","Orange","Orange","Orange","Blue","Blue"],
-    ["Green","Orange","Orange","Yellow","Yellow","Blue","Blue"],
-    ["Orange","Orange","Yellow","Yellow","Yellow","Blue","Blue"],
-    ["Orange","Yellow","Yellow","Red","Red","Red","Blue"],
-    ["Yellow","Yellow","Red","Red","Red","Red","Red"],
-]
+    "OORYBGG", "ORRYBBG", "RRRYBBB", "RRYYYBB", "RYYGGGB",
+    "YYGGGBB", "YGGOOBB", "GGOOOBB", "GOORRRB", "OORRRRR"])
+
+SECOND_LAYOUT = _mk([
+    "BBGGGRR", "BBBGRRR", "YBBGRRO", "YYBGROO", "YYYGOOO",
+    "YYRGBOO", "YRRGBBO", "RRRGBBB", "RRGGGBB", "RGGOOOB",
+    "GGOOOBB", "GOOYYBB", "OOYYYBB", "OYYRRBB", "YYRRRRR"])
 
 ROWS = 15
 COLS = 7
@@ -78,22 +33,9 @@ COLS = 7
 # Column completion bonus points
 COL_BONUSES = [5, 3, 3, 5, 3, 3, 5]
 
-# Row completion: first player to complete gets higher bonus
-ROW_BONUS_FIRST = [0] * ROWS  # row completion just counts for color scoring
-
-# Color scoring: points for number of X's in that color
-COLOR_SCORE_TABLE = {
-    # crosses: points
-    0: 0, 1: 1, 2: 3, 3: 6, 4: 10, 5: 15, 6: 21, 7: 28, 8: 36,
-    9: 45, 10: 55, 11: 66, 12: 78, 13: 91, 14: 105, 15: 120,
-    16: 136, 17: 153, 18: 171, 19: 190, 20: 210, 21: 231,
-}
-
-# Star bonus: completing a column gives a star; stars score
-STAR_SCORES = [0, 0, 2, 4, 6, 9, 12, 16]
-
-# Number dice: 1-6
-# Color dice: one of the 5 colors
+# Color scoring: triangular numbers for crosses in each color
+def _color_pts(n):
+    return n * (n + 1) // 2
 
 
 class EncoreGame(BaseGame):
@@ -206,7 +148,7 @@ class EncoreGame(BaseGame):
                 for c in range(COLS):
                     if self.layout[r][c] == color and sheet[r][c]:
                         count += 1
-            total += COLOR_SCORE_TABLE.get(count, count * 10)
+            total += _color_pts(count)
 
         # Column bonuses
         for c in self.completed_cols[sp]:
@@ -525,41 +467,17 @@ class EncoreGame(BaseGame):
 
     def get_tutorial(self):
         return """
-============================================================
+==========================================================
   ENCORE! - Tutorial
-============================================================
+==========================================================
+  Roll 2 number dice + 3 color dice. Pick a color+number
+  combo to cross off that many adjacent same-color cells.
 
-  OVERVIEW:
-  Roll dice and cross off colored squares on your score sheet.
-  Complete rows and columns for bonus points. Each color has
-  its own scoring track.
+  Active player chooses first, then passive player picks.
+  Jokers (8 each): pick ANY color + ANY number.
 
-  DICE:
-  - 2 Number dice (1-6): determine HOW MANY cells to cross
-  - 3 Color dice: determine WHICH color to cross
-
-  EACH ROUND:
-  1. Active player rolls all 5 dice
-  2. Active player picks one color + one number combo
-     and crosses off that many adjacent cells of that color
-  3. Passive player also picks a combo and crosses off cells
-
-  CROSSING RULES:
-  - Must cross off cells in a straight line (horizontal or vertical)
-  - All cells must be adjacent and the same color
-  - Cannot cross already-crossed cells
-
-  JOKERS:
-  - Each player starts with 8 jokers
-  - Use a joker to pick ANY color and ANY number (1-6)
-
-  SCORING:
-  - Each color: more crosses = exponentially more points
-    (1=1, 2=3, 3=6, 4=10, 5=15, ...)
-  - Column completion: bonus points (5/3/3/5/3/3/5)
-  - Row completion: 2 bonus points each
-
-  WINNING: After 30 rounds (or a player completes all rows),
-  highest score wins!
-============================================================
+  Scoring: color crosses use triangular numbers (1,3,6,10...).
+  Column bonus: 5/3/3/5/3/3/5. Row completion: +2 each.
+  After 30 rounds, highest score wins!
+==========================================================
 """
