@@ -3,60 +3,57 @@
 import random
 from engine.base import BaseGame, input_with_quit, clear_screen
 
-# Dice faces: each die has these 6 faces
-# food, food, food+workers, workers, goods, coins, skull variants
 DICE_FACES = [
-    {'food': 3, 'workers': 0, 'goods': 0, 'coins': 0, 'skulls': 0},  # 3 food
-    {'food': 0, 'workers': 3, 'goods': 0, 'coins': 0, 'skulls': 0},  # 3 workers
-    {'food': 2, 'workers': 2, 'goods': 0, 'coins': 0, 'skulls': 0},  # 2 food + 2 workers
-    {'food': 0, 'workers': 0, 'goods': 2, 'coins': 0, 'skulls': 0},  # 2 goods
-    {'food': 0, 'workers': 0, 'goods': 0, 'coins': 7, 'skulls': 0},  # 7 coins
-    {'food': 0, 'workers': 0, 'goods': 0, 'coins': 0, 'skulls': 1},  # skull
+    {'food': 3, 'workers': 0, 'goods': 0, 'coins': 0, 'skulls': 0},
+    {'food': 0, 'workers': 3, 'goods': 0, 'coins': 0, 'skulls': 0},
+    {'food': 2, 'workers': 2, 'goods': 0, 'coins': 0, 'skulls': 0},
+    {'food': 0, 'workers': 0, 'goods': 2, 'coins': 0, 'skulls': 0},
+    {'food': 0, 'workers': 0, 'goods': 0, 'coins': 7, 'skulls': 0},
+    {'food': 0, 'workers': 0, 'goods': 0, 'coins': 0, 'skulls': 1},
 ]
+FACE_LABELS = ['3 Food', '3 Workers', '2Food+2Work', '2 Goods', '7 Coins', 'Skull']
 
-FACE_LABELS = ['3 Food', '3 Workers', '2 Food+2 Workers', '2 Goods', '7 Coins', 'Skull']
-
-MONUMENTS_STANDARD = {
-    'step_pyramid':  {'workers': 3,  'vp': 1,  'bonus': 3},
-    'stone_henge':   {'workers': 5,  'vp': 2,  'bonus': 4},
-    'temple':        {'workers': 7,  'vp': 4,  'bonus': 6},
-    'hanging_garden': {'workers': 11, 'vp': 6,  'bonus': 8},
-    'great_pyramid': {'workers': 15, 'vp': 8,  'bonus': 12},
-    'great_wall':    {'workers': 13, 'vp': 7,  'bonus': 10},
-    'obelisk':       {'workers': 9,  'vp': 5,  'bonus': 7},
+MONUMENTS = {
+    'standard': {
+        'step_pyramid':   {'w': 3,  'vp': 1,  'bonus': 3},
+        'stone_henge':    {'w': 5,  'vp': 2,  'bonus': 4},
+        'temple':         {'w': 7,  'vp': 4,  'bonus': 6},
+        'obelisk':        {'w': 9,  'vp': 5,  'bonus': 7},
+        'hanging_garden': {'w': 11, 'vp': 6,  'bonus': 8},
+        'great_wall':     {'w': 13, 'vp': 7,  'bonus': 10},
+        'great_pyramid':  {'w': 15, 'vp': 8,  'bonus': 12},
+    },
+    'iron_age_extra': {
+        'colossus':       {'w': 17, 'vp': 10, 'bonus': 14},
+        'great_library':  {'w': 19, 'vp': 12, 'bonus': 16},
+    },
 }
 
-MONUMENTS_IRON_AGE = {
-    **MONUMENTS_STANDARD,
-    'colossus':      {'workers': 17, 'vp': 10, 'bonus': 14},
-    'great_library': {'workers': 19, 'vp': 12, 'bonus': 16},
+DEVELOPMENTS = {
+    'standard': {
+        'leadership':  {'cost': 10, 'vp': 2, 'desc': '+1 worker/turn'},
+        'irrigation':  {'cost': 10, 'vp': 2, 'desc': '+1 food/turn'},
+        'agriculture': {'cost': 15, 'vp': 3, 'desc': '+2 food/turn'},
+        'quarrying':   {'cost': 15, 'vp': 3, 'desc': '+1 goods/turn'},
+        'medicine':    {'cost': 15, 'vp': 3, 'desc': 'No disasters from skulls'},
+        'engineering': {'cost': 20, 'vp': 3, 'desc': 'Goods count as workers'},
+        'caravans':    {'cost': 20, 'vp': 4, 'desc': 'No goods storage limit'},
+        'religion':    {'cost': 25, 'vp': 6, 'desc': 'Skulls give +1 coin each'},
+        'granaries':   {'cost': 25, 'vp': 6, 'desc': 'Swap food/workers freely'},
+        'empire':      {'cost': 30, 'vp': 8, 'desc': '+3 coins/turn'},
+    },
+    'iron_age_extra': {
+        'coinage':     {'cost': 12, 'vp': 2,  'desc': '+2 coins/turn'},
+        'masonry':     {'cost': 18, 'vp': 3,  'desc': 'Monuments cost -2 workers'},
+        'philosophy':  {'cost': 35, 'vp': 10, 'desc': '+1 VP per other dev'},
+    },
 }
 
-DEVELOPMENTS_STANDARD = {
-    'leadership':   {'cost': 10, 'vp': 2,  'desc': '+1 worker per turn'},
-    'irrigation':   {'cost': 10, 'vp': 2,  'desc': '+1 food per turn'},
-    'agriculture':  {'cost': 15, 'vp': 3,  'desc': '+2 food per turn'},
-    'quarrying':    {'cost': 15, 'vp': 3,  'desc': '+1 goods per turn'},
-    'medicine':     {'cost': 15, 'vp': 3,  'desc': 'Skulls do not cause disasters'},
-    'engineering':  {'cost': 20, 'vp': 3,  'desc': 'Use goods as workers'},
-    'caravans':     {'cost': 20, 'vp': 4,  'desc': 'No max on goods storage'},
-    'religion':     {'cost': 25, 'vp': 6,  'desc': 'Skulls give +1 coin each'},
-    'granaries':    {'cost': 25, 'vp': 6,  'desc': 'Swap food and workers freely'},
-    'empire':       {'cost': 30, 'vp': 8,  'desc': '+3 coins per turn'},
-}
-
-DEVELOPMENTS_IRON_AGE = {
-    **DEVELOPMENTS_STANDARD,
-    'coinage':      {'cost': 12, 'vp': 2,  'desc': '+2 coins per turn'},
-    'masonry':      {'cost': 18, 'vp': 3,  'desc': 'Monuments cost 2 fewer workers'},
-    'philosophy':   {'cost': 35, 'vp': 10, 'desc': '+1 VP per development owned'},
-}
-
-MONUMENT_DISPLAY = {
+MON_NAMES = {
     'step_pyramid': 'Step Pyramid', 'stone_henge': 'Stonehenge',
-    'temple': 'Temple', 'hanging_garden': 'Hanging Gardens',
-    'great_pyramid': 'Great Pyramid', 'great_wall': 'Great Wall',
-    'obelisk': 'Obelisk', 'colossus': 'Colossus',
+    'temple': 'Temple', 'obelisk': 'Obelisk',
+    'hanging_garden': 'Hanging Gardens', 'great_wall': 'Great Wall',
+    'great_pyramid': 'Great Pyramid', 'colossus': 'Colossus',
     'great_library': 'Great Library',
 }
 
@@ -69,8 +66,8 @@ class RollThroughAgesGame(BaseGame):
     min_players = 2
     max_players = 2
     variations = {
-        'standard': 'Standard game with base monuments and developments',
-        'iron_age': 'Iron Age variant with extra developments and monuments',
+        'standard': 'Standard monuments and developments',
+        'iron_age': 'Extra developments and monuments',
     }
 
     def __init__(self, variation=None):
@@ -79,32 +76,24 @@ class RollThroughAgesGame(BaseGame):
         self.kept = []
         self.rolls_left = 3
         self.phase = 'roll'
-        self.monuments = {}
-        self.developments = {}
-        self.player_data = {}
+        self.mons = {}
+        self.devs = {}
+        self.pd = {}
+        self.mon_first = {}
 
     def setup(self):
-        if self.variation == 'iron_age':
-            self.monuments = {k: dict(v) for k, v in MONUMENTS_IRON_AGE.items()}
-            self.developments = {k: dict(v) for k, v in DEVELOPMENTS_IRON_AGE.items()}
-        else:
-            self.monuments = {k: dict(v) for k, v in MONUMENTS_STANDARD.items()}
-            self.developments = {k: dict(v) for k, v in DEVELOPMENTS_STANDARD.items()}
-        # Track who completed each monument first (for bonus VP)
-        self.monument_completed_by = {}
-        self.monument_first = {}  # monument -> player who finished first
+        iron = self.variation == 'iron_age'
+        self.mons = dict(MONUMENTS['standard'])
+        self.devs = dict(DEVELOPMENTS['standard'])
+        if iron:
+            self.mons.update(MONUMENTS['iron_age_extra'])
+            self.devs.update(DEVELOPMENTS['iron_age_extra'])
+        self.mon_first = {}
         for p in (1, 2):
-            self.player_data[p] = {
-                'cities': 3,        # start with 3 cities = 3 dice
-                'food': 0,
-                'goods': 0,
-                'coins': 0,
-                'workers': 0,       # temporary per turn
-                'developments': [],
-                'monument_progress': {m: 0 for m in self.monuments},
-                'monuments_completed': [],
-                'disaster_points': 0,
-                'fed': True,
+            self.pd[p] = {
+                'cities': 3, 'food': 0, 'goods': 0, 'coins': 0,
+                'workers': 0, 'devs': [], 'mon_prog': {m: 0 for m in self.mons},
+                'mon_done': [], 'disaster': 0,
             }
         self.dice = []
         self.kept = []
@@ -113,521 +102,284 @@ class RollThroughAgesGame(BaseGame):
         self.game_over = False
         self.winner = None
 
-    # ------------------------------------------------------------------ #
-    #  Helpers
-    # ------------------------------------------------------------------ #
+    def _d(self, p=None):
+        return self.pd[p or self.current_player]
 
-    def _pd(self, player=None):
-        """Shortcut to current player data."""
-        return self.player_data[player or self.current_player]
+    def _has(self, dev, p=None):
+        return dev in self._d(p)['devs']
 
-    def _num_dice(self, player=None):
-        return self._pd(player)['cities']
+    def _gcap(self, p=None):
+        return 99 if self._has('caravans', p) else 6
 
-    def _has_dev(self, dev, player=None):
-        return dev in self._pd(player)['developments']
-
-    def _goods_cap(self, player=None):
-        if self._has_dev('caravans', player):
-            return 99
-        return 6
-
-    def _roll_die(self):
-        return random.randint(0, 5)
-
-    def _tally_dice(self, dice_indices=None):
-        """Sum resources from kept dice and any remaining."""
-        all_dice = self.kept + self.dice
+    def _tally(self):
         totals = {'food': 0, 'workers': 0, 'goods': 0, 'coins': 0, 'skulls': 0}
-        for face_idx in all_dice:
-            face = DICE_FACES[face_idx]
+        for fi in self.kept + self.dice:
             for k in totals:
-                totals[k] += face[k]
+                totals[k] += DICE_FACES[fi][k]
         return totals
 
-    def _calc_vp(self, player):
-        pd = self._pd(player)
-        vp = 0
-        # Monument VP
-        for m in pd['monuments_completed']:
-            vp += self.monuments[m]['vp']
-            if self.monument_first.get(m) == player:
-                vp += self.monuments[m]['bonus'] - self.monuments[m]['vp']
-        # Development VP
-        for d in pd['developments']:
-            vp += self.developments[d]['vp']
-        # Philosophy bonus
-        if 'philosophy' in pd['developments']:
-            vp += len(pd['developments']) - 1  # exclude philosophy itself
-        # Disaster penalty
-        vp -= pd['disaster_points']
+    def _vp(self, p):
+        d = self._d(p)
+        vp = -d['disaster']
+        for m in d['mon_done']:
+            vp += self.mons[m]['bonus'] if self.mon_first.get(m) == p else self.mons[m]['vp']
+        for dv in d['devs']:
+            vp += self.devs[dv]['vp']
+        if 'philosophy' in d['devs']:
+            vp += len(d['devs']) - 1
         return vp
 
-    # ------------------------------------------------------------------ #
-    #  Display
-    # ------------------------------------------------------------------ #
-
-    def _render_dice_row(self):
-        lines = []
-        all_dice = self.kept + self.dice
-        if not all_dice:
-            return "  No dice rolled yet."
-        header = ""
-        for i, face_idx in enumerate(all_dice):
-            tag = "[KEPT] " if i < len(self.kept) else "       "
-            header += f"  {tag}Die {i + 1}    "
-        lines.append(header)
-        row = ""
-        for i, face_idx in enumerate(all_dice):
-            row += f"  [{FACE_LABELS[face_idx]:^17s}]"
-        lines.append(row)
-        return "\n".join(lines)
+    # -- Display --------------------------------------------------------- #
 
     def display(self):
-        pd = self._pd()
         p = self.current_player
         print(f"\n{'=' * 64}")
         print(f"  ROLL THROUGH THE AGES  -  Turn {self.turn_number + 1}"
-              f"  -  {self.players[p - 1]}'s turn  ({self.phase} phase)")
+              f"  -  {self.players[p - 1]}'s turn  [{self.phase}]")
         print(f"{'=' * 64}")
-        # Both players' stats
         for pl in (1, 2):
-            d = self._pd(pl)
-            marker = " <<" if pl == p else ""
-            print(f"\n  {self.players[pl - 1]}{marker}")
-            print(f"    Cities: {d['cities']}  |  Food: {d['food']}"
-                  f"  |  Goods: {d['goods']}/{self._goods_cap(pl)}"
-                  f"  |  Coins: {d['coins']}  |  VP: {self._calc_vp(pl)}")
-            devs = ', '.join(d['developments']) if d['developments'] else 'none'
-            print(f"    Developments: {devs}")
-            if d['disaster_points'] > 0:
-                print(f"    Disaster penalties: -{d['disaster_points']} VP")
-        # Monuments
-        print(f"\n  {'--- Monuments ---':^60}")
-        for m, info in self.monuments.items():
-            name = MONUMENT_DISPLAY.get(m, m)
-            p1_prog = self._pd(1)['monument_progress'][m]
-            p2_prog = self._pd(2)['monument_progress'][m]
-            total = info['workers']
-            first = self.monument_first.get(m)
-            status = ""
-            if first:
-                status = f" [Completed first by {self.players[first - 1]}]"
-            print(f"    {name:<18s} ({total:>2} workers) "
-                  f"P1:{p1_prog:>2}/{total}  P2:{p2_prog:>2}/{total}{status}")
-        # Dice
+            d = self._d(pl)
+            tag = " <<" if pl == p else ""
+            print(f"\n  {self.players[pl - 1]}{tag}")
+            print(f"    Cities:{d['cities']}  Food:{d['food']}  "
+                  f"Goods:{d['goods']}/{self._gcap(pl)}  "
+                  f"Coins:{d['coins']}  Workers:{d['workers']}  VP:{self._vp(pl)}")
+            devs = ', '.join(d['devs']) if d['devs'] else 'none'
+            print(f"    Devs: {devs}")
+            if d['disaster']:
+                print(f"    Disaster penalty: -{d['disaster']} VP")
+        print(f"\n  --- Monuments ---")
+        for m, info in self.mons.items():
+            nm = MON_NAMES.get(m, m)
+            p1 = self._d(1)['mon_prog'][m]
+            p2 = self._d(2)['mon_prog'][m]
+            w = info['w']
+            first = f" [1st: {self.players[self.mon_first[m] - 1]}]" if m in self.mon_first else ""
+            print(f"    {nm:<18s} need:{w:>2}  P1:{p1:>2}/{w}  P2:{p2:>2}/{w}{first}")
         if self.phase == 'roll' and (self.kept or self.dice):
             print(f"\n  --- Dice (Rolls left: {self.rolls_left}) ---")
-            print(self._render_dice_row())
+            all_d = self.kept + self.dice
+            tags = ["[K]" if i < len(self.kept) else "   " for i in range(len(all_d))]
+            print("  " + "  ".join(f"{tags[i]} {FACE_LABELS[all_d[i]]:<13s}" for i in range(len(all_d))))
         print()
 
-    # ------------------------------------------------------------------ #
-    #  Move handling
-    # ------------------------------------------------------------------ #
+    # -- Roll helpers ---------------------------------------------------- #
 
-    def get_move(self):
-        pd = self._pd()
-        while True:
-            if self.phase == 'roll':
-                if self.rolls_left == 3:
-                    raw = input_with_quit(f"  {self.players[self.current_player - 1]}"
-                                          f", type 'roll' to roll {self._num_dice()} dice: ").strip().lower()
-                elif self.rolls_left > 0:
-                    raw = input_with_quit("  'roll', 'keep 1 3' to keep dice, or 'done' to finish rolling: ").strip().lower()
-                else:
-                    return ('end_roll',)
-                if not raw:
-                    continue
-                parts = raw.split()
-                cmd = parts[0]
-                if cmd == 'roll':
-                    if self.rolls_left <= 0:
-                        print("  No rolls left!")
-                        continue
-                    return ('roll',)
-                if cmd == 'keep' and self.rolls_left < 3:
-                    try:
-                        indices = [int(x) for x in parts[1:]]
-                    except ValueError:
-                        print("  Usage: keep 1 3 5")
-                        continue
-                    total = len(self.kept) + len(self.dice)
-                    if any(i < 1 or i > total for i in indices):
-                        print(f"  Dice numbers must be 1-{total}.")
-                        continue
-                    # Only allow keeping unkept dice
-                    kept_count = len(self.kept)
-                    for idx in indices:
-                        if idx <= kept_count:
-                            print(f"  Die {idx} is already kept.")
-                            continue
-                    return ('keep', indices)
-                if cmd == 'done' and self.rolls_left < 3:
-                    return ('end_roll',)
-                print("  Commands: roll, keep <nums>, done")
-            elif self.phase == 'feed':
-                needed = pd['cities']
-                have = pd['food']
-                print(f"  You need {needed} food to feed {needed} cities. You have {have} food.")
-                if have >= needed:
-                    raw = input_with_quit("  'feed' to feed your people: ").strip().lower()
-                    if raw == 'feed':
-                        return ('feed',)
-                else:
-                    raw = input_with_quit("  'feed' to feed (will lose VP for shortage): ").strip().lower()
-                    if raw == 'feed':
-                        return ('feed',)
-                print("  Type 'feed'.")
-            elif self.phase == 'build':
-                print("  Actions: 'city' (build city), 'monument <name> <workers>',"
-                      " 'buy <development>', 'done' (end turn)")
-                raw = input_with_quit("  > ").strip().lower()
-                if not raw:
-                    continue
-                parts = raw.split()
-                cmd = parts[0]
-                if cmd == 'done':
-                    return ('end_turn',)
-                if cmd == 'city':
-                    return ('build_city',)
-                if cmd == 'monument' and len(parts) >= 3:
-                    name = parts[1]
-                    try:
-                        w = int(parts[2])
-                    except ValueError:
-                        print("  Usage: monument <name> <workers>")
-                        continue
-                    return ('build_monument', name, w)
-                if cmd == 'monument' and len(parts) == 2:
-                    print("  Usage: monument <name> <workers>")
-                    continue
-                if cmd == 'buy' and len(parts) >= 2:
-                    dev = parts[1]
-                    return ('buy_dev', dev)
-                if cmd == 'list':
-                    self._show_available()
-                    continue
-                print("  Unknown command. Type 'list' to see options, 'done' to end turn.")
+    def _do_roll(self):
+        n = self._d()['cities'] - len(self.kept)
+        self.dice = [random.randint(0, 5) for _ in range(n)]
+        self.rolls_left -= 1
+        new_kept, remaining = list(self.kept), []
+        for fi in self.dice:
+            (new_kept if DICE_FACES[fi]['skulls'] > 0 else remaining).append(fi)
+        self.kept, self.dice = new_kept, remaining
 
-    def _show_available(self):
-        pd = self._pd()
-        print("\n  Available developments:")
-        for d, info in self.developments.items():
-            if d not in pd['developments']:
-                print(f"    {d:<15s} cost:{info['cost']:>3} coins/goods  "
-                      f"VP:{info['vp']:>2}  {info['desc']}")
-        print()
-
-    def make_move(self, move):
-        action = move[0]
-        pd = self._pd()
-
-        if action == 'roll':
-            # Roll unkept dice
-            n = self._num_dice() - len(self.kept)
-            self.dice = [self._roll_die() for _ in range(n)]
-            self.rolls_left -= 1
-            # Must keep skulls
-            new_kept = list(self.kept)
-            remaining = []
-            for face_idx in self.dice:
-                if DICE_FACES[face_idx]['skulls'] > 0:
-                    new_kept.append(face_idx)
-                else:
-                    remaining.append(face_idx)
-            self.kept = new_kept
-            self.dice = remaining
-            if self.rolls_left <= 0 or not self.dice:
-                return self._process_end_roll()
-            return self._continue_roll_phase()
-
-        if action == 'keep':
-            indices = move[1]
-            kept_count = len(self.kept)
-            new_kept = list(self.kept)
-            remaining = []
-            for i, face_idx in enumerate(self.dice):
-                actual_idx = kept_count + i + 1
-                if actual_idx in indices:
-                    new_kept.append(face_idx)
-                else:
-                    remaining.append(face_idx)
-            self.kept = new_kept
-            self.dice = remaining
-            if not self.dice:
-                return self._process_end_roll()
-            return self._continue_roll_phase()
-
-        if action == 'end_roll':
-            return self._process_end_roll()
-
-        if action == 'feed':
-            needed = pd['cities']
-            if pd['food'] >= needed:
-                pd['food'] -= needed
-            else:
-                shortage = needed - pd['food']
-                pd['food'] = 0
-                pd['disaster_points'] += shortage
-                print(f"  Lost {shortage} VP from starvation!")
-                input("  Press Enter to continue...")
-            pd['fed'] = True
-            self.phase = 'build'
-            return self._continue_build_phase()
-
-        if action == 'build_city':
-            # Cost: 7 workers to add a city (max 7 cities)
-            if pd['cities'] >= 7:
-                print("  Maximum 7 cities!")
-                input("  Press Enter...")
-                return self._continue_build_phase()
-            cost = 3 + pd['cities']  # progressive cost: 4,5,6,7
-            if pd['workers'] >= cost:
-                pd['workers'] -= cost
-                pd['cities'] += 1
-                print(f"  Built a city! Now have {pd['cities']} cities.")
-                input("  Press Enter...")
-            else:
-                print(f"  Need {cost} workers to build next city. You have {pd['workers']}.")
-                input("  Press Enter...")
-            return self._continue_build_phase()
-
-        if action == 'build_monument':
-            name = move[1]
-            workers = move[2]
-            if name not in self.monuments:
-                print(f"  Unknown monument '{name}'. Available: {', '.join(self.monuments.keys())}")
-                input("  Press Enter...")
-                return self._continue_build_phase()
-            if name in pd['monuments_completed']:
-                print(f"  You already completed {MONUMENT_DISPLAY.get(name, name)}!")
-                input("  Press Enter...")
-                return self._continue_build_phase()
-            total_needed = self.monuments[name]['workers']
-            if self._has_dev('masonry'):
-                total_needed = max(1, total_needed - 2)
-            remaining = total_needed - pd['monument_progress'][name]
-            actual = min(workers, pd['workers'], remaining)
-            if actual <= 0:
-                print("  No workers to assign or monument already complete.")
-                input("  Press Enter...")
-                return self._continue_build_phase()
-            pd['workers'] -= actual
-            pd['monument_progress'][name] += actual
-            if pd['monument_progress'][name] >= total_needed:
-                pd['monuments_completed'].append(name)
-                if name not in self.monument_first:
-                    self.monument_first[name] = self.current_player
-                    print(f"  Completed {MONUMENT_DISPLAY.get(name, name)} FIRST! "
-                          f"Bonus VP: {self.monuments[name]['bonus']}!")
-                else:
-                    print(f"  Completed {MONUMENT_DISPLAY.get(name, name)}! "
-                          f"VP: {self.monuments[name]['vp']}")
-            else:
-                print(f"  Assigned {actual} workers to {MONUMENT_DISPLAY.get(name, name)}. "
-                      f"Progress: {pd['monument_progress'][name]}/{total_needed}")
-            input("  Press Enter...")
-            return self._continue_build_phase()
-
-        if action == 'buy_dev':
-            dev = move[1]
-            if dev not in self.developments:
-                print(f"  Unknown development. Type 'list' to see options.")
-                input("  Press Enter...")
-                return self._continue_build_phase()
-            if dev in pd['developments']:
-                print(f"  You already have {dev}!")
-                input("  Press Enter...")
-                return self._continue_build_phase()
-            cost = self.developments[dev]['cost']
-            total_funds = pd['coins'] + pd['goods']
-            if total_funds < cost:
-                print(f"  Need {cost} coins+goods. You have {pd['coins']} coins + {pd['goods']} goods = {total_funds}.")
-                input("  Press Enter...")
-                return self._continue_build_phase()
-            # Spend goods first, then coins
-            spent = 0
-            goods_spent = min(pd['goods'], cost)
-            pd['goods'] -= goods_spent
-            spent += goods_spent
-            if spent < cost:
-                coins_needed = cost - spent
-                pd['coins'] -= coins_needed
-            pd['developments'].append(dev)
-            print(f"  Purchased {dev}! {self.developments[dev]['desc']}")
-            input("  Press Enter...")
-            return self._continue_build_phase()
-
-        if action == 'end_turn':
-            # Apply engineering: leftover workers can convert to goods
-            self.phase = 'roll'
-            self.dice = []
-            self.kept = []
-            self.rolls_left = 3
-            pd['workers'] = 0
-            return True
-
-        return False
+    def _do_keep(self, indices):
+        kc = len(self.kept)
+        new_kept, remaining = list(self.kept), []
+        for i, fi in enumerate(self.dice):
+            (new_kept if (kc + i + 1) in indices else remaining).append(fi)
+        self.kept, self.dice = new_kept, remaining
 
     def _process_end_roll(self):
-        """Tally dice results and move to feed phase."""
-        pd = self._pd()
-        totals = self._tally_dice()
-        # Apply development bonuses
-        if self._has_dev('irrigation'):
-            totals['food'] += 1
-        if self._has_dev('agriculture'):
-            totals['food'] += 2
-        if self._has_dev('leadership'):
-            totals['workers'] += 1
-        if self._has_dev('quarrying'):
-            totals['goods'] += 1
-        if self._has_dev('empire'):
-            totals['coins'] += 3
-        if self._has_dev('coinage'):
-            totals['coins'] += 2
-        if self._has_dev('religion'):
-            totals['coins'] += totals['skulls']
-        # Handle skulls (disasters)
-        if totals['skulls'] >= 2 and not self._has_dev('medicine'):
-            disaster_penalty = totals['skulls'] - 1
-            # Disaster hits opponent with fewer VP, or both
-            other = 2 if self.current_player == 1 else 1
-            self._pd(other)['disaster_points'] += disaster_penalty
-            print(f"  Disaster! {totals['skulls']} skulls - {self.players[other - 1]}"
-                  f" loses {disaster_penalty} VP!")
+        d = self._d()
+        t = self._tally()
+        for dev, key, amt in [('irrigation', 'food', 1), ('agriculture', 'food', 2),
+                               ('leadership', 'workers', 1), ('quarrying', 'goods', 1),
+                               ('empire', 'coins', 3), ('coinage', 'coins', 2)]:
+            if self._has(dev):
+                t[key] += amt
+        if self._has('religion'):
+            t['coins'] += t['skulls']
+        if t['skulls'] >= 2 and not self._has('medicine'):
+            other = 3 - self.current_player
+            penalty = t['skulls'] - 1
+            self._d(other)['disaster'] += penalty
+            print(f"  Disaster! {t['skulls']} skulls - {self.players[other - 1]} loses {penalty} VP!")
             input("  Press Enter...")
-        # Apply resources
-        pd['food'] += totals['food']
-        pd['workers'] = totals['workers']
-        # Goods and coins accumulate
-        pd['goods'] = min(pd['goods'] + totals['goods'], self._goods_cap())
-        pd['coins'] += totals['coins']
-        if self._has_dev('granaries'):
-            # Can swap food and workers
-            pass  # handled implicitly - player decides allocation
-        if self._has_dev('engineering'):
-            # Goods can be used as workers later in build phase
-            pass
+        d['food'] += t['food']
+        d['workers'] = t['workers']
+        d['goods'] = min(d['goods'] + t['goods'], self._gcap())
+        d['coins'] += t['coins']
         self.phase = 'feed'
         self.dice = []
-        return self._continue_feed_phase()
 
-    def _continue_roll_phase(self):
+    def _run_roll_phase(self):
+        """Handle entire roll phase interactively."""
         while True:
             clear_screen()
             self.display()
-            try:
-                move = self.get_move()
-            except Exception:
-                raise
-            if move[0] == 'roll':
-                n = self._num_dice() - len(self.kept)
-                self.dice = [self._roll_die() for _ in range(n)]
-                self.rolls_left -= 1
-                new_kept = list(self.kept)
-                remaining = []
-                for face_idx in self.dice:
-                    if DICE_FACES[face_idx]['skulls'] > 0:
-                        new_kept.append(face_idx)
-                    else:
-                        remaining.append(face_idx)
-                self.kept = new_kept
-                self.dice = remaining
+            if self.rolls_left == 3:
+                raw = input_with_quit(f"  Type 'roll' to roll {self._d()['cities']} dice: ").strip().lower()
+            elif self.rolls_left > 0:
+                raw = input_with_quit("  'roll', 'keep 1 3', or 'done': ").strip().lower()
+            else:
+                self._process_end_roll()
+                return
+            if not raw:
+                continue
+            parts = raw.split()
+            cmd = parts[0]
+            if cmd == 'roll' and self.rolls_left > 0:
+                self._do_roll()
                 if self.rolls_left <= 0 or not self.dice:
-                    return self._process_end_roll()
-                continue
-            if move[0] == 'keep':
-                indices = move[1]
-                kept_count = len(self.kept)
-                new_kept = list(self.kept)
-                remaining = []
-                for i, face_idx in enumerate(self.dice):
-                    actual_idx = kept_count + i + 1
-                    if actual_idx in indices:
-                        new_kept.append(face_idx)
-                    else:
-                        remaining.append(face_idx)
-                self.kept = new_kept
-                self.dice = remaining
+                    self._process_end_roll()
+                    return
+            elif cmd == 'keep' and 0 < self.rolls_left < 3:
+                try:
+                    idxs = [int(x) for x in parts[1:]]
+                except ValueError:
+                    print("  Usage: keep 1 3 5"); continue
+                total = len(self.kept) + len(self.dice)
+                if any(i < 1 or i > total or i <= len(self.kept) for i in idxs):
+                    print("  Invalid die numbers."); continue
+                self._do_keep(idxs)
                 if not self.dice:
-                    return self._process_end_roll()
+                    self._process_end_roll()
+                    return
+            elif cmd == 'done' and self.rolls_left < 3:
+                self._process_end_roll()
+                return
+            else:
+                print("  Commands: roll, keep <nums>, done")
+
+    def _run_feed_phase(self):
+        d = self._d()
+        while True:
+            clear_screen()
+            self.display()
+            needed = d['cities']
+            print(f"  Need {needed} food for {needed} cities. Have {d['food']} food.")
+            raw = input_with_quit("  Type 'feed': ").strip().lower()
+            if raw == 'feed':
+                if d['food'] >= needed:
+                    d['food'] -= needed
+                else:
+                    short = needed - d['food']
+                    d['food'] = 0
+                    d['disaster'] += short
+                    print(f"  Lost {short} VP from starvation!")
+                    input("  Press Enter...")
+                self.phase = 'build'
+                return
+
+    def _run_build_phase(self):
+        d = self._d()
+        while True:
+            clear_screen()
+            self.display()
+            print(f"  Workers: {d['workers']}  Coins: {d['coins']}  Goods: {d['goods']}")
+            print("  'city', 'monument <name> <w>', 'buy <dev>', 'list', 'done'")
+            raw = input_with_quit("  > ").strip().lower()
+            if not raw:
                 continue
-            if move[0] == 'end_roll':
-                return self._process_end_roll()
+            parts = raw.split()
+            cmd = parts[0]
 
-    def _continue_feed_phase(self):
-        while True:
-            clear_screen()
-            self.display()
-            try:
-                move = self.get_move()
-            except Exception:
-                raise
-            if move[0] == 'feed':
-                return self.make_move(move)
+            if cmd == 'done':
+                self.phase = 'roll'
+                self.dice, self.kept, self.rolls_left = [], [], 3
+                d['workers'] = 0
+                return
 
-    def _continue_build_phase(self):
-        while True:
-            clear_screen()
-            self.display()
-            try:
-                move = self.get_move()
-            except Exception:
-                raise
-            result = self.make_move(move)
-            if move[0] == 'end_turn':
-                return True
+            if cmd == 'list':
+                print("\n  Available developments:")
+                for dv, info in self.devs.items():
+                    if dv not in d['devs']:
+                        print(f"    {dv:<14s} cost:{info['cost']:>3}  VP:{info['vp']:>2}  {info['desc']}")
+                input("  Press Enter...")
+                continue
 
-    # ------------------------------------------------------------------ #
-    #  Game over
-    # ------------------------------------------------------------------ #
+            if cmd == 'city':
+                if d['cities'] >= 7:
+                    print("  Max 7 cities!"); input("  Press Enter..."); continue
+                cost = 3 + d['cities']
+                if d['workers'] < cost:
+                    print(f"  Need {cost} workers, have {d['workers']}."); input("  Press Enter..."); continue
+                d['workers'] -= cost
+                d['cities'] += 1
+                print(f"  Built city! Now {d['cities']} cities.")
+                input("  Press Enter...")
+
+            elif cmd == 'monument' and len(parts) >= 3:
+                name = parts[1]
+                try:
+                    w = int(parts[2])
+                except ValueError:
+                    print("  Usage: monument <name> <workers>"); input("  Press Enter..."); continue
+                if name not in self.mons:
+                    print(f"  Unknown. Options: {', '.join(self.mons)}"); input("  Press Enter..."); continue
+                if name in d['mon_done']:
+                    print("  Already completed!"); input("  Press Enter..."); continue
+                total_w = self.mons[name]['w'] - (2 if self._has('masonry') else 0)
+                total_w = max(1, total_w)
+                remain = total_w - d['mon_prog'][name]
+                actual = min(w, d['workers'], remain)
+                if actual <= 0:
+                    print("  No workers or already done."); input("  Press Enter..."); continue
+                d['workers'] -= actual
+                d['mon_prog'][name] += actual
+                if d['mon_prog'][name] >= total_w:
+                    d['mon_done'].append(name)
+                    nm = MON_NAMES.get(name, name)
+                    if name not in self.mon_first:
+                        self.mon_first[name] = self.current_player
+                        print(f"  Completed {nm} FIRST! Bonus VP: {self.mons[name]['bonus']}!")
+                    else:
+                        print(f"  Completed {nm}! VP: {self.mons[name]['vp']}")
+                else:
+                    print(f"  +{actual} workers -> {d['mon_prog'][name]}/{total_w}")
+                input("  Press Enter...")
+
+            elif cmd == 'buy' and len(parts) >= 2:
+                dv = parts[1]
+                if dv not in self.devs:
+                    print("  Unknown dev. Type 'list'."); input("  Press Enter..."); continue
+                if dv in d['devs']:
+                    print("  Already owned!"); input("  Press Enter..."); continue
+                cost = self.devs[dv]['cost']
+                funds = d['coins'] + d['goods']
+                if funds < cost:
+                    print(f"  Need {cost}, have {d['coins']}c+{d['goods']}g={funds}."); input("  Press Enter..."); continue
+                g_spent = min(d['goods'], cost)
+                d['goods'] -= g_spent
+                d['coins'] -= (cost - g_spent)
+                d['devs'].append(dv)
+                print(f"  Bought {dv}! {self.devs[dv]['desc']}")
+                input("  Press Enter...")
+            else:
+                print("  Unknown command.")
+
+    # -- Main move interface --------------------------------------------- #
+
+    def get_move(self):
+        return ('turn',)
+
+    def make_move(self, move):
+        self._run_roll_phase()
+        self._run_feed_phase()
+        self._run_build_phase()
+        return True
+
+    # -- Game over ------------------------------------------------------- #
 
     def check_game_over(self):
-        # Game ends when: all monuments completed OR any player has 5+ developments
-        all_monuments_done = all(
-            m in self._pd(1)['monuments_completed'] or m in self._pd(2)['monuments_completed']
-            for m in self.monuments
-        )
-        five_devs = any(
-            len(self._pd(p)['developments']) >= 5 for p in (1, 2)
-        )
-        if all_monuments_done or five_devs:
+        all_done = all(
+            m in self._d(1)['mon_done'] or m in self._d(2)['mon_done']
+            for m in self.mons)
+        five_devs = any(len(self._d(p)['devs']) >= 5 for p in (1, 2))
+        if all_done or five_devs:
             self.game_over = True
-            vp1 = self._calc_vp(1)
-            vp2 = self._calc_vp(2)
-            if vp1 > vp2:
-                self.winner = 1
-            elif vp2 > vp1:
-                self.winner = 2
-            else:
-                self.winner = None
+            v1, v2 = self._vp(1), self._vp(2)
+            self.winner = 1 if v1 > v2 else (2 if v2 > v1 else None)
 
-    # ------------------------------------------------------------------ #
-    #  Save / Load
-    # ------------------------------------------------------------------ #
+    # -- Save / Load ----------------------------------------------------- #
 
     def get_state(self):
         return {
-            'dice': self.dice,
-            'kept': self.kept,
-            'rolls_left': self.rolls_left,
-            'phase': self.phase,
-            'monument_first': {k: v for k, v in self.monument_first.items()},
-            'player_data': {
-                str(p): {
-                    'cities': self._pd(p)['cities'],
-                    'food': self._pd(p)['food'],
-                    'goods': self._pd(p)['goods'],
-                    'coins': self._pd(p)['coins'],
-                    'workers': self._pd(p)['workers'],
-                    'developments': list(self._pd(p)['developments']),
-                    'monument_progress': dict(self._pd(p)['monument_progress']),
-                    'monuments_completed': list(self._pd(p)['monuments_completed']),
-                    'disaster_points': self._pd(p)['disaster_points'],
-                    'fed': self._pd(p)['fed'],
-                } for p in (1, 2)
-            },
+            'dice': self.dice, 'kept': self.kept, 'rolls_left': self.rolls_left,
+            'phase': self.phase, 'mon_first': dict(self.mon_first),
+            'pd': {str(p): dict(self._d(p)) for p in (1, 2)},
         }
 
     def load_state(self, state):
@@ -635,34 +387,25 @@ class RollThroughAgesGame(BaseGame):
         self.kept = state['kept']
         self.rolls_left = state['rolls_left']
         self.phase = state['phase']
-        self.monument_first = state.get('monument_first', {})
-        if self.variation == 'iron_age':
-            self.monuments = {k: dict(v) for k, v in MONUMENTS_IRON_AGE.items()}
-            self.developments = {k: dict(v) for k, v in DEVELOPMENTS_IRON_AGE.items()}
-        else:
-            self.monuments = {k: dict(v) for k, v in MONUMENTS_STANDARD.items()}
-            self.developments = {k: dict(v) for k, v in DEVELOPMENTS_STANDARD.items()}
-        for p_str, pdata in state['player_data'].items():
-            p = int(p_str)
-            self.player_data[p] = {
-                'cities': pdata['cities'],
-                'food': pdata['food'],
-                'goods': pdata['goods'],
-                'coins': pdata['coins'],
-                'workers': pdata['workers'],
-                'developments': list(pdata['developments']),
-                'monument_progress': dict(pdata['monument_progress']),
-                'monuments_completed': list(pdata['monuments_completed']),
-                'disaster_points': pdata['disaster_points'],
-                'fed': pdata.get('fed', True),
-            }
+        self.mon_first = {k: int(v) if isinstance(v, str) else v
+                          for k, v in state.get('mon_first', {}).items()}
+        iron = self.variation == 'iron_age'
+        self.mons = dict(MONUMENTS['standard'])
+        self.devs = dict(DEVELOPMENTS['standard'])
+        if iron:
+            self.mons.update(MONUMENTS['iron_age_extra'])
+            self.devs.update(DEVELOPMENTS['iron_age_extra'])
+        for ps, pdata in state['pd'].items():
+            p = int(ps)
+            self.pd[p] = dict(pdata)
+            self.pd[p]['mon_prog'] = dict(pdata['mon_prog'])
+            self.pd[p]['mon_done'] = list(pdata['mon_done'])
+            self.pd[p]['devs'] = list(pdata['devs'])
 
-    # ------------------------------------------------------------------ #
-    #  Tutorial
-    # ------------------------------------------------------------------ #
+    # -- Tutorial -------------------------------------------------------- #
 
     def get_tutorial(self):
-        txt = """
+        t = """
 ==================================================
   ROLL THROUGH THE AGES TUTORIAL
 ==================================================
@@ -677,78 +420,69 @@ EACH TURN HAS 3 PHASES:
 
   1. ROLL PHASE
      Roll dice equal to your number of cities
-     (start with 3). You get up to 3 rolls.
-     After each roll you may keep dice or reroll.
-     Skulls MUST be kept and cannot be rerolled.
+     (start with 3). Up to 3 rolls per turn.
+     Keep dice between rolls. Skulls MUST be kept.
 
      Dice faces:
-       3 Food         - feeds your cities
-       3 Workers      - build cities/monuments
-       2 Food+Workers - split resources
-       2 Goods        - accumulate for buying
-       7 Coins        - buy developments
-       Skull          - disasters if 2+ rolled
+       3 Food          - feeds your cities
+       3 Workers       - build cities/monuments
+       2 Food+2 Work   - split resources
+       2 Goods         - accumulate for buying
+       7 Coins         - buy developments
+       Skull           - disasters if 2+ rolled
 
   2. FEED PHASE
-     You must feed your cities (1 food per city).
-     Shortages cost 1 VP per missing food.
+     Feed cities (1 food per city). Shortages
+     cost 1 VP per missing food.
 
   3. BUILD PHASE
      Spend workers and resources:
-     - 'city'                  Build a new city
-                               (more dice next turn)
-     - 'monument <name> <n>'   Assign workers to
-                               a monument
-     - 'buy <development>'     Buy a development
-                               with coins+goods
-     - 'list'                  Show available buys
-     - 'done'                  End your turn
+     - 'city'                 Build a new city
+       (cost = 3 + current cities; max 7)
+     - 'monument <name> <n>'  Assign n workers
+     - 'buy <development>'    Buy with coins+goods
+     - 'list'                 Show what you can buy
+     - 'done'                 End your turn
 
 MONUMENTS:
-  Shared between players. First to complete a
-  monument earns bonus VP. Cost is in workers
-  that can be assigned over multiple turns.
+  Shared race - first to complete gets bonus VP.
+  Workers assigned over multiple turns.
 
 DEVELOPMENTS:
-  Purchased with coins and goods. Each gives VP
-  and a special ability. Examples:
-    leadership  - +1 worker per turn
-    irrigation  - +1 food per turn
-    medicine    - skulls cause no disasters
-    engineering - use goods as workers
+  Buy with coins + goods combined. Each gives
+  VP and a special ability:
+    leadership  (+1 worker)   irrigation (+1 food)
+    agriculture (+2 food)     quarrying  (+1 goods)
+    medicine    (no disasters) engineering (goods=workers)
+    caravans    (no goods cap) religion   (skull coins)
+    granaries   (swap food/work) empire   (+3 coins)
 
 DISASTERS:
-  Rolling 2+ skulls triggers a disaster. The
-  opponent with fewer VP loses (skulls-1) VP.
+  2+ skulls: opponent loses (skulls-1) VP.
+  Medicine development prevents this.
 
 GAME END:
-  The game ends when ALL monuments are completed
-  (across both players) or any player purchases
-  5 developments. Highest VP wins!
+  All monuments completed (between both players)
+  OR any player buys 5 developments.
+  Highest VP wins!
 """
         if self.variation == 'iron_age':
-            txt += """
+            t += """
 IRON AGE VARIANT:
-  Adds extra monuments (Colossus, Great Library)
-  and developments (Coinage, Masonry, Philosophy).
-  Masonry reduces monument costs by 2 workers.
-  Philosophy grants +1 VP per other development.
+  Extra monuments: Colossus (17w), Great Library (19w)
+  Extra developments: Coinage (+2 coins/turn),
+    Masonry (monuments -2 workers),
+    Philosophy (+1 VP per other dev owned)
 """
-        txt += """
+        t += """
 COMMANDS:
-  roll              - Roll/reroll the dice
-  keep 1 3 5        - Keep specific dice
-  done              - End rolling / end turn
-  feed              - Feed your cities
-  city              - Build a new city
-  monument <n> <w>  - Build monument with workers
-  buy <dev>         - Buy a development
-  list              - List available purchases
+  roll / keep 1 3 / done  - Rolling phase
+  feed                    - Feed phase
+  city / monument / buy   - Build phase
+  list                    - Show purchasable devs
 
-  quit / q          - Quit the game
-  save / s          - Save and suspend
-  help / h          - Show help
-  tutorial / t      - Show this tutorial
+  quit / q   - Quit    save / s - Save
+  help / h   - Help    tutorial / t - Tutorial
 ==================================================
 """
-        return txt
+        return t
