@@ -24,20 +24,14 @@ EXPLORE_CARDS = [
      "shapes": [[(0, 0), (0, 1)]]},
     {"name": "Homestead", "time": 2, "terrains": ["Farm", "Village"],
      "shapes": [[(0, 0), (1, 0), (1, 1), (2, 1)]]},
-    {"name": "Hinterland Stream", "time": 2, "terrains": ["Water", "Farm"],
-     "shapes": [[(0, 0), (0, 1), (0, 2), (1, 0)]]},
     {"name": "Great River", "time": 1, "terrains": ["Water"],
      "shapes": [[(0, 0), (1, 0), (2, 0)]]},
     {"name": "Hamlet", "time": 1, "terrains": ["Village"],
      "shapes": [[(0, 0), (0, 1), (1, 0)]]},
-    {"name": "Fishing Village", "time": 2, "terrains": ["Village", "Water"],
-     "shapes": [[(0, 0), (0, 1), (0, 2), (0, 3)]]},
     {"name": "Forgotten Forest", "time": 2, "terrains": ["Forest"],
      "shapes": [[(0, 0), (0, 1), (1, 0), (1, 1)]]},
     {"name": "Orchard", "time": 2, "terrains": ["Forest", "Farm"],
      "shapes": [[(0, 0), (1, 0), (2, 0), (2, 1)]]},
-    {"name": "Marshlands", "time": 2, "terrains": ["Water"],
-     "shapes": [[(0, 0), (0, 1), (0, 2), (1, 1)]]},
     {"name": "Rift Lands", "time": 0, "terrains": ["Forest", "Village", "Farm", "Water"],
      "shapes": [[(0, 0)]]},
 ]
@@ -149,122 +143,92 @@ class CartographersHeroesGame(BaseGame):
             self.current_card["is_monster"] = False
             self.phase = "place"
 
+    def _find_clusters(self, grid, terrain):
+        """Find all connected clusters of a terrain type."""
+        sz, visited, clusters = self.GRID_SIZE, set(), []
+        for r in range(sz):
+            for c in range(sz):
+                if grid[r][c] == terrain and (r, c) not in visited:
+                    cluster, stack = [], [(r, c)]
+                    while stack:
+                        cr, cc = stack.pop()
+                        if (cr, cc) in visited or grid[cr][cc] != terrain:
+                            continue
+                        visited.add((cr, cc))
+                        cluster.append((cr, cc))
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = cr + dr, cc + dc
+                            if 0 <= nr < sz and 0 <= nc < sz:
+                                stack.append((nr, nc))
+                    clusters.append(cluster)
+        return clusters
+
+    def _adj_terrain(self, grid, r, c, terrain):
+        """Check if cell (r,c) is adjacent to given terrain."""
+        sz = self.GRID_SIZE
+        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < sz and 0 <= nc < sz and grid[nr][nc] == terrain:
+                return True
+        return False
+
     def _score_goal(self, player, goal_id):
         """Score a single goal for a player."""
-        sp = str(player)
-        grid = self.grids[sp]
-        sz = self.GRID_SIZE
-        score = 0
-
+        grid, sz, score = self.grids[str(player)], self.GRID_SIZE, 0
+        filled = lambda r, c: grid[r][c] not in ("Empty", "Ruins")
         if goal_id == "borderlands":
             for r in range(sz):
-                if all(grid[r][c] != "Empty" and grid[r][c] != "Ruins" for c in range(sz)):
+                if all(filled(r, c) for c in range(sz)):
                     score += 6
             for c in range(sz):
-                if all(grid[r][c] != "Empty" and grid[r][c] != "Ruins" for r in range(sz)):
+                if all(filled(r, c) for r in range(sz)):
                     score += 6
         elif goal_id == "cauldrons":
             for r in range(sz):
                 for c in range(sz):
-                    if grid[r][c] in ("Empty", "Ruins"):
-                        surrounded = True
-                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                            nr, nc = r + dr, c + dc
-                            if 0 <= nr < sz and 0 <= nc < sz:
-                                if grid[nr][nc] in ("Empty", "Ruins"):
-                                    surrounded = False
-                            # edge counts as filled
-                        if surrounded:
+                    if not filled(r, c):
+                        if all(grid[r+dr][c+dc] not in ("Empty", "Ruins")
+                               for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]
+                               if 0 <= r+dr < sz and 0 <= c+dc < sz):
                             score += 1
         elif goal_id == "greengold":
-            visited = set()
-            for r in range(sz):
-                for c in range(sz):
-                    if grid[r][c] == "Village" and (r, c) not in visited:
-                        # BFS cluster
-                        cluster = []
-                        stack = [(r, c)]
-                        while stack:
-                            cr, cc = stack.pop()
-                            if (cr, cc) in visited:
-                                continue
-                            if grid[cr][cc] != "Village":
-                                continue
-                            visited.add((cr, cc))
-                            cluster.append((cr, cc))
-                            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                                stack.append((cr + dr, cc + dc))
-                        # Check adjacent forests
-                        adj_forests = set()
-                        for cr, cc in cluster:
-                            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                                nr, nc = cr + dr, cc + dc
-                                if 0 <= nr < sz and 0 <= nc < sz and grid[nr][nc] == "Forest":
-                                    adj_forests.add((nr, nc))
-                        if len(adj_forests) >= 3:
-                            score += 3
+            for cluster in self._find_clusters(grid, "Village"):
+                adj_f = set()
+                for cr, cc in cluster:
+                    for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                        nr, nc = cr+dr, cc+dc
+                        if 0 <= nr < sz and 0 <= nc < sz and grid[nr][nc] == "Forest":
+                            adj_f.add((nr, nc))
+                if len(adj_f) >= 3:
+                    score += 3
         elif goal_id == "wildholds":
-            visited = set()
-            for r in range(sz):
-                for c in range(sz):
-                    if grid[r][c] == "Village" and (r, c) not in visited:
-                        cluster = []
-                        stack = [(r, c)]
-                        while stack:
-                            cr, cc = stack.pop()
-                            if (cr, cc) in visited:
-                                continue
-                            if grid[cr][cc] != "Village":
-                                continue
-                            visited.add((cr, cc))
-                            cluster.append((cr, cc))
-                            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                                stack.append((cr + dr, cc + dc))
-                        if len(cluster) >= 6:
-                            score += 8
+            for cluster in self._find_clusters(grid, "Village"):
+                if len(cluster) >= 6:
+                    score += 8
         elif goal_id == "canal":
             for r in range(sz):
                 for c in range(sz):
-                    if grid[r][c] == "Water":
-                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                            nr, nc = r + dr, c + dc
-                            if 0 <= nr < sz and 0 <= nc < sz and grid[nr][nc] == "Farm":
-                                score += 1
-                                break
-                    elif grid[r][c] == "Farm":
-                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                            nr, nc = r + dr, c + dc
-                            if 0 <= nr < sz and 0 <= nc < sz and grid[nr][nc] == "Water":
-                                score += 1
-                                break
+                    if grid[r][c] == "Water" and self._adj_terrain(grid, r, c, "Farm"):
+                        score += 1
+                    elif grid[r][c] == "Farm" and self._adj_terrain(grid, r, c, "Water"):
+                        score += 1
         elif goal_id == "mages":
             for r in range(sz):
                 for c in range(sz):
                     if grid[r][c] == "Mountain":
-                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                            nr, nc = r + dr, c + dc
+                        for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                            nr, nc = r+dr, c+dc
                             if 0 <= nr < sz and 0 <= nc < sz:
-                                if grid[nr][nc] == "Water":
-                                    score += 2
-                                elif grid[nr][nc] == "Farm":
-                                    score += 1
+                                if grid[nr][nc] == "Water": score += 2
+                                elif grid[nr][nc] == "Farm": score += 1
         elif goal_id == "stoneside":
             for r in range(sz):
                 for c in range(sz):
-                    if grid[r][c] == "Mountain":
-                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                            nr, nc = r + dr, c + dc
-                            if 0 <= nr < sz and 0 <= nc < sz and grid[nr][nc] == "Forest":
-                                score += 3
-                                break
+                    if grid[r][c] == "Mountain" and self._adj_terrain(grid, r, c, "Forest"):
+                        score += 3
         elif goal_id == "shieldgate":
-            row_fills = []
-            for r in range(sz):
-                count = sum(1 for c in range(sz) if grid[r][c] not in ("Empty", "Ruins"))
-                row_fills.append(count)
-            row_fills.sort(reverse=True)
-            if len(row_fills) >= 2:
-                score = row_fills[1] * 2
+            fills = sorted((sum(1 for c in range(sz) if filled(r, c)) for r in range(sz)), reverse=True)
+            score = fills[1] * 2 if len(fills) >= 2 else 0
         return score
 
     def _monster_penalty(self, player):
@@ -534,36 +498,15 @@ class CartographersHeroesGame(BaseGame):
 
     def get_tutorial(self):
         return """
-============================================================
+==========================================================
   CARTOGRAPHERS HEROES - Tutorial
-============================================================
+==========================================================
+  Fill terrain on 11x11 grid over 4 seasons.
+  F=Forest V=Village A=Farm W=Water M=Monster ^=Mountain
 
-  OVERVIEW:
-  Map the northern lands! Fill terrain on an 11x11 grid over
-  4 seasons. Each season, explore cards reveal shapes and
-  terrains to draw on your map.
-
-  TERRAIN TYPES:
-  F=Forest  V=Village  A=Farm  W=Water  M=Monster  ^=Mountain
-
-  MAP FEATURES:
-  - Mountains (^): Fixed positions. Score with certain goals.
-  - Ruins (R): Can be built over.
-
-  EACH TURN:
-  1. An explore card reveals a shape and terrain type(s)
-  2. Choose terrain (if multiple options) and place the shape
-  3. Shape must fit on empty/ruins spaces within the grid
-
-  MONSTERS:
-  - Monster cards let your opponent place monsters on YOUR map
-  - At season scoring: -1 point per empty space adjacent to monsters
-
-  SCORING:
-  - 4 goals are drawn at game start (A, B, C, D)
-  - Spring scores A+B, Summer scores B+C, Fall scores C+D, Winter scores D+A
-  - Each goal scored twice across the game
-
-  WINNING: Highest total score after 4 seasons wins!
-============================================================
+  Each turn: explore card reveals shape + terrain to place.
+  Monsters: opponent places on YOUR map. -1 pt per adjacent empty.
+  4 goals scored in pairs each season (A+B, B+C, C+D, D+A).
+  Highest total after 4 seasons wins!
+==========================================================
 """

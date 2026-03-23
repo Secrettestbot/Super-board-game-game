@@ -13,44 +13,63 @@ from engine.base import BaseGame, input_with_quit, clear_screen
 COLORS = ["Red", "Yellow", "Blue", "Green", "Orange"]
 COLOR_ABBREV = {"Red": "R", "Yellow": "Y", "Blue": "B", "Green": "G", "Orange": "O"}
 
-# Standard board layout (7 columns, each row has a color pattern)
-# Each cell is a color. Players cross off cells matching dice rolls.
-STANDARD_LAYOUT = [
-    # row: [color for each of 7 columns]
-    ["Red", "Red", "Yellow", "Yellow", "Yellow", "Blue", "Blue"],
-    ["Red", "Red", "Red", "Yellow", "Blue", "Blue", "Blue"],
-    ["Orange", "Red", "Red", "Yellow", "Blue", "Blue", "Green"],
-    ["Orange", "Orange", "Red", "Yellow", "Blue", "Green", "Green"],
-    ["Orange", "Orange", "Orange", "Yellow", "Green", "Green", "Green"],
-    ["Orange", "Orange", "Red", "Yellow", "Blue", "Green", "Green"],
-    ["Orange", "Red", "Red", "Yellow", "Blue", "Blue", "Green"],
-    ["Red", "Red", "Red", "Yellow", "Blue", "Blue", "Blue"],
-    ["Red", "Red", "Yellow", "Yellow", "Yellow", "Blue", "Blue"],
-    ["Red", "Yellow", "Yellow", "Green", "Green", "Green", "Blue"],
-    ["Yellow", "Yellow", "Green", "Green", "Green", "Blue", "Blue"],
-    ["Yellow", "Green", "Green", "Orange", "Orange", "Blue", "Blue"],
-    ["Green", "Green", "Orange", "Orange", "Orange", "Blue", "Blue"],
-    ["Green", "Orange", "Orange", "Red", "Red", "Red", "Blue"],
-    ["Orange", "Orange", "Red", "Red", "Red", "Red", "Red"],
-]
+_C = {"R": "Red", "Y": "Yellow", "B": "Blue", "G": "Green", "O": "Orange"}
 
-# Second edition has a different layout
+def _expand(rows):
+    return [[_C[ch] for ch in row] for row in rows]
+
+STANDARD_LAYOUT = _expand([
+    "RRYYYBB", "RRRYB BB"[:7].replace(" ",""), "ORRYBBG", "OORYB GG"[:7].replace(" ",""),
+    "OOOYGGG", "OORYB GG"[:7].replace(" ",""), "ORRYBBG", "RRRYBBB",
+    "RRYYYBB", "RYYG GGB"[:7].replace(" ",""), "YYGGGBB", "YGGOO BB"[:7].replace(" ",""),
+    "GGOOO BB"[:7].replace(" ",""), "GOORRR B"[:7].replace(" ",""), "OORRRRR",
+])
+# Fix the layout with explicit strings
+STANDARD_LAYOUT = _expand([
+    "RRYYYBB", "RRRYBBB", "ORRYBBG", "OORYBGG",
+    "OOOYGGG", "OORYBGG", "ORRYBBG", "RRRYBBB",
+    "RRYYYBB", "RYYG GGB"[:7], "YYGGGBB", "YGGOOBB",
+    "GGOOO BB"[:7], "GOORRR B"[:7], "OORRRRR",
+])
+STANDARD_LAYOUT = _expand([
+    "RRYYYBB", "RRRYBBB", "ORRYBBG", "OORYBGG", "OOOYGGG",
+    "OORYBGG", "ORRYBBG", "RRRYBBB", "RRYYYBB", "RYYG GGB"[:7],
+    "YYGGGBB", "YGGOOBB", "GGOOBBB"[:7], "GOORRRB", "OORRRRR",
+])
+# Just define them directly and correctly
+STANDARD_LAYOUT = [
+    ["Red","Red","Yellow","Yellow","Yellow","Blue","Blue"],
+    ["Red","Red","Red","Yellow","Blue","Blue","Blue"],
+    ["Orange","Red","Red","Yellow","Blue","Blue","Green"],
+    ["Orange","Orange","Red","Yellow","Blue","Green","Green"],
+    ["Orange","Orange","Orange","Yellow","Green","Green","Green"],
+    ["Orange","Orange","Red","Yellow","Blue","Green","Green"],
+    ["Orange","Red","Red","Yellow","Blue","Blue","Green"],
+    ["Red","Red","Red","Yellow","Blue","Blue","Blue"],
+    ["Red","Red","Yellow","Yellow","Yellow","Blue","Blue"],
+    ["Red","Yellow","Yellow","Green","Green","Green","Blue"],
+    ["Yellow","Yellow","Green","Green","Green","Blue","Blue"],
+    ["Yellow","Green","Green","Orange","Orange","Blue","Blue"],
+    ["Green","Green","Orange","Orange","Orange","Blue","Blue"],
+    ["Green","Orange","Orange","Red","Red","Red","Blue"],
+    ["Orange","Orange","Red","Red","Red","Red","Red"],
+]
 SECOND_LAYOUT = [
-    ["Blue", "Blue", "Green", "Green", "Green", "Red", "Red"],
-    ["Blue", "Blue", "Blue", "Green", "Red", "Red", "Red"],
-    ["Yellow", "Blue", "Blue", "Green", "Red", "Red", "Orange"],
-    ["Yellow", "Yellow", "Blue", "Green", "Red", "Orange", "Orange"],
-    ["Yellow", "Yellow", "Yellow", "Green", "Orange", "Orange", "Orange"],
-    ["Yellow", "Yellow", "Red", "Green", "Blue", "Orange", "Orange"],
-    ["Yellow", "Red", "Red", "Green", "Blue", "Blue", "Orange"],
-    ["Red", "Red", "Red", "Green", "Blue", "Blue", "Blue"],
-    ["Red", "Red", "Green", "Green", "Green", "Blue", "Blue"],
-    ["Red", "Green", "Green", "Orange", "Orange", "Orange", "Blue"],
-    ["Green", "Green", "Orange", "Orange", "Orange", "Blue", "Blue"],
-    ["Green", "Orange", "Orange", "Yellow", "Yellow", "Blue", "Blue"],
-    ["Orange", "Orange", "Yellow", "Yellow", "Yellow", "Blue", "Blue"],
-    ["Orange", "Yellow", "Yellow", "Red", "Red", "Red", "Blue"],
-    ["Yellow", "Yellow", "Red", "Red", "Red", "Red", "Red"],
+    ["Blue","Blue","Green","Green","Green","Red","Red"],
+    ["Blue","Blue","Blue","Green","Red","Red","Red"],
+    ["Yellow","Blue","Blue","Green","Red","Red","Orange"],
+    ["Yellow","Yellow","Blue","Green","Red","Orange","Orange"],
+    ["Yellow","Yellow","Yellow","Green","Orange","Orange","Orange"],
+    ["Yellow","Yellow","Red","Green","Blue","Orange","Orange"],
+    ["Yellow","Red","Red","Green","Blue","Blue","Orange"],
+    ["Red","Red","Red","Green","Blue","Blue","Blue"],
+    ["Red","Red","Green","Green","Green","Blue","Blue"],
+    ["Red","Green","Green","Orange","Orange","Orange","Blue"],
+    ["Green","Green","Orange","Orange","Orange","Blue","Blue"],
+    ["Green","Orange","Orange","Yellow","Yellow","Blue","Blue"],
+    ["Orange","Orange","Yellow","Yellow","Yellow","Blue","Blue"],
+    ["Orange","Yellow","Yellow","Red","Red","Red","Blue"],
+    ["Yellow","Yellow","Red","Red","Red","Red","Red"],
 ]
 
 ROWS = 15

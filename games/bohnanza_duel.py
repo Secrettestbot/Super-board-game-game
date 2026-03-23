@@ -218,12 +218,11 @@ class BohnanzaDuelGame(BaseGame):
             print(f" (plant {self.plants_remaining} more)", end="")
         print()
 
-        # Bean reference
-        print(f"\n  Bean Harvest Chart:")
-        print(f"  {'Bean':<12} {'For 1c':<8} {'For 2c':<8} {'For 3c':<8} {'For 4c':<8}")
-        for name, info in list(BEAN_TYPES.items())[:6]:
+        # Bean reference (compact)
+        print(f"\n  Harvest Chart: Bean -> count needed for 1c/2c/3c/4c")
+        for name, info in list(BEAN_TYPES.items())[:5]:
             h = info["harvests"]
-            print(f"  {name:<12} {h[0][0]:<8} {h[1][0]:<8} {h[2][0]:<8} {h[3][0]:<8}")
+            print(f"    {name:<12} {h[0][0]}/{h[1][0]}/{h[2][0]}/{h[3][0]}")
 
         if self.log:
             print(f"\n  Last: {self.log[-1]}")
@@ -494,32 +493,13 @@ class BohnanzaDuelGame(BaseGame):
 ============================================================
   BOHNANZA DUEL - Tutorial
 ============================================================
-
-  OVERVIEW:
-  Plant beans in your 3 fields, harvest them for coins.
+  Plant beans in 3 fields, harvest for coins.
   First to {self.target_coins} coins wins!
 
-  YOUR TURN:
-  1. PLANT: Plant 1-2 beans from the front of your hand
-     into matching or empty fields
-  2. GIFT: Draw 3 beans face-up, then either plant them
-     yourself or give them to your opponent
-  3. DRAW: Draw 3 cards to the back of your hand
-
-  FIELDS:
-  - You have 3 bean fields
-  - Each field holds one type of bean
-  - To plant a different bean, harvest the field first
-
-  HARVESTING:
-  - Each bean type has a harvest chart
-  - More beans = more coins (check the chart!)
-  - Beans used as coins are removed from game
-  - Remaining beans go to discard pile
-
-  GAME END:
-  - First to {self.target_coins} coins wins
-  - Or when the deck is reshuffled 3 times
-  - Then harvest all fields and most coins wins
+  TURN: 1) Plant 1-2 beans from hand front into fields.
+  2) Draw 3 gift beans - plant or give to opponent.
+  3) Draw 3 cards to back of hand.
+  HARVEST: Sell a field for coins (see chart). More = more!
+  GAME END: Reach {self.target_coins} coins or 3 reshuffles.
 ============================================================
 """

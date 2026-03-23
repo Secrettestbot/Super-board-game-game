@@ -166,16 +166,14 @@ class PortRoyalGame(BaseGame):
             print(f"  {self.players[p-1]}: {self.coins[sp]} coins | {pts}/{TARGET_POINTS} pts | "
                   f"Crew: {crew_names or 'none'}{marker}")
 
-        print(f"\n  Harbor Display ({len(self.harbor)} cards):")
+        print(f"\n  Harbor ({len(self.harbor)} cards):")
         if self.harbor:
             for i, card in enumerate(self.harbor):
                 if card["type"] == "ship":
-                    print(f"    [{i+1}] {card['name']} - {card['coins']} coins (defeat to earn)")
-                elif card["type"] == "person":
+                    print(f"    [{i+1}] {card['name']} - {card['coins']}c to defeat")
+                else:
                     cost = max(0, card["cost"] - self._get_hire_discount(self.current_player))
-                    print(f"    [{i+1}] {card['name']} ({card['cost']} coins, "
-                          f"{'discounted to '+str(cost) if cost < card['cost'] else 'no discount'}) "
-                          f"- {card['points']}pts - {card['desc']}")
+                    print(f"    [{i+1}] {card['name']} ({cost}c) {card['points']}pts {card['desc']}")
         else:
             print("    [empty - flip some cards!]")
 
@@ -514,31 +512,14 @@ class PortRoyalGame(BaseGame):
 ============================================================
   PORT ROYAL - Tutorial
 ============================================================
+  Push your luck flipping cards. Ships can bust you, people
+  can be hired for points. First to 12 points wins!
 
-  OVERVIEW:
-  Push your luck flipping cards from the deck. Ships can
-  bust you, people can be hired for points and abilities.
-  First to 12 points wins!
-
-  FLIP PHASE:
-  - Flip cards one at a time into the harbor
-  - Ships: if two of the same color appear, you BUST
-    (lose everything flipped this turn)
-  - Stop flipping to move to the hire phase
-
-  HIRE PHASE:
-  - Hire people from the harbor by paying their cost
-  - Defeat ships using your sword strength to earn coins
-  - Number of hires depends on harbor size (1/2/3)
-
-  ABILITIES:
-  - Sailor/Guard: Sword strength for defeating ships
-  - Trader: Bonus coins per ship defeated
-  - Admiral: +2 coins at end of turn
-  - Pirate: Steal 1 coin when hired
-  - Mademoiselle: All persons cost 1 less
-
-  WINNING:
-  - First player to reach 12 victory points wins
+  FLIP: Flip cards into harbor. Two same-color ships = BUST!
+  HIRE: Hire people (pay cost) or defeat ships (need swords).
+  Hires allowed: 1 (base), 2 (3+ cards), 3 (5+ cards).
+  Opponent may hire 1 person (pays +1 coin extra).
+  Abilities: Sailor/Guard=swords, Trader=bonus coins,
+  Admiral=+2 coins, Pirate=steal, Mademoiselle=discount.
 ============================================================
 """
