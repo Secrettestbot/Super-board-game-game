@@ -1,0 +1,1062 @@
+"""Main menu system for the board game platform."""
+
+import os
+import sys
+import json
+import time
+import importlib
+
+from engine.base import clear_screen, SAVE_DIR
+
+
+GAME_REGISTRY = [
+    ("Chess", "games.chess", "ChessGame",
+     "The classic strategy game of kings and queens",
+     {"standard": "Standard Chess", "chess960": "Chess960 (Fischer Random)",
+      "king_of_hill": "King of the Hill", "three_check": "Three-Check Chess"}),
+    ("Checkers", "games.checkers", "CheckersGame",
+     "Jump and capture your opponent's pieces",
+     {"american": "American Checkers (8x8)", "international": "International Draughts (10x10)",
+      "brazilian": "Brazilian Draughts (8x8)", "turkish": "Turkish Draughts"}),
+    ("Go", "games.go", "GoGame",
+     "Ancient strategy game of territorial control",
+     {"9x9": "9x9 Board (Beginner)", "13x13": "13x13 Board (Intermediate)",
+      "19x19": "19x19 Board (Standard)"}),
+    ("Reversi/Othello", "games.reversi", "ReversiGame",
+     "Flip your opponent's pieces to dominate the board",
+     {"standard": "Standard Reversi", "small": "6x6 Board"}),
+    ("Backgammon", "games.backgammon", "BackgammonGame",
+     "Classic race game with dice and strategy",
+     {"standard": "Standard Backgammon", "nackgammon": "Nackgammon",
+      "hypergammon": "Hypergammon (3 pieces)"}),
+    ("Mancala", "games.mancala", "MancalaGame",
+     "Ancient seed-sowing game",
+     {"kalah": "Kalah (Standard)", "oware": "Oware (Awari)", "congkak": "Congkak"}),
+    ("Nine Men's Morris", "games.morris", "MorrisGame",
+     "Form mills to remove opponent's pieces",
+     {"nine": "Nine Men's Morris", "six": "Six Men's Morris",
+      "three": "Three Men's Morris", "twelve": "Twelve Men's Morris"}),
+    ("Connect Four", "games.connect_four", "ConnectFourGame",
+     "Drop pieces to connect four in a row",
+     {"standard": "Standard (7x6)", "five": "Connect Five (9x7)",
+      "pop_out": "Pop Out"}),
+    ("Tic-Tac-Toe", "games.tictactoe", "TicTacToeGame",
+     "Classic X's and O's",
+     {"3x3": "Standard 3x3", "4x4": "4x4 Board", "5x5": "5x5 Board",
+      "ultimate": "Ultimate Tic-Tac-Toe"}),
+    ("Gomoku", "games.gomoku", "GomokuGame",
+     "Get five in a row on a Go-style board",
+     {"standard": "Standard Gomoku", "renju": "Renju (restricted rules)"}),
+    ("Battleship", "games.battleship", "BattleshipGame",
+     "Find and sink your opponent's fleet",
+     {"standard": "Standard (10x10)", "small": "Small (7x7)"}),
+    ("Snakes and Ladders", "games.snakes_ladders", "SnakesLaddersGame",
+     "Race to the finish with snakes and ladders",
+     {"standard": "Standard Board", "mini": "Mini Board (5x5)"}),
+    ("Ludo", "games.ludo", "LudoGame",
+     "Race your pieces around the board",
+     {"standard": "Standard (2 players)", "four": "Standard (4 players)"}),
+    ("Nim", "games.nim", "NimGame",
+     "Strategic object removal game",
+     {"standard": "Standard Nim", "misere": "Misère Nim (last takes loses)"}),
+    ("Dots and Boxes", "games.dots_boxes", "DotsBoxesGame",
+     "Complete boxes by drawing lines",
+     {"3x3": "3x3 Grid", "4x4": "4x4 Grid", "5x5": "5x5 Grid"}),
+    ("Hex", "games.hex", "HexGame",
+     "Connect your sides of the board",
+     {"7x7": "7x7 Board", "9x9": "9x9 Board", "11x11": "11x11 Board (Standard)"}),
+    ("Pong Hau K'i", "games.pong_hau_ki", "PongHauKiGame",
+     "Simple Chinese blocking game",
+     {"standard": "Standard"}),
+    ("Alquerque", "games.alquerque", "AlquerqueGame",
+     "Ancient predecessor to checkers",
+     {"standard": "Standard Alquerque"}),
+    ("Fox and Hounds", "games.fox_hounds", "FoxHoundsGame",
+     "Asymmetric chase game on a checkerboard",
+     {"standard": "Standard"}),
+    ("Tablut", "games.tablut", "TablutGame",
+     "Viking strategy game (Hnefatafl family)",
+     {"standard": "Standard Tablut", "brandubh": "Brandubh (7x7)"}),
+    ("Quoridor", "games.quoridor", "QuoridorGame",
+     "Block your opponent with walls while racing across",
+     {"standard": "Standard (9x9, 10 walls)", "small": "Small (5x5, 5 walls)"}),
+    ("Onitama", "games.onitama", "OnitamaGame",
+     "Martial arts chess with movement cards",
+     {"standard": "Standard Onitama", "sensei": "Sensei's Path (alternate win)"}),
+    ("Amazons", "games.amazons", "AmazonsGame",
+     "Move queens and shoot arrows to trap your opponent",
+     {"standard": "Standard (10x10)", "small": "Small (6x6)"}),
+    ("Breakthrough", "games.breakthrough", "BreakthroughGame",
+     "Race your pieces to the other side",
+     {"standard": "Standard (8x8)", "small": "Small (6x6)", "large": "Large (10x10)"}),
+    ("Pentago", "games.pentago", "PentagoGame",
+     "Place a marble then twist a quadrant",
+     {"standard": "Standard Pentago"}),
+    ("Konane", "games.konane", "KonaneGame",
+     "Hawaiian jumping game",
+     {"6x6": "6x6 Board", "8x8": "8x8 Board (Standard)"}),
+    ("Fanorona", "games.fanorona", "FanoronaGame",
+     "Malagasy capture game with approach and withdrawal",
+     {"standard": "Standard (9x5)", "small": "Fanoron-Telo (3x3)"}),
+    ("Surakarta", "games.surakarta", "SurakartaGame",
+     "Javanese game with loop captures",
+     {"standard": "Standard Surakarta"}),
+    ("Dara", "games.dara", "DaraGame",
+     "Nigerian three-in-a-row strategy game",
+     {"standard": "Standard Dara"}),
+    ("Dominoes", "games.dominoes", "DominoesGame",
+     "Classic tile matching game",
+     {"block": "Block Game (no boneyard)", "draw": "Draw Game (draw from boneyard)"}),
+    ("Wari", "games.wari", "WariGame",
+     "West African seed-sowing strategy game",
+     {"standard": "Standard Wari/Awale"}),
+    ("Entropy", "games.entropy", "EntropyGame",
+     "Chaos vs Order - place and arrange colored pieces",
+     {"standard": "Standard (5x5)", "small": "Small (4x4)"}),
+    ("Cathedral", "games.cathedral", "CathedralGame",
+     "Territory game with polyomino pieces",
+     {"standard": "Standard Cathedral", "simple": "Simple (fewer pieces)"}),
+    ("Shobu", "games.shobu", "ShobuGame",
+     "Push stones across four boards",
+     {"standard": "Standard Shobu"}),
+    ("Yinsh", "games.yinsh", "YinshGame",
+     "GIPF project ring-sliding game",
+     {"standard": "Standard Yinsh", "blitz": "Blitz (3 rings)"}),
+    ("Tafl/Hnefatafl", "games.tafl", "TaflGame",
+     "Viking board game - king escape vs capture",
+     {"hnefatafl": "Hnefatafl (11x11)", "tawlbwrdd": "Tawlbwrdd (11x11)"}),
+    ("Abalone", "games.abalone", "AbaloneGame",
+     "Push opponent's marbles off the hexagonal board",
+     {"standard": "Standard Abalone (14 marbles each)",
+      "small": "Small (9 marbles each, smaller board)"}),
+    ("Xiangqi", "games.xiangqi", "XiangqiGame",
+     "Chinese Chess - ancient strategy game",
+     {"standard": "Standard Xiangqi", "small": "Half-board Xiangqi"}),
+    ("Shogi", "games.shogi", "ShogiGame",
+     "Japanese Chess with piece drops",
+     {"standard": "Standard Shogi (9x9)", "mini": "Mini Shogi (5x5)"}),
+    ("Pente", "games.pente", "PenteGame",
+     "Five in a row with custodial captures",
+     {"standard": "Standard Pente (19x19)", "small": "Small Pente (13x13)"}),
+    ("Royal Game of Ur", "games.ur", "UrGame",
+     "Ancient Mesopotamian race game",
+     {"standard": "Standard Rules", "simple": "Simplified (5 pieces)"}),
+    ("Hive", "games.hive", "HiveGame",
+     "Insect-themed tile placement game",
+     {"standard": "Standard Hive", "pocket": "Hive Pocket (with Mosquito & Ladybug)"}),
+    ("Tak", "games.tak", "TakGame",
+     "Build roads and control the board with stacks",
+     {"standard": "Standard Tak (5x5)", "small": "Small Tak (4x4)", "large": "Large Tak (6x6)"}),
+    ("Mastermind", "games.mastermind", "MastermindGame",
+     "Code-breaking deduction game",
+     {"standard": "Standard (4 pegs, 6 colors)", "super": "Super (5 pegs, 8 colors)",
+      "mini": "Mini (3 pegs, 4 colors)"}),
+    ("Quarto", "games.quarto", "QuartoGame",
+     "Place pieces with shared attributes -- opponent picks your piece",
+     {"standard": "Standard Quarto (lines only)", "advanced": "Advanced (lines + 2x2 squares)"}),
+    ("Senet", "games.senet", "SenetGame",
+     "Ancient Egyptian race game -- the oldest board game",
+     {"standard": "Standard Senet (Kendall rules)", "simple": "Simplified (no special squares)"}),
+    ("DVONN", "games.dvonn", "DvonnGame",
+     "GIPF project stacking strategy game",
+     {"standard": "Standard DVONN (49 spaces)", "quick": "Quick DVONN (smaller board)"}),
+    ("Havannah", "games.havannah", "HavannahGame",
+     "Hexagonal connection game -- form a ring, bridge, or fork",
+     {"base4": "Base 4 (37 cells, quick)", "base5": "Base 5 (61 cells, standard)",
+      "base6": "Base 6 (91 cells, advanced)", "base8": "Base 8 (169 cells, tournament)"}),
+    ("Yote", "games.yote", "YoteGame",
+     "West African capture game with bonus removal",
+     {"standard": "Standard (5x6 board, 12 pieces)", "small": "Small (4x5 board, 8 pieces)"}),
+    ("Kamisado", "games.kamisado", "KamisadoGame",
+     "Color-based movement restriction strategy game",
+     {"standard": "Standard Kamisado", "sumo": "Sumo Kamisado (best of 3, push mechanic)"}),
+    ("Santorini", "games.santorini", "SantoriniGame",
+     "Move workers and build towers -- reach the top to win",
+     {"standard": "Standard Santorini", "simple": "Simple (no god powers)"}),
+    ("TwixT", "games.twixt", "TwixTGame",
+     "Connection game with knight-move peg links",
+     {"standard": "Standard (24x24)", "small": "Small (12x12)"}),
+    ("ZÈRTZ", "games.zertz", "ZertzGame",
+     "GIPF project marble capture on a shrinking board",
+     {"standard": "Standard (37 spaces)", "quick": "Quick (19 spaces)"}),
+    ("Quixo", "games.quixo", "QuixoGame",
+     "Slide border cubes to get five in a row",
+     {"standard": "Standard 5x5 Quixo"}),
+    ("Mijnlieff", "games.mijnlieff", "MijnlieffGame",
+     "Tactical placement where your piece restricts your opponent",
+     {"standard": "Standard Mijnlieff"}),
+    ("Carnac", "games.carnac", "CarnacGame",
+     "Domino placement with connected group scoring",
+     {"standard": "Standard Carnac (6x7)", "small": "Small Carnac (5x5)"}),
+    ("Blokus Duo", "games.blokus", "BlokusDuoGame",
+     "Polyomino tile placement with corner adjacency",
+     {"standard": "Standard Blokus Duo (14x14)", "small": "Mini Blokus (10x10, fewer pieces)"}),
+    ("Stratego", "games.stratego", "StrategoGame",
+     "Hidden-information military strategy game",
+     {"standard": "Standard Stratego (10x10)", "quick": "Quick Stratego (8x8, fewer pieces)"}),
+    ("Ataxx", "games.ataxx", "AtaxxGame",
+     "Territory control with cloning and jumping",
+     {"standard": "Standard Ataxx (7x7)", "small": "Small Ataxx (5x5)"}),
+    ("Azul", "games.azul", "AzulGame",
+     "Tile-drafting pattern-building game",
+     {"standard": "Standard Azul", "simple": "Simplified (3 colors, smaller board)"}),
+    ("Kalah", "games.kalah", "KalahGame",
+     "Mancala variant with capture and extra-turn mechanics",
+     {"standard": "Standard Kalah (6 pits, 4 seeds)", "large": "Large Kalah (6 pits, 6 seeds)",
+      "small": "Small Kalah (4 pits, 3 seeds)"}),
+    ("Splendor", "games.splendor", "SplendorGame",
+     "Gem-trading engine-building game",
+     {"standard": "Standard Splendor (15 points)", "quick": "Quick Game (10 points)"}),
+    ("Blockade", "games.blockade", "BlockadeGame",
+     "Wall-placement race game",
+     {"standard": "Standard Blockade (11x14)", "small": "Small Blockade (7x8)"}),
+    ("Cribbage", "games.cribbage", "CribbageGame",
+     "Classic card game with pegging and hand scoring",
+     {"standard": "Standard Cribbage (121 points)", "short": "Short Game (61 points)"}),
+    ("Lines of Action", "games.lines_of_action", "LinesOfActionGame",
+     "Connect all your pieces into one group",
+     {"standard": "Standard (8x8)", "scrambled": "Scrambled Eggs (alternate start)"}),
+    ("Hearts", "games.hearts", "HeartsGame",
+     "Classic trick-taking card game -- avoid hearts",
+     {"standard": "Standard Hearts (100 points)", "short": "Short Game (50 points)"}),
+    ("The Fox in the Forest", "games.fox_in_forest", "FoxInTheForestGame",
+     "2-player trick-taking card game with fairy-tale powers",
+     {"standard": "Standard (with special card powers)", "simple": "Simple (no special card powers)"}),
+    ("Chinese Checkers", "games.chinese_checkers", "ChineseCheckersGame",
+     "Hop and jump across the star-shaped board",
+     {"standard": "Standard (10-piece triangles)", "small": "Small (6-piece triangles)"}),
+    ("Yahtzee", "games.yahtzee", "YahtzeeGame",
+     "Classic dice game with scoring categories",
+     {"standard": "Standard Yahtzee", "triple": "Triple Yahtzee (3 score columns)"}),
+    ("Tsuro", "games.tsuro", "TsuroGame",
+     "Path-building tile game -- stay on the board",
+     {"standard": "Standard Tsuro (6x6)", "small": "Small Tsuro (4x4)"}),
+    ("Coup", "games.coup", "CoupGame",
+     "Bluffing and deduction card game",
+     {"standard": "Standard Coup", "reformation": "Reformation (with Inquisitor)"}),
+    ("Lost Cities", "games.lost_cities", "LostCitiesGame",
+     "Expedition card game -- risk vs reward",
+     {"standard": "Standard Lost Cities", "extended": "Extended (6 expeditions)"}),
+    ("Jaipur", "games.jaipur", "JaipurGame",
+     "2-player trading card game of goods and camels",
+     {"standard": "Standard Jaipur (best of 3 rounds)", "quick": "Quick Game (single round)"}),
+    ("Othello", "games.othello", "OthelloGame",
+     "Classic disc-flipping strategy with valid move display",
+     {"standard": "Standard (8x8)", "6x6": "Quick (6x6)", "10x10": "Grand (10x10)"}),
+    ("Spades", "games.spades", "SpadesGame",
+     "Trick-taking card game with bidding and trumps",
+     {"standard": "Standard Spades (500 points)", "short": "Short Game (200 points)"}),
+    ("Shut the Box", "games.shut_the_box", "ShutTheBoxGame",
+     "Dice and tiles number-matching game",
+     {"standard": "Standard (tiles 1-9)", "twelve": "Extended (tiles 1-12)"}),
+    ("Pickomino", "games.pickomino", "PickominoGame",
+     "Dice-rolling tile-claiming worm game",
+     {"standard": "Standard Pickomino", "simple": "Simple (fewer tiles)"}),
+    ("Gin Rummy", "games.gin_rummy", "GinRummyGame",
+     "Classic card game with melds and knocking",
+     {"standard": "Standard Gin Rummy", "oklahoma": "Oklahoma Gin (variable knock value)"}),
+    ("Rummikub", "games.rummikub", "RummikubGame",
+     "Tile rummy with table rearrangement",
+     {"standard": "Standard Rummikub", "simple": "Simple (no jokers)"}),
+    ("Mille Bornes", "games.mille_bornes", "MilleBornesGame",
+     "French card racing game with hazards and safeties",
+     {"standard": "Standard Mille Bornes (1000 km)", "short": "Short Race (700 km)"}),
+    ("Boggle", "games.boggle", "BoggleGame",
+     "Word-finding in a grid of letter dice",
+     {"standard": "Standard Boggle (4x4)", "big": "Big Boggle (5x5)"}),
+    ("Blackjack", "games.blackjack", "BlackjackGame",
+     "Casino card game -- beat the dealer to 21",
+     {"standard": "Standard Blackjack", "pontoon": "Pontoon (British variant)"}),
+    ("Canadian Checkers", "games.canadian_checkers", "CanadianCheckersGame",
+     "12x12 draughts with flying kings",
+     {"standard": "Standard Canadian (12x12)", "quick": "Quick (10x10, 15 pieces)"}),
+    ("Hanabi", "games.hanabi", "HanabiGame",
+     "Cooperative card game -- build fireworks together",
+     {"standard": "Standard Hanabi (5 colors)", "simple": "Simple (4 colors)"}),
+    ("Pig", "games.pig", "PigGame",
+     "Push-your-luck dice game",
+     {"standard": "Standard Pig (1 die)", "two_dice": "Two-Dice Pig", "big_pig": "Big Pig (lose all on 1)"}),
+    ("Sequence", "games.sequence", "SequenceGame",
+     "Card and board game -- make sequences of 5",
+     {"standard": "Standard Sequence (10x10)", "small": "Quick Sequence (7x7)"}),
+    ("Carcassonne", "games.carcassonne", "CarcassonneGame",
+     "Tile-laying game with meeples and scoring",
+     {"standard": "Standard Carcassonne", "simple": "Simple (roads and cities only)"}),
+    ("Word Game", "games.word_game", "WordGame",
+     "Crossword-style tile placement word game",
+     {"standard": "Standard (15x15)", "quick": "Quick (11x11)"}),
+    ("Mahjong Solitaire", "games.mahjong_solitaire", "MahjongSolitaireGame",
+     "Tile matching puzzle with layered formations",
+     {"standard": "Standard Turtle Layout", "simple": "Flat Layout (no stacking)"}),
+    ("Euchre", "games.euchre", "EuchreGame",
+     "Trick-taking card game with bower trump system",
+     {"standard": "Standard Euchre", "stick_the_dealer": "Stick the Dealer (must call)"}),
+    ("Skull", "games.skull", "SkullGame",
+     "Bluffing disc game -- roses and skulls",
+     {"standard": "Standard Skull", "extended": "Extended (5 discs)"}),
+    ("Love Letter", "games.love_letter", "LoveLetterGame",
+     "Deduction card game -- deliver your letter to the princess",
+     {"standard": "Standard Love Letter", "premium": "Premium Edition (extra cards)"}),
+    ("Kingdomino", "games.kingdomino", "KingdominoGame",
+     "Tile-drafting territory building game",
+     {"standard": "Standard Kingdomino", "queendomino": "Queendomino (with buildings)"}),
+    ("Trax", "games.trax", "TraxGame",
+     "Connection game with forced tile plays",
+     {"standard": "Standard Trax", "small": "Small Trax (win with loop or 6-line)"}),
+    ("Parcheesi", "games.parcheesi", "ParcheesiGame",
+     "Classic cross-board race game with dice",
+     {"standard": "Standard Parcheesi (4 pawns)", "quick": "Quick Game (2 pawns)"}),
+    ("Liar's Dice", "games.liars_dice", "LiarsDiceGame",
+     "Bluffing dice game -- bid or call liar",
+     {"standard": "Standard (ones are wild)", "exact": "Exact (ones not wild, can call exact)"}),
+    ("No Thanks!", "games.no_thanks", "NoThanksGame",
+     "Card game of risk and reward -- pay chips or take cards",
+     {"standard": "Standard (cards 3-35, remove 9)", "short": "Short Game (cards 3-25, remove 5)"}),
+    ("Gobblet", "games.gobblet", "GobbletGame",
+     "Stack and gobble pieces to get four in a row",
+     {"standard": "Standard Gobblet (4x4, 3 sizes)", "gobblet_jr": "Gobblet Jr (3x3, 2 sizes)"}),
+    ("Qwirkle", "games.qwirkle", "QwirkleGame",
+     "Tile-matching game of lines and colors",
+     {"standard": "Standard Qwirkle (6 shapes x 6 colors)",
+      "simple": "Simplified (4 shapes x 4 colors)"}),
+    ("Minesweeper", "games.minesweeper", "MinesweeperGame",
+     "Classic mine-finding puzzle game",
+     {"beginner": "Beginner (9x9, 10 mines)", "intermediate": "Intermediate (16x16, 40 mines)",
+      "expert": "Expert (16x30, 99 mines)"}),
+    ("Sushi Go!", "games.sushi_go", "SushiGoGame",
+     "Card drafting game with cute sushi artwork",
+     {"standard": "Standard Sushi Go!", "party": "Party (with Tofu, Eel, Edamame)"}),
+    ("Patchwork", "games.patchwork", "PatchworkGame",
+     "Two-player quilt-building board game",
+     {"standard": "Standard Patchwork (9x9 board)", "simple": "Simplified (fewer patches, 7x7 board)"}),
+    ("Air, Land & Sea", "games.air_land_sea", "AirLandSeaGame",
+     "Control theaters of war with tactical card play",
+     {"standard": "Standard (with card powers)", "simple": "Simple (no card powers)"}),
+    ("Battle Line", "games.battle_line", "BattleLineGame",
+     "Tactical card game with 9 flags and formations",
+     {"standard": "Standard (troops only)", "tactics": "With Tactics cards (special powers)"}),
+    ("Coloretto", "games.coloretto", "ColorettoGame",
+     "Set collection card game - pick the best 3 colors",
+     {"standard": "Standard (7 colors, 3 rows)", "simple": "Simple (5 colors, 2 rows)"}),
+    ("Hanamikoji", "games.hanamikoji", "HanamikojiGame",
+     "Win the favor of geishas with careful card play",
+     {"standard": "Standard Hanamikoji", "simple": "Simple (5 geishas, smaller deck)"}),
+    ("Ingenious", "games.ingenious", "IngeniousGame",
+     "Hexagonal tile-laying game - balance your colors to win",
+     {"standard": "Standard (base-6 hex board)", "small": "Small (base-4 hex board)"}),
+    ("Sudoku", "games.sudoku", "SudokuGame",
+     "Classic number puzzle - fill the 9x9 grid",
+     {"easy": "Easy (40+ clues)", "medium": "Medium (30-35 clues)", "hard": "Hard (25-28 clues)"}),
+    ("Seven Wonders Duel", "games.seven_wonders_duel", "SevenWondersDuelGame",
+     "2-player card drafting civilization game",
+     {"standard": "Standard (3 ages)", "quick": "Quick (2 ages)"}),
+    ("Catan Dice", "games.catan_dice", "CatanDiceGame",
+     "Dice-based resource collecting and building game",
+     {"standard": "Standard (15 rounds)", "short": "Short (10 rounds)"}),
+    ("Ticket to Ride Card", "games.ticket_to_ride_card", "TicketToRideCardGame",
+     "Collect train cards and claim routes between cities",
+     {"standard": "Standard (30 routes)", "express": "Express (20 routes)"}),
+    ("Puerto Rico Card", "games.puerto_rico_card", "PuertoRicoCardGame",
+     "Role selection card game inspired by San Juan",
+     {"standard": "Standard (12 rounds)", "quick": "Quick (8 rounds)"}),
+    ("Race for the Galaxy", "games.race_for_the_galaxy", "RaceForTheGalaxyGame",
+     "Card-based galactic civilization building",
+     {"standard": "Standard (12 cards)", "quick": "Quick (8 cards)"}),
+    ("Codenames Duet", "games.codenames_duet", "CodenamesDuetGame",
+     "Cooperative 2-player word guessing game",
+     {"standard": "Standard (25 words, 9 turns)", "mini": "Mini (16 words, 7 turns)"}),
+    ("Blokus Duo", "games.blokus_duo", "BlokusDuoGame",
+     "2-player polyomino territory game",
+     {"standard": "Standard (14x14, 21 pieces)", "small": "Small (10x10, 12 pieces)"}),
+    ("Omen", "games.omen", "OmenGame",
+     "Ancient warfare card game - deploy units to conquer cities",
+     {"standard": "Standard (5 cities to win)", "quick": "Quick (3 cities to win)"}),
+    ("Exceeding", "games.exceeding", "ExceedingGame",
+     "Dueling card game - manage range, speed, and power to defeat your opponent",
+     {"standard": "Standard (30 HP, full deck)", "quick": "Quick (20 HP, slim deck)"}),
+    ("Village Green", "games.village_green", "VillageGreenGame",
+     "Build the best village garden by laying feature cards in a grid",
+     {"standard": "Standard (3x4 grid, 8 awards)", "quick": "Quick (3x3 grid, 5 awards)"}),
+    ("Palm Island", "games.palm_island", "PalmIslandGame",
+     "Cycle through cards, gathering resources and upgrading buildings",
+     {"standard": "Standard (8 rounds)", "quick": "Quick (5 rounds)"}),
+    ("Mint Works", "games.mint_works", "MintWorksGame",
+     "Place mint tokens as workers to buy and build plans for victory stars",
+     {"standard": "Standard (7 stars to win)", "quick": "Quick (5 stars to win)"}),
+    ("Akrotiri", "games.akrotiri", "AkrotiriGame",
+     "Tile-laying map building with secret temple goals",
+     {"standard": "Full game with 24 tiles", "quick": "Quick game with 16 tiles"}),
+    ("Arboretum", "games.arboretum", "ArboretumGame",
+     "Card-laying tree path game with hand management and scoring rights",
+     {"standard": "Standard game (6 species, 48 cards)", "quick": "Quick game (4 species, 32 cards)"}),
+    ("Archaeology", "games.archaeology", "ArchaeologyGame",
+     "Dig for treasure, collect sets, and avoid sandstorms",
+     {"standard": "Full deck with 6 treasure types", "quick": "Smaller deck with 4 treasure types"}),
+    ("Balloon Pop", "games.balloon_pop", "BalloonPopGame",
+     "Push-your-luck balloon collection card game",
+     {"standard": "Standard (5 colors, 50 cards, 5 pop cards)", "risky": "Risky (5 colors, 50 cards, 10 pop cards)"}),
+    ("Blitzkrieg", "games.blitzkrieg", "BlitzkriegGame",
+     "Token-placing theater-of-war strategy game",
+     {"standard": "Standard game: 5 theaters of war", "quick": "Quick game: 3 theaters of war"}),
+    ("Botanik", "games.botanik", "BotanikGame",
+     "Tile-drafting greenhouse building game",
+     {"standard": "Standard (4x4 greenhouse grid)", "large": "Large (5x5 greenhouse grid)"}),
+    ("Calico", "games.calico", "CalicoGame",
+     "A tile-laying puzzle game about quilts and cats",
+     {"standard": "Standard Calico (5x5 board, cats + buttons + goals)", "simple": "Simple mode (4x4 board, buttons only)"}),
+    ("Canvas", "games.canvas", "CanvasGame",
+     "Layer transparent art cards to create paintings scored by icon patterns",
+     {"standard": "Full market (5 cards visible), create 3 paintings", "quick": "Smaller market (3 cards visible), create 2 paintings"}),
+    ("Caper", "games.caper", "CaperGame",
+     "Card drafting heist game with thieves and gear",
+     {"standard": "Standard game: 3 locations, 6 rounds", "quick": "Quick game: 2 locations, 4 rounds"}),
+    ("Cartographers", "games.cartographers", "CartographersGame",
+     "Map-drawing territory game with seasonal scoring",
+     {"standard": "Standard game: 4 seasons", "quick": "Quick game: 2 seasons (Spring and Summer only)"}),
+    ("Cascadia", "games.cascadia", "CascadiaGame",
+     "A tile-drafting nature-themed ecosystem building game",
+     {"standard": "Standard Cascadia (20 turns, full scoring)", "family": "Family mode (15 turns, simplified scoring)"}),
+    ("Century: Spice Road", "games.century_spice", "CenturySpiceGame",
+     "A hand-management and engine-building spice trading game",
+     {"standard": "Standard game (first to 6 point cards)", "quick": "Quick game (first to 4 point cards)"}),
+    ("Circle of Life", "games.circle_of_life", "CircleOfLifeGame",
+     "Build food chains in your ecosystem for points",
+     {"standard": "Standard game (60-card deck, 4x4 grid)", "quick": "Quick game (40-card deck, 3x3 grid)", "strategic": "Strategic game (60-card deck, 4x4 grid, draft from market)"}),
+    ("Claim", "games.claim", "ClaimGame",
+     "Trick-taking card game with faction majorities",
+     {"standard": "Standard game (5 factions, 50 cards)", "quick": "Quick game (3 factions, 42 cards)"}),
+    ("Council of Verona", "games.council_of_verona", "CouncilOfVeronaGame",
+     "Bluffing card game with Romeo & Juliet characters",
+     {"standard": "Standard (13 characters, 5 agendas)", "quick": "Quick (9 characters, 3 agendas)", "intrigue": "Intrigue (13 characters, 5 agendas, bonus powers)"}),
+    ("Cryptid", "games.cryptid", "CryptidGame",
+     "A deduction game - find the hidden creature on a hex grid",
+     {"standard": "Standard 6x9 grid with complex clues", "easy": "Smaller 5x7 grid with simpler clues"}),
+    ("Dale of Merchants", "games.dale_of_merchants", "DaleOfMerchantsGame",
+     "Deck-building animalfolk stall game",
+     {"standard": "Standard game (8 stalls to win)", "quick": "Quick game (5 stalls to win)"}),
+    ("Dice Throne", "games.dice_throne", "DiceThroneGame",
+     "Dice combat game with unique character powers",
+     {"standard": "Standard game (50 HP)", "quick": "Quick game (30 HP)"}),
+    ("Dixit Duel", "games.dixit_duel", "DixitDuelGame",
+     "A storytelling and guessing card game for two",
+     {"standard": "Standard game - play to 15 points, 6-card hands", "quick": "Quick game - play to 8 points, 4-card hands"}),
+    ("Dokmus", "games.dokmus", "DokmusGame",
+     "Grid exploration temple game",
+     {"standard": "Standard map (8 tiles, 2x4 grid)", "small": "Small map (4 tiles, 2x2 grid)", "large": "Large map (8 tiles, 4x2, more temples)"}),
+    ("Dueling Dice", "games.dueling_dice", "DuelingDiceGame",
+     "Dice-drafting combat game",
+     {"standard": "Standard (20 HP, 9 dice)", "quick": "Quick (12 HP, 7 dice)"}),
+    ("Eminent Domain", "games.eminent_domain", "EminentDomainGame",
+     "Deck-building with role selection across the galaxy",
+     {"standard": "Full planet deck, target 20 influence", "quick": "Fewer planets, target 15 influence"}),
+    ("Everdell", "games.everdell", "EverdellGame",
+     "A worker placement and tableau-building game in a woodland city",
+     {"standard": "Standard Everdell (4 seasons, 15-card city limit)", "beginner": "Beginner mode (3 seasons, extra starting resources)"}),
+    ("Fjords", "games.fjords", "FjordsGame",
+     "Two-phase tile-laying and land claim game",
+     {"standard": "Standard game (36 tiles, 8x8 board)", "quick": "Quick game (24 tiles, 6x6 board)"}),
+    ("Fleet", "games.fleet", "FleetGame",
+     "Fishing license auction and boat management game",
+     {"standard": "Full fleet (5 license types)", "quick": "Quick fleet (3 license types)", "tournament": "Tournament (5 types, bonus scoring)"}),
+    ("Food Chain", "games.food_chain", "FoodChainGame",
+     "Restaurant engine-building card game",
+     {"standard": "Standard game (12 turns)", "quick": "Quick game (8 turns)", "extended": "Extended game (16 turns)"}),
+    ("Fugitive", "games.fugitive", "FugitiveGame",
+     "Asymmetric number-card chase game",
+     {"standard": "Standard game (cards 0-42)", "short": "Short game (cards 0-28)"}),
+    ("Fungi", "games.fungi", "FungiGame",
+     "Forest mushroom foraging - collect, cook, and score sets",
+     {"standard": "Standard game - 8 mushroom species, 8-card path", "quick": "Quick game - 5 species, 6-card path"}),
+    ("Gem Rush", "games.gem_rush", "GemRushGame",
+     "Cooperative gem mining and jewelry crafting",
+     {"standard": "Standard difficulty - reach 30 points to win", "hard": "Hard difficulty - reach 40 points with more Obsidian"}),
+    ("Hanamikoji Duel", "games.hanamikoji_duel", "HanamikojiDuelGame",
+     "Asymmetric card play with geisha favor",
+     {"standard": "Standard (7 geisha, 4 actions per round)", "quick": "Quick (5 geisha, 3 actions per round)"}),
+    ("Herbaceous", "games.herbaceous", "HerbaceousGame",
+     "Set collection herb garden game",
+     {"standard": "Standard game - 8 herb types", "quick": "Quick game - 6 herb types"}),
+    ("Innovation", "games.innovation", "InnovationGame",
+     "Civilization card game with splaying and dogma",
+     {"standard": "Standard game (all 10 ages)", "quick": "Quick game (5 ages)"}),
+    ("Isle of Cats", "games.isle_of_cats", "IsleOfCatsGame",
+     "A card-drafting and polyomino tile-placement game",
+     {"standard": "Standard game (5 rounds, card drafting, lessons)", "family": "Family mode (no drafting, simplified scoring)"}),
+    ("Kahuna", "games.kahuna", "KahunaGame",
+     "Island bridge-building area control game",
+     {"standard": "Standard (12 islands)", "small": "Small (8 islands)"}),
+    ("KeyForge Duel", "games.keyforge_duel", "KeyforgeDuelGame",
+     "Deck-unique card combat with 3 houses",
+     {"standard": "Forge keys at 6 Aember each", "quick": "Forge keys at 4 Aember each"}),
+    ("Kingdomino Duel", "games.kingdomino_duel", "KingdominoDuelGame",
+     "Roll-and-write domino kingdom builder with dice drafting",
+     {"standard": "Standard game (5x5 grid)", "large": "Large game (7x7 grid)"}),
+    ("Lanterns", "games.lanterns", "LanternsGame",
+     "Tile-laying lake decoration game with lantern card collection",
+     {"standard": "Standard game (7x7 grid, 36 tiles)", "quick": "Quick game (5x5 grid, 18 tiles)"}),
+    ("Mandala", "games.mandala", "MandalaGame",
+     "2-player card game with shared mandalas and strategic color valuation",
+     {"standard": "Standard game (54-card deck, 9 per color)", "quick": "Quick game (36-card deck, 6 per color)"}),
+    ("Morels", "games.morels", "MorelGame",
+     "Forage mushrooms from the forest and cook them for points",
+     {"standard": "Standard game (10 mushroom species)", "quick": "Quick game (6 species, smaller deck)", "expert": "Expert game (10 species, Night cards active)"}),
+    ("Nanga Parbat", "games.nanga_parbat", "NangaParbatGame",
+     "Mountain climbing route-building game",
+     {"standard": "Standard (5-level mountain)", "quick": "Quick (3-level mountain)"}),
+    ("Okiya", "games.okiya", "OkiyaGame",
+     "Japanese tactical placement - match seasons and elements to claim cards",
+     {"standard": "Standard (4x4 grid, 4 seasons, 4 elements)", "extended": "Extended (5x5 grid, 5 seasons, 5 elements)"}),
+    ("Orc-lympics", "games.orc_lympics", "OrcLympicsGame",
+     "Competitive dice game with unique event mechanics",
+     {"standard": "5 classic events", "tournament": "7 events including Goblin Sprint and Dragon Dodge"}),
+    ("Parade", "games.parade", "ParadeGame",
+     "Card shedding with penalty scoring - lowest score wins",
+     {"standard": "Standard game - 6 colors, values 0-10", "quick": "Quick game - 4 colors, values 0-10"}),
+    ("Parks", "games.parks", "ParksGame",
+     "A nature trail hiking game visiting national parks",
+     {"standard": "Standard game (4 seasons)", "short": "Short game (2 seasons)"}),
+    ("Photosynthesis", "games.photosynthesis", "PhotosynthesisGame",
+     "A strategic nature game about growing trees with sunlight",
+     {"standard": "Standard game (3 full sun revolutions)", "beginner": "Beginner game (2 sun revolutions, relaxed rules)"}),
+    ("Pinch", "games.pinch", "PinchGame",
+     "Trick-taking with pinch mechanics",
+     {"standard": "13 cards each, full bidding (values 1-13)", "quick": "7 cards each, simplified (values 1-7)"}),
+    ("Point Salad", "games.point_salad", "PointSalad",
+     "A card-drafting vegetable and scoring game",
+     {"standard": "Standard game - full 36-card market", "quick": "Quick game - smaller 24-card market"}),
+    ("Pueblo", "games.pueblo", "PuebloGame",
+     "Block stacking visibility game - hide your blocks from the chief",
+     {"standard": "Standard (4x4 grid, 3 height levels)", "small": "Small (3x3 grid, 2 height levels)"}),
+    ("Race", "games.race", "RaceGame",
+     "Horse racing card game with secret bets and movement cards",
+     {"standard": "Standard race (20 spaces, 5 horses)", "quick": "Quick race (12 spaces, 3 horses)"}),
+    ("Radlands", "games.radlands", "RadlandsGame",
+     "Post-apocalyptic dueling card game",
+     {"standard": "3 camps each, 3 water per turn", "quick": "2 camps each, 4 water per turn"}),
+    ("Raptor", "games.raptor", "RaptorGame",
+     "Asymmetric pursuit game - raptors vs scientists",
+     {"standard": "Standard game (6x9 grid)", "small": "Small game (5x7 grid)", "quick": "Quick game (5x7 grid, 2 babies)"}),
+    ("Res Arcana", "games.res_arcana", "ResArcanaGame",
+     "An engine-building card game with magical artifacts",
+     {"standard": "Standard game (first to 10 points)", "quick": "Quick game (first to 7 points, 6-card decks)"}),
+    ("Revolver", "games.revolver", "RevolverGame",
+     "Asymmetric Old West timeline card duel",
+     {"standard": "Standard showdown (5 locations)", "quick": "Quick draw (3 locations)", "epic": "Epic chase (5 locations, larger hands)"}),
+    ("Riftforce", "games.riftforce", "RiftforceGame",
+     "Elemental combat card game at 5 locations",
+     {"standard": "Standard (4 guilds each)", "advanced": "Advanced (5 guilds each)"}),
+    ("Sagrada", "games.sagrada", "SagradaGame",
+     "A dice-drafting stained glass window game",
+     {"standard": "Standard Sagrada (pattern constraints, full scoring)", "beginner": "Beginner mode (open patterns, simplified objectives)"}),
+    ("Sail", "games.sail", "SailGame",
+     "Cooperative trick-taking with ocean navigation",
+     {"standard": "Standard voyage (6 challenges)", "easy": "Calm seas (4 challenges)", "storm": "Storm voyage (6 challenges, harder hazards)"}),
+    ("Samurai Spirit", "games.samurai_spirit", "SamuraiSpiritGame",
+     "Cooperative push-your-luck defense against raiders",
+     {"standard": "Standard (3 waves, endurance 8)", "hard": "Hard mode (3 waves, endurance 6)", "heroic": "Heroic mode (4 waves, endurance 5)"}),
+    ("Schotten Totten", "games.schotten_totten", "SchottenTottenGame",
+     "Card battle across boundary stones",
+     {"standard": "Standard game with 9 boundary stones", "quick": "Quick game with 7 boundary stones"}),
+    ("Seasons", "games.seasons", "SeasonsGame",
+     "Dice-drafting card combo engine",
+     {"standard": "Standard game (12 rounds, 9 starting cards)", "quick": "Quick game (6 rounds, 5 starting cards)", "epic": "Epic game (12 rounds, 12 starting cards)"}),
+    ("Sobek", "games.sobek", "SobekGame",
+     "Market tile drafting with corruption penalties",
+     {"standard": "Standard game (45-tile deck)", "quick": "Quick game (30-tile deck)"}),
+    ("Sprawlopolis", "games.sprawlopolis", "SprawlopolisGame",
+     "Cooperative city-building with card placement",
+     {"standard": "Target score of 20 points to win", "hard": "Target score of 25 points to win"}),
+    ("Star Realms", "games.star_realms", "StarRealms",
+     "A deck-building space combat card game",
+     {"standard": "Standard game - 50 authority each", "quick": "Quick game - 30 authority each"}),
+    ("Sun Tzu", "games.sun_tzu", "SunTzuGame",
+     "Area majority with simultaneous card play across 5 provinces",
+     {"standard": "Standard game - 9 rounds", "extended": "Extended game - 12 rounds"}),
+    ("Targi", "games.targi", "TargiGame",
+     "Worker placement on a 5x5 grid border with resource collection",
+     {"standard": "Standard game (12 tribe cards to win)", "quick": "Quick game (8 tribe cards to win)"}),
+    ("The Crew", "games.the_crew", "TheCrew",
+     "A cooperative trick-taking mission card game",
+     {"standard": "Standard difficulty - 4 mission objectives", "easy": "Easy mode - 2 mission objectives"}),
+    ("Tussie Mussie", "games.tussie_mussie", "TussieMussiGame",
+     "I-cut-you-choose flower bouquet card game",
+     {"standard": "Standard game (18 cards)", "extended": "Extended game (24 cards)"}),
+    ("Twilight Inscription", "games.twilight_inscription", "TwilightInscriptionGame",
+     "Roll-and-write space exploration",
+     {"standard": "Full game with 8 rounds", "quick": "Quick game with 5 rounds"}),
+    ("Undaunted", "games.undaunted", "UndauntedGame",
+     "Deck-building tactical combat on a grid",
+     {"standard": "Standard: 4x4 grid, 30-card decks", "skirmish": "Skirmish: 3x3 grid, 20-card decks"}),
+    ("Watergate", "games.watergate", "WatergateGame",
+     "Editor vs Nixon: investigate or cover up the scandal",
+     {"standard": "Standard game (5 evidence to win)", "quick": "Quick game (3 evidence to win)"}),
+    ("Wingspan Card", "games.wingspan_card", "WingspanCardGame",
+     "A bird-themed engine-building card game",
+     {"standard": "Standard game - 4 rounds, 8 turns per round", "quick": "Quick game - 3 rounds, 5 turns per round"}),
+    ("Tigris & Euphrates", "games.tigris_euphrates", "TigrisEuphratesGame",
+     "Tile-laying civilization game with 4 leader types and conflict resolution",
+     {"standard": "Standard 11x16 board with full tile set", "quick": "Smaller 8x10 board with fewer tiles for faster play"}),
+    ("Through the Desert", "games.through_the_desert", "ThroughTheDesertGame",
+     "Caravan-building game placing colored camels to form caravans",
+     {"standard": "Standard board (15x15) with 5 camel colors", "quick": "Smaller board (10x10) with 4 camel colors, fewer camels"}),
+    ("Samurai", "games.samurai", "SamuraiGame",
+     "Area-influence game placing tiles to control Buddhas, Rice, and Helmets",
+     {"standard": "Full board (13x13) with all figures and tiles", "quick": "Smaller board (9x9) with fewer figures for faster play"}),
+    ("Blue Lagoon", "games.blue_lagoon", "BlueLagoonGame",
+     "Two-phase exploration/settlement game on an island archipelago",
+     {"standard": "Full map with 8 islands, 2 scoring phases", "quick": "Smaller map with 5 islands, single phase only"}),
+    ("Mexica", "games.mexica", "MexicaGame",
+     "Area-building game with canals, bridges, districts, and temples",
+     {"standard": "Full 11x11 board, 10 districts, 6 temples each", "quick": "Smaller 8x8 board, 6 districts, 4 temples each"}),
+    ("Ingenious Duel", "games.ingenious_duel", "IngeniousDuelGame",
+     "Hex-based tile placement where your lowest color score determines victory",
+     {"standard": "Full board (11x11 hex grid), 6 colors, 6 tiles per hand", "quick": "Smaller board (7x7 hex grid), 4 colors, 4 tiles per hand"}),
+    ("Biblios", "games.biblios", "BibliosGame",
+     "Draft cards, adjust dice, then auction for scripture category majorities",
+     {"standard": "Full game with 5 scripture categories and complete deck", "quick": "Shorter game with 3 categories and fewer cards"}),
+    ("Castles of Burgundy: Card Game", "games.burgundy_card", "BurgundyCardGame",
+     "Draft supply cards and complete projects for VP across 6 project types",
+     {"standard": "5 rounds of play with full project selection", "quick": "3 rounds of play with reduced project deck"}),
+    ("Caylus Magna Carta", "games.caylus_carta", "CaylusCartaGame",
+     "Worker placement along a road with provost mechanism and castle building",
+     {"standard": "Full game: 12 road slots, provost + bailiff, castle building", "quick": "Shorter road (8 slots), simplified scoring, fewer rounds"}),
+    ("Viticulture Essential", "games.viticulture", "ViticultureGame",
+     "Wine-making worker placement: plant vines, harvest, make wine, fill orders",
+     {"standard": "Full game - play to 20 VP across up to 7 years", "quick": "Quick game - play to 15 VP across up to 5 years, start with extra resources"}),
+    ("Glass Road", "games.glass_road", "GlassRoadGame",
+     "Card-driven resource management with unique production wheel mechanic",
+     {"standard": "Full game - 4 building periods with all buildings", "quick": "Quick game - 2 building periods, start with extra resources"}),
+    ("Nusfjord", "games.nusfjord", "NusfjordGame",
+     "Fishing village worker placement with fleet, elders, and shares",
+     {"standard": "Full game - 7 rounds with all buildings and elders", "quick": "Quick game - 5 rounds, smaller building deck, start with extra resources"}),
+    ("Trajan", "games.trajan", "TrajanGame",
+     "Mancala-based action selection with 6 action types and set collection",
+     {"standard": "Full game - 4 quarters (16 rounds), full scoring", "quick": "Quick game - 2 quarters (8 rounds), accelerated scoring"}),
+    ("Ora et Labora", "games.ora_et_labora", "OraEtLaboraGame",
+     "Monastery resource conversion with rondel production and building placement",
+     {"standard": "Full game - 12 rounds with all buildings and settlements", "quick": "Quick game - 7 rounds, simpler buildings, extra starting resources"}),
+    ("Targi Expansion", "games.targi_expansion", "TargiExpansionGame",
+     "Targi with sand dunes and expanded card set",
+     {"standard": "Standard Expansion", "sand_dunes": "Sand Dunes Mode"}),
+    ("Jotto", "games.jotto", "JottoGame",
+     "Word guessing deduction game",
+     {"five": "5-Letter Words", "four": "4-Letter Words", "six": "6-Letter Words"}),
+    ("Guillotine", "games.guillotine", "GuillotineGame",
+     "Collect nobles from a line using action cards",
+     {"standard": "Standard Game", "quick": "Quick Game (2 Rounds)"}),
+    ("Port Royal", "games.port_royal", "PortRoyalGame",
+     "Push-your-luck card game with ships and hiring",
+     {"standard": "Standard Game", "expansion": "With Contracts"}),
+    ("Bohnanza Duel", "games.bohnanza_duel", "BohnanzaDuelGame",
+     "Two-player bean trading card game",
+     {"standard": "Standard Duel", "challenge": "Challenge Mode"}),
+    ("Paperback", "games.paperback", "PaperbackGame",
+     "Deck-building word game with letter cards",
+     {"standard": "Standard Game", "coop": "Cooperative Mode"}),
+    ("The Mind", "games.the_mind", "TheMindGame",
+     "Cooperative card game - play cards in order without talking",
+     {"standard": "Standard Game", "extreme": "Extreme Mode (with directions)"}),
+    ("Cockroach Poker", "games.cockroach_poker", "CockroachPokerGame",
+     "Bluffing card game with bug cards",
+     {"standard": "Standard Game", "royal": "Royal Variant (special cards)"}),
+    ("Railroad Ink", "games.railroad_ink", "RailroadInkGame",
+     "Route-drawing dice game on a grid",
+     {"standard": "Standard (Blue)", "red": "Red Expansion (Lava/Meteor)"}),
+    ("Tiny Towns", "games.tiny_towns", "TinyTownsGame",
+     "Place resources in patterns to construct buildings",
+     {"standard": "Standard Game", "fortune": "Fortune Variant"}),
+    ("Qwixx", "games.qwixx", "QwixxGame",
+     "Dice rolling game - mark numbers on colored rows",
+     {"standard": "Standard Qwixx", "big_points": "Big Points Variant"}),
+    ("Cabo", "games.cabo", "CaboGame",
+     "Memory card game - aim for the lowest total",
+     {"standard": "Standard Cabo", "quick": "Quick Game (3 cards)"}),
+    ("Welcome To", "games.welcome_to", "WelcomeToGame",
+     "Flip-and-write neighborhood building game",
+     {"standard": "Standard Game", "halloween": "Halloween Theme"}),
+    ("Troyes Dice", "games.troyes_dice", "TroyesDiceGame",
+     "Dice drafting to build medieval Troyes",
+     {"standard": "Standard Game", "ladies": "Ladies of Troyes Expansion"}),
+    ("Azul: Stained Glass", "games.azul_stained_glass", "AzulStainedGlassGame",
+     "Draft colored glass pieces to fill windows",
+     {"standard": "Standard Game", "summer": "Summer Pavilion Rules"}),
+    ("Skull King", "games.skull_king", "SkullKingGame",
+     "Pirate trick-taking card game with bidding",
+     {"standard": "Standard Game", "legendary": "Legendary Expansion (mermaids/kraken)"}),
+    ("That's Pretty Clever", "games.thats_pretty_clever", "ThatsPrettyCleverGame",
+     "Roll dice and score on colored areas with chain combos",
+     {"standard": "Standard (Ganz Schon Clever)", "twice": "Twice as Clever"}),
+    ("Cartographers Heroes", "games.cartographers_heroes", "CartographersHeroesGame",
+     "Map-drawing game with seasonal scoring goals",
+     {"standard": "Standard Heroes", "skills": "With Skills"}),
+    ("Nmbr 9", "games.nmbr9", "Nmbr9Game",
+     "Tile-stacking number puzzle - higher layers score more",
+     {"standard": "Standard Game", "plus": "Nmbr 9++ (larger tiles)"}),
+    ("Encore", "games.encore", "EncoreGame",
+     "Roll dice and cross off colored squares on your sheet",
+     {"standard": "Standard Encore", "second": "Encore! Second Edition"}),
+    ("Perudo", "games.perudo", "PerudoGame",
+     "Liar's dice bluffing game - bid or challenge",
+     {"standard": "Standard Perudo", "calza": "With Calza (exact call)"}),
+    ("Deep Sea Adventure", "games.deep_sea_adventure", "DeepSeaAdventureGame",
+     "Push-your-luck diving for treasure with shared oxygen",
+     {"standard": "Standard (3 rounds)", "short": "Short Game (2 rounds)"}),
+    ("Kingsburg", "games.kingsburg", "KingsburgGame",
+     "Dice placement on advisors to build your kingdom",
+     {"standard": "Standard (5 years)", "short": "Short Game (3 years)"}),
+    ("Roll Through the Ages", "games.roll_through_ages", "RollThroughAgesGame",
+     "Dice civilization game - build cities and monuments",
+     {"standard": "Standard", "iron_age": "Iron Age (extra developments)"}),
+    ("Bang! The Dice Game", "games.bang_dice", "BangDiceGame",
+     "Western-themed dice combat - Sheriff vs Outlaws",
+     {"standard": "Standard", "undead": "Undead (zombie variant)"}),
+    ("Skull & Roses", "games.skull_roses", "SkullRosesGame",
+     "Bluffing game with skull and rose coasters",
+     {"standard": "Standard", "team": "Team (more coasters)"}),
+    ("Can't Stop", "games.cant_stop", "CantStopGame",
+     "Press-your-luck dice racing on columns 2-12",
+     {"standard": "Standard (3 columns)", "express": "Express (2 columns)"}),
+    ("Zombie Dice", "games.zombie_dice", "ZombieDiceGame",
+     "Push-your-luck dice game - collect brains, avoid shotguns",
+     {"standard": "Standard", "double_feature": "Double Feature (special dice)"}),
+    ("King of Tokyo", "games.king_of_tokyo", "KingOfTokyoGame",
+     "Yahtzee-style dice combat with power cards",
+     {"standard": "Standard", "halloween": "Halloween (costumes)"}),
+    ("Machi Koro", "games.machi_koro", "MachiKoroGame",
+     "Dice-activated city building card game",
+     {"standard": "Standard", "harbor": "Harbor Expansion (marketplace)"}),
+    ("Clank!", "games.clank", "ClankGame",
+     "Deck-building dungeon delve with dragon attacks",
+     {"standard": "Standard Dungeon", "sunken": "Sunken Ruins (underwater)"}),
+    ("Stone Age", "games.stone_age", "StoneAgeGame",
+     "Worker placement with dice-based resource gathering",
+     {"standard": "Standard", "anniversary": "Anniversary (extra cards)"}),
+    ("Alhambra", "games.alhambra", "AlhambraGame",
+     "Buy tiles with exact change to build your palace",
+     {"standard": "Standard", "thieves_turn": "Thieves' Turn (steal tiles)"}),
+    ("Isle of Skye", "games.isle_of_skye", "IsleOfSkyeGame",
+     "Tile-laying with price-setting auction",
+     {"standard": "Standard", "journeyman": "Journeyman (journey track)"}),
+    ("Power Grid", "games.power_grid", "PowerGridGame",
+     "Auction power plants and expand your electrical network",
+     {"standard": "Standard", "deluxe": "Deluxe (extra plants)"}),
+    ("Quacks of Quedlinburg", "games.quacks", "QuacksGame",
+     "Bag-building push-your-luck potion brewing",
+     {"standard": "Standard", "herb_witches": "Herb Witches (purple chips)"}),
+    ("Terraforming Mars Dice", "games.terraforming_mars_dice", "TerraformingMarsDiceGame",
+     "Dice game - roll resources to terraform Mars",
+     {"standard": "Standard", "venus": "Venus Next (Venus parameter)"}),
+    ("Space Base", "games.space_base", "SpaceBaseGame",
+     "Dice activation engine builder with 12 ship sectors",
+     {"standard": "Standard", "saga": "Saga (50 VP, upgraded ships)"}),
+    ("Bunny Kingdom", "games.bunny_kingdom", "BunnyKingdomGame",
+     "Card drafting and area control on a grid",
+     {"standard": "Standard", "celestial": "Celestial (sky territories)"}),
+    ("Marco Polo", "games.marco_polo", "MarcoPoloGame",
+     "Dice worker placement along the Silk Road",
+     {"standard": "Standard", "agents": "Agents (extra characters)"}),
+]
+
+
+class MainMenu:
+    """Main menu for the board game platform."""
+
+    GAMES_PER_PAGE = 15
+
+    def run(self):
+        self.page = 0
+        while True:
+            clear_screen()
+            self.show_banner()
+            choice = self.show_main_menu()
+            if choice == 'q':
+                clear_screen()
+                print("Thanks for playing! Goodbye.")
+                sys.exit(0)
+            elif choice == 'r':
+                self.resume_game_menu()
+            elif choice == 'l':
+                self.game_list_menu()
+            elif choice == 'n':
+                total_pages = (len(GAME_REGISTRY) + self.GAMES_PER_PAGE - 1) // self.GAMES_PER_PAGE
+                if self.page < total_pages - 1:
+                    self.page += 1
+            elif choice == 'p':
+                if self.page > 0:
+                    self.page -= 1
+            elif choice.isdigit():
+                idx = int(choice) - 1
+                if 0 <= idx < len(GAME_REGISTRY):
+                    self.launch_game(idx)
+                else:
+                    print(f"\n  Invalid selection. Enter 1-{len(GAME_REGISTRY)}.")
+                    input("  Press Enter to continue...")
+
+    def show_banner(self):
+        print("=" * 60)
+        print("   ____                        ____                      _ ")
+        print("  / ___| _   _ _ __   ___ _ __|  _ \\  ___   __ _ _ __ __| |")
+        print("  \\___ \\| | | | '_ \\ / _ \\ '__| |_) |/ _ \\ / _` | '__/ _` |")
+        print("   ___) | |_| | |_) |  __/ |  |  _ <| (_) | (_| | | | (_| |")
+        print("  |____/ \\__,_| .__/ \\___|_|  |_| \\_\\\\___/ \\__,_|_|  \\__,_|")
+        print("              |_|           Game Game                       ")
+        print("=" * 60)
+        print(f"  {len(GAME_REGISTRY)} Classic Board Games | Tutorials | Save & Resume")
+        print("=" * 60)
+
+    def show_main_menu(self):
+        total = len(GAME_REGISTRY)
+        total_pages = (total + self.GAMES_PER_PAGE - 1) // self.GAMES_PER_PAGE
+        start = self.page * self.GAMES_PER_PAGE
+        end = min(start + self.GAMES_PER_PAGE, total)
+
+        print(f"\n  GAMES (Page {self.page + 1}/{total_pages})")
+        print("  ---------")
+        for i in range(start, end):
+            name, _, _, desc, _ = GAME_REGISTRY[i]
+            print(f"  {i+1:2}. {name:<24} - {desc}")
+        print()
+        nav_parts = []
+        if self.page > 0:
+            nav_parts.append("[P] Prev page")
+        if self.page < total_pages - 1:
+            nav_parts.append("[N] Next page")
+        if nav_parts:
+            print(f"  {' | '.join(nav_parts)}")
+        print(f"  [R] Resume a saved game")
+        print(f"  [L] List all games & variations")
+        print(f"  [Q] Quit")
+        print()
+        return input(f"  Select (1-{total}, R, L, Q): ").strip().lower()
+
+    def game_list_menu(self):
+        page = 0
+        games_per_page = 8
+        total_pages = (len(GAME_REGISTRY) + games_per_page - 1) // games_per_page
+
+        while True:
+            clear_screen()
+            start = page * games_per_page
+            end = min(start + games_per_page, len(GAME_REGISTRY))
+
+            print("=" * 60)
+            print(f"  ALL GAMES AND VARIATIONS (Page {page + 1}/{total_pages})")
+            print("=" * 60)
+            for i in range(start, end):
+                name, _, _, desc, variations = GAME_REGISTRY[i]
+                print(f"\n  {i+1:2}. {name}")
+                print(f"      {desc}")
+                for vkey, vname in variations.items():
+                    print(f"        - {vname}")
+            print()
+            nav_parts = []
+            if page > 0:
+                nav_parts.append("[P] Prev")
+            if page < total_pages - 1:
+                nav_parts.append("[N] Next")
+            nav_parts.append("[B] Back to menu")
+            print(f"  {' | '.join(nav_parts)}")
+            print(f"  Or enter a game number (1-{len(GAME_REGISTRY)}) to play")
+            print()
+            choice = input("  Choice: ").strip().lower()
+
+            if choice == 'b':
+                return
+            elif choice == 'n' and page < total_pages - 1:
+                page += 1
+            elif choice == 'p' and page > 0:
+                page -= 1
+            elif choice.isdigit():
+                idx = int(choice) - 1
+                if 0 <= idx < len(GAME_REGISTRY):
+                    self.launch_game(idx)
+                    return
+                else:
+                    print(f"\n  Invalid selection. Enter 1-{len(GAME_REGISTRY)}.")
+                    input("  Press Enter to continue...")
+            else:
+                print(f"\n  Invalid choice.")
+                input("  Press Enter to continue...")
+
+    def launch_game(self, idx):
+        entry = GAME_REGISTRY[idx]
+        name, module_path, class_name, desc, variations = entry
+
+        # Show game info and variation selection
+        clear_screen()
+        print(f"{'='*60}")
+        print(f"  {name}")
+        print(f"{'='*60}")
+        print(f"  {desc}\n")
+
+        # Variation selection
+        variation_keys = list(variations.keys())
+        if len(variations) > 1:
+            print("  Select a variation:")
+            for i, (vkey, vname) in enumerate(variations.items()):
+                print(f"    {i+1}. {vname}")
+            print(f"    [T] View tutorial first")
+            print(f"    [B] Back to menu")
+            print()
+            choice = input("  Choice: ").strip().lower()
+            if choice == 'b':
+                return
+            if choice == 't':
+                self.show_tutorial(module_path, class_name, variation_keys[0])
+                return self.launch_game(idx)
+            try:
+                vidx = int(choice) - 1
+                if 0 <= vidx < len(variation_keys):
+                    variation = variation_keys[vidx]
+                else:
+                    print(f"\n  Invalid choice. Enter 1-{len(variation_keys)}.")
+                    input("  Press Enter to continue...")
+                    return self.launch_game(idx)
+            except ValueError:
+                print(f"\n  Invalid choice.")
+                input("  Press Enter to continue...")
+                return self.launch_game(idx)
+        else:
+            variation = variation_keys[0]
+            print("  [P] Play")
+            print("  [T] View tutorial first")
+            print("  [B] Back to menu")
+            choice = input("  Choice: ").strip().lower()
+            if choice == 'b':
+                return
+            if choice == 't':
+                self.show_tutorial(module_path, class_name, variation)
+                return self.launch_game(idx)
+            if choice != 'p':
+                print("\n  Invalid choice. Enter P, T, or B.")
+                input("  Press Enter to continue...")
+                return self.launch_game(idx)
+
+        # Load and start game
+        try:
+            mod = importlib.import_module(module_path)
+            game_class = getattr(mod, class_name)
+            game = game_class(variation=variation)
+            game.play()
+        except Exception as e:
+            print(f"\nError loading game: {e}")
+            import traceback
+            traceback.print_exc()
+            input("Press Enter to return to menu...")
+
+    def show_tutorial(self, module_path, class_name, variation):
+        try:
+            mod = importlib.import_module(module_path)
+            game_class = getattr(mod, class_name)
+            game = game_class(variation=variation)
+            clear_screen()
+            print(game.get_tutorial())
+            input("\nPress Enter to continue...")
+        except Exception as e:
+            print(f"Error loading tutorial: {e}")
+            input("Press Enter to continue...")
+
+    def resume_game_menu(self):
+        while True:
+            clear_screen()
+            print("=" * 60)
+            print("  SAVED GAMES")
+            print("=" * 60)
+
+            if not os.path.exists(SAVE_DIR):
+                print("\n  No saved games found.")
+                input("  Press Enter to return to menu...")
+                return
+
+            saves = []
+            for f in sorted(os.listdir(SAVE_DIR)):
+                if f.endswith('.json'):
+                    filepath = os.path.join(SAVE_DIR, f)
+                    try:
+                        with open(filepath) as fh:
+                            data = json.load(fh)
+                        saves.append((f, filepath, data))
+                    except Exception:
+                        pass
+
+            if not saves:
+                print("\n  No saved games found.")
+                input("  Press Enter to return to menu...")
+                return
+
+            for i, (fname, fpath, data) in enumerate(saves):
+                ts = time.strftime('%Y-%m-%d %H:%M', time.localtime(data.get('timestamp', 0)))
+                gname = data.get('game_name', 'Unknown')
+                var = data.get('variation', '')
+                turn = data.get('turn_number', 0)
+                print(f"  {i+1}. {gname} ({var}) - Turn {turn} - {ts}")
+
+            print(f"\n  [D] Delete a save")
+            print(f"  [B] Back")
+            choice = input("\n  Select save to resume (1-{}, D, B): ".format(len(saves))).strip().lower()
+
+            if choice == 'b':
+                return
+            if choice == 'd':
+                dchoice = input("  Enter number to delete: ").strip()
+                try:
+                    didx = int(dchoice) - 1
+                    if 0 <= didx < len(saves):
+                        os.remove(saves[didx][1])
+                        print("  Save deleted.")
+                        input("  Press Enter to continue...")
+                    else:
+                        print(f"  Invalid selection. Enter 1-{len(saves)}.")
+                        input("  Press Enter to continue...")
+                except ValueError:
+                    print("  Invalid input.")
+                    input("  Press Enter to continue...")
+                except OSError as e:
+                    print(f"  Error deleting save: {e}")
+                    input("  Press Enter to continue...")
+                continue  # Loop back to show updated list
+
+            try:
+                sidx = int(choice) - 1
+                if 0 <= sidx < len(saves):
+                    self.resume_save(saves[sidx])
+                    return
+                else:
+                    print(f"\n  Invalid selection. Enter 1-{len(saves)}.")
+                    input("  Press Enter to continue...")
+            except ValueError:
+                print("\n  Invalid input.")
+                input("  Press Enter to continue...")
+
+    def resume_save(self, save_tuple):
+        fname, fpath, data = save_tuple
+        game_type = data.get('game_type', '')
+
+        # Find the game in registry
+        module_path = '.'.join(game_type.split('.')[:-1])
+        class_name = game_type.split('.')[-1]
+
+        try:
+            mod = importlib.import_module(module_path)
+            game_class = getattr(mod, class_name)
+            game = game_class(variation=data.get('variation', 'standard'))
+            game.setup()
+            game.current_player = data.get('current_player', 1)
+            game.players = data.get('players', ["Player 1", "Player 2"])
+            game.turn_number = data.get('turn_number', 0)
+            game.move_history = data.get('move_history', [])
+            game.load_state(data.get('game_state', {}))
+            game._resumed = True
+
+            result = game.play()
+
+            # Delete save file after game completes (suspended games create new saves)
+            try:
+                os.remove(fpath)
+            except OSError:
+                pass
+        except Exception as e:
+            print(f"Error resuming game: {e}")
+            import traceback
+            traceback.print_exc()
+            input("Press Enter to return to menu...")
