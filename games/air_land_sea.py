@@ -59,6 +59,7 @@ class AirLandSeaGame(BaseGame):
         "standard": "Standard (with card powers)",
         "simple": "Simple (no card powers)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -681,6 +682,81 @@ class AirLandSeaGame(BaseGame):
         self.withdrew = state.get("withdrew")
         self.log = list(state.get("log", []))
         self.suppressed = {int(k): set(v) for k, v in state.get("suppressed", {}).items()}
+
+    def get_ai_move(self):
+        """Return a valid move for the AI player."""
+        cp = self.current_player
+
+        if not self.hands[cp]:
+            return ("pass",)
+
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        hand = self.hands[cp]
+
+        if difficulty == 'easy':
+            # Random play or withdraw
+            if random.random() < 0.1 and len(hand) >= 4:
+                return ("withdraw",)
+            card_idx_in_hand = random.randint(0, len(hand) - 1)
+            card_idx = hand[card_idx_in_hand]
+            face_up = random.choice([True, False])
+            name, theater, strength, power = self._card(card_idx)
+            if face_up and power != "play_to_any" and self.variation != "simple":
+                target_theater = theater
+            elif face_up and self.variation == "simple":
+                target_theater = theater
+            else:
+                target_theater = random.choice(THEATERS)
+            return ("play", card_idx_in_hand, face_up, target_theater)
+
+        # Medium/Hard: evaluate options
+        # Consider withdrawing if losing badly
+        my_theaters = self._theaters_won(cp)
+        opp_theaters = self._theaters_won(self._opponent())
+        cards_left = len(hand)
+
+        if opp_theaters >= 2 and cards_left >= 3 and difficulty == 'hard':
+            return ("withdraw",)
+        if opp_theaters >= 2 and cards_left >= 4:
+            return ("withdraw",)
+
+        best_move = None
+        best_score = -999
+
+        for idx_in_hand, card_idx in enumerate(hand):
+            name, theater, strength, power = self._card(card_idx)
+            for face_up in [True, False]:
+                if face_up:
+                    if power == "play_to_any" and self.variation != "simple":
+                        theaters_to_try = list(THEATERS)
+                    elif self.variation == "simple":
+                        theaters_to_try = [theater]
+                    else:
+                        theaters_to_try = [theater]
+                else:
+                    theaters_to_try = list(THEATERS)
+
+                for target in theaters_to_try:
+                    score = 0
+                    eff_str = strength if face_up else 2
+                    score += eff_str * 3
+
+                    # Prefer playing to theaters we're losing
+                    my_str = self._theater_strength(target, cp)
+                    opp_str = self._theater_strength(target, self._opponent())
+                    if my_str <= opp_str:
+                        score += 10  # help where we're behind
+
+                    if face_up:
+                        score += 5  # prefer face-up for power
+                    if difficulty == 'medium':
+                        score += random.randint(0, 8)
+
+                    if score > best_score:
+                        best_score = score
+                        best_move = ("play", idx_in_hand, face_up, target)
+
+        return best_move if best_move else ("play", 0, True, self._card(hand[0])[1])
 
     # ------------------------------------------------------------ tutorial
     def get_tutorial(self):

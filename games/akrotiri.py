@@ -118,6 +118,7 @@ class AkrotiriGame(BaseGame):
         'standard': 'Full game with 24 tiles',
         'quick': 'Quick game with 16 tiles',
     }
+    side_labels = ("Player 1", "Player 2")
 
     def setup(self):
         """Initialize the game board and state."""
