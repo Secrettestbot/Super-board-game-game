@@ -1,5 +1,6 @@
 """Nim - A mathematical strategy game of removing objects from heaps."""
 
+import random
 from engine.base import BaseGame, input_with_quit, clear_screen
 
 
@@ -14,6 +15,7 @@ class NimGame(BaseGame):
         "standard": "Normal play - last to take wins (heaps: 1,3,5,7)",
         "misere": "Misere play - last to take loses (heaps: 1,3,5,7)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -78,6 +80,77 @@ class NimGame(BaseGame):
             else:
                 # Misere - last to take loses
                 self.winner = 2 if self.current_player == 1 else 1
+
+    def get_ai_move(self):
+        """Return an AI move as a string 'heap amount'."""
+        # Find valid heaps (non-empty)
+        valid_heaps = [(i, self.heaps[i]) for i in range(len(self.heaps)) if self.heaps[i] > 0]
+        if not valid_heaps:
+            return "1 1"  # shouldn't happen
+
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if difficulty == "easy":
+            # Random valid move
+            heap_idx, heap_size = random.choice(valid_heaps)
+            amount = random.randint(1, heap_size)
+            return f"{heap_idx + 1} {amount}"
+
+        # Medium and hard use Nim-sum (XOR) strategy
+        # Hard always plays optimally; medium sometimes makes random moves
+        if difficulty == "medium" and random.random() < 0.3:
+            heap_idx, heap_size = random.choice(valid_heaps)
+            amount = random.randint(1, heap_size)
+            return f"{heap_idx + 1} {amount}"
+
+        nim_sum = 0
+        for h in self.heaps:
+            nim_sum ^= h
+
+        if self.variation == "misere":
+            # Misere endgame: when all heaps are 0 or 1, leave ODD number of heaps with 1
+            all_small = all(h <= 1 for h in self.heaps)
+            if all_small:
+                ones = sum(1 for h in self.heaps if h == 1)
+                if ones % 2 == 0:
+                    # We want odd number of 1s, so remove one heap of 1
+                    for i, h in enumerate(self.heaps):
+                        if h == 1:
+                            return f"{i + 1} 1"
+                else:
+                    # Already odd, any move loses - just play anything
+                    heap_idx, heap_size = random.choice(valid_heaps)
+                    return f"{heap_idx + 1} {heap_size}"
+            else:
+                # Not endgame yet - play toward nim_sum = 0 but beware of misere endgame
+                if nim_sum != 0:
+                    for i, h in enumerate(self.heaps):
+                        target = h ^ nim_sum
+                        if target < h:
+                            # Check if this would leave all heaps <= 1
+                            new_heaps = list(self.heaps)
+                            new_heaps[i] = target
+                            if all(nh <= 1 for nh in new_heaps):
+                                ones = sum(1 for nh in new_heaps if nh == 1)
+                                if ones % 2 == 1:
+                                    return f"{i + 1} {h - target}"
+                            else:
+                                return f"{i + 1} {h - target}"
+                # Nim sum is 0 or no good move found - play randomly
+                heap_idx, heap_size = random.choice(valid_heaps)
+                amount = random.randint(1, heap_size)
+                return f"{heap_idx + 1} {amount}"
+        else:
+            # Standard Nim: leave opponent with nim_sum = 0
+            if nim_sum != 0:
+                for i, h in enumerate(self.heaps):
+                    target = h ^ nim_sum
+                    if target < h:
+                        return f"{i + 1} {h - target}"
+            # Nim sum is already 0 (losing position) - play randomly
+            heap_idx, heap_size = random.choice(valid_heaps)
+            amount = random.randint(1, heap_size)
+            return f"{heap_idx + 1} {amount}"
 
     def get_state(self):
         """Return serializable game state."""

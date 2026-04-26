@@ -1,5 +1,6 @@
 """Game of the Amazons - Strategic territory board game."""
 
+import random
 from engine.base import BaseGame, input_with_quit, clear_screen
 
 
@@ -24,6 +25,7 @@ class AmazonsGame(BaseGame):
         "standard": "Standard (10x10)",
         "small": "Small (6x6, 2 amazons each)",
     }
+    side_labels = ("White", "Black")
 
     EMPTY = 0
     WHITE = 1
@@ -305,6 +307,57 @@ class AmazonsGame(BaseGame):
         """Restore game state."""
         self.size = state["size"]
         self.board = [row[:] for row in state["board"]]
+
+    def get_ai_move(self):
+        """Return a valid move for the AI player."""
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        piece = self.WHITE if self.current_player == 1 else self.BLACK
+        amazons = self._get_amazon_positions(self.current_player)
+
+        all_moves = []
+        for ar, ac in amazons:
+            for mr, mc in self._get_queen_moves(ar, ac):
+                arrow_targets = self._get_queen_moves(mr, mc, ignore_pos=(ar, ac))
+                for tr, tc in arrow_targets:
+                    all_moves.append(((ar, ac), (mr, mc), (tr, tc)))
+
+        if not all_moves:
+            # Should not happen if game isn't over, but fallback
+            return ((0, 0), (0, 1), (0, 2))
+
+        if difficulty == 'easy':
+            return random.choice(all_moves)
+
+        # Score moves based on territory/mobility
+        def score_move(move):
+            frm, to, arrow = move
+            s = 0
+            # Prefer moves that stay central
+            center = self.size / 2.0
+            s -= abs(to[0] - center) + abs(to[1] - center)
+            # Prefer arrows that restrict opponent
+            opp_piece = self.BLACK if self.current_player == 1 else self.WHITE
+            for r in range(self.size):
+                for c in range(self.size):
+                    if self.board[r][c] == opp_piece:
+                        dist = abs(arrow[0] - r) + abs(arrow[1] - c)
+                        if dist <= 2:
+                            s += (3 - dist) * 5
+            # Mobility: count moves from new position
+            s += len(self._get_queen_moves(to[0], to[1], ignore_pos=frm)) * 2
+            return s
+
+        if difficulty == 'medium':
+            sample = random.sample(all_moves, min(50, len(all_moves)))
+            scored = [(score_move(m) + random.uniform(0, 5), m) for m in sample]
+            scored.sort(key=lambda x: -x[0])
+            return scored[0][1]
+        else:
+            # Hard: evaluate more moves
+            sample = random.sample(all_moves, min(200, len(all_moves)))
+            scored = [(score_move(m), m) for m in sample]
+            scored.sort(key=lambda x: -x[0])
+            return scored[0][1]
 
     def get_tutorial(self):
         return """

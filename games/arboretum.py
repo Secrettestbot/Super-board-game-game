@@ -38,6 +38,7 @@ class ArboretumGame(BaseGame):
         "standard": "Standard game (6 species, 48 cards)",
         "quick": "Quick game (4 species, 32 cards)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)

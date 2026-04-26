@@ -70,6 +70,7 @@ class NoThanksGame(BaseGame):
         "standard": "Standard (cards 3-35, remove 9)",
         "short": "Short Game (cards 3-25, remove 5)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
