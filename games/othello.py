@@ -1,5 +1,6 @@
 """Othello - Official Othello with multiple board sizes and clean display."""
 
+import random
 from engine.base import BaseGame, input_with_quit, clear_screen
 
 
@@ -20,6 +21,7 @@ class OthelloGame(BaseGame):
         "6x6": "Quick Othello (6x6)",
         "10x10": "Grand Othello (10x10)",
     }
+    side_labels = ("Black", "White")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -163,6 +165,159 @@ class OthelloGame(BaseGame):
                 print(f"  {self._pos_to_str(*parsed)} is not a valid move.")
                 continue
             return parsed
+
+    def get_ai_move(self):
+        """Return an AI move as (row, col) tuple or 'pass'."""
+        import copy
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+        valid = self._valid_moves(player)
+
+        if not valid:
+            return 'pass'
+
+        if difficulty == "easy":
+            return random.choice(valid)
+
+        size = self.size
+        # Position weights for heuristic evaluation
+        corners = {(0, 0), (0, size - 1), (size - 1, 0), (size - 1, size - 1)}
+        edges = set()
+        for i in range(size):
+            edges.update([(0, i), (size - 1, i), (i, 0), (i, size - 1)])
+        # X-squares (diagonally adjacent to corners) - bad positions
+        x_squares = set()
+        for cr, cc in corners:
+            dr = 1 if cr == 0 else -1
+            dc = 1 if cc == 0 else -1
+            x_squares.add((cr + dr, cc + dc))
+
+        if difficulty == "medium":
+            # Prefer corners > edges, avoid x-squares
+            best_move = None
+            best_score = float('-inf')
+            for r, c in valid:
+                flips = len(self._get_all_flips(r, c, player))
+                score = flips
+                if (r, c) in corners:
+                    score += 100
+                elif (r, c) in x_squares:
+                    score -= 50
+                elif (r, c) in edges:
+                    score += 10
+                if best_move is None or score > best_score:
+                    best_score = score
+                    best_move = (r, c)
+            return best_move
+
+        # Hard: minimax with alpha-beta pruning
+        # Positional weight table
+        def make_weights():
+            w = [[0] * size for _ in range(size)]
+            for r in range(size):
+                for c in range(size):
+                    if (r, c) in corners:
+                        w[r][c] = 100
+                    elif (r, c) in x_squares:
+                        w[r][c] = -30
+                    elif (r, c) in edges:
+                        w[r][c] = 10
+                    else:
+                        w[r][c] = 1
+            return w
+
+        weights = make_weights()
+
+        def evaluate(board):
+            score = 0
+            opp = 3 - player
+            for r in range(size):
+                for c in range(size):
+                    if board[r][c] == player:
+                        score += weights[r][c]
+                    elif board[r][c] == opp:
+                        score -= weights[r][c]
+            return score
+
+        def minimax(board, depth, alpha, beta, is_max, cur_player):
+            opp = 3 - cur_player
+            moves_cur = []
+            for r in range(size):
+                for c in range(size):
+                    if board[r][c] == 0:
+                        flips = []
+                        for dr, dc in DIRECTIONS:
+                            f = []
+                            rr, cc = r + dr, c + dc
+                            while 0 <= rr < size and 0 <= cc < size and board[rr][cc] == opp if cur_player != opp else cur_player:
+                                pass
+                            # Simpler: use game's logic on a copy
+                        pass
+            # Use simplified approach with game copies
+            pass
+
+        # Simplified minimax using game copies
+        def minimax_game(state, depth, alpha, beta, maximizing):
+            if depth == 0:
+                p1, p2 = state._count_pieces()
+                if player == 1:
+                    return p1 - p2 + evaluate(state.board), None
+                else:
+                    return p2 - p1 + evaluate(state.board), None
+
+            cur = state.current_player
+            moves = state._valid_moves(cur)
+            opp_moves = state._valid_moves(3 - cur)
+
+            if not moves and not opp_moves:
+                p1, p2 = state._count_pieces()
+                diff = (p1 - p2) if player == 1 else (p2 - p1)
+                return diff * 1000, None
+
+            if not moves:
+                # Must pass
+                child = copy.deepcopy(state)
+                child.current_player = 3 - cur
+                val, _ = minimax_game(child, depth - 1, alpha, beta, not maximizing)
+                return val, 'pass'
+
+            best_move = moves[0]
+            if maximizing:
+                max_eval = float('-inf')
+                for r, c in moves:
+                    child = copy.deepcopy(state)
+                    child.board[r][c] = cur
+                    for fr, fc in child._get_all_flips(r, c, cur):
+                        child.board[fr][fc] = cur
+                    child.current_player = 3 - cur
+                    val, _ = minimax_game(child, depth - 1, alpha, beta, False)
+                    if val > max_eval:
+                        max_eval = val
+                        best_move = (r, c)
+                    alpha = max(alpha, val)
+                    if beta <= alpha:
+                        break
+                return max_eval, best_move
+            else:
+                min_eval = float('inf')
+                for r, c in moves:
+                    child = copy.deepcopy(state)
+                    child.board[r][c] = cur
+                    for fr, fc in child._get_all_flips(r, c, cur):
+                        child.board[fr][fc] = cur
+                    child.current_player = 3 - cur
+                    val, _ = minimax_game(child, depth - 1, alpha, beta, True)
+                    if val < min_eval:
+                        min_eval = val
+                        best_move = (r, c)
+                    beta = min(beta, val)
+                    if beta <= alpha:
+                        break
+                return min_eval, best_move
+
+        depth = 4 if size <= 6 else 3
+        _, best = minimax_game(copy.deepcopy(self), depth, float('-inf'), float('inf'), True)
+        return best if best else valid[0]
 
     def make_move(self, move):
         """Place a piece and flip captured opponents. Returns True if valid."""

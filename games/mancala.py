@@ -1,5 +1,6 @@
 """Mancala - Ancient seed-sowing board game with multiple variations."""
 
+import random
 from engine.base import BaseGame, input_with_quit, clear_screen
 
 
@@ -15,6 +16,7 @@ class MancalaGame(BaseGame):
         "oware": "Oware/Awari - 6 pits, 4 seeds, 2-or-3 capture rule, no extra turns",
         "congkak": "Congkak - 7 pits, 7 seeds, larger board with extra turns",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation or "kalah")

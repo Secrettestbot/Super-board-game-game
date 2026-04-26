@@ -459,6 +459,93 @@ class ArboretumGame(BaseGame):
         }
         self.log = state.get("log", [])
 
+    def get_ai_move(self):
+        """Return a valid move for the AI player."""
+        cp = str(self.current_player)
+        opp = "2" if cp == "1" else "1"
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        hand = self.hands[cp]
+        sorted_hand = sorted(hand, key=lambda c: (c[0], c[1]))
+
+        # Draw sources
+        draws = []
+        for _ in range(2):
+            sources = ["deck"]
+            if self.discard_piles[opp]:
+                sources.append("opponent_discard")
+            if self.discard_piles[cp]:
+                sources.append("own_discard")
+            if difficulty == 'easy':
+                draws.append({"source": random.choice(sources)})
+            else:
+                draws.append({"source": "deck"})
+
+        # Choose card to play
+        if not sorted_hand:
+            return None
+
+        if difficulty == 'easy':
+            play_idx = random.randint(0, len(sorted_hand) - 1)
+        else:
+            # Prefer playing cards that extend paths
+            play_idx = 0
+            best_score = -1
+            for i, card in enumerate(sorted_hand):
+                score = card[1]  # prefer higher numbered cards on tableau
+                if difficulty == 'hard':
+                    # Keep high cards of species we want scoring rights for
+                    score = 8 - card[1]  # prefer playing lower cards
+                if score > best_score:
+                    best_score = score
+                    play_idx = i
+
+        play_card = list(sorted_hand[play_idx])
+
+        # Position
+        tableau = self.tableaus[cp]
+        if not tableau:
+            pos = "0,0"
+        else:
+            # Find adjacent empty position
+            positions = [list(map(int, k.split(","))) for k in tableau.keys()]
+            candidates = []
+            for r, c in positions:
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    key = f"{r + dr},{c + dc}"
+                    if key not in tableau:
+                        candidates.append(key)
+            if candidates:
+                pos = random.choice(candidates) if difficulty == 'easy' else candidates[0]
+            else:
+                pos = "0,0"
+
+        # Discard card
+        remaining = list(sorted_hand)
+        remaining.pop(play_idx)
+        if not remaining:
+            return None
+
+        if difficulty == 'easy':
+            disc_idx = random.randint(0, len(remaining) - 1)
+        else:
+            # Discard lowest value card
+            disc_idx = 0
+            min_val = 999
+            for i, card in enumerate(remaining):
+                if card[1] < min_val:
+                    min_val = card[1]
+                    disc_idx = i
+
+        disc_card = list(remaining[disc_idx])
+
+        return {
+            "action": "turn",
+            "draws": draws,
+            "play_card": play_card,
+            "position": pos,
+            "discard_card": disc_card,
+        }
+
     def get_tutorial(self):
         return """
 ============================================================

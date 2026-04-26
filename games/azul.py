@@ -41,6 +41,7 @@ class AzulGame(BaseGame):
         "standard": "Standard Azul",
         "simple": "Simplified (3 colors, smaller board)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -457,6 +458,90 @@ class AzulGame(BaseGame):
         self.scores = list(state["scores"])
         self.round_number = state["round_number"]
         self.first_player_next_round = state["first_player_next_round"]
+
+    def get_ai_move(self):
+        """Return a valid move as a string: 'source color pattern_line'."""
+        p = self.current_player - 1
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        # Collect all valid (source, color, dest) options
+        options = []
+        # Check factories
+        for fi in range(len(self.factories)):
+            if not self.factories[fi]:
+                continue
+            for color in set(self.factories[fi]):
+                matching = sum(1 for t in self.factories[fi] if t == color)
+                for line in range(1, self.board_size + 1):
+                    row = line - 1
+                    pl_color, pl_count = self.pattern_lines[p][row]
+                    capacity = row + 1
+                    if pl_color is not None and pl_color != color:
+                        continue
+                    wall_col = self.wall_pattern[row].index(color)
+                    if self.walls[p][row][wall_col]:
+                        continue
+                    options.append((fi + 1, color, str(line), matching, capacity - pl_count))
+                # Floor option
+                options.append((fi + 1, color, "F", matching, 0))
+
+        # Check center
+        if self.center:
+            for color in set(self.center):
+                matching = sum(1 for t in self.center if t == color)
+                for line in range(1, self.board_size + 1):
+                    row = line - 1
+                    pl_color, pl_count = self.pattern_lines[p][row]
+                    capacity = row + 1
+                    if pl_color is not None and pl_color != color:
+                        continue
+                    wall_col = self.wall_pattern[row].index(color)
+                    if self.walls[p][row][wall_col]:
+                        continue
+                    options.append((0, color, str(line), matching, capacity - pl_count))
+                options.append((0, color, "F", matching, 0))
+
+        if not options:
+            # Fallback
+            for fi in range(len(self.factories)):
+                if self.factories[fi]:
+                    color = self.factories[fi][0]
+                    return f"{fi + 1} {color} F"
+            if self.center:
+                return f"0 {self.center[0]} F"
+            return "0 B F"
+
+        if difficulty == 'easy':
+            choice = random.choice(options)
+            return f"{choice[0]} {choice[1]} {choice[2]}"
+
+        # Score options
+        def score_option(opt):
+            source, color, dest, matching, space = opt
+            s = 0
+            if dest == "F":
+                s -= 10  # avoid floor
+            else:
+                row = int(dest) - 1
+                capacity = row + 1
+                pl_color, pl_count = self.pattern_lines[p][row]
+                new_count = pl_count + min(matching, space)
+                if new_count >= capacity:
+                    s += 20  # completing a line is great
+                    wall_col = self.wall_pattern[row].index(color)
+                    s += self._score_tile(p, row, wall_col) * 3
+                else:
+                    s += new_count * 3
+                overflow = max(0, matching - space)
+                s -= overflow * 4  # penalize overflow to floor
+            if source == 0:
+                s -= 2  # slight penalty for taking first-player marker
+            return s
+
+        scored = [(score_option(o) + (random.uniform(0, 3) if difficulty == 'medium' else 0), o) for o in options]
+        scored.sort(key=lambda x: -x[0])
+        best = scored[0][1]
+        return f"{best[0]} {best[1]} {best[2]}"
 
     def get_tutorial(self):
         """Return tutorial with rules and strategy hints."""

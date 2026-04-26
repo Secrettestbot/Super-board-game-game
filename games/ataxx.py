@@ -1,5 +1,6 @@
 """Ataxx - A territory control strategy game."""
 
+import random
 from engine.base import BaseGame, input_with_quit, clear_screen
 
 
@@ -14,6 +15,7 @@ class AtaxxGame(BaseGame):
         "standard": "Standard Ataxx (7x7)",
         "small": "Small Ataxx (5x5)",
     }
+    side_labels = ("X", "O")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -234,6 +236,74 @@ class AtaxxGame(BaseGame):
         self.size = state["size"]
         self.blocked = set(tuple(b) for b in state.get("blocked", []))
         self.passed_last = list(state.get("passed_last", [False, False]))
+
+    def get_ai_move(self):
+        """Return a valid move for the AI player."""
+        char = self._get_player_char(self.current_player)
+        opp = self._get_opponent_char(self.current_player)
+        n = self.size
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if not self._has_valid_moves(self.current_player):
+            return "pass"
+
+        clones = []  # (fr, fc, tr, tc)
+        jumps = []
+
+        for r in range(n):
+            for c in range(n):
+                if self.board[r][c] != char:
+                    continue
+                for dr in range(-2, 3):
+                    for dc in range(-2, 3):
+                        if dr == 0 and dc == 0:
+                            continue
+                        nr, nc = r + dr, c + dc
+                        if 0 <= nr < n and 0 <= nc < n and self.board[nr][nc] == '.':
+                            dist = max(abs(dr), abs(dc))
+                            if dist == 1:
+                                clones.append((r, c, nr, nc))
+                            elif dist == 2:
+                                jumps.append((r, c, nr, nc))
+
+        def count_conversions(tr, tc):
+            count = 0
+            for ar in range(tr - 1, tr + 2):
+                for ac in range(tc - 1, tc + 2):
+                    if 0 <= ar < n and 0 <= ac < n and self.board[ar][ac] == opp:
+                        count += 1
+            return count
+
+        if difficulty == 'easy':
+            all_moves = clones + jumps
+            if all_moves:
+                move = random.choice(all_moves)
+                return f"{move[0]} {move[1]} {move[2]} {move[3]}"
+            return "pass"
+
+        # Prefer clones, score by conversions
+        best_move = None
+        best_score = -1
+
+        for fr, fc, tr, tc in clones:
+            score = count_conversions(tr, tc) * 10 + 5  # +5 for clone bonus
+            if difficulty == 'medium':
+                score += random.randint(0, 3)
+            if score > best_score:
+                best_score = score
+                best_move = (fr, fc, tr, tc)
+
+        for fr, fc, tr, tc in jumps:
+            score = count_conversions(tr, tc) * 10
+            if difficulty == 'medium':
+                score += random.randint(0, 3)
+            if score > best_score:
+                best_score = score
+                best_move = (fr, fc, tr, tc)
+
+        if best_move:
+            return f"{best_move[0]} {best_move[1]} {best_move[2]} {best_move[3]}"
+        return "pass"
 
     def get_tutorial(self):
         """Return tutorial with rules and strategy hints."""

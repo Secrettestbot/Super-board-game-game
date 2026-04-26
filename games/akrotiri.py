@@ -550,6 +550,73 @@ class AkrotiriGame(BaseGame):
         self.map_height = state['map_height']
         self.map_width = state['map_width']
 
+    def get_ai_move(self):
+        """Return a valid move for the AI player."""
+        pd = self.player_data[str(self.current_player)]
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if pd['actions_remaining'] > 0:
+            # Action phase: try gather, move, discover, or pass
+            br, bc = pd['boat_pos']
+
+            # Try gathering resources
+            for dr in range(-1, 2):
+                for dc in range(-1, 2):
+                    key = f"{br + dr},{bc + dc}"
+                    terr = self.terrain.get(key, SEA)
+                    if terr in RESOURCE_NAMES:
+                        return ('gather', '')
+
+            # Try moving boat toward resources or ports
+            best_dest = None
+            best_dist = 999
+            for r in range(self.map_height):
+                for c in range(self.map_width):
+                    terr = self.terrain.get(f"{r},{c}", SEA)
+                    if terr in RESOURCE_NAMES:
+                        # Find adjacent sea/port cell
+                        for dr2 in range(-1, 2):
+                            for dc2 in range(-1, 2):
+                                nr, nc = r + dr2, c + dc2
+                                if 0 <= nr < self.map_height and 0 <= nc < self.map_width:
+                                    t2 = self.terrain.get(f"{nr},{nc}", SEA)
+                                    if t2 in [SEA, PORT]:
+                                        dist = abs(nr - br) + abs(nc - bc)
+                                        if 0 < dist <= 3 and dist < best_dist:
+                                            best_dist = dist
+                                            best_dest = (nr, nc)
+
+            if best_dest:
+                return ('move_boat', f"{best_dest[0]},{best_dest[1]}")
+
+            return ('pass_action', '')
+        else:
+            # Tile placement phase
+            if not self.market:
+                return ('pass_action', '')
+
+            tidx = random.randint(0, len(self.market) - 1)
+            rot = random.choice([0, 90, 180, 270])
+            # Find valid placement
+            for r in range(self.map_height - 1):
+                for c in range(self.map_width - 1):
+                    all_sea = True
+                    adjacent = False
+                    for dr in range(2):
+                        for dc in range(2):
+                            key = f"{r + dr},{c + dc}"
+                            if self.terrain.get(key, SEA) != SEA:
+                                all_sea = False
+                            for ar, ac in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                                adj_key = f"{r + dr + ar},{c + dc + ac}"
+                                if self.terrain.get(adj_key, SEA) != SEA:
+                                    adjacent = True
+                    if all_sea and adjacent:
+                        return ('place_tile', str(tidx + 1), f"{r},{c}", str(rot))
+
+            # Fallback
+            return ('place_tile', '1', f"0,0", '0')
+
     def get_tutorial(self):
         return f"""{BOLD}=== AKROTIRI TUTORIAL ==={RESET}
 

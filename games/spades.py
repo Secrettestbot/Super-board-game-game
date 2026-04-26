@@ -43,6 +43,7 @@ class SpadesGame(BaseGame):
         "standard": "Standard Spades (500 points)",
         "short": "Short Game (200 points)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -438,6 +439,103 @@ class SpadesGame(BaseGame):
         self.nil_bids = list(state["nil_bids"])
         self.sandbags = list(state["sandbags"])
         self.round_messages = list(state["round_messages"])
+
+    def get_ai_move(self):
+        """Return a valid AI move based on difficulty."""
+        cp = self.current_player - 1
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.phase == "bid":
+            hand = self.hands[cp]
+            if difficulty == "easy":
+                return str(random.randint(1, 6))
+            # Count high cards and spades for bidding
+            spade_count = sum(1 for c in hand if c[1] == 'S')
+            high_cards = sum(1 for c in hand if rank_index(c[0]) >= 10)  # J, Q, K, A
+            aces = sum(1 for c in hand if c[0] == 'A')
+            estimated = aces + (high_cards - aces) // 2 + max(0, spade_count - 1)
+            if difficulty == "hard":
+                # More precise estimation
+                estimated = min(13, max(1, estimated))
+            else:
+                estimated = min(8, max(1, estimated))
+            return str(estimated)
+
+        elif self.phase == "play":
+            hand = self.hands[cp]
+            playable = self._get_playable_cards(cp)
+            if not playable:
+                return "1"
+
+            if difficulty == "easy":
+                card = random.choice(playable)
+                return str(hand.index(card) + 1)
+
+            # Leading a trick
+            if not self.current_trick:
+                if difficulty == "hard":
+                    # Lead with aces of non-spade suits, or low cards
+                    non_spade_aces = [c for c in playable if c[0] == 'A' and c[1] != 'S']
+                    if non_spade_aces:
+                        card = non_spade_aces[0]
+                    else:
+                        # Lead low non-spade
+                        non_spades = [c for c in playable if c[1] != 'S']
+                        if non_spades:
+                            card = min(non_spades, key=lambda c: rank_index(c[0]))
+                        else:
+                            card = min(playable, key=lambda c: rank_index(c[0]))
+                else:
+                    # Medium: lead with a strong card
+                    card = max(playable, key=lambda c: rank_index(c[0]))
+                return str(hand.index(card) + 1)
+
+            # Following
+            lead_suit = self.current_trick[0][1][1]
+            lead_rank = rank_index(self.current_trick[0][1][0])
+            follow = [c for c in playable if c[1] == lead_suit]
+
+            if follow:
+                # Can follow suit
+                winning_cards = [c for c in follow if rank_index(c[0]) > lead_rank]
+                if difficulty == "hard":
+                    if winning_cards:
+                        # Play lowest winning card
+                        card = min(winning_cards, key=lambda c: rank_index(c[0]))
+                    else:
+                        # Play lowest card (dump)
+                        card = min(follow, key=lambda c: rank_index(c[0]))
+                else:
+                    if winning_cards:
+                        card = random.choice(winning_cards)
+                    else:
+                        card = min(follow, key=lambda c: rank_index(c[0]))
+            else:
+                # Can't follow suit - trump or discard
+                spades = [c for c in playable if c[1] == 'S']
+                bid = self.bids[cp] or 0
+                need_tricks = bid - self.tricks_won[cp]
+
+                if need_tricks > 0 and spades:
+                    # Trump with lowest spade
+                    card = min(spades, key=lambda c: rank_index(c[0]))
+                else:
+                    # Discard lowest non-spade
+                    non_spades = [c for c in playable if c[1] != 'S']
+                    if non_spades:
+                        card = min(non_spades, key=lambda c: rank_index(c[0]))
+                    else:
+                        card = min(playable, key=lambda c: rank_index(c[0]))
+
+            return str(hand.index(card) + 1)
+
+        elif self.phase == "trick_done":
+            return "continue"
+
+        elif self.phase == "hand_over":
+            return "continue"
+
+        return "1"
 
     def get_tutorial(self):
         """Return tutorial text for Spades."""

@@ -84,6 +84,7 @@ class ArchaeologyGame(BaseGame):
         "standard": "Full deck with 6 treasure types (24 treasures + events)",
         "quick": "Smaller deck with 4 treasure types for faster play",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -437,6 +438,64 @@ class ArchaeologyGame(BaseGame):
         self.marketplace = state["marketplace"]
         self.discard = state["discard"]
         self.log = state.get("log", [])
+
+    def get_ai_move(self):
+        """Return a valid move for the AI player."""
+        p = self.current_player
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        hand_treasures = [c for c in self.hands[p] if c in TREASURE_ICONS]
+
+        if not self.deck and not self.marketplace and not hand_treasures:
+            return "pass"
+
+        if difficulty == 'easy':
+            choices = ["dig"]
+            if hand_treasures:
+                choices.append("bank")
+            if self.marketplace and hand_treasures:
+                choices.append("trade")
+            return random.choice(choices) if "dig" in choices and self.deck else "bank"
+
+        # Medium/Hard strategy
+        # Bank if we have good sets or lots of cards at risk
+        if hand_treasures:
+            counts = {}
+            for c in hand_treasures:
+                counts[c] = counts.get(c, 0) + 1
+            max_count = max(counts.values()) if counts else 0
+
+            # Bank if we have a large set or many cards at risk
+            if max_count >= 3 or len(hand_treasures) >= 5:
+                indices = [i for i, c in enumerate(self.hands[p]) if c in TREASURE_ICONS]
+                return ("bank", indices)
+
+            if difficulty == 'hard' and len(hand_treasures) >= 3:
+                indices = [i for i, c in enumerate(self.hands[p]) if c in TREASURE_ICONS]
+                return ("bank", indices)
+
+        # Trade if marketplace has something we want
+        if self.marketplace and hand_treasures:
+            # Check if marketplace has a card that matches our existing sets
+            banked_counts = {}
+            for c in self.scored[p]:
+                banked_counts[c] = banked_counts.get(c, 0) + 1
+            for mkt_idx, mkt_card in enumerate(self.marketplace):
+                if banked_counts.get(mkt_card, 0) > 0:
+                    # Find a hand card that's less useful
+                    for hand_idx, hc in enumerate(self.hands[p]):
+                        if hc in TREASURE_ICONS and hc != mkt_card:
+                            return ("trade", hand_idx, mkt_idx)
+
+        # Dig if deck available
+        if self.deck:
+            return "dig"
+
+        # Bank whatever we have
+        if hand_treasures:
+            indices = [i for i, c in enumerate(self.hands[p]) if c in TREASURE_ICONS]
+            return ("bank", indices)
+
+        return "pass"
 
     def get_tutorial(self):
         """Return tutorial text."""

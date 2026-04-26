@@ -172,6 +172,53 @@ class NoThanksGame(BaseGame):
                 else:
                     print("  Commands: 'take' (or 'k')")
 
+    def get_ai_move(self):
+        """Return an AI move: 'take' or 'pass'."""
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        card = self.current_card
+        chips = self.chips[p]
+        chips_on = self.chips_on_card
+        my_cards = sorted(self.hands[p])
+
+        # Must take if no chips
+        if chips <= 0:
+            return 'take'
+
+        if difficulty == "easy":
+            return random.choice(['take', 'pass'])
+
+        # Check if card extends a run we already have
+        extends_run = (card - 1) in my_cards or (card + 1) in my_cards
+
+        if difficulty == "medium":
+            # Take if it extends a run (free card) or chips on card offset cost
+            if extends_run:
+                return 'take'
+            if chips_on >= card * 0.4:
+                return 'take'
+            if chips <= 3:
+                return 'take'
+            return 'pass'
+
+        # Hard difficulty
+        # Calculate the net cost of taking this card
+        net_cost = card - chips_on
+        if extends_run:
+            net_cost = -chips_on  # Card is "free" since it extends run
+
+        # Take if net cost is low or negative
+        if net_cost <= 0:
+            return 'take'
+        # Take if chips are getting low
+        if chips <= 2:
+            return 'take'
+        # Take if very good chip accumulation
+        if chips_on >= card * 0.5:
+            return 'take'
+        # Pass otherwise (save chips for later)
+        return 'pass'
+
     def make_move(self, move):
         """Apply a move (take or pass)."""
         player_name = self.players[self.current_player - 1]
