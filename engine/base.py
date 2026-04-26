@@ -51,6 +51,7 @@ class BaseGame(ABC):
     min_players = 2
     max_players = 2
     variations = {}  # {name: description}
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         self.variation = variation or "standard"
@@ -61,6 +62,8 @@ class BaseGame(ABC):
         self.move_history = []
         self.turn_number = 0
         self._resumed = False
+        self.ai_player = None
+        self.ai_difficulty = "medium"
 
     @abstractmethod
     def setup(self):
@@ -97,6 +100,10 @@ class BaseGame(ABC):
         """Restore game state from saved data."""
         pass
 
+    def get_ai_move(self):
+        """Return an AI-generated move. Subclasses must override."""
+        raise NotImplementedError(f"{self.name} has not implemented AI")
+
     def get_tutorial(self):
         """Return tutorial text for this game."""
         return f"No tutorial available for {self.name}."
@@ -132,7 +139,9 @@ class BaseGame(ABC):
             'turn_number': self.turn_number,
             'move_history': self.move_history,
             'game_state': self.get_state(),
-            'timestamp': time.time()
+            'timestamp': time.time(),
+            'ai_player': self.ai_player,
+            'ai_difficulty': self.ai_difficulty,
         }
         filepath = os.path.join(SAVE_DIR, f"{slot_name}.json")
         with open(filepath, 'w') as f:
@@ -153,37 +162,42 @@ class BaseGame(ABC):
         while not self.game_over:
             clear_screen()
             self.display()
-            try:
-                move = self.get_move()
-            except QuitGame:
-                print("\nGame ended.")
-                input("Press Enter to return to menu...")
-                return None
-            except SuspendGame:
-                slot = self.save_game()
-                print(f"\nGame saved as '{slot}'")
-                input("Press Enter to return to menu...")
-                return 'suspended'
-            except ShowHelp:
-                self.show_help()
-                continue
-            except ShowTutorial:
-                clear_screen()
-                print(self.get_tutorial())
-                input("\nPress Enter to continue...")
-                continue
-            except KeyboardInterrupt:
-                print("\n\nInterrupted! Save before quitting? (y/n): ", end="")
+
+            if self.ai_player == self.current_player:
+                move = self.get_ai_move()
+                time.sleep(0.5)
+            else:
                 try:
-                    ans = input().strip().lower()
-                    if ans == 'y':
-                        slot = self.save_game()
-                        print(f"Game saved as '{slot}'")
-                    print("Returning to menu...")
-                    input("Press Enter to continue...")
+                    move = self.get_move()
+                except QuitGame:
+                    print("\nGame ended.")
+                    input("Press Enter to return to menu...")
+                    return None
+                except SuspendGame:
+                    slot = self.save_game()
+                    print(f"\nGame saved as '{slot}'")
+                    input("Press Enter to return to menu...")
+                    return 'suspended'
+                except ShowHelp:
+                    self.show_help()
+                    continue
+                except ShowTutorial:
+                    clear_screen()
+                    print(self.get_tutorial())
+                    input("\nPress Enter to continue...")
+                    continue
                 except KeyboardInterrupt:
-                    pass
-                return None
+                    print("\n\nInterrupted! Save before quitting? (y/n): ", end="")
+                    try:
+                        ans = input().strip().lower()
+                        if ans == 'y':
+                            slot = self.save_game()
+                            print(f"Game saved as '{slot}'")
+                        print("Returning to menu...")
+                        input("Press Enter to continue...")
+                    except KeyboardInterrupt:
+                        pass
+                    return None
 
             if self.make_move(move):
                 self.move_history.append(str(move))
@@ -192,8 +206,9 @@ class BaseGame(ABC):
                 if not self.game_over:
                     self.switch_player()
             else:
-                print("Invalid move! Try again.")
-                input("Press Enter to continue...")
+                if self.ai_player != self.current_player:
+                    print("Invalid move! Try again.")
+                    input("Press Enter to continue...")
 
         clear_screen()
         self.display()
