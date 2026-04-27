@@ -45,6 +45,7 @@ class ThatsPrettyCleverGame(BaseGame):
         "standard": "Standard (Ganz Schon Clever)",
         "twice": "Twice as Clever",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -441,6 +442,77 @@ class ThatsPrettyCleverGame(BaseGame):
             self.phase = "round_end"
             self.current_player = 1
             self.log.append(f"Round {self.round_number} complete!")
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        sp = str(cp)
+
+        if self.phase == "roll":
+            return {"action": "roll"}
+
+        elif self.phase == "choose":
+            if not self.available_dice:
+                return {"action": "pass"}
+            best_score = -999
+            best_choice = None
+            for color in self.available_dice:
+                die_val = self.dice[color]
+                for area in ["yellow", "blue", "green", "orange", "purple"]:
+                    check_val = die_val
+                    if area == "blue":
+                        if color == "Blue":
+                            check_val = die_val + self.dice.get("White", 0)
+                        elif color == "White":
+                            check_val = self.dice.get("Blue", 0) + die_val
+                    if self._can_place(cp, area, check_val):
+                        s = check_val
+                        if area == "orange":
+                            s = die_val * ORANGE_MULTIPLIERS[self.sheets[sp]["orange_count"]] if self.sheets[sp]["orange_count"] < ORANGE_SLOTS else 0
+                        elif area == "green":
+                            s = 5
+                        elif area == "purple":
+                            s = die_val
+                        elif area == "yellow":
+                            s = 4
+                        elif area == "blue":
+                            s = 3
+                        if difficulty == "easy":
+                            s += rand.uniform(-3, 3)
+                        elif difficulty == "medium":
+                            s += rand.uniform(-1, 1)
+                        if s > best_score:
+                            best_score = s
+                            best_choice = {"action": "choose", "color": color,
+                                           "area": area, "value": check_val}
+            if best_choice:
+                return best_choice
+            return {"action": "pass"}
+
+        elif self.phase == "opponent_pick":
+            if not self.silver_tray:
+                return {"action": "pass_tray"}
+            best_score = -999
+            best_pick = None
+            for idx, (color, die_val) in enumerate(self.silver_tray):
+                for area in ["yellow", "blue", "green", "orange", "purple"]:
+                    if self._can_place(cp, area, die_val):
+                        s = die_val
+                        if difficulty == "easy":
+                            s += rand.uniform(-2, 2)
+                        if s > best_score:
+                            best_score = s
+                            best_pick = {"action": "tray_pick", "tray_index": idx,
+                                         "area": area, "value": die_val}
+            if best_pick:
+                return best_pick
+            return {"action": "pass_tray"}
+
+        elif self.phase == "round_end":
+            return {"action": "next_round"}
+
+        return None
 
     def check_game_over(self):
         if self.game_over:

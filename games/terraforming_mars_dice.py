@@ -71,6 +71,7 @@ class TerraformingMarsDiceGame(BaseGame):
         'standard': 'Standard terraforming (temperature, oxygen, oceans)',
         'venus': 'Includes Venus Next expansion parameters',
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -270,6 +271,40 @@ class TerraformingMarsDiceGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        if self.phase == 'production':
+            if not self.current_roll:
+                return ('roll',)
+            return ('accept_roll',)
+
+        elif self.phase == 'action':
+            all_projs = [(i, PROJECTS[i], 'standard') for i in self.available_projects]
+            if self.variation == 'venus' and hasattr(self, 'venus_projects'):
+                all_projs += [(i, VENUS_PROJECTS[i], 'venus') for i in self.venus_projects]
+            affordable = []
+            for idx, (pi, proj, ptype) in enumerate(all_projs):
+                if self._can_afford(proj, cp):
+                    s = proj['vp'] * 2
+                    if proj['effect'] in ('oxygen', 'temperature', 'ocean', 'venus'):
+                        s += 3
+                    elif proj['effect'] == 'production':
+                        s += 4
+                    if difficulty == "easy":
+                        s += rand.uniform(-3, 3)
+                    elif difficulty == "medium":
+                        s += rand.uniform(-1, 1)
+                    affordable.append((s, idx))
+            if affordable:
+                affordable.sort(reverse=True)
+                return ('buy_project', affordable[0][1])
+            return ('end_actions',)
+
+        return ('end_actions',)
 
     def check_game_over(self):
         if self.round_num > self.max_rounds or self._all_global_params_maxed():

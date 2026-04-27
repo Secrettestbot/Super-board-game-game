@@ -32,6 +32,7 @@ class TakGame(BaseGame):
         "small": "Small Tak (4x4)",
         "large": "Large Tak (6x6)",
     }
+    side_labels = ("Player 1 (x)", "Player 2 (o)")
 
     # Board size for each variation
     VARIATION_SIZES = {
@@ -427,6 +428,119 @@ class TakGame(BaseGame):
     # ------------------------------------------------------------------
     # Win detection
     # ------------------------------------------------------------------
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+        size = self.size
+
+        if self.turn_number < 2:
+            empties = [(r, c) for r in range(size) for c in range(size) if not self.board[r][c]]
+            if difficulty == "easy":
+                r, c = rand.choice(empties)
+            else:
+                center = size // 2
+                empties.sort(key=lambda p: abs(p[0] - center) + abs(p[1] - center))
+                r, c = empties[0]
+            return ('place', self.FLAT, r, c)
+
+        placements = []
+        for r in range(size):
+            for c in range(size):
+                if not self.board[r][c]:
+                    if self.pieces[player]['F'] > 0:
+                        placements.append(('place', self.FLAT, r, c))
+                        placements.append(('place', self.WALL, r, c))
+                    if self.pieces[player]['C'] > 0:
+                        placements.append(('place', self.CAPSTONE, r, c))
+
+        stack_moves = []
+        for r in range(size):
+            for c in range(size):
+                stack = self.board[r][c]
+                if not stack or stack[-1][0] != player:
+                    continue
+                for dname, (dr, dc) in self.DIRECTIONS.items():
+                    for count in range(1, min(len(stack), size) + 1):
+                        for drops in self._generate_drops(count, 1):
+                            valid = True
+                            carrying = stack[-count:]
+                            cur_r, cur_c = r, c
+                            di = 0
+                            for step_i, nd in enumerate(drops):
+                                cur_r += dr
+                                cur_c += dc
+                                if not (0 <= cur_r < size and 0 <= cur_c < size):
+                                    valid = False
+                                    break
+                                target = self.board[cur_r][cur_c]
+                                if target:
+                                    tt = target[-1][1]
+                                    if tt == self.CAPSTONE:
+                                        valid = False
+                                        break
+                                    if tt == self.WALL:
+                                        if not (step_i == len(drops) - 1 and nd == 1 and carrying[di][1] == self.CAPSTONE):
+                                            valid = False
+                                            break
+                                di += nd
+                            if valid:
+                                stack_moves.append(('move', r, c, dname, drops))
+
+        if difficulty == "easy":
+            all_moves = placements + stack_moves
+            if all_moves:
+                return rand.choice(all_moves)
+            return ('place', self.FLAT, 0, 0)
+
+        scored = []
+        for move in placements:
+            _, ptype, r, c = move
+            s = 0.0
+            center = (size - 1) / 2
+            s += (2 - abs(r - center)) * 0.3 + (2 - abs(c - center)) * 0.3
+            if ptype == self.FLAT:
+                s += 2
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < size and 0 <= nc < size:
+                        ns = self.board[nr][nc]
+                        if ns and ns[-1][0] == player and ns[-1][1] in (self.FLAT, self.CAPSTONE):
+                            s += 3
+            elif ptype == self.WALL:
+                s += 0.5
+            elif ptype == self.CAPSTONE:
+                s += 3
+            if difficulty == "medium":
+                s += rand.uniform(-2, 2)
+            scored.append((s, move))
+
+        for move in stack_moves:
+            s = 1.0
+            if difficulty == "medium":
+                s += rand.uniform(-2, 2)
+            scored.append((s, move))
+
+        if not scored:
+            return ('place', self.FLAT, 0, 0)
+        scored.sort(reverse=True)
+        return scored[0][1]
+
+    def _generate_drops(self, total, min_per_step):
+        if total <= 0:
+            yield []
+            return
+        if total == 1:
+            yield [1]
+            return
+        for first in range(min_per_step, total + 1):
+            remainder = total - first
+            if remainder == 0:
+                yield [first]
+            else:
+                for rest in self._generate_drops(remainder, 1):
+                    yield [first] + rest
 
     def check_game_over(self):
         """Check for road win, board full, or out of pieces."""
