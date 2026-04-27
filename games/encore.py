@@ -337,6 +337,12 @@ class EncoreGame(BaseGame):
                 self.log.append(f"{self.players[cp-1]} crossed {count} {color} at {cells_str}.")
                 return self._advance_phase()
 
+            if self.ai_player == self.current_player:
+                self._cross_cells(cp, valid[0])
+                cells_str = " ".join(f"({r},{c})" for r, c in valid[0])
+                self.log.append(f"{self.players[cp-1]} crossed {count} {color} at {cells_str}.")
+                return self._advance_phase()
+
             # Show placement options
             print(f"  Choose where to place {count} {color} cells:")
             for i, cells in enumerate(valid[:20]):
@@ -363,7 +369,7 @@ class EncoreGame(BaseGame):
             if not valid:
                 self.log.append(f"{self.players[cp-1]} used joker but no valid placement.")
                 return self._advance_phase()
-            if len(valid) == 1:
+            if len(valid) == 1 or self.ai_player == self.current_player:
                 self._cross_cells(cp, valid[0])
                 self.log.append(f"{self.players[cp-1]} used joker: {count} {color}.")
                 return self._advance_phase()
@@ -411,6 +417,58 @@ class EncoreGame(BaseGame):
             self.current_player = self.active_player
             return True
         return True
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        sp = str(cp)
+
+        if self.phase == "roll":
+            return {"action": "roll"}
+        if self.phase == "round_end":
+            return {"action": "next_round"}
+
+        if self.phase in ("active_choose", "passive_choose"):
+            combos = self._get_combos()
+            if not combos:
+                return {"action": "pass"}
+
+            if difficulty == 'easy':
+                for color, count in combos:
+                    valid = self._get_valid_crosses(cp, color, count)
+                    if valid:
+                        return {"action": "cross", "color": color, "count": count}
+                return {"action": "pass"}
+
+            best = None
+            best_score = -1
+            for color, count in combos:
+                valid = self._get_valid_crosses(cp, color, count)
+                if not valid:
+                    continue
+                sc = count
+                if difficulty == 'hard':
+                    for cells in valid:
+                        for r, c in cells:
+                            if c in (0, 3, 6):
+                                sc += 1
+                if sc > best_score:
+                    best_score = sc
+                    best = (color, count)
+
+            if best is None:
+                if self.jokers[sp] > 0 and difficulty == 'hard':
+                    for color in COLORS:
+                        for num in range(6, 0, -1):
+                            valid = self._get_valid_crosses(cp, color, num)
+                            if valid:
+                                return {"action": "joker", "color": color, "count": num}
+                return {"action": "pass"}
+
+            return {"action": "cross", "color": best[0], "count": best[1]}
+
+        return {"action": "pass"}
 
     def check_game_over(self):
         if self.game_over:

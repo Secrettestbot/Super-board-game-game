@@ -171,6 +171,80 @@ class DotsBoxesGame(BaseGame):
 
         return completed
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        num_box_rows = self.rows - 1
+        num_box_cols = self.cols - 1
+
+        available = []
+        for r in range(self.rows):
+            for c in range(num_box_cols):
+                if not self.h_lines[r][c]:
+                    available.append(f"r{r+1},{c+1}")
+        for r in range(num_box_rows):
+            for c in range(self.cols):
+                if not self.v_lines[r][c]:
+                    available.append(f"c{r+1},{c+1}")
+
+        if not available:
+            return available[0] if available else "r1,1"
+
+        if difficulty == 'easy':
+            return random.choice(available)
+
+        def count_sides(br, bc):
+            return sum([self.h_lines[br][bc], self.h_lines[br+1][bc],
+                        self.v_lines[br][bc], self.v_lines[br][bc+1]])
+
+        completing = []
+        safe = []
+        dangerous = []
+
+        for move in available:
+            lt = move[0]
+            coords = move[1:].split(',')
+            r, c = int(coords[0]) - 1, int(coords[1]) - 1
+
+            completes = False
+            gives_box = False
+
+            if lt == 'r':
+                self.h_lines[r][c] = True
+                for br in [r-1, r]:
+                    if 0 <= br < num_box_rows and self.boxes[br][c] == 0:
+                        if count_sides(br, c) == 4:
+                            completes = True
+                        elif count_sides(br, c) == 3:
+                            gives_box = True
+                self.h_lines[r][c] = False
+            else:
+                self.v_lines[r][c] = True
+                for bc in [c-1, c]:
+                    if 0 <= bc < num_box_cols and self.boxes[r][bc] == 0:
+                        if count_sides(r, bc) == 4:
+                            completes = True
+                        elif count_sides(r, bc) == 3:
+                            gives_box = True
+                self.v_lines[r][c] = False
+
+            if completes:
+                completing.append(move)
+            elif gives_box:
+                dangerous.append(move)
+            else:
+                safe.append(move)
+
+        if completing:
+            return random.choice(completing)
+        if safe:
+            if difficulty == 'medium' and random.random() < 0.15:
+                return random.choice(available)
+            return random.choice(safe)
+        if difficulty == 'medium' and random.random() < 0.1:
+            return random.choice(dangerous)
+        return random.choice(dangerous)
+
     def check_game_over(self):
         """Check if all boxes are filled."""
         num_box_rows = self.rows - 1
