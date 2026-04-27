@@ -466,6 +466,67 @@ class ColorettoGame(BaseGame):
 
     # -------------------------------------------------------- check_game_over
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        if self.passed[cp]:
+            return ("skip",)
+
+        non_empty = [r for r in sorted(self.rows.keys()) if len(self.rows[r]) > 0]
+        non_full = [r for r in sorted(self.rows.keys()) if len(self.rows[r]) < 3]
+        can_draw = bool(self.deck) and bool(non_full)
+
+        if difficulty == 'easy':
+            if can_draw and random.random() < 0.6:
+                return ("draw", random.choice(non_full))
+            if non_empty:
+                return ("take", random.choice(non_empty))
+            if can_draw:
+                return ("draw", random.choice(non_full))
+            return ("skip",)
+
+        my_colors = {}
+        for c in self.collections[cp]:
+            if c not in ("Wild", "+2"):
+                my_colors[c] = my_colors.get(c, 0) + 1
+        top = sorted(my_colors.items(), key=lambda x: -x[1])
+        good = set(c for c, _ in top[:3]) if top else set()
+
+        def row_value(rid):
+            score = 0
+            for card in self.rows[rid]:
+                if card in ("Wild", "+2"):
+                    score += 3
+                elif card in good:
+                    score += 2
+                else:
+                    score -= 1
+            return score
+
+        best_row = None
+        best_val = -999
+        for r in non_empty:
+            v = row_value(r)
+            if v > best_val:
+                best_val = v
+                best_row = r
+
+        threshold = 3 if difficulty == 'hard' else 2
+        rows_mostly_full = all(len(self.rows[r]) >= 2 for r in self.rows)
+
+        if best_row is not None and (best_val >= threshold or rows_mostly_full):
+            return ("take", best_row)
+
+        if can_draw:
+            return ("draw", random.choice(non_full))
+
+        if non_empty:
+            return ("take", best_row if best_row else non_empty[0])
+
+        return ("skip",)
+
     def check_game_over(self):
         # Game ends when last round is triggered AND all rows are taken
         # (or deck runs out completely)

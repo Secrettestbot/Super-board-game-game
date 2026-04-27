@@ -257,6 +257,30 @@ class CodenamesDuetGame(BaseGame):
 
         return False
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        if self.clue_phase:
+            return ('clue', 'HINT', 1)
+
+        if difficulty == 'easy':
+            return ('pass',)
+
+        safe = []
+        for i in range(len(self.words)):
+            if not self.revealed[i] and self.keys[cp].get(i) != 'assassin':
+                safe.append(i)
+
+        if not safe:
+            return ('pass',)
+
+        if difficulty == 'medium' and self._guesses_left < 2:
+            return ('pass',)
+
+        return ('guess', random.choice(safe))
+
     def check_game_over(self):
         if self.game_over:
             return  # already set (assassin)
