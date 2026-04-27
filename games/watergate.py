@@ -55,6 +55,7 @@ class WatergateGame(BaseGame):
         "standard": "Standard game (5 evidence to win, 5 rounds)",
         "quick": "Quick game (3 evidence to win, 3 rounds)",
     }
+    side_labels = ("Editor", "Nixon")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -318,6 +319,47 @@ class WatergateGame(BaseGame):
                     return
                 # Start next round
                 self._start_round()
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        if not self.hands[p]:
+            return "pass"
+
+        if difficulty == 'easy':
+            return str(rand.randint(1, len(self.hands[p])))
+
+        cards = EDITOR_CARDS if p == 1 else NIXON_CARDS
+        scored = []
+        for i, cidx in enumerate(self.hands[p]):
+            card = cards[cidx]
+            score = card[1]
+            power = card[2]
+
+            if p == 1:
+                if power == "pull_evidence":
+                    score += 3
+                elif power == "block_momentum":
+                    score += 2 + self.nixon_momentum
+                elif power == "pull_two":
+                    score += 5
+            else:
+                if power == "push_evidence":
+                    score += 3
+                elif power == "gain_momentum":
+                    score += 2 + (self.momentum_to_win - self.nixon_momentum)
+
+            scored.append((score, i + 1))
+
+        scored.sort(key=lambda x: -x[0])
+
+        if difficulty == 'hard':
+            return str(scored[0][1])
+
+        top = scored[:max(1, len(scored) // 2 + 1)]
+        return str(rand.choice(top)[1])
 
     def check_game_over(self):
         if self.evidence_connected >= self.evidence_to_win:

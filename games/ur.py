@@ -67,6 +67,7 @@ class UrGame(BaseGame):
         "standard": "Standard Rules",
         "simple": "Simplified (5 pieces per player)",
     }
+    side_labels = ("X", "O")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -419,6 +420,55 @@ class UrGame(BaseGame):
             return  # same player goes again
         self.current_player = 2 if self.current_player == 1 else 1
 
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        roll = self._roll_dice()
+        self.last_roll = roll
+
+        if roll == 0:
+            return ("no_move", roll)
+
+        legal = self._get_legal_moves(self.current_player, roll)
+        if not legal:
+            return ("no_move", roll)
+
+        if difficulty == 'easy':
+            idx, desc = rand.choice(legal)
+            return ("move", roll, idx)
+
+        opponent = 3 - self.current_player
+        scored = []
+        for idx, desc in legal:
+            score = 0
+            pos = self.pieces[self.current_player][idx]
+            new_pos = pos + roll
+            if new_pos >= PATH_LENGTH + 1:
+                new_pos = 15
+
+            if new_pos == 15:
+                score += 25
+            elif new_pos in ROSETTES:
+                score += 12
+            if 5 <= new_pos <= 12:
+                for opp_pos in self.pieces[opponent]:
+                    if opp_pos == new_pos:
+                        score += 10
+                        break
+            score += pos * 0.5
+            if pos == 0:
+                score += 3
+            scored.append((score, idx))
+
+        scored.sort(key=lambda x: -x[0])
+
+        if difficulty == 'hard':
+            return ("move", roll, scored[0][1])
+
+        top = scored[:max(1, len(scored) // 2 + 1)]
+        return ("move", roll, rand.choice(top)[1])
+
     # ----------------------------------------------------- check_game_over
     def check_game_over(self):
         """Game ends when a player has borne off all pieces."""
@@ -458,28 +508,33 @@ class UrGame(BaseGame):
         while not self.game_over:
             clear_screen()
             self.display()
-            try:
-                move = self.get_move()
-            except Exception as e:
-                from engine.base import QuitGame, SuspendGame, ShowHelp, ShowTutorial
-                if isinstance(e, QuitGame):
-                    print("\nGame ended.")
-                    input_with_quit("Press Enter to return to menu...")
-                    return None
-                elif isinstance(e, SuspendGame):
-                    slot = self.save_game()
-                    print(f"\nGame saved as '{slot}'")
-                    input_with_quit("Press Enter to return to menu...")
-                    return 'suspended'
-                elif isinstance(e, ShowHelp):
-                    self.show_help()
-                    continue
-                elif isinstance(e, ShowTutorial):
-                    clear_screen()
-                    print(self.get_tutorial())
-                    input_with_quit("\nPress Enter to continue...")
-                    continue
-                raise
+            if self.ai_player == self.current_player:
+                import time
+                move = self.get_ai_move()
+                time.sleep(0.5)
+            else:
+                try:
+                    move = self.get_move()
+                except Exception as e:
+                    from engine.base import QuitGame, SuspendGame, ShowHelp, ShowTutorial
+                    if isinstance(e, QuitGame):
+                        print("\nGame ended.")
+                        input_with_quit("Press Enter to return to menu...")
+                        return None
+                    elif isinstance(e, SuspendGame):
+                        slot = self.save_game()
+                        print(f"\nGame saved as '{slot}'")
+                        input_with_quit("Press Enter to return to menu...")
+                        return 'suspended'
+                    elif isinstance(e, ShowHelp):
+                        self.show_help()
+                        continue
+                    elif isinstance(e, ShowTutorial):
+                        clear_screen()
+                        print(self.get_tutorial())
+                        input_with_quit("\nPress Enter to continue...")
+                        continue
+                    raise
 
             if self.make_move(move):
                 self.move_history.append(str(move))
