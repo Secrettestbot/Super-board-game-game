@@ -91,6 +91,7 @@ class PatchworkGame(BaseGame):
         "standard": "Standard Patchwork (9x9 board)",
         "simple": "Simplified (fewer patches, 7x7 board)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -476,6 +477,42 @@ class PatchworkGame(BaseGame):
             return (rotation, flip, row_off, col_off)
         except (ValueError, IndexError):
             return None
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        active = self._get_active_player()
+
+        available = self._available_patches()
+        other = 1 - active
+        advance_spaces = max(1, min(self.positions[other] + 1, self.track_length) - self.positions[active])
+        advance_score = advance_spaces * 2
+
+        patch_scores = []
+        for i, (idx, patch) in enumerate(available):
+            cost, time_cost, income, shape = patch
+            if self.buttons[active] < cost:
+                continue
+            if not self._has_any_valid_placement(active, shape):
+                continue
+            cells = len(shape)
+            score = cells * 3 + income * 8 - cost * 1.5 - time_cost * 0.5
+            if difficulty == "hard":
+                score += income * 4
+            patch_scores.append((str(i + 1), score))
+
+        moves = [("A", advance_score)]
+        moves.extend(patch_scores)
+
+        if difficulty == "easy":
+            return rand.choice(moves)[0]
+        elif difficulty == "hard":
+            moves.sort(key=lambda x: x[1], reverse=True)
+            return moves[0][0]
+        else:
+            moves.sort(key=lambda x: x[1], reverse=True)
+            top = moves[:min(2, len(moves))]
+            return rand.choice(top)[0]
 
     def check_game_over(self):
         """Check if both players have reached the end of the time track."""

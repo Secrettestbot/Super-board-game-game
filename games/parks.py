@@ -95,6 +95,7 @@ class ParksGame(BaseGame):
         "standard": "Standard game (4 seasons)",
         "short": "Short game (2 seasons)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -378,6 +379,83 @@ class ParksGame(BaseGame):
 
         print("  Unknown action. Use: move, park, photo, canteen")
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        pi = self.current_player - 1
+        p = self.current_player
+
+        end_hikers = [hi for hi in range(2) if self.hiker_positions[p][hi] >= len(self.trail)]
+
+        if end_hikers:
+            affordable = [(i, park) for i, park in enumerate(self.park_display)
+                          if self._can_afford_park(pi, park)]
+            if affordable:
+                if difficulty == "easy":
+                    return f"park {rand.choice(affordable)[0] + 1}"
+                affordable.sort(key=lambda x: x[1]["points"], reverse=True)
+                if difficulty == "hard":
+                    return f"park {affordable[0][0] + 1}"
+                top = affordable[:min(2, len(affordable))]
+                return f"park {rand.choice(top)[0] + 1}"
+            return "photo"
+
+        movable = [hi for hi in range(2) if self.hiker_positions[p][hi] < len(self.trail)]
+        if not movable:
+            return "photo"
+
+        if not self.canteen[pi] and difficulty != "easy":
+            for park in self.park_display:
+                for r, v in park["cost"].items():
+                    deficit = v - self.player_resources[pi].get(r, 0)
+                    if deficit == 1:
+                        return f"canteen {r}"
+
+        best_move = None
+        best_score = -999
+
+        for hi in movable:
+            current_pos = self.hiker_positions[p][hi]
+            for target in range(current_pos + 1, len(self.trail) + 1):
+                if target == len(self.trail):
+                    score = 5
+                    if any(self._can_afford_park(pi, park) for park in self.park_display):
+                        score = 40
+                    elif difficulty == "hard":
+                        score = 2
+                    if score > best_score:
+                        best_score = score
+                        best_move = f"move {hi + 1} end"
+                    continue
+
+                occupied = False
+                for op in [1, 2]:
+                    for ohi, opos in enumerate(self.hiker_positions[op]):
+                        if opos == target and (op != p or ohi != hi):
+                            occupied = True
+                if occupied:
+                    continue
+
+                site = self.trail[target]
+                score = 0
+                for r, v in site["gives"].items():
+                    score += v * 3
+                    if r == self.season_bonus_resource:
+                        score += 2
+                    for park in self.park_display:
+                        needed = park["cost"].get(r, 0) - self.player_resources[pi].get(r, 0)
+                        if needed > 0:
+                            score += 5
+                if difficulty == "easy":
+                    score += rand.randint(-5, 5)
+                if score > best_score:
+                    best_score = score
+                    best_move = f"move {hi + 1} {target}"
+
+        if best_move:
+            return best_move
+        return f"move {movable[0] + 1} end"
 
     def check_game_over(self):
         # Check if all hikers have finished the trail
