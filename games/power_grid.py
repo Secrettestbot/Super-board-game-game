@@ -88,6 +88,7 @@ class PowerGridGame(BaseGame):
         "standard": "Classic Power Grid with 10-city network",
         "deluxe": "Extra high-value power plants and bonus scoring",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -492,6 +493,140 @@ class PowerGridGame(BaseGame):
                 return True
 
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        pi = self.current_player - 1
+
+        if self.phase == "auction":
+            if self.auction_plant is None:
+                if self.auction_passed[pi]:
+                    return "pass"
+                if not self.market_current:
+                    return "pass"
+                best_plant = None
+                best_val = -1
+                for idx, plant in enumerate(self.market_current):
+                    if plant["min_bid"] > self.money[pi]:
+                        continue
+                    val = plant["powers"] * 10
+                    if plant["fuel"] == "wind":
+                        val += 15
+                    if difficulty == "hard":
+                        if plant["fuel"] in ("coal/oil", "wind"):
+                            val += 5
+                        val += plant["powers"] * 3
+                    if difficulty == "medium":
+                        val += rand.uniform(-5, 5)
+                    if val > best_val:
+                        best_val = val
+                        best_plant = idx
+                if best_plant is not None:
+                    plant = self.market_current[best_plant]
+                    bid = plant["min_bid"]
+                    if difficulty == "easy":
+                        bid = plant["min_bid"]
+                    elif difficulty == "hard":
+                        bid = min(plant["min_bid"] + 2, self.money[pi])
+                    else:
+                        bid = min(plant["min_bid"] + 1, self.money[pi])
+                    return f"bid {best_plant + 1} {bid}"
+                return "pass"
+            else:
+                if self.auction_bidder == pi:
+                    return "pass"
+                if difficulty == "easy":
+                    return "pass"
+                max_bid = self.auction_bid + 1
+                plant = self.auction_plant
+                val = plant["powers"] * 10
+                if plant["fuel"] == "wind":
+                    val += 15
+                if max_bid <= self.money[pi] and max_bid <= val:
+                    if difficulty == "hard" or rand.random() < 0.5:
+                        return f"raise {max_bid}"
+                return "pass"
+
+        elif self.phase == "resource":
+            for plant in self.plants[pi]:
+                if plant["fuel"] == "wind":
+                    continue
+                pid = str(plant["id"])
+                stored = self.plant_resources[pi].get(pid, {})
+                current = sum(stored.values())
+                needed = plant["cost"] - current
+                if needed <= 0:
+                    continue
+                fuels = plant["fuel"].split("/")
+                best_fuel = None
+                best_price = 9999
+                for fuel in fuels:
+                    price = self._get_resource_price(fuel, needed)
+                    if price >= 0 and price <= self.money[pi] and price < best_price:
+                        best_price = price
+                        best_fuel = fuel
+                if best_fuel:
+                    return f"buy {best_fuel} {needed} {pid}"
+            if difficulty == "hard":
+                for plant in self.plants[pi]:
+                    if plant["fuel"] == "wind":
+                        continue
+                    pid = str(plant["id"])
+                    stored = self.plant_resources[pi].get(pid, {})
+                    current = sum(stored.values())
+                    max_store = plant["cost"] * 2
+                    extra = max_store - current
+                    if extra > 0:
+                        fuels = plant["fuel"].split("/")
+                        for fuel in fuels:
+                            price = self._get_resource_price(fuel, 1)
+                            if price >= 0 and price <= 3 and price <= self.money[pi]:
+                                return f"buy {fuel} 1 {pid}"
+            return "done"
+
+        elif self.phase == "build":
+            available = []
+            for city in CITIES:
+                if city in self.cities[pi]:
+                    continue
+                if self.step == 1:
+                    opp = 1 - pi
+                    if city in self.cities[opp]:
+                        continue
+                cost = self._connection_cost(pi, city)
+                if cost < 0 or cost > self.money[pi]:
+                    continue
+                available.append((cost, city))
+            if not available:
+                return "done"
+            available.sort()
+            if difficulty == "easy":
+                if available and rand.random() < 0.6:
+                    return f"connect {available[0][1].lower()}"
+                return "done"
+            reserve = 10
+            if difficulty == "hard":
+                reserve = 5
+            if available[0][0] <= self.money[pi] - reserve:
+                return f"connect {available[0][1].lower()}"
+            return "done"
+
+        elif self.phase == "power":
+            plant_ids = []
+            for plant in self.plants[pi]:
+                pid = str(plant["id"])
+                if plant["fuel"] == "wind":
+                    plant_ids.append(pid)
+                    continue
+                stored = self.plant_resources[pi].get(pid, {})
+                if sum(stored.values()) >= plant["cost"]:
+                    plant_ids.append(pid)
+            if plant_ids:
+                return "power " + " ".join(plant_ids)
+            return "done"
+
+        return "pass"
 
     def check_game_over(self):
         """Game ends when a player reaches target cities."""
