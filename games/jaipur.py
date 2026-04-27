@@ -477,6 +477,100 @@ class JaipurGame(BaseGame):
         while len(self.market) < 5 and self.deck:
             self.market.append(self.deck.pop())
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        me = self.current_player
+        hand = self.hands[me]
+        market = self.market
+
+        if difficulty == 'easy':
+            actions = []
+            for good in set(hand):
+                count = hand.count(good)
+                if good in ('diamonds', 'gold', 'silver') and count >= 2:
+                    actions.append(f"sell {good} {count}")
+                elif count >= 1 and good not in ('diamonds', 'gold', 'silver'):
+                    actions.append(f"sell {good} {count}")
+            camels_in_market = market.count('camel')
+            if camels_in_market >= 2:
+                actions.append("take camels")
+            goods_in_market = [g for g in market if g != 'camel']
+            for g in goods_in_market:
+                if len(hand) < HAND_LIMIT:
+                    actions.append(f"take {g}")
+            if not actions:
+                if goods_in_market and len(hand) < HAND_LIMIT:
+                    actions.append(f"take {goods_in_market[0]}")
+                elif camels_in_market > 0:
+                    actions.append("take camels")
+                else:
+                    actions.append(f"sell {hand[0]} 1" if hand else "take camels")
+            return random.choice(actions) if actions else "take camels"
+
+        precious = {'diamonds', 'gold', 'silver'}
+
+        def sell_value(good, count):
+            tokens = self.tokens.get(good, [])
+            val = sum(tokens[:count])
+            if count >= 5 and self.bonus_5:
+                val += self.bonus_5[-1]
+            elif count == 4 and self.bonus_4:
+                val += self.bonus_4[-1]
+            elif count == 3 and self.bonus_3:
+                val += self.bonus_3[-1]
+            return val
+
+        best_action = None
+        best_val = -1
+
+        for good in set(hand):
+            count = hand.count(good)
+            min_sell = 2 if good in precious else 1
+            if count >= min_sell:
+                val = sell_value(good, count)
+                if count >= 3:
+                    val += 3
+                if val > best_val:
+                    best_val = val
+                    best_action = f"sell {good} {count}"
+
+        camels_in_market = market.count('camel')
+        if camels_in_market >= 2:
+            camel_val = camels_in_market * 1.5
+            if camel_val > best_val:
+                best_val = camel_val
+                best_action = "take camels"
+
+        if len(hand) < HAND_LIMIT:
+            goods_in_market = [g for g in market if g != 'camel']
+            for g in goods_in_market:
+                val = 0
+                if g in precious:
+                    val = 4
+                else:
+                    val = 2
+                if g in hand:
+                    val += 2
+                if difficulty == 'hard':
+                    tokens = self.tokens.get(g, [])
+                    if tokens:
+                        val += tokens[0] * 0.3
+                if val > best_val:
+                    best_val = val
+                    best_action = f"take {g}"
+
+        if best_action:
+            return best_action
+
+        if hand:
+            good = hand[0]
+            count = hand.count(good)
+            min_sell = 2 if good in precious else 1
+            if count >= min_sell:
+                return f"sell {good} {count}"
+        return "take camels"
+
     def check_game_over(self):
         """Check if the round/game is over."""
         # Round ends when 3 token piles are empty or deck runs out

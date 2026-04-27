@@ -459,6 +459,96 @@ class KahunaGame(BaseGame):
         self.deck = self._make_deck()
         self._refill_hands()
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        me = self.current_player
+        opp = 3 - me
+        hand = self.hands[me]
+
+        if not hand:
+            return "end_turn"
+
+        if difficulty == 'easy':
+            if random.random() < 0.3:
+                return "end_turn"
+            card = random.choice(hand)
+            valid_bridges = []
+            for a, b in self.possible_bridges:
+                if (a == card or b == card) and self.bridge_owner[self._bridge_key(a, b)] == 0:
+                    valid_bridges.append((a, b))
+            if valid_bridges:
+                a, b = random.choice(valid_bridges)
+                return {"action": "build", "card": card, "bridge": [a, b]}
+            return "end_turn"
+
+        best_build = None
+        best_build_val = -1
+        for card in set(hand):
+            for a, b in self.possible_bridges:
+                if (a == card or b == card) and self.bridge_owner[self._bridge_key(a, b)] == 0:
+                    val = 0
+                    for island in [a, b]:
+                        total_b = self._total_bridges(island)
+                        my_b = self._count_player_bridges(island, me)
+                        if (my_b + 1) > total_b / 2:
+                            val += 10
+                            opp_bridges_here = self._count_player_bridges(island, opp)
+                            val += opp_bridges_here * 2
+                        else:
+                            needed = (total_b // 2 + 1) - (my_b + 1)
+                            val += max(0, 5 - needed)
+                    if difficulty == 'hard':
+                        for island in [a, b]:
+                            if self.island_control.get(island) == opp:
+                                val += 5
+                    if val > best_build_val:
+                        best_build_val = val
+                        best_build = {"action": "build", "card": card, "bridge": [a, b]}
+
+        best_remove = None
+        best_remove_val = -1
+        if len(hand) >= 2:
+            opp_bridges = []
+            for a, b in self.possible_bridges:
+                if self.bridge_owner[self._bridge_key(a, b)] == opp:
+                    opp_bridges.append((a, b))
+            for a, b in opp_bridges:
+                can_remove = False
+                cards_needed = []
+                temp = list(hand)
+                for _ in range(2):
+                    if a in temp:
+                        cards_needed.append(a)
+                        temp.remove(a)
+                    elif b in temp:
+                        cards_needed.append(b)
+                        temp.remove(b)
+                if len(cards_needed) == 2:
+                    can_remove = True
+                if can_remove:
+                    val = 0
+                    for island in [a, b]:
+                        if self.island_control.get(island) == opp:
+                            opp_b = self._count_player_bridges(island, opp)
+                            total_b = self._total_bridges(island)
+                            if (opp_b - 1) <= total_b / 2:
+                                val += 8
+                        val += 2
+                    if val > best_remove_val:
+                        best_remove_val = val
+                        best_remove = {"action": "remove", "cards": cards_needed, "bridge": [a, b]}
+
+        if best_build and best_remove:
+            if best_remove_val > best_build_val and difficulty == 'hard':
+                return best_remove
+            return best_build
+        if best_build:
+            return best_build
+        if best_remove:
+            return best_remove
+        return "end_turn"
+
     def check_game_over(self):
         if self.scoring_round >= self.max_scoring_rounds:
             self.game_over = True

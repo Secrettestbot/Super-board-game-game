@@ -195,6 +195,48 @@ class JottoGame(BaseGame):
 
         return False
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        sp = str(cp)
+
+        if self.secret_words[sp] is None:
+            word = random.choice(self.word_pool)
+            return {"action": "set_secret", "word": word}
+
+        prev = self.guesses[sp]
+        candidates = list(self.word_pool)
+        for guess, match_count in prev:
+            candidates = [w for w in candidates if count_matching_letters(w, guess) == match_count]
+        if not candidates:
+            candidates = list(self.word_pool)
+        already_guessed = {g for g, _ in prev}
+        remaining = [w for w in candidates if w not in already_guessed]
+        if not remaining:
+            remaining = [w for w in self.word_pool if w not in already_guessed]
+        if not remaining:
+            remaining = list(self.word_pool)
+
+        if difficulty == 'easy':
+            return {"action": "guess", "word": random.choice(remaining)}
+
+        if difficulty == 'hard' and len(remaining) > 1:
+            best_word = remaining[0]
+            best_info = -1
+            for w in remaining[:20]:
+                buckets = {}
+                for c in remaining:
+                    m = count_matching_letters(c, w)
+                    buckets[m] = buckets.get(m, 0) + 1
+                info = len(buckets)
+                if info > best_info:
+                    best_info = info
+                    best_word = w
+            return {"action": "guess", "word": best_word}
+
+        return {"action": "guess", "word": random.choice(remaining)}
+
     def check_game_over(self):
         for p in [1, 2]:
             sp = str(p)

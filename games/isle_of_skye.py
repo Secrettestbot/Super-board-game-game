@@ -416,6 +416,101 @@ class IsleOfSkyeGame(BaseGame):
         self.phase = "draw"
         self.drawn_tiles = [[], []]
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        pi = self.current_player - 1
+
+        if self.phase == "draw":
+            return "draw"
+
+        if self.phase == "price":
+            tiles = self.drawn_tiles[pi]
+            discarded_count = sum(1 for d in self.discarded[pi] if d)
+            priced_count = sum(1 for p in self.prices[pi] if p >= 0)
+
+            if discarded_count == 0:
+                if difficulty == 'easy':
+                    idx = random.randint(0, 2)
+                else:
+                    worst_idx = 0
+                    worst_val = 999
+                    for i, t in enumerate(tiles):
+                        val = {"village": 5, "lake": 4, "mountain": 3, "forest": 2, "pasture": 1}.get(t["terrain"], 1)
+                        if t.get("gold_bonus", 0):
+                            val += t["gold_bonus"]
+                        if val < worst_val:
+                            worst_val = val
+                            worst_idx = i
+                    idx = worst_idx
+                return f"discard {idx + 1}"
+
+            if priced_count < 2:
+                for i in range(3):
+                    if not self.discarded[pi][i] and self.prices[pi][i] < 0:
+                        price = random.randint(1, max(1, self.gold[pi] // 3)) if difficulty == 'easy' else max(1, self.gold[pi] // 4)
+                        return f"price {i + 1} {price}"
+            return f"price 1 1"
+
+        if self.phase == "buy":
+            opp = 1 - pi
+            best_buy = None
+            best_val = -1
+
+            for j in range(3):
+                if not self.discarded[opp][j] and self.prices[opp][j] >= 0:
+                    tile = self.drawn_tiles[opp][j]
+                    if tile is not None:
+                        price = self.prices[opp][j]
+                        if price <= self.gold[pi]:
+                            val = {"village": 5, "lake": 4, "mountain": 3, "forest": 2, "pasture": 1}.get(tile["terrain"], 1)
+                            val += tile.get("gold_bonus", 0) - price
+                            if val > best_val:
+                                best_val = val
+                                best_buy = f"buy {opp + 1} {j + 1}"
+
+            for j in range(3):
+                if not self.discarded[pi][j] and self.prices[pi][j] >= 0:
+                    tile = self.drawn_tiles[pi][j]
+                    if tile is not None:
+                        price = self.prices[pi][j]
+                        if price <= self.gold[pi]:
+                            val = {"village": 5, "lake": 4, "mountain": 3, "forest": 2, "pasture": 1}.get(tile["terrain"], 1)
+                            val += tile.get("gold_bonus", 0) - price
+                            if val > best_val:
+                                best_val = val
+                                best_buy = f"buy {pi + 1} {j + 1}"
+
+            if best_buy and (difficulty != 'easy' or random.random() < 0.7):
+                return best_buy
+            return "pass"
+
+        if self.phase == "place":
+            tile = self.bought_this_round[pi]
+            if tile is None:
+                return "keep"
+            grid = self.landscape_grid[pi]
+            for r in range(9):
+                for c in range(9):
+                    if grid[r][c] is None:
+                        adj = False
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = r + dr, c + dc
+                            if 0 <= nr < 9 and 0 <= nc < 9 and grid[nr][nc] is not None:
+                                adj = True
+                                break
+                        if adj:
+                            if difficulty == 'hard':
+                                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                                    nr, nc = r + dr, c + dc
+                                    if 0 <= nr < 9 and 0 <= nc < 9 and grid[nr][nc] is not None:
+                                        if grid[nr][nc]["terrain"] == tile["terrain"]:
+                                            return f"place {r} {c}"
+                            return f"place {r} {c}"
+            return "keep"
+
+        return "draw"
+
     def check_game_over(self):
         """Game ends after max rounds."""
         if self.round_number > self.max_rounds:
