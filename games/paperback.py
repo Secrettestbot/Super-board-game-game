@@ -114,6 +114,7 @@ class PaperbackGame(BaseGame):
         "standard": "Standard Game",
         "coop": "Cooperative Mode",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -339,6 +340,57 @@ class PaperbackGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = str(self.current_player)
+
+        if self.phase == "spell":
+            hand = self.hands[cp]
+            spellable = []
+            for word in VALID_WORDS:
+                if len(word) <= len(hand) and self._can_spell(word, hand):
+                    spellable.append((word, self._word_value(len(word))))
+
+            if not spellable:
+                return {"action": "pass_spell"}
+
+            if difficulty == "easy":
+                short = [w for w in spellable if len(w[0]) <= 4]
+                pool = short if short else spellable
+                return {"action": "spell", "word": rand.choice(pool)[0]}
+            elif difficulty == "hard":
+                spellable.sort(key=lambda x: x[1], reverse=True)
+                return {"action": "spell", "word": spellable[0][0]}
+            else:
+                spellable.sort(key=lambda x: x[1], reverse=True)
+                top = spellable[:min(5, len(spellable))]
+                return {"action": "spell", "word": rand.choice(top)[0]}
+
+        elif self.phase == "buy":
+            if self.earned_money <= 0:
+                return {"action": "end_buy"}
+
+            affordable = [(i, card) for i, card in enumerate(self.supply)
+                          if card["cost"] <= self.earned_money]
+
+            if not affordable:
+                return {"action": "end_buy"}
+
+            if difficulty == "easy":
+                idx, _ = rand.choice(affordable)
+                return {"action": "buy", "index": idx}
+
+            affordable.sort(key=lambda x: x[1]["points"], reverse=True)
+            if difficulty == "hard":
+                return {"action": "buy", "index": affordable[0][0]}
+            else:
+                top = affordable[:min(3, len(affordable))]
+                chosen = rand.choice(top)
+                return {"action": "buy", "index": chosen[0]}
+
+        return {"action": "end_buy"}
 
     def check_game_over(self):
         if self.rounds_left <= 0:

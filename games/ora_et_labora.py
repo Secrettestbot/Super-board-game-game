@@ -131,6 +131,7 @@ class OraEtLaboraGame(BaseGame):
         "standard": "Full game - 12 rounds with all buildings and settlements",
         "quick": "Quick game - 7 rounds, simpler buildings, extra starting resources",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def setup(self):
         is_quick = self.variation == "quick"
@@ -472,6 +473,70 @@ class OraEtLaboraGame(BaseGame):
                 self.message = f"Round {self.current_round}/{self.max_rounds}. Rondel advances!"
                 for i in range(1, len(self.players) + 1):
                     self.player_data[str(i)]["workers_placed"] = 0
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.player_data[str(self.current_player)]
+
+        if self.actions_this_turn >= self.max_actions:
+            return "6"
+
+        moves = []
+        available_rondel = [(i, RONDEL_SLOTS[i], self.rondel[i])
+                            for i in range(len(RONDEL_SLOTS)) if self.rondel[i] > 0]
+        if available_rondel:
+            best_amt = max(r[2] for r in available_rondel)
+            moves.append(("1", 20 + best_amt * 5))
+
+        affordable_b = []
+        for bi in self.building_pool:
+            b = BUILDINGS[bi]
+            if bi in p["buildings"]:
+                continue
+            if all(p["resources"].get(r, 0) >= amt for r, amt in b["cost"].items()):
+                affordable_b.append(b)
+        if affordable_b:
+            best_vp = max(b["vp"] for b in affordable_b)
+            moves.append(("2", 30 + best_vp * 3))
+
+        usable = [(bi, BUILDINGS[bi]) for bi in p["buildings"]
+                  if BUILDINGS[bi]["produces"] or BUILDINGS[bi]["converts"]]
+        for bi, b in usable:
+            if b["converts"]:
+                if all(p["resources"].get(r, 0) >= amt for r, amt in b["converts"].items()):
+                    moves.append(("3", 25))
+                    break
+            else:
+                moves.append(("3", 22))
+                break
+
+        conversions = [
+            ("grain", 1), ("flour", 1), ("clay", 2), ("clay", 1),
+            ("wood", 2), ("peat", 2), ("livestock", 2),
+        ]
+        if any(p["resources"].get(fr, 0) >= fa for fr, fa in conversions):
+            moves.append(("4", 15))
+
+        settlements = [(bi, BUILDINGS[bi]) for bi in self.building_pool
+                       if BUILDINGS[bi]["type"] == "settlement"]
+        affordable_s = [b for bi, b in settlements
+                        if all(p["resources"].get(r, 0) >= amt for r, amt in b["cost"].items())]
+        if affordable_s:
+            best_svp = max(b["vp"] for b in affordable_s)
+            moves.append(("5", 35 + best_svp * 2))
+
+        moves.append(("6", 5))
+
+        if difficulty == "easy":
+            return rand.choice(moves)[0]
+        elif difficulty == "hard":
+            moves.sort(key=lambda x: x[1], reverse=True)
+            return moves[0][0]
+        else:
+            moves.sort(key=lambda x: x[1], reverse=True)
+            top = moves[:min(3, len(moves))]
+            return rand.choice(top)[0]
 
     def check_game_over(self):
         if self.current_round > self.max_rounds:
