@@ -26,6 +26,7 @@ class SudokuGame(BaseGame):
         "medium": "Medium (30-35 clues)",
         "hard": "Hard (25-28 clues)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -335,6 +336,54 @@ class SudokuGame(BaseGame):
                 if (r, c) != (row, col) and self.board[r][c] == num:
                     conflicts.append((r, c))
         return conflicts
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        empty_cells = [
+            (r, c) for r in range(9) for c in range(9)
+            if self.board[r][c] == 0
+        ]
+        if not empty_cells:
+            return ("hint",)
+        if difficulty == "easy":
+            r, c = rand.choice(empty_cells)
+            if rand.random() < 0.2:
+                wrong_nums = [n for n in range(1, 10) if n != self.solution[r][c]]
+                cell_str = f"{chr(ord('A') + r)}{c + 1}"
+                return ("place", cell_str, str(rand.choice(wrong_nums)))
+        elif difficulty == "medium":
+            candidates = []
+            for r, c in empty_cells:
+                possible = set(range(1, 10))
+                for cc in range(9):
+                    possible.discard(self.board[r][cc])
+                for rr in range(9):
+                    possible.discard(self.board[rr][c])
+                br, bc = 3 * (r // 3), 3 * (c // 3)
+                for rr in range(br, br + 3):
+                    for cc in range(bc, bc + 3):
+                        possible.discard(self.board[rr][cc])
+                candidates.append((len(possible), r, c))
+            candidates.sort()
+            r, c = candidates[0][1], candidates[0][2]
+        else:
+            candidates = []
+            for r, c in empty_cells:
+                possible = set(range(1, 10))
+                for cc in range(9):
+                    possible.discard(self.board[r][cc])
+                for rr in range(9):
+                    possible.discard(self.board[rr][c])
+                br, bc = 3 * (r // 3), 3 * (c // 3)
+                for rr in range(br, br + 3):
+                    for cc in range(bc, bc + 3):
+                        possible.discard(self.board[rr][cc])
+                candidates.append((len(possible), r, c))
+            candidates.sort()
+            r, c = candidates[0][1], candidates[0][2]
+        cell_str = f"{chr(ord('A') + r)}{c + 1}"
+        return ("place", cell_str, str(self.solution[r][c]))
 
     # --------------------------------------------------------- check_game_over
     def check_game_over(self):

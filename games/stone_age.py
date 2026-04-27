@@ -59,6 +59,7 @@ class StoneAgeGame(BaseGame):
         "standard": "Classic Stone Age gameplay",
         "anniversary": "Extra civilization cards and bonus scoring",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -379,6 +380,112 @@ class StoneAgeGame(BaseGame):
                 return False
 
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        pi = self.current_player - 1
+
+        if self.phase == "place":
+            avail = self.workers_available[pi]
+            if avail == 0:
+                return "done"
+            locs_to_try = []
+            if "farm" not in self.location_taken and self.food_production[pi] < 3:
+                locs_to_try.append(("farm", 1, 8))
+            if "breed" not in self.location_taken and self.workers[pi] < 10:
+                locs_to_try.append(("breed", 1, 7))
+            if "tool" not in self.location_taken:
+                max_tool = max(self.tools[pi])
+                if max_tool < 4:
+                    locs_to_try.append(("tool", 1, 6))
+            if self.hut_display and self.placements[pi].get("hut", 0) == 0:
+                locs_to_try.append(("hut", 1, 5))
+            if self.civ_display and self.placements[pi].get("civ", 0) == 0:
+                locs_to_try.append(("civ", 1, 4))
+            food_needed = self.workers[pi] - self.food[pi] - self.food_production[pi]
+            if food_needed > 0:
+                hunt_workers = min(avail, max(2, food_needed))
+                locs_to_try.append(("hunt", hunt_workers, 3))
+            for res_loc, res_name, priority in [("mine", "gold", 2), ("river", "stone", 1.5),
+                                                 ("quarry", "brick", 1), ("forest", "wood", 0.5)]:
+                workers_for = min(avail, 3)
+                if workers_for > 0:
+                    locs_to_try.append((res_loc, workers_for, priority))
+            if difficulty == "easy":
+                rand.shuffle(locs_to_try)
+            else:
+                locs_to_try.sort(key=lambda x: x[2], reverse=True)
+            for loc, count, _ in locs_to_try:
+                actual = min(count, self.workers_available[pi])
+                if actual > 0:
+                    if loc in ("farm", "breed", "tool"):
+                        if loc in self.location_taken:
+                            continue
+                        actual = 1
+                    if loc in ("hut", "civ"):
+                        if self.placements[pi].get(loc, 0) > 0:
+                            continue
+                        actual = 1
+                    return f"place {loc} {actual}"
+            return "done"
+
+        elif self.phase == "resolve":
+            if self.placements[pi]:
+                for loc in list(self.placements[pi].keys()):
+                    if loc in ("forest", "quarry", "river", "mine", "hunt",
+                               "farm", "breed", "tool"):
+                        tool_arg = ""
+                        if loc in ("forest", "quarry", "river", "mine", "hunt"):
+                            for ti in range(3):
+                                if not self.tools_used[pi][ti] and self.tools[pi][ti] > 0:
+                                    tool_arg = f" {ti + 1}"
+                                    break
+                        return f"resolve {loc}{tool_arg}"
+                    elif loc == "hut":
+                        best_hut = None
+                        best_pts = -1
+                        for idx, hut in enumerate(self.hut_display):
+                            can_afford = all(
+                                self.resources[pi].get(res, 0) >= needed
+                                for res, needed in hut["cost"].items()
+                            )
+                            if can_afford and hut["points"] > best_pts:
+                                best_pts = hut["points"]
+                                best_hut = idx
+                        if best_hut is not None:
+                            return f"build {best_hut + 1}"
+                        del self.placements[pi]["hut"]
+                        return f"done" if not self.placements[pi] else f"resolve {list(self.placements[pi].keys())[0]}"
+                    elif loc == "civ":
+                        total_res = sum(self.resources[pi].values())
+                        best_card = None
+                        best_val = -1
+                        for idx, card in enumerate(self.civ_display):
+                            cost = idx + 1
+                            if total_res >= cost:
+                                val = card["value"]
+                                if card["type"] == "tech":
+                                    val *= 2
+                                if val > best_val:
+                                    best_val = val
+                                    best_card = idx
+                        if best_card is not None:
+                            return f"buycard {best_card + 1}"
+                        del self.placements[pi]["civ"]
+                        return f"done" if not self.placements[pi] else f"resolve {list(self.placements[pi].keys())[0]}"
+            return "done"
+
+        elif self.phase == "feed":
+            needed = self.workers[pi]
+            total_food = self.food[pi] + self.food_production[pi]
+            if total_food < needed:
+                for res in ["wood", "brick", "stone", "gold"]:
+                    if self.resources[pi].get(res, 0) > 0:
+                        return f"starve {res}"
+            return "feed"
+
+        return "done"
 
     def check_game_over(self):
         """Game ends when hut deck or civ deck runs out."""

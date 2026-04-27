@@ -63,6 +63,7 @@ class SprawlopolisGame(BaseGame):
         "standard": "Target score of 20 points to win",
         "hard": "Target score of 25 points to win",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -377,6 +378,77 @@ class SprawlopolisGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        if not self.current_card:
+            return ("done", "")
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        positions = self._get_valid_placements()
+        if not positions:
+            return ("done", "")
+        if difficulty == "easy":
+            r, c = rand.choice(positions)
+            return ("place", f"{r} {c}")
+        scored = []
+        for r, c in positions:
+            s = 0
+            card = self.current_card
+            for dr in range(2):
+                for dc in range(2):
+                    zone = card["grid"][dr][dc]
+                    key = f"{r + dr},{c + dc}"
+                    for ar, ac in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        adj_key = f"{r + dr + ar},{c + dc + ac}"
+                        adj_zone = self.city_grid.get(adj_key)
+                        if adj_zone == zone:
+                            s += 2
+                    if key in self.city_grid:
+                        old_zone = self.city_grid[key]
+                        if old_zone != zone:
+                            s -= 1
+            for obj in self.objectives:
+                oid = obj["id"]
+                if oid == "super_park" and any(card["grid"][dr][dc] == "P" for dr in range(2) for dc in range(2)):
+                    s += 1
+                elif oid == "block_party":
+                    for dr in range(2):
+                        for dc in range(2):
+                            z = card["grid"][dr][dc]
+                            if z == "R":
+                                for ar, ac in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                                    if self.city_grid.get(f"{r+dr+ar},{c+dc+ac}") == "C":
+                                        s += 1
+                                        break
+                            elif z == "C":
+                                for ar, ac in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                                    if self.city_grid.get(f"{r+dr+ar},{c+dc+ac}") == "R":
+                                        s += 1
+                                        break
+                elif oid == "suburbia":
+                    for dr in range(2):
+                        for dc in range(2):
+                            if card["grid"][dr][dc] == "R":
+                                has_ind = False
+                                for ar, ac in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                                    if self.city_grid.get(f"{r+dr+ar},{c+dc+ac}") == "I":
+                                        has_ind = True
+                                if not has_ind:
+                                    s += 1
+                elif oid == "green_belt":
+                    for dr in range(2):
+                        for dc in range(2):
+                            if card["grid"][dr][dc] == "P":
+                                nr, nc = r + dr, c + dc
+                                if nr <= self.city_bounds[0] or nr >= self.city_bounds[2] or nc <= self.city_bounds[1] or nc >= self.city_bounds[3]:
+                                    s += 2
+            s -= card["roads"]
+            if difficulty == "medium":
+                s += rand.uniform(-2, 2)
+            scored.append((s, r, c))
+        scored.sort(reverse=True)
+        _, br, bc = scored[0]
+        return ("place", f"{br} {bc}")
 
     def check_game_over(self):
         if self.current_card is None and not self.play_deck:
