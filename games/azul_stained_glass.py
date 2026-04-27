@@ -362,6 +362,83 @@ class AzulStainedGlassGame(BaseGame):
 
         return False
 
+    def get_ai_move(self):
+        """Return an AI-generated draft move."""
+        cp = self.current_player
+        sp = str(cp)
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.phase != "draft":
+            return None
+
+        moves = []
+        sources = []
+        for fi, factory in enumerate(self.factories):
+            if factory:
+                for color in set(factory):
+                    sources.append((fi + 1, color, factory.count(color)))
+        if self.center:
+            for color in set(self.center):
+                sources.append((0, color, self.center.count(color)))
+
+        for source, color, count in sources:
+            valid_cols = self._valid_columns_for_color(cp, color)
+            if valid_cols:
+                for col in valid_cols:
+                    moves.append({"action": "draft", "source": source,
+                                  "color": color, "column": col})
+            else:
+                moves.append({"action": "draft", "source": source,
+                              "color": color, "column": -1})
+
+        if not moves:
+            return None
+
+        if difficulty == 'easy':
+            return random.choice(moves)
+
+        def score_move(m):
+            score = 0
+            col = m["column"]
+            color = m["color"]
+            source = m["source"]
+            count = 0
+            if source == 0:
+                count = self.center.count(color)
+            else:
+                fi = source - 1
+                count = self.factories[fi].count(color)
+
+            if col == -1:
+                return -count * 10
+
+            empty = sum(1 for r in range(WINDOW_ROWS)
+                        if self.windows[sp][col][r] is None)
+            if count >= empty:
+                score += 20
+            elif count <= empty:
+                score += count * 3
+
+            overflow = max(0, count - empty)
+            score -= overflow * 8
+
+            filled = WINDOW_ROWS - empty
+            if filled + min(count, empty) == WINDOW_ROWS:
+                score += 15
+
+            if source == 0 and not self.first_player_taken:
+                score -= 3
+
+            return score
+
+        scored = [(score_move(m), random.random(), m) for m in moves]
+        scored.sort(key=lambda x: (-x[0], x[1]))
+
+        if difficulty == 'medium':
+            top = scored[:max(3, len(scored) // 4)]
+            return random.choice(top)[2]
+        return scored[0][2]
+
     def check_game_over(self):
         if not self._is_round_over():
             return

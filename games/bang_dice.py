@@ -348,6 +348,60 @@ class BangDiceGame(BaseGame):
 
         self.turn_message = arrow_msg
 
+    def get_ai_move(self):
+        """AI handles the entire turn: roll, keep/reroll, then resolve."""
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+        opponent = 3 - player
+
+        self._do_roll()
+        self.rolls_left = 2
+
+        for _ in range(2):
+            if self.hp[player] <= 0:
+                break
+            if self._count_face('Dynamite') >= 3:
+                break
+            if self.rolls_left <= 0:
+                break
+
+            want_reroll = False
+            for i in range(5):
+                if self.locked[i]:
+                    continue
+                face = self.dice[i]
+                if difficulty == 'easy':
+                    if face in ('Bull1', 'Bull2'):
+                        self.locked[i] = True
+                    elif face == 'Beer' and self.hp[player] < self.max_hp[player]:
+                        self.locked[i] = True
+                    else:
+                        want_reroll = True
+                else:
+                    keep = False
+                    if face in ('Bull1', 'Bull2'):
+                        keep = True
+                    elif face == 'Gatling' and self._count_face('Gatling') >= 2:
+                        keep = True
+                    elif face == 'Beer' and self.hp[player] < self.max_hp[player]:
+                        keep = True
+                    elif face == 'BrainBeer':
+                        keep = True
+                    elif face == 'Zombie' and self._count_face('Zombie') >= 2:
+                        keep = True
+
+                    if keep:
+                        self.locked[i] = True
+                    else:
+                        want_reroll = True
+
+            if not want_reroll:
+                break
+
+            self._do_roll()
+
+        return ('done',)
+
     def _continue_turn(self):
         """Continue the turn loop: re-display and get actions until 'done'."""
         while True:

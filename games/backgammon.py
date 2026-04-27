@@ -473,6 +473,78 @@ class BackgammonGame(BaseGame):
                 self.bar[opponent] += 1
             self.points[dst] += sign
 
+    def get_ai_move(self):
+        """Return AI-generated moves for this turn."""
+        player = self.current_player
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if not self.remaining_moves:
+            self._roll_dice()
+
+        if not self._has_any_valid_move(player):
+            return 'no_moves'
+
+        moves_made = []
+        while self.remaining_moves and self._has_any_valid_move(player):
+            best_move = None
+            best_score = -9999
+            best_die = None
+
+            for die in set(self.remaining_moves):
+                for src, dst in self._get_valid_moves_for_die(player, die):
+                    score = self._score_bg_move(src, dst, player, difficulty)
+                    if difficulty == 'easy':
+                        score += random.random() * 20
+                    elif difficulty == 'medium':
+                        score += random.random() * 5
+                    if score > best_score:
+                        best_score = score
+                        best_move = (src, dst)
+                        best_die = die
+
+            if best_move is None:
+                break
+
+            self._apply_single_move(best_move[0], best_move[1], player)
+            self.remaining_moves.remove(best_die)
+            moves_made.append(best_move)
+
+        return moves_made if moves_made else 'no_moves'
+
+    def _score_bg_move(self, src, dst, player, difficulty):
+        """Score a backgammon move for AI."""
+        score = 0
+        opponent = 3 - player
+        sign = self._player_sign(player)
+        opp_sign = self._player_sign(opponent)
+
+        if dst == 'off':
+            score += 30
+
+        if src == 'bar':
+            score += 15
+
+        if dst != 'off' and 0 <= dst <= 23:
+            if self.points[dst] * opp_sign == 1:
+                score += 20
+
+            my_count = self.points[dst] * sign
+            if my_count == 0:
+                score -= 8
+            elif my_count >= 1:
+                score += 5
+
+            home_start, home_end = self._home_range(player)
+            if home_start <= dst <= home_end:
+                score += 8
+
+        if src != 'bar' and src != 'off' and 0 <= src <= 23:
+            remaining = abs(self.points[src] * sign) - 1
+            if remaining == 1:
+                score -= 6
+
+        return score
+
     def make_move(self, move):
         """Apply the move(s). The actual moves were already applied in get_move.
         Returns True if valid."""

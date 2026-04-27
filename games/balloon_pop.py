@@ -226,6 +226,43 @@ class BalloonPopGame(BaseGame):
 
         return False
 
+    def get_ai_move(self):
+        """Return an AI-generated move: 'draw' or 'bank'."""
+        p = self.current_player
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if not self.deck:
+            return "bank"
+
+        total_unbanked = sum(self.unbanked[p].get(c, 0) for c in self.COLORS)
+
+        if difficulty == 'easy':
+            if total_unbanked >= 4:
+                return "bank"
+            return "draw"
+
+        cards_left = len(self.deck)
+        pop_cards = sum(1 for c in self.deck if c["type"] == "pop")
+        pop_chance = pop_cards / max(cards_left, 1)
+
+        if difficulty == 'hard':
+            risk_threshold = 0.35
+        else:
+            risk_threshold = 0.25
+
+        if total_unbanked == 0:
+            return "draw"
+
+        unique_colors = sum(1 for c in self.COLORS if self.unbanked[p].get(c, 0) > 0)
+        value_at_risk = total_unbanked + (unique_colors >= 4) * 3
+
+        if pop_chance > risk_threshold and value_at_risk >= 3:
+            return "bank"
+        if total_unbanked >= 6:
+            return "bank"
+
+        return "draw"
+
     def check_game_over(self):
         # If player is still drawing, switch back so they keep their turn
         if getattr(self, '_still_drawing', False):
