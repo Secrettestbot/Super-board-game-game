@@ -24,6 +24,7 @@ class ThroughTheDesertGame(BaseGame):
         "standard": "Standard board (15x15) with 5 camel colors",
         "quick": "Smaller board (10x10) with 4 camel colors, fewer camels",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -273,6 +274,102 @@ class ThroughTheDesertGame(BaseGame):
             if 0 <= nr < self.rows and 0 <= nc < self.cols:
                 result.append((nr, nc))
         return result
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        if self.phase == "riders":
+            remaining = [c for c in self.riders_to_place if c not in self.rider_positions[p]]
+            if not remaining:
+                return "done"
+            color = remaining[0]
+            candidates = []
+            center_r, center_c = self.rows // 2, self.cols // 2
+            for r in range(self.rows):
+                for c in range(self.cols):
+                    if self.board[r][c] != EMPTY:
+                        continue
+                    other = 3 - p
+                    if color in self.rider_positions[other]:
+                        or_, oc = self.rider_positions[other][color]
+                        if abs(or_ - r) + abs(oc - c) <= 1:
+                            continue
+                    dist_center = abs(r - center_r) + abs(c - center_c)
+                    near_oasis = min((abs(r - oa) + abs(c - oc) for oa, oc in self.oases), default=99)
+                    near_water = min((abs(r - wr) + abs(c - wc) for wr, wc in self.water_holes), default=99)
+                    score = -dist_center * 0.5 - near_oasis * 1.5 - near_water * 1.0
+                    candidates.append((score, r, c))
+            if not candidates:
+                return "done"
+            if difficulty == 'easy':
+                _, r, c = rand.choice(candidates)
+            else:
+                candidates.sort(key=lambda x: -x[0])
+                if difficulty == 'medium':
+                    top = candidates[:max(1, len(candidates) // 3)]
+                    _, r, c = rand.choice(top)
+                else:
+                    _, r, c = candidates[0]
+            return f"rider {r} {c} {color}"
+
+        if self.placements_left <= 0:
+            return "pass"
+        colors_placed = set()
+        best_move = None
+        best_score = -999
+        all_moves = []
+        for color in self.colors_used:
+            if color in colors_placed:
+                continue
+            if self.camel_supply[color] <= 0:
+                continue
+            caravan = self.caravans[p][color]
+            if not caravan:
+                continue
+            for cr, cc in caravan:
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if not (0 <= nr < self.rows and 0 <= nc < self.cols):
+                        continue
+                    cell = self.board[nr][nc]
+                    if cell not in (EMPTY, OASIS, WATER):
+                        continue
+                    other = 3 - p
+                    blocked = False
+                    for ocr, occ in self.caravans[other].get(color, []):
+                        if abs(ocr - nr) + abs(occ - nc) == 1:
+                            blocked = True
+                            break
+                    if blocked:
+                        continue
+                    score = 0.0
+                    if cell == OASIS:
+                        score += 10
+                    elif cell == WATER:
+                        score += 6
+                    near_oasis = min((abs(nr - oa) + abs(nc - oc) for oa, oc in self.oases
+                                      if self.board[oa][oc] == OASIS), default=99)
+                    near_water = min((abs(nr - wr) + abs(nc - wc) for wr, wc in self.water_holes
+                                      if self.board[wr][wc] == WATER), default=99)
+                    score -= near_oasis * 0.3
+                    score -= near_water * 0.2
+                    all_moves.append((score, color, nr, nc))
+
+        if not all_moves:
+            return "pass"
+
+        if difficulty == 'easy':
+            _, color, r, c = rand.choice(all_moves)
+        else:
+            all_moves.sort(key=lambda x: -x[0])
+            if difficulty == 'medium':
+                top = all_moves[:max(1, len(all_moves) // 3)]
+                _, color, r, c = rand.choice(top)
+            else:
+                _, color, r, c = all_moves[0]
+        return f"{color} {r} {c}"
 
     def check_game_over(self):
         # Game ends when any camel color runs out

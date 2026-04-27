@@ -16,6 +16,7 @@ class TicTacToeGame(BaseGame):
         "5x5": "5x5 board, get 4 in a row to win",
         "ultimate": "9 sub-boards, must play in board matching opponent's last cell",
     }
+    side_labels = ("X", "O")
 
     SYMBOLS = {0: " ", 1: "X", 2: "O"}
 
@@ -209,6 +210,205 @@ class TicTacToeGame(BaseGame):
         else:
             self.active_board = cell_idx
         return True
+
+    # ------------------------------------------------------------- get_ai_move
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        if self.variation == "ultimate":
+            return self._ai_move_ultimate(difficulty)
+        return self._ai_move_standard(difficulty)
+
+    def _ai_move_standard(self, difficulty):
+        import random as rand
+        sz = self.size
+        wl = self.win_length
+        me = self.current_player
+        opp = 3 - me
+        empty = [i for i in range(sz * sz) if self.board[i] == 0]
+        if not empty:
+            return empty[0] if empty else 0
+
+        if difficulty == 'easy':
+            return rand.choice(empty)
+
+        if difficulty == 'hard' and sz == 3:
+            best_score = -999
+            best_move = empty[0]
+            for idx in empty:
+                self.board[idx] = me
+                s = self._minimax(self.board, sz, wl, opp, me, False, 0, -999, 999)
+                self.board[idx] = 0
+                if s > best_score:
+                    best_score = s
+                    best_move = idx
+            return best_move
+
+        scored = []
+        for idx in empty:
+            score = 0.0
+            r, c = idx // sz, idx % sz
+            cr, cc = (sz - 1) / 2.0, (sz - 1) / 2.0
+            score += (1.0 - (abs(r - cr) + abs(c - cc)) / sz) * 2
+
+            self.board[idx] = me
+            if self._check_winner(self.board, sz, wl) == me:
+                self.board[idx] = 0
+                return idx
+            self.board[idx] = 0
+
+            self.board[idx] = opp
+            if self._check_winner(self.board, sz, wl) == opp:
+                self.board[idx] = 0
+                score += 50
+            self.board[idx] = 0
+
+            lines = self._get_lines_through(idx, sz, wl)
+            for line in lines:
+                vals = [self.board[i] for i in line]
+                my_count = vals.count(me)
+                opp_count = vals.count(opp)
+                if opp_count == 0 and my_count > 0:
+                    score += my_count * 1.5
+                if my_count == 0 and opp_count > 0:
+                    score += opp_count * 1.0
+
+            scored.append((score, idx))
+
+        scored.sort(key=lambda x: -x[0])
+        if difficulty == 'medium':
+            top = scored[:max(1, len(scored) // 3)]
+            return rand.choice(top)[1]
+        return scored[0][1]
+
+    def _minimax(self, board, sz, wl, current, ai, is_max, depth, alpha, beta):
+        w = self._check_winner(board, sz, wl)
+        if w == ai:
+            return 10 - depth
+        if w == (3 - ai):
+            return depth - 10
+        empty = [i for i in range(sz * sz) if board[i] == 0]
+        if not empty:
+            return 0
+        if is_max:
+            best = -999
+            for idx in empty:
+                board[idx] = current
+                val = self._minimax(board, sz, wl, 3 - current, ai, False, depth + 1, alpha, beta)
+                board[idx] = 0
+                best = max(best, val)
+                alpha = max(alpha, val)
+                if beta <= alpha:
+                    break
+            return best
+        else:
+            best = 999
+            for idx in empty:
+                board[idx] = current
+                val = self._minimax(board, sz, wl, 3 - current, ai, True, depth + 1, alpha, beta)
+                board[idx] = 0
+                best = min(best, val)
+                beta = min(beta, val)
+                if beta <= alpha:
+                    break
+            return best
+
+    @staticmethod
+    def _get_lines_through(idx, sz, wl):
+        r, c = idx // sz, idx % sz
+        lines = []
+        dirs = [(0, 1), (1, 0), (1, 1), (1, -1)]
+        for dr, dc in dirs:
+            for start in range(wl):
+                line = []
+                sr, sc = r - dr * start, c - dc * start
+                valid = True
+                for i in range(wl):
+                    nr, nc = sr + dr * i, sc + dc * i
+                    if not (0 <= nr < sz and 0 <= nc < sz):
+                        valid = False
+                        break
+                    line.append(nr * sz + nc)
+                if valid and idx in line:
+                    lines.append(line)
+        return lines
+
+    def _ai_move_ultimate(self, difficulty):
+        import random as rand
+        me = self.current_player
+        opp = 3 - me
+
+        if self.active_board is not None:
+            valid_boards = [self.active_board]
+        else:
+            valid_boards = [i for i in range(9)
+                           if self.board_winners[i] == 0
+                           and any(c == 0 for c in self.boards[i])]
+
+        if not valid_boards:
+            for i in range(9):
+                if any(c == 0 for c in self.boards[i]):
+                    valid_boards = [i]
+                    break
+            if not valid_boards:
+                return (0, 0)
+
+        all_moves = []
+        for bi in valid_boards:
+            for ci in range(9):
+                if self.boards[bi][ci] == 0:
+                    all_moves.append((bi, ci))
+
+        if not all_moves:
+            return (0, 0)
+
+        if difficulty == 'easy':
+            return rand.choice(all_moves)
+
+        scored = []
+        for bi, ci in all_moves:
+            score = 0.0
+            self.boards[bi][ci] = me
+            if self._check_3x3_winner(self.boards[bi]) == me:
+                score += 50
+                bw_copy = self.board_winners[:]
+                bw_copy[bi] = me
+                if self._check_3x3_winner(bw_copy) == me:
+                    score += 200
+            self.boards[bi][ci] = 0
+
+            self.boards[bi][ci] = opp
+            if self._check_3x3_winner(self.boards[bi]) == opp:
+                score += 40
+            self.boards[bi][ci] = 0
+
+            if ci == 4:
+                score += 3
+            elif ci in (0, 2, 6, 8):
+                score += 2
+
+            if self.board_winners[ci] != 0 or all(c != 0 for c in self.boards[ci]):
+                score += 2
+            else:
+                opp_can_win = False
+                for oci in range(9):
+                    if self.boards[ci][oci] == 0:
+                        self.boards[ci][oci] = opp
+                        if self._check_3x3_winner(self.boards[ci]) == opp:
+                            opp_can_win = True
+                        self.boards[ci][oci] = 0
+                if opp_can_win:
+                    score -= 5
+
+            scored.append((score, bi, ci))
+
+        scored.sort(key=lambda x: -x[0])
+        if difficulty == 'medium':
+            top = scored[:max(1, len(scored) // 3)]
+            _, bi, ci = rand.choice(top)
+        else:
+            _, bi, ci = scored[0]
+        return (bi, ci)
 
     # -------------------------------------------------------- check_game_over
     def check_game_over(self):

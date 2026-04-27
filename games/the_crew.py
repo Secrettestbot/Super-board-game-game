@@ -102,6 +102,7 @@ class TheCrew(BaseGame):
         "standard": "Standard difficulty - 4 mission objectives to complete",
         "easy": "Easy mode - 2 mission objectives, more communication allowed",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def setup(self):
         self.deck = _generate_deck()
@@ -366,6 +367,73 @@ class TheCrew(BaseGame):
         else:
             # Waiting for second player - switch happens via game loop
             return True
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        hand = self.hands[p]
+        if not hand:
+            return "1"
+
+        my_missions = [m for m in self.missions
+                       if m["assigned_to"] == p and not m["completed"] and not m["failed"]]
+        opp_missions = [m for m in self.missions
+                        if m["assigned_to"] != p and not m["completed"] and not m["failed"]]
+        mission_cards = {(m["card"]["suit"], m["card"]["value"]) for m in my_missions}
+        opp_mission_cards = {(m["card"]["suit"], m["card"]["value"]) for m in opp_missions}
+
+        if self.current_trick:
+            lead_suit = self.current_trick[0][1]["suit"]
+            can_follow = any(c["suit"] == lead_suit for c in hand)
+            playable = [c for c in hand if c["suit"] == lead_suit] if can_follow else list(hand)
+        else:
+            playable = list(hand)
+
+        if difficulty == 'easy':
+            chosen = rand.choice(playable)
+            return str(hand.index(chosen) + 1)
+
+        scored = []
+        for card in playable:
+            score = 0.0
+            ck = (card["suit"], card["value"])
+            if self.current_trick:
+                lead_suit = self.current_trick[0][1]["suit"]
+                lead_card = self.current_trick[0][1]
+                would_win = _card_beats(card, lead_card, lead_suit)
+                trick_cards_keys = {(tc["suit"], tc["value"]) for _, tc in self.current_trick}
+                trick_has_my_mission = bool(trick_cards_keys & mission_cards)
+                trick_has_opp_mission = bool(trick_cards_keys & opp_mission_cards)
+                if ck in mission_cards:
+                    score += 15
+                    if would_win:
+                        score += 10
+                if trick_has_my_mission and would_win:
+                    score += 12
+                if trick_has_opp_mission and not would_win:
+                    score += 8
+                if ck not in mission_cards and not trick_has_my_mission:
+                    score += (9 - card["value"]) * 0.3
+            else:
+                if ck in mission_cards:
+                    score += 10
+                    if card["value"] >= 7:
+                        score += 5
+                if ck in opp_mission_cards:
+                    score -= 5
+                if card["suit"] == TRUMP:
+                    score -= 3
+                score += (9 - card["value"]) * 0.2
+            scored.append((score, card))
+
+        scored.sort(key=lambda x: -x[0])
+        if difficulty == 'medium':
+            top = scored[:max(1, len(scored) // 2)]
+            chosen = rand.choice(top)[1]
+        else:
+            chosen = scored[0][1]
+        return str(hand.index(chosen) + 1)
 
     def check_game_over(self):
         if self._any_mission_failed():
