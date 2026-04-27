@@ -373,6 +373,53 @@ class DiceThroneGame(BaseGame):
             self.poison[opp] += 3
             self._add_log(f"{self.players[opp - 1]} is poisoned! (3 per turn)")
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        if self.phase == "choose_character":
+            available = self._available_characters()
+            if difficulty == 'easy':
+                return ("choose_char", str(random.randint(1, len(available))))
+            if difficulty == 'hard':
+                prefs = ["Rogue", "Mage", "Ranger", "Warrior"]
+                for pref in prefs:
+                    if pref in available:
+                        return ("choose_char", str(available.index(pref) + 1))
+            return ("choose_char", str(random.randint(1, len(available))))
+
+        if self.phase == "roll":
+            return ("roll", "")
+
+        if self.phase == "choose_keep":
+            if self.rerolls_left <= 0:
+                return ("keep", "done")
+            ability = get_best_ability(self.dice, self.characters[cp])
+            if ability and ability["damage"] >= 14:
+                return ("keep", "done")
+            if difficulty == 'easy':
+                return ("keep", "")
+            counts = {}
+            for i, d in enumerate(self.dice):
+                counts.setdefault(d, []).append(i)
+            best_val = max(counts, key=lambda v: len(counts[v]))
+            if len(counts[best_val]) >= 3:
+                for i in range(5):
+                    self.kept[i] = (self.dice[i] == best_val)
+                keep_str = " ".join(str(i+1) for i in range(5) if self.dice[i] == best_val)
+                self._reroll()
+                self.rerolls_left -= 1
+                if self.rerolls_left == 0:
+                    self.phase = "activate"
+                return ("keep", "done") if ability and ability["damage"] >= 10 else ("keep", "")
+            return ("keep", "")
+
+        if self.phase == "activate":
+            return ("activate", "")
+
+        return ("roll", "")
+
     def check_game_over(self):
         for p in (1, 2):
             if self.hp[p] <= 0:

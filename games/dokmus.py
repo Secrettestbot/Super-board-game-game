@@ -485,6 +485,72 @@ class DokmusGame(BaseGame):
                     stack.append((nr, nc))
         return count
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player - 1
+        player = p + 1
+        total_r = self.grid_rows * 5
+        total_c = self.grid_cols * 5
+
+        if self.phase == "manipulate":
+            if difficulty == 'easy' or random.random() < 0.3:
+                return "skip"
+            actions = []
+            for tc in range(self.grid_cols):
+                for d in ("up", "down"):
+                    actions.append(f"shift 0 {tc} {d}")
+            for tr in range(self.grid_rows):
+                for d in ("left", "right"):
+                    actions.append(f"shift {tr} 0 {d}")
+            for tr in range(self.grid_rows):
+                for tc in range(self.grid_cols):
+                    actions.append(f"rotate {tr} {tc}")
+            if difficulty == 'hard':
+                return random.choice(actions) if actions else "skip"
+            return random.choice(actions) if actions and random.random() < 0.5 else "skip"
+
+        if self.phase == "place":
+            if self.tokens_placed_this_turn >= self.max_place_per_turn or self.player_tokens_remaining[p] <= 0:
+                return "done"
+
+            placeable = []
+            for r in range(total_r):
+                for c in range(total_c):
+                    if self._can_place_token(r, c, player):
+                        placeable.append((r, c))
+
+            if not placeable:
+                return "done"
+
+            if difficulty == 'easy':
+                r, c = random.choice(placeable)
+                return f"place {r} {c}"
+
+            scored = []
+            for r, c in placeable:
+                sc = 0
+                terrain = self._get_cell(r, c)
+                if terrain == TEMPLE:
+                    sc += 10
+                elif terrain == RUINS:
+                    sc += 4
+                if self._is_adjacent_to_own_token(r, c, player):
+                    sc += 2
+                if difficulty == 'hard':
+                    tile_r, tile_c = r // 5, c // 5
+                    sc += 1
+                scored.append((sc, r, c))
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'medium' and len(scored) > 1:
+                top = scored[:max(2, len(scored) // 3)]
+                _, r, c = random.choice(top)
+            else:
+                _, r, c = scored[0]
+            return f"place {r} {c}"
+
+        return "skip"
+
     def check_game_over(self):
         if self.round_number > self.max_rounds:
             self.game_over = True
