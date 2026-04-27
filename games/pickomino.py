@@ -67,6 +67,7 @@ class PickominoGame(BaseGame):
         "standard": "Standard Pickomino",
         "simple": "Simple (fewer tiles)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -386,6 +387,9 @@ class PickominoGame(BaseGame):
     # ------------------------------------------------------------------ #
     #  Game over
     # ------------------------------------------------------------------ #
+
+    def get_ai_move(self):
+        return 'start_turn'
 
     def check_game_over(self):
         """Game ends when all center tiles are gone (claimed or face-down)."""

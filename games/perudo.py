@@ -16,6 +16,7 @@ class PerudoGame(BaseGame):
         "standard": "Standard Perudo with ones wild (Aces/Palifico rules)",
         "calza": "Calza variant - call exact match to gain a die",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -393,6 +394,74 @@ class PerudoGame(BaseGame):
             return
         idx = active.index(self.current_player)
         self.current_player = active[(idx + 1) % len(active)]
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        if self.phase == "round_over":
+            return "next_round"
+
+        my_dice = self.dice.get(cp, [])
+        total_dice = self._total_dice()
+
+        if self.current_bid is None:
+            counts = {}
+            for d in my_dice:
+                counts[d] = counts.get(d, 0) + 1
+            if counts:
+                best_face = max(counts, key=counts.get)
+                face_val = best_face if best_face != 1 else 2
+                my_count = counts[best_face]
+                other_dice = total_dice - len(my_dice)
+                expected = my_count + other_dice // 3
+                if difficulty == "easy":
+                    expected = max(1, my_count)
+                return f"bid {max(1, expected)} {face_val}"
+            return "bid 1 2"
+
+        cur_qty, cur_face = self.current_bid
+        my_match = sum(1 for d in my_dice
+                       if d == cur_face or (d == 1 and cur_face != 1 and not self.palifico_round))
+        other_dice = total_dice - len(my_dice)
+        prob = 1 / 6 if (self.palifico_round or cur_face == 1) else 2 / 6
+        expected_total = my_match + other_dice * prob
+
+        if expected_total < cur_qty * 0.6:
+            if not (difficulty == "easy" and rand.random() < 0.3):
+                return "dudo"
+
+        if (self.variation == "calza" and self.bidder != cp and
+                abs(expected_total - cur_qty) < 0.5 and difficulty != "easy"):
+            if rand.random() < 0.3:
+                return "calza"
+
+        if self.palifico_round:
+            new_qty = cur_qty + 1
+            if self._is_valid_bid(new_qty, cur_face):
+                return f"bid {new_qty} {cur_face}"
+            return "dudo"
+
+        for face in range(cur_face + 1, 7):
+            if self._is_valid_bid(cur_qty, face):
+                return f"bid {cur_qty} {face}"
+
+        counts = {}
+        for d in my_dice:
+            counts[d] = counts.get(d, 0) + 1
+        new_qty = cur_qty + 1
+        best_face = max(counts, key=counts.get) if counts else 2
+        if best_face == 1:
+            best_face = 2
+        if self._is_valid_bid(new_qty, best_face):
+            return f"bid {new_qty} {best_face}"
+
+        for face in range(2, 7):
+            if self._is_valid_bid(new_qty, face):
+                return f"bid {new_qty} {face}"
+
+        return "dudo"
 
     def check_game_over(self):
         active = self._active_players()

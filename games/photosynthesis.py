@@ -91,6 +91,7 @@ class PhotosynthesisGame(BaseGame):
         "standard": "Standard game (3 full sun revolutions)",
         "beginner": "Beginner game (2 sun revolutions, relaxed rules)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -463,6 +464,76 @@ class PhotosynthesisGame(BaseGame):
         self.both_passed_life = [False, False]
         self.player_actions_this_turn = [[], []]
         self.current_player = 1
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        pi = self.current_player - 1
+
+        if self.phase != "life_cycle":
+            return "pass"
+
+        light = self.player_light[pi]
+        if light <= 0:
+            return "pass"
+
+        moves = []
+
+        for (q, r), tree in self.board.items():
+            if not tree or tree["player"] != pi + 1:
+                continue
+            if (q, r) in self.player_actions_this_turn[pi]:
+                continue
+            if tree["size"] == LARGE and light >= COLLECT_COST:
+                ring = _hex_ring(q, r)
+                tokens = self.scoring_tokens[ring]
+                sv = tokens[0] if tokens else RING_SCORES[ring]
+                moves.append((f"collect {q} {r}", 50 + sv))
+            elif tree["size"] < LARGE:
+                new_size = tree["size"] + 1
+                cost = GROW_COST[new_size]
+                if light >= cost and self.player_available[pi][new_size] > 0:
+                    ring = _hex_ring(q, r)
+                    score = 30 + (3 - ring) * 3 + new_size * 5
+                    if difficulty == "hard" and new_size == LARGE:
+                        score += 15
+                    moves.append((f"grow {q} {r}", score))
+
+        if light >= GROW_COST[SEED] and self.player_available[pi][SEED] > 0:
+            for (q, r), tree in self.board.items():
+                if tree and tree["player"] == pi + 1 and tree["size"] >= SMALL:
+                    if (q, r) not in self.player_actions_this_turn[pi]:
+                        for dist in range(1, tree["size"] + 1):
+                            for dq, dr in HEX_DIRECTIONS:
+                                tq, tr = q + dq * dist, r + dr * dist
+                                target = (tq, tr)
+                                if target in self.board and self.board[target] is None:
+                                    if target not in self.player_actions_this_turn[pi]:
+                                        ring = _hex_ring(tq, tr)
+                                        moves.append((f"plant {tq} {tr}", 15 + (3 - ring) * 2))
+
+        for size in [SEED, SMALL, MEDIUM, LARGE]:
+            cost = BUY_COST[size]
+            if light >= cost and self.player_board[pi][size] > 0:
+                score = 10 - size
+                if self.player_available[pi][size] == 0:
+                    score += 5
+                moves.append((f"buy {SIZE_NAMES[size].lower()}", score))
+
+        if not moves:
+            return "pass"
+
+        if difficulty == "easy":
+            if rand.random() < 0.3:
+                return "pass"
+            return rand.choice(moves)[0]
+        elif difficulty == "hard":
+            moves.sort(key=lambda x: x[1], reverse=True)
+            return moves[0][0]
+        else:
+            moves.sort(key=lambda x: x[1], reverse=True)
+            top = moves[:min(3, len(moves))]
+            return rand.choice(top)[0]
 
     def check_game_over(self):
         if self.sun_revolutions >= self.max_revolutions:

@@ -46,6 +46,7 @@ class PigGame(BaseGame):
         "two_dice": "Two-Dice Pig",
         "big_pig": "Big Pig (100 points)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -247,6 +248,9 @@ class PigGame(BaseGame):
     # ------------------------------------------------------------------ #
     #  Game over
     # ------------------------------------------------------------------ #
+
+    def get_ai_move(self):
+        return 'roll'
 
     def check_game_over(self):
         """Check if a player has reached the target score."""
