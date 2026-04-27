@@ -398,6 +398,81 @@ class LanternsGame(BaseGame):
             return True
         return False
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = str(self.current_player)
+        hand = self.player_hands[cp]
+
+        if not hand:
+            return {"action": "pass"}
+
+        can_dedicate = self._can_dedicate(cp)
+        if can_dedicate:
+            best = None
+            best_pts = -1
+            for d in can_dedicate:
+                if d.startswith("four:"):
+                    ti = min(self.dedication_tier["four"], len(FOUR_OF_KIND_POINTS) - 1)
+                    pts = FOUR_OF_KIND_POINTS[ti]
+                elif d == "pairs":
+                    ti = min(self.dedication_tier["pairs"], len(THREE_PAIRS_POINTS) - 1)
+                    pts = THREE_PAIRS_POINTS[ti]
+                elif d == "seven":
+                    ti = min(self.dedication_tier["seven"], len(ALL_SEVEN_POINTS) - 1)
+                    pts = ALL_SEVEN_POINTS[ti]
+                else:
+                    pts = 0
+                if pts > best_pts:
+                    best_pts = pts
+                    best = d
+            if best and (difficulty != 'easy' or random.random() < 0.7):
+                return {"action": "dedicate", "type": best}
+
+        valid_positions = self._get_valid_positions()
+        if not valid_positions:
+            return {"action": "pass"}
+
+        if difficulty == 'easy':
+            ti = random.randrange(len(hand))
+            rot = random.randint(0, 3)
+            pos = random.choice(valid_positions)
+            return {"action": "place", "tile_idx": ti, "rotation": rot, "position": pos}
+
+        best_move = None
+        best_score = -999
+        facing = [2, 0, 3, 1]
+        my_side = facing[(self.current_player - 1) % 4]
+
+        for ti, tile in enumerate(hand):
+            for rot in range(4):
+                rotated = _rotate_tile(tile, rot)
+                for pos_str in valid_positions:
+                    r, c = map(int, pos_str.split(","))
+                    score = 0
+                    for d in range(4):
+                        dr, dc = DIR_OFFSETS[d]
+                        adj_key = f"{r + dr},{c + dc}"
+                        if adj_key in self.grid:
+                            if rotated[d] == self.grid[adj_key][OPPOSITE[d]]:
+                                score += 5
+                    my_color = rotated[my_side]
+                    cards = self.lantern_cards[cp]
+                    if difficulty == 'hard':
+                        if cards[my_color] >= 3:
+                            score += 10
+                        elif cards[my_color] >= 1:
+                            score += 3
+                    if score > best_score:
+                        best_score = score
+                        best_move = {"action": "place", "tile_idx": ti,
+                                     "rotation": rot, "position": pos_str}
+
+        if best_move:
+            return best_move
+        return {"action": "place", "tile_idx": 0, "rotation": 0,
+                "position": valid_positions[0]}
+
     def check_game_over(self):
         # Game over when all tiles placed or no valid positions
         all_empty = all(len(self.player_hands[str(p)]) == 0
