@@ -16,6 +16,7 @@ class RaceGame(BaseGame):
         "standard": "Standard race (20 spaces, 5 horses)",
         "quick": "Quick race (12 spaces, 3 horses)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     HORSE_COLORS = ["Red", "Blue", "Green", "Yellow", "White"]
     HORSE_SYMBOLS = ["R", "B", "G", "Y", "W"]
@@ -260,6 +261,57 @@ class RaceGame(BaseGame):
             self.phase = "betting"
             self._deal_cards()
             self._add_log(f"Round {self.round_number} begins! Place your bets!")
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        if self.phase == "betting":
+            hand = self.player_hands[p]
+            horse_power = [0] * self.num_horses
+            for card in hand:
+                horse_power[card[0]] += card[1]
+            if difficulty == "easy":
+                horse_idx = rand.randint(0, self.num_horses - 1)
+                wager = rand.randint(1, 3)
+            else:
+                best_horse = max(range(self.num_horses), key=lambda i: horse_power[i])
+                horse_idx = best_horse
+                if difficulty == "hard":
+                    wager = min(5, max(1, horse_power[best_horse] // 8))
+                else:
+                    wager = min(4, max(1, horse_power[best_horse] // 10))
+                    if rand.random() < 0.2:
+                        horse_idx = rand.randint(0, self.num_horses - 1)
+            return ["bet", horse_idx, wager]
+
+        elif self.phase == "racing":
+            hand = self.player_hands[p]
+            if not hand:
+                return ["pass"]
+            if difficulty == "easy":
+                return ["play", rand.randint(0, len(hand) - 1)]
+
+            bets = self.player_bets[p]
+            bet_horses = set(b[0] for b in bets)
+            scored = []
+            for idx, card in enumerate(hand):
+                score = card[1]
+                if card[0] in bet_horses:
+                    score += 10
+                else:
+                    score -= 5
+                if difficulty == "medium":
+                    score += rand.uniform(-3, 3)
+                scored.append((score, idx))
+            scored.sort(reverse=True)
+            return ["play", scored[0][1]]
+
+        elif self.phase == "scoring":
+            return "score"
+
+        return ["pass"]
 
     def check_game_over(self):
         if self.racing_done:

@@ -38,6 +38,7 @@ class QwixxGame(BaseGame):
         "standard": "Standard Qwixx",
         "big_points": "Big Points Variant",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -313,6 +314,77 @@ class QwixxGame(BaseGame):
         self.current_player = self.active_player
         self.round_number += 1
         return True
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        sp = str(p)
+
+        if self.phase == "roll":
+            if p != self.active_player:
+                return {"action": "skip_roll"}
+            return {"action": "roll"}
+
+        elif self.phase == "white_phase":
+            options = self._get_white_options(p)
+            if not options:
+                return {"action": "white_pass"}
+            if difficulty == "easy":
+                if rand.random() < 0.5 and options:
+                    return {"action": "white_mark", "row": options[0][0], "number": options[0][1]}
+                return {"action": "white_pass"}
+
+            best = None
+            best_score = -1
+            for ri, val in options:
+                row_nums = ROWS[ri]["numbers"]
+                num_pos = row_nums.index(val)
+                marks = self.marks[sp][ri]
+                last_mark = max(marks) if marks else -1
+                gap = num_pos - last_mark - 1
+                score = 10 - gap * 2
+                if len(marks) >= 4 and num_pos == len(row_nums) - 1:
+                    score += 15
+                if difficulty == "medium":
+                    score += rand.uniform(-3, 3)
+                if score > best_score:
+                    best_score = score
+                    best = (ri, val)
+            if best and best_score > 0:
+                return {"action": "white_mark", "row": best[0], "number": best[1]}
+            return {"action": "white_pass"}
+
+        elif self.phase == "color_phase":
+            if p != self.active_player:
+                return {"action": "color_skip"}
+            options = self._get_color_options(p)
+            if not options:
+                return {"action": "color_pass"}
+            if difficulty == "easy":
+                return {"action": "color_mark", "row": options[0][0], "number": options[0][1]}
+
+            best = None
+            best_score = -1
+            for ri, val in options:
+                row_nums = ROWS[ri]["numbers"]
+                num_pos = row_nums.index(val)
+                marks = self.marks[sp][ri]
+                last_mark = max(marks) if marks else -1
+                gap = num_pos - last_mark - 1
+                score = 10 - gap * 2
+                if len(marks) >= 4 and num_pos == len(row_nums) - 1:
+                    score += 15
+                if difficulty == "medium":
+                    score += rand.uniform(-3, 3)
+                if score > best_score:
+                    best_score = score
+                    best = (ri, val)
+            if best:
+                return {"action": "color_mark", "row": best[0], "number": best[1]}
+            return {"action": "color_pass"}
+
+        return {"action": "color_skip"}
 
     def check_game_over(self):
         # Game ends when 2 rows are locked OR any player has 4 penalties
