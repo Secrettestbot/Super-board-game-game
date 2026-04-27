@@ -171,6 +171,7 @@ class UndauntedGame(BaseGame):
         'standard': 'Standard: 4x4 grid, 30-card decks',
         'skirmish': 'Skirmish: 3x3 grid, 20-card decks',
     }
+    side_labels = ("Player 1", "Player 2")
 
     def setup(self):
         """Initialize the game."""
@@ -677,6 +678,95 @@ class UndauntedGame(BaseGame):
 
         self.message = "Unknown action."
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        opp = 2 if p == 1 else 1
+        pd = self.player_data[str(p)]
+
+        if not pd['hand']:
+            return ('end_turn',)
+
+        if difficulty == 'easy':
+            card = pd['hand'][0]
+            cidx_str = "1"
+            unit_pos = self._find_unit_cell(p, card['symbol'])
+            if unit_pos:
+                for key, cell in self.grid.items():
+                    enemies = cell['units'].get(str(opp), [])
+                    if enemies:
+                        ur, uc = map(int, unit_pos.split(','))
+                        tr, tc = map(int, key.split(','))
+                        if abs(ur - tr) + abs(uc - tc) <= card['range'] and card['attack'] > 0:
+                            return ('attack', cidx_str, key)
+            return ('end_turn',)
+
+        best_action = None
+        best_score = -1
+
+        for ci, card in enumerate(pd['hand']):
+            cidx_str = str(ci + 1)
+            unit_pos = self._find_unit_cell(p, card['symbol'])
+
+            if card['name'] == 'Squad Leader':
+                best_action = ('special', cidx_str)
+                best_score = 100
+                continue
+
+            if card['name'] == 'Medic' and pd['casualties']:
+                if best_score < 15:
+                    best_action = ('special', cidx_str)
+                    best_score = 15
+
+            if not unit_pos:
+                continue
+
+            ur, uc = map(int, unit_pos.split(','))
+
+            supp_key = f"{p},{unit_pos}"
+            if supp_key in self.suppressed:
+                continue
+
+            if card['attack'] > 0:
+                for key, cell in self.grid.items():
+                    enemies = cell['units'].get(str(opp), [])
+                    if enemies:
+                        tr, tc = map(int, key.split(','))
+                        dist = abs(ur - tr) + abs(uc - tc)
+                        if dist <= card['range']:
+                            score = card['attack'] * 5
+                            if cell['objective']:
+                                score += 10
+                            if score > best_score:
+                                best_score = score
+                                best_action = ('attack', cidx_str, key)
+
+            for key, cell in self.grid.items():
+                if cell['objective'] and self.objective_control.get(key) != p:
+                    my_units = cell['units'].get(str(p), [])
+                    enemy_units = cell['units'].get(str(opp), [])
+                    if my_units and not enemy_units:
+                        score = 50
+                        if score > best_score:
+                            best_score = score
+                            best_action = ('control', cidx_str, key)
+
+            if card['movement'] > 0:
+                for key, cell in self.grid.items():
+                    if cell['objective'] and self.objective_control.get(key) != p:
+                        tr, tc = map(int, key.split(','))
+                        dist = abs(ur - tr) + abs(uc - tc)
+                        if dist <= card['movement']:
+                            score = 20
+                            if score > best_score:
+                                best_score = score
+                                best_action = ('move', cidx_str, unit_pos, key)
+
+        if best_action:
+            return best_action
+        return ('end_turn',)
 
     def check_game_over(self):
         """Check if the game is over."""

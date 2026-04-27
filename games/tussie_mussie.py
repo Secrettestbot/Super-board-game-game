@@ -101,6 +101,7 @@ class TussieMussiGame(BaseGame):
         "standard": "Standard game (18 cards)",
         "extended": "Extended game (24 cards)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -277,6 +278,45 @@ class TussieMussiGame(BaseGame):
             return False
 
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.phase == "draw":
+            return ("draw", "")
+
+        if self.phase == "arrange":
+            if difficulty == 'easy':
+                return ("arrange", str(rand.randint(1, 2)))
+            c0 = self.drawn_cards[0]
+            c1 = self.drawn_cards[1]
+            s0 = c0["base_points"]
+            s1 = c1["base_points"]
+            if s0 <= s1:
+                return ("arrange", "1")
+            else:
+                return ("arrange", "2")
+
+        if self.phase == "choose":
+            if difficulty == 'easy':
+                return ("choose", rand.choice(["a", "b"]))
+            up_card = self.drawn_cards[self.face_up_idx]
+            my_bouquet = self.bouquets[self.current_player]
+            my_colors = [c["color"] for c in my_bouquet]
+            up_score = up_card["base_points"]
+            if up_card["scoring_type"] == "color_bonus" and up_card["scoring_detail"] in my_colors:
+                up_score += 2
+            if up_card["scoring_type"] == "color_count":
+                count = my_colors.count(up_card["scoring_detail"])
+                up_score = (count + 1) * 2
+            if up_score >= 3:
+                return ("choose", "a")
+            if difficulty == 'hard':
+                return ("choose", "b")
+            return ("choose", rand.choice(["a", "b"]))
+
+        return ("draw", "")
 
     def check_game_over(self):
         if self.phase == "score":

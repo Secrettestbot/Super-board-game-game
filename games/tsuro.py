@@ -125,6 +125,7 @@ class TsuroGame(BaseGame):
         "standard": "Standard Tsuro (6x6)",
         "small": "Small Tsuro (4x4)",
     }
+    side_labels = ("Player A", "Player B")
 
     def __init__(self, variation=None):
         super().__init__(variation or "standard")
@@ -426,6 +427,75 @@ class TsuroGame(BaseGame):
             port = entry_port
 
         self.positions[player] = (r, c, port)
+
+    def get_ai_move(self):
+        import random as rand
+        import copy as cp
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        hand = self.hands[self.current_player]
+        if not hand:
+            return "0 0"
+
+        if difficulty == 'easy':
+            tile_idx = rand.randrange(len(hand))
+            rotation = rand.randrange(4)
+            return f"{tile_idx} {rotation}"
+
+        best_move = "0 0"
+        best_score = -999
+        r, c, port = self.positions[self.current_player]
+        for ti in range(len(hand)):
+            for rot in range(4):
+                tile = hand[ti]
+                if rot > 0:
+                    rotated = _rotate_connections(tile, rot)
+                else:
+                    rotated = [list(p) for p in tile]
+                if r < 0 or r >= self.board_size or c < 0 or c >= self.board_size:
+                    continue
+                if self.board[r][c] is not None:
+                    continue
+                port_map = _build_port_map(rotated)
+                exit_port = port_map[port]
+                dr, dc, entry_port = EXIT_TO_ENTRY[exit_port]
+                nr, nc = r + dr, c + dc
+                score = 0.0
+                if 0 <= nr < self.board_size and 0 <= nc < self.board_size:
+                    score += 10
+                    center = (self.board_size - 1) / 2.0
+                    dist_center = abs(nr - center) + abs(nc - center)
+                    score -= dist_center
+                    if self.board[nr][nc] is None:
+                        score += 3
+                else:
+                    score -= 100
+
+                if score > best_score:
+                    best_score = score
+                    best_move = f"{ti} {rot}"
+
+        if difficulty == 'medium':
+            safe = []
+            for ti in range(len(hand)):
+                for rot in range(4):
+                    tile = hand[ti]
+                    if rot > 0:
+                        rotated = _rotate_connections(tile, rot)
+                    else:
+                        rotated = [list(p) for p in tile]
+                    if r < 0 or r >= self.board_size or c < 0 or c >= self.board_size:
+                        continue
+                    if self.board[r][c] is not None:
+                        continue
+                    port_map = _build_port_map(rotated)
+                    exit_port = port_map[port]
+                    dr, dc, entry_port = EXIT_TO_ENTRY[exit_port]
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < self.board_size and 0 <= nc < self.board_size:
+                        safe.append(f"{ti} {rot}")
+            if safe:
+                return rand.choice(safe)
+        return best_move
 
     def check_game_over(self):
         """Check if the game is over."""

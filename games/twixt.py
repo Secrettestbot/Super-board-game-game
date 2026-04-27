@@ -46,6 +46,7 @@ class TwixTGame(BaseGame):
         "standard": "24x24 board",
         "small": "12x12 board",
     }
+    side_labels = ("X (Top-Bottom)", "O (Left-Right)")
 
     def __init__(self, variation=None):
         super().__init__(variation or "standard")
@@ -279,6 +280,63 @@ class TwixTGame(BaseGame):
             self.swap_available = False
 
         return True
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        size = self.size
+
+        if self.swap_available and p == 2:
+            if difficulty != 'easy':
+                r, c = self.first_move
+                center = size // 2
+                if abs(r - center) <= 2 and abs(c - center) <= 2:
+                    return "swap"
+
+        valid = []
+        for r in range(size):
+            for c in range(size):
+                if self._can_place(r, c, p):
+                    valid.append((r, c))
+
+        if not valid:
+            return (0, 0)
+
+        if difficulty == 'easy':
+            r, c = rand.choice(valid)
+            return (r, c)
+
+        scored = []
+        center = (size - 1) / 2.0
+        for r, c in valid:
+            score = 0.0
+            dist_center = abs(r - center) + abs(c - center)
+            score -= dist_center * 0.3
+
+            link_count = 0
+            for dr, dc in KNIGHT_MOVES:
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < size and 0 <= nc < size and self.board[nr][nc] == p:
+                    link = self._canon_link((r, c), (nr, nc))
+                    if link not in self.links and not self._link_crosses_existing((r, c), (nr, nc)):
+                        link_count += 1
+            score += link_count * 4
+
+            if p == 1:
+                score += (size - 1 - r) * 0.1 + r * 0.1
+            else:
+                score += (size - 1 - c) * 0.1 + c * 0.1
+
+            scored.append((score, r, c))
+
+        scored.sort(key=lambda x: -x[0])
+        if difficulty == 'medium':
+            top = scored[:max(1, len(scored) // 4)]
+            _, r, c = rand.choice(top)
+        else:
+            _, r, c = scored[0]
+        return (r, c)
 
     # ------------------------------------------------------------------
     # Win detection

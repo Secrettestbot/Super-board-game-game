@@ -55,6 +55,7 @@ class TwilightInscriptionGame(BaseGame):
         "standard": "Full game with 8 rounds",
         "quick": "Quick game with 5 rounds",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -495,6 +496,127 @@ class TwilightInscriptionGame(BaseGame):
             self.current_round += 1
             if self.current_round <= self.max_rounds:
                 self._roll_dice()
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        available = self._available_actions()
+
+        if difficulty == 'easy':
+            action = rand.choice(available)
+        else:
+            action_scores = {}
+            for a in available:
+                strength = self._count_action(a)
+                score = strength * 2
+                if a == "Expand":
+                    for s in SECTOR_NAMES:
+                        remaining = SECTOR_PLANETS[s] - self.expansion[p][s]
+                        if remaining > 0 and remaining <= strength:
+                            score += SECTOR_BONUS[s]
+                elif a == "Industry":
+                    score += 2
+                elif a == "Navigate":
+                    score += 1
+                elif a == "Warfare":
+                    score += 1.5
+                action_scores[a] = score
+            best_action = max(available, key=lambda a: action_scores.get(a, 0))
+            if difficulty == 'medium' and rand.random() < 0.3:
+                action = rand.choice(available)
+            else:
+                action = best_action
+
+        strength = self._count_action(action)
+
+        if action == "Navigate":
+            routes = []
+            existing = set()
+            for r in self.nav_routes[p]:
+                existing.add((r[0], r[1], r[2], r[3]))
+                existing.add((r[2], r[3], r[0], r[1]))
+            connected = set()
+            for r in self.nav_routes[p]:
+                connected.add((r[0], r[1]))
+                connected.add((r[2], r[3]))
+            for _ in range(strength):
+                candidates = []
+                for r in range(NAV_GRID_SIZE):
+                    for c in range(NAV_GRID_SIZE):
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = r + dr, c + dc
+                            if 0 <= nr < NAV_GRID_SIZE and 0 <= nc < NAV_GRID_SIZE:
+                                if (r, c, nr, nc) not in existing:
+                                    score = 0
+                                    k = f"{nr},{nc}"
+                                    if k in NAV_BONUSES:
+                                        score += NAV_BONUSES[k]
+                                    k2 = f"{r},{c}"
+                                    if k2 in NAV_BONUSES:
+                                        score += NAV_BONUSES[k2]
+                                    if not connected or (r, c) in connected or (nr, nc) in connected:
+                                        score += 1
+                                    candidates.append((score, [r, c, nr, nc]))
+                if candidates:
+                    candidates.sort(key=lambda x: -x[0])
+                    pick = candidates[0][1]
+                    routes.append(pick)
+                    existing.add((pick[0], pick[1], pick[2], pick[3]))
+                    existing.add((pick[2], pick[3], pick[0], pick[1]))
+                    connected.add((pick[0], pick[1]))
+                    connected.add((pick[2], pick[3]))
+            return ("navigate", routes)
+
+        elif action == "Expand":
+            claims = []
+            for _ in range(strength):
+                best_sector = None
+                best_score = -1
+                for s in SECTOR_NAMES:
+                    remaining = SECTOR_PLANETS[s] - self.expansion[p][s]
+                    if remaining <= 0:
+                        continue
+                    score = 1
+                    if remaining <= strength:
+                        score += SECTOR_BONUS[s]
+                    if score > best_score:
+                        best_score = score
+                        best_sector = s
+                if best_sector:
+                    claims.append(best_sector)
+                    self.expansion[p][best_sector] += 1
+            for s in claims:
+                self.expansion[p][s] -= 1
+            return ("expand", claims)
+
+        elif action == "Industry":
+            self.industry_resources[p] += strength
+            builds = []
+            for struct in reversed(STRUCTURES):
+                while self.industry_resources[p] >= struct["cost"]:
+                    self.industry_resources[p] -= struct["cost"]
+                    builds.append(struct["name"])
+            return ("industry", builds, strength)
+
+        elif action == "Warfare":
+            placements = []
+            fleet_set = set(self.warfare[p])
+            candidates = []
+            for r in range(FLEET_GRID_SIZE):
+                for c in range(FLEET_GRID_SIZE):
+                    key = f"{r},{c}"
+                    if key not in fleet_set:
+                        score = 1
+                        if key in FLEET_BONUSES:
+                            score += FLEET_BONUSES[key]
+                        candidates.append((score, key))
+            candidates.sort(key=lambda x: -x[0])
+            for i in range(min(strength, len(candidates))):
+                placements.append(candidates[i][1])
+            return ("warfare", placements)
+
+        return "skip"
 
     def check_game_over(self):
         """Check if the game is over."""
