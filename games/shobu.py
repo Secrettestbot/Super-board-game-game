@@ -26,6 +26,7 @@ class ShobuGame(BaseGame):
     min_players = 2
     max_players = 2
     variations = {"standard": "Standard Shobu"}
+    side_labels = ("Player 1 (X)", "Player 2 (O)")
 
     EMPTY = 0
     P1 = 1
@@ -459,6 +460,84 @@ class ShobuGame(BaseGame):
         return True
 
     # -------------------------------------------------------- check_game_over
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+        opponent = self.P2 if player == self.P1 else self.P1
+
+        all_moves = []
+        for pb in self.HOME_BOARDS[player]:
+            for pr in range(4):
+                for pc in range(4):
+                    if self.boards[pb][pr][pc] != player:
+                        continue
+                    for dr, dc in self.DIRECTIONS.values():
+                        for dist in (1, 2):
+                            if not self._can_passive_move(pb, pr, pc, dr, dc, dist, player):
+                                continue
+                            opp_boards = self._opposite_color_boards(pb)
+                            for ab in opp_boards:
+                                for ar in range(4):
+                                    for ac in range(4):
+                                        if not self._can_aggressive_move(ab, ar, ac, dr, dc, dist, player, pb):
+                                            continue
+                                        passive = (pb, pr, pc, dr, dc, dist)
+                                        aggressive = (ab, ar, ac, dr, dc, dist)
+                                        all_moves.append(("full_move", passive, aggressive))
+
+        if not all_moves:
+            return None
+
+        if difficulty == "easy":
+            return rand.choice(all_moves)
+
+        scored = []
+        for move in all_moves:
+            _, passive, aggressive = move
+            a_board, a_row, a_col, a_dr, a_dc, a_dist = aggressive
+            score = 0
+
+            cr, cc = a_row, a_col
+            pushes_off = False
+            pushes_stone = False
+            for step in range(a_dist):
+                cr += a_dr
+                cc += a_dc
+                if self.boards[a_board][cr][cc] == opponent:
+                    pushes_stone = True
+                    push_r = cr + a_dr
+                    push_c = cc + a_dc
+                    if not self._in_bounds(push_r, push_c):
+                        pushes_off = True
+
+            if pushes_off:
+                score += 50
+                if self.stone_counts[opponent][a_board] <= 2:
+                    score += 30
+            elif pushes_stone:
+                score += 10
+                push_r = cr + a_dr
+                push_c = cc + a_dc
+                if self._in_bounds(push_r, push_c):
+                    if push_r == 0 or push_r == 3 or push_c == 0 or push_c == 3:
+                        score += 8
+
+            new_ar = a_row + a_dr * a_dist
+            new_ac = a_col + a_dc * a_dist
+            center_dist = abs(new_ar - 1.5) + abs(new_ac - 1.5)
+            score += (3 - center_dist) * 2
+
+            if difficulty == "medium":
+                score += rand.uniform(-5, 5)
+            scored.append((score, move))
+
+        scored.sort(reverse=True)
+        if difficulty == "hard":
+            return scored[0][1]
+        top = scored[:3] if len(scored) >= 3 else scored
+        return rand.choice(top)[1]
+
     def check_game_over(self):
         """Check if any board has zero stones for either player."""
         for b in range(4):

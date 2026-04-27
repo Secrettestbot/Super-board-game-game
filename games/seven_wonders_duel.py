@@ -147,6 +147,7 @@ class SevenWondersDuelGame(BaseGame):
         'standard': 'Standard game (3 ages)',
         'quick': 'Quick game (2 ages)',
     }
+    side_labels = ("Player 1", "Player 2")
 
     def setup(self):
         self.age = 1
@@ -333,6 +334,83 @@ class SevenWondersDuelGame(BaseGame):
                 self.age += 1
                 self._setup_age()
         return True
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        available = self._get_available_cards()
+        if not available:
+            return ('discard', (0, 0))
+
+        face_up_avail = [(r, c) for r, c in available
+                         if self.pyramid[r][c]['face_up']]
+        if not face_up_avail:
+            rc = rand.choice(available)
+            return ('discard', rc)
+
+        if difficulty == "easy":
+            rc = rand.choice(face_up_avail)
+            card = self.pyramid[rc[0]][rc[1]]['card']
+            if self._can_afford(cp, card):
+                return ('take', rc)
+            return ('discard', rc)
+
+        scored = []
+        for r, c in face_up_avail:
+            card = self.pyramid[r][c]['card']
+            affordable = self._can_afford(cp, card)
+
+            if not affordable:
+                scored.append((-10, ('discard', (r, c))))
+                continue
+
+            score = 0
+            score += card.get('vp', 0) * 3
+            score += card.get('military', 0) * 4
+            if card.get('science'):
+                sym = card['science']
+                if sym not in self.science_symbols[cp]:
+                    score += 6 + len(self.science_symbols[cp]) * 3
+                    if len(self.science_symbols[cp]) >= 4:
+                        score += 15
+                else:
+                    score += 2
+            if card.get('resource'):
+                score += 4
+            if card['type'] == GUILD:
+                score += 5
+
+            mil = card.get('military', 0)
+            if mil > 0:
+                if cp == 1:
+                    new_mil = self.military - mil
+                    if new_mil <= -9:
+                        score += 50
+                else:
+                    new_mil = self.military + mil
+                    if new_mil >= 9:
+                        score += 50
+
+            if difficulty == "medium":
+                score += rand.uniform(-3, 3)
+            scored.append((score, ('take', (r, c))))
+
+        if not scored:
+            rc = rand.choice(face_up_avail)
+            return ('discard', rc)
+
+        no_take = all(s[1][0] == 'discard' for s in scored)
+        if no_take:
+            best_discard = rand.choice(face_up_avail)
+            return ('discard', best_discard)
+
+        scored.sort(reverse=True)
+        if difficulty == "hard":
+            return scored[0][1]
+        top = scored[:3] if len(scored) >= 3 else scored
+        return rand.choice(top)[1]
 
     def check_game_over(self):
         if self.military <= -9:
