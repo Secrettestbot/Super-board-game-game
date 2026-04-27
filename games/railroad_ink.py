@@ -73,6 +73,7 @@ class RailroadInkGame(BaseGame):
         "standard": "Standard (Blue)",
         "red": "Red Expansion (Lava/Meteor)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -399,6 +400,77 @@ class RailroadInkGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = str(self.current_player)
+
+        if self.phase == "roll":
+            return {"action": "roll"}
+
+        if self.phase == "place":
+            available = [i for i in range(len(self.dice_rolled)) if i not in self.dice_placed]
+            if not available:
+                return {"action": "end_placement"}
+
+            best_placements = []
+            for die_idx in available:
+                tile = self.dice_rolled[die_idx]
+                name = tile[0]
+                for row in range(GRID_SIZE):
+                    for col in range(GRID_SIZE):
+                        if self.boards[cp][row][col] is not None:
+                            continue
+                        rots = [0, 1, 2, 3]
+                        for rot in rots:
+                            if name == "meteor":
+                                score = 1
+                                best_placements.append((score, {"action": "place", "die_idx": die_idx,
+                                                                "row": row, "col": col, "rotation": 0}))
+                                break
+
+                            connections = rotate_tile(tile, rot)
+                            has_any = any(self.boards[cp][r][c] is not None
+                                          for r in range(GRID_SIZE) for c in range(GRID_SIZE))
+                            if has_any:
+                                if not self._can_place(cp, row, col, connections):
+                                    continue
+                            score = 0
+                            for direction, rtype in connections.items():
+                                if rtype is None:
+                                    continue
+                                for en, (er, ec, etype) in EXITS.items():
+                                    if er == row and ec == col and etype == rtype:
+                                        score += 15
+                                dr, dc = DIR_DELTA[direction]
+                                nr, nc = row + dr, col + dc
+                                if 0 <= nr < GRID_SIZE and 0 <= nc < GRID_SIZE:
+                                    adj = self.boards[cp][nr][nc]
+                                    if adj is not None:
+                                        opp_dir = OPPOSITE[direction]
+                                        if adj["connections"].get(opp_dir) == rtype:
+                                            score += 8
+                            if 2 <= row <= 4 and 2 <= col <= 4:
+                                score += 3
+                            if difficulty == "medium":
+                                score += rand.uniform(-3, 3)
+                            best_placements.append((score, {"action": "place", "die_idx": die_idx,
+                                                            "row": row, "col": col, "rotation": rot}))
+
+            if not best_placements:
+                return {"action": "end_placement"}
+
+            best_placements.sort(key=lambda x: x[0], reverse=True)
+            if difficulty == "hard":
+                return best_placements[0][1]
+            elif difficulty == "easy":
+                top = best_placements[:max(1, len(best_placements) // 3)]
+                return rand.choice(top)[1]
+            else:
+                return rand.choice(best_placements[:5])[1] if len(best_placements) > 5 else best_placements[0][1]
+
+        return {"action": "end_placement"}
 
     def check_game_over(self):
         if self.round_num > self.max_rounds:

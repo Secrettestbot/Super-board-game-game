@@ -45,6 +45,7 @@ class RaptorGame(BaseGame):
         "small": "Small game (5x7 grid)",
         "quick": "Quick game (5x7 grid, 2 babies to escape/capture)",
     }
+    side_labels = ("Raptor", "Scientists")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -617,6 +618,168 @@ class RaptorGame(BaseGame):
         self.phase = "select"
         self.current_player = 1
         self._deal_cards()
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        if self.phase == "select":
+            hand = self.raptor_hand if p == 1 else self.scientist_hand
+            if not hand:
+                return ("select", str(hand[0]) if hand else "1")
+
+            if difficulty == "easy":
+                return ("select", str(rand.choice(hand)))
+
+            if p == 1:
+                scored = []
+                for card in hand:
+                    score = 0
+                    if card <= 2:
+                        score += self.mother_sleep * 4
+                    elif card <= 6:
+                        adj_scientists = sum(1 for s in self.scientists if s["active"]
+                                             and self.mother_pos
+                                             and abs(s["pos"][0] - self.mother_pos[0]) <= 2
+                                             and abs(s["pos"][1] - self.mother_pos[1]) <= 2)
+                        score += adj_scientists * 5 + 3
+                    elif card == 7:
+                        score += 8
+                    elif card == 8:
+                        score += 6
+                    elif card == 9:
+                        score += 10
+                    score += card * 0.5
+                    if difficulty == "medium":
+                        score += rand.uniform(-3, 3)
+                    scored.append((score, card))
+                scored.sort(key=lambda x: x[0], reverse=True)
+                pick = scored[0][1] if difficulty == "hard" else rand.choice(scored[:2])[1]
+                return ("select", str(pick))
+            else:
+                scored = []
+                for card in hand:
+                    score = 0
+                    if card <= 2:
+                        score += 4
+                    elif card <= 4:
+                        score += (MOTHER_MAX_SLEEP - self.mother_sleep) * 3
+                    elif card == 5:
+                        sleeping = sum(1 for b in self.babies if b["asleep"])
+                        score += sleeping * 8
+                    elif card == 6:
+                        score += 5
+                    elif card == 7:
+                        score += (MOTHER_MAX_SLEEP - self.mother_sleep) * 4
+                    elif card == 8:
+                        score += 6
+                    elif card == 9:
+                        score += 10
+                    score += card * 0.5
+                    if difficulty == "medium":
+                        score += rand.uniform(-3, 3)
+                    scored.append((score, card))
+                scored.sort(key=lambda x: x[0], reverse=True)
+                pick = scored[0][1] if difficulty == "hard" else rand.choice(scored[:2])[1]
+                return ("select", str(pick))
+
+        elif self.phase == "action_points":
+            ap_player = self.action_player
+            if self.action_points <= 0:
+                return ("action", "done")
+
+            if ap_player == 1:
+                best_actions = []
+                if self.mother_pos and not self.mother_immobile:
+                    mr, mc = self.mother_pos
+                    for s in self.scientists:
+                        if s["active"]:
+                            sr, sc = s["pos"]
+                            if abs(sr - mr) <= 1 and abs(sc - mc) <= 1:
+                                best_actions.append((20, f"attack {sr} {sc}"))
+                    for baby in self.babies:
+                        if not baby["asleep"]:
+                            br, bc = baby["pos"]
+                            edge_dists = [br, self.rows - 1 - br, bc, self.cols - 1 - bc]
+                            min_dist = min(edge_dists)
+                            if min_dist <= 1:
+                                idx = edge_dists.index(min_dist)
+                                nr, nc = br, bc
+                                if idx == 0: nr = max(0, br - 1)
+                                elif idx == 1: nr = min(self.rows - 1, br + 1)
+                                elif idx == 2: nc = max(0, bc - 1)
+                                else: nc = min(self.cols - 1, bc + 1)
+                                best_actions.append((25, f"move {br} {bc} {nr} {nc}"))
+                            else:
+                                idx = edge_dists.index(min_dist)
+                                nr, nc = br, bc
+                                if idx == 0: nr = max(0, br - 1)
+                                elif idx == 1: nr = min(self.rows - 1, br + 1)
+                                elif idx == 2: nc = max(0, bc - 1)
+                                else: nc = min(self.cols - 1, bc + 1)
+                                best_actions.append((15, f"move {br} {bc} {nr} {nc}"))
+                    if not best_actions and not self.mother_immobile:
+                        nearest_baby = None
+                        min_d = 999
+                        for baby in self.babies:
+                            if not baby["asleep"]:
+                                br, bc = baby["pos"]
+                                d = abs(br - mr) + abs(bc - mc)
+                                if d < min_d:
+                                    min_d = d
+                                    nearest_baby = baby
+                        if nearest_baby:
+                            br, bc = nearest_baby["pos"]
+                            dr = 0 if br == mr else (1 if br > mr else -1)
+                            dc = 0 if bc == mc else (1 if bc > mc else -1)
+                            nr = max(0, min(self.rows - 1, mr + dr))
+                            nc = max(0, min(self.cols - 1, mc + dc))
+                            best_actions.append((5, f"move {mr} {mc} {nr} {nc}"))
+
+                if not best_actions:
+                    return ("action", "done")
+                if difficulty == "easy":
+                    return ("action", rand.choice(best_actions)[1])
+                best_actions.sort(key=lambda x: x[0], reverse=True)
+                return ("action", best_actions[0][1])
+
+            else:
+                best_actions = []
+                for s in self.scientists:
+                    if not s["active"]:
+                        continue
+                    sr, sc = s["pos"]
+                    for baby in self.babies:
+                        if baby["asleep"]:
+                            br, bc = baby["pos"]
+                            if abs(br - sr) <= 1 and abs(bc - sc) <= 1:
+                                best_actions.append((25, f"capture {br} {bc}"))
+                    if self.mother_pos:
+                        mr, mc = self.mother_pos
+                        if sr == mr or sc == mc:
+                            best_actions.append((15, f"shoot {mr} {mc}"))
+
+                if not best_actions:
+                    active = [s for s in self.scientists if s["active"]]
+                    if active:
+                        s = rand.choice(active)
+                        sr, sc = s["pos"]
+                        target = self.babies[0]["pos"] if self.babies else [self.rows // 2, self.cols // 2]
+                        dr = 0 if target[0] == sr else (1 if target[0] > sr else -1)
+                        dc = 0 if target[1] == sc else (1 if target[1] > sc else -1)
+                        nr = max(0, min(self.rows - 1, sr + dr))
+                        nc = max(0, min(self.cols - 1, sc + dc))
+                        best_actions.append((5, f"move {sr} {sc} {nr} {nc}"))
+
+                if not best_actions:
+                    return ("action", "done")
+                if difficulty == "easy":
+                    return ("action", rand.choice(best_actions)[1])
+                best_actions.sort(key=lambda x: x[0], reverse=True)
+                return ("action", best_actions[0][1])
+
+        return ("action", "done")
 
     def check_game_over(self):
         if self.babies_escaped >= self.babies_to_win:

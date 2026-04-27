@@ -71,6 +71,7 @@ class RadlandsGame(BaseGame):
         "standard": "3 camps each, 3 water per turn",
         "quick": "2 camps each, 4 water per turn",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -566,6 +567,123 @@ class RadlandsGame(BaseGame):
         # We check the last move in history
         if self.move_history and self.move_history[-1] == "end":
             super().switch_player()
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        opp = 2 if p == 1 else 1
+
+        if self.phase == "scoring":
+            return "score" if hasattr(self, 'phase') and self.phase == "scoring" else "end"
+
+        hand = self.hands[p]
+        people = self.people[p]
+        opp_people = self.people[opp]
+        opp_camps = [c for c in self.camps[opp] if not c["destroyed"]]
+        water = self.water[p]
+
+        if difficulty == "easy":
+            actions = ["end"]
+            if water >= 1 and self.deck:
+                actions.append("draw")
+            playable = [i for i, c in enumerate(hand) if c["cost"] <= water]
+            if playable:
+                actions.append("play")
+            if people and (opp_people or opp_camps):
+                actions.append("attack")
+            choice = rand.choice(actions)
+            if choice == "end":
+                return "end"
+            elif choice == "draw":
+                return "draw"
+            elif choice == "play":
+                return ("play", rand.choice(playable))
+            elif choice == "attack":
+                att_idx = rand.randint(0, len(people) - 1)
+                if opp_people and rand.random() < 0.6:
+                    return ("attack", att_idx, "person", rand.randint(0, len(opp_people) - 1))
+                elif opp_camps:
+                    valid_camps = [i for i, c in enumerate(self.camps[opp]) if not c["destroyed"]]
+                    if valid_camps:
+                        return ("attack", att_idx, "camp", rand.choice(valid_camps))
+                return "end"
+
+        # Medium/Hard: prioritize attacks, then plays, then draw
+        scored_actions = []
+
+        # Attack options
+        if people:
+            for att_idx, attacker in enumerate(people):
+                dmg = attacker["attack"]
+                for camp in self.camps[p]:
+                    if not camp["destroyed"] and camp["ability"] == "+1 damage to attacks":
+                        dmg += 1
+                        break
+                for t_idx, target in enumerate(opp_people):
+                    score = dmg * 5
+                    if target["hp"] <= dmg:
+                        score += 15
+                    if target["ability"] != "none":
+                        score += 5
+                    if difficulty == "medium":
+                        score += rand.uniform(-5, 5)
+                    scored_actions.append((score, ("attack", att_idx, "person", t_idx)))
+                for t_idx, camp in enumerate(self.camps[opp]):
+                    if not camp["destroyed"]:
+                        score = dmg * 4
+                        if camp["hp"] <= dmg:
+                            score += 25
+                        if not opp_people:
+                            score += 10
+                        if difficulty == "medium":
+                            score += rand.uniform(-5, 5)
+                        scored_actions.append((score, ("attack", att_idx, "camp", t_idx)))
+
+        # Play options
+        for i, card in enumerate(hand):
+            if card["cost"] <= water:
+                score = card["attack"] * 3 + card["hp"] * 2
+                if card["ability"] != "none":
+                    score += 5
+                if difficulty == "medium":
+                    score += rand.uniform(-3, 3)
+                scored_actions.append((score, ("play", i)))
+
+        # Draw option
+        if water >= 1 and self.deck and len(hand) < 3:
+            score = 8
+            if difficulty == "medium":
+                score += rand.uniform(-3, 3)
+            scored_actions.append((score, "draw"))
+
+        # Use ability options
+        usable = [(i, person) for i, person in enumerate(people)
+                  if person["ability"] != "none" and water >= 1]
+        for i, person in usable:
+            score = 6
+            if person["ability"] in ("damage", "destroy"):
+                score += 8
+            elif person["ability"] == "heal":
+                damaged_camps = [c for c in self.camps[p] if not c["destroyed"] and c["hp"] < c["max_hp"]]
+                if damaged_camps:
+                    score += 6
+            if difficulty == "medium":
+                score += rand.uniform(-3, 3)
+            scored_actions.append((score, ("use", i)))
+
+        if not scored_actions:
+            return "end"
+
+        scored_actions.sort(key=lambda x: x[0], reverse=True)
+        best_score = scored_actions[0][0]
+        if best_score <= 0:
+            return "end"
+
+        if difficulty == "hard":
+            return scored_actions[0][1]
+        top = scored_actions[:3]
+        return rand.choice(top)[1]
 
     def check_game_over(self):
         """Check if all camps of a player are destroyed."""

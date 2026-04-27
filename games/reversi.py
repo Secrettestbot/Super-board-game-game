@@ -19,6 +19,7 @@ class ReversiGame(BaseGame):
         "standard": "Standard 8x8 board",
         "small": "Smaller 6x6 board"
     }
+    side_labels = ("Black", "White")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -167,6 +168,87 @@ class ReversiGame(BaseGame):
         for r, c in flips:
             self.board[r][c] = self.current_player
         return True
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        valid = self._valid_moves(p)
+        if not valid:
+            return 'pass'
+
+        if difficulty == "easy":
+            return rand.choice(valid)
+
+        corner_positions = {(0, 0), (0, self.size - 1),
+                            (self.size - 1, 0), (self.size - 1, self.size - 1)}
+        edge_set = set()
+        for i in range(self.size):
+            edge_set.update([(0, i), (self.size - 1, i), (i, 0), (i, self.size - 1)])
+        x_squares = set()
+        for cr, cc in corner_positions:
+            for dr in (-1, 1):
+                for dc in (-1, 1):
+                    nr, nc = cr + dr, cc + dc
+                    if self._in_bounds(nr, nc):
+                        x_squares.add((nr, nc))
+        c_squares = set()
+        for cr, cc in corner_positions:
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = cr + dr, cc + dc
+                if self._in_bounds(nr, nc):
+                    c_squares.add((nr, nc))
+
+        scored = []
+        for r, c in valid:
+            flips = len(self._get_all_flips(r, c, p))
+            score = flips
+
+            if (r, c) in corner_positions:
+                score += 100
+            elif (r, c) in x_squares:
+                adj_corner = None
+                for cr, cc in corner_positions:
+                    if abs(cr - r) <= 1 and abs(cc - c) <= 1:
+                        adj_corner = (cr, cc)
+                        break
+                if adj_corner and self.board[adj_corner[0]][adj_corner[1]] != p:
+                    score -= 50
+            elif (r, c) in c_squares:
+                adj_corner = None
+                for cr, cc in corner_positions:
+                    if abs(cr - r) <= 1 and abs(cc - c) <= 1:
+                        adj_corner = (cr, cc)
+                        break
+                if adj_corner and self.board[adj_corner[0]][adj_corner[1]] != p:
+                    score -= 20
+            elif (r, c) in edge_set:
+                score += 10
+
+            if difficulty == "hard":
+                opp = 3 - p
+                old_val = self.board[r][c]
+                old_flipped = self._get_all_flips(r, c, p)
+                self.board[r][c] = p
+                for fr, fc in old_flipped:
+                    self.board[fr][fc] = p
+                opp_moves = self._valid_moves(opp)
+                opp_corners = sum(1 for mr, mc in opp_moves if (mr, mc) in corner_positions)
+                score -= opp_corners * 30
+                score -= len(opp_moves) * 2
+                self.board[r][c] = old_val
+                for fr, fc in old_flipped:
+                    self.board[fr][fc] = opp
+
+            if difficulty == "medium":
+                score += rand.uniform(-3, 3)
+
+            scored.append((score, (r, c)))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        if difficulty == "hard":
+            return scored[0][1]
+        return rand.choice(scored[:3])[1]
 
     def check_game_over(self):
         """Game ends when neither player can move, or the board is full."""
