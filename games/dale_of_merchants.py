@@ -360,6 +360,85 @@ class DaleOfMerchantsGame(BaseGame):
         self.player_hands[p] = []
         self._draw_cards(p, 5)
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player - 1
+        hand = self.player_hands[p]
+
+        if not hand:
+            return "pass"
+
+        next_level = self.player_stall_count[p] + 1
+        hand_value = sum(c["value"] for c in hand)
+
+        if difficulty == 'easy':
+            choices = ["pass"]
+            if self.market_display and hand_value >= self.market_display[0]["value"]:
+                choices.append("buy")
+            if hand_value >= next_level:
+                choices.append("stall")
+            action = random.choice(choices)
+            if action == "buy" and self.market_display:
+                for mi, mc in enumerate(self.market_display):
+                    pay = [i for i in range(len(hand)) if hand[i]["value"] >= mc["value"]]
+                    if pay:
+                        return f"buy {mi+1} {pay[0]+1}"
+                return "pass"
+            if action == "stall":
+                by_folk = {}
+                for i, c in enumerate(hand):
+                    by_folk.setdefault(c["folk"], []).append(i)
+                for folk, idxs in by_folk.items():
+                    total = sum(hand[i]["value"] for i in idxs)
+                    if total >= next_level:
+                        idx_str = " ".join(str(i+1) for i in idxs)
+                        return f"stall {idx_str}"
+                return "pass"
+            return "pass"
+
+        by_folk = {}
+        for i, c in enumerate(hand):
+            by_folk.setdefault(c["folk"], []).append(i)
+
+        can_stall = False
+        stall_move = None
+        for folk, idxs in by_folk.items():
+            total = sum(hand[i]["value"] for i in idxs)
+            if total >= next_level:
+                can_stall = True
+                stall_move = "stall " + " ".join(str(i+1) for i in idxs)
+                break
+
+        if can_stall and (difficulty == 'hard' or random.random() < 0.6):
+            return stall_move
+
+        best_buy = None
+        best_buy_value = 0
+        for mi, mc in enumerate(self.market_display):
+            if mc["value"] > best_buy_value:
+                sorted_hand = sorted(range(len(hand)), key=lambda i: hand[i]["value"])
+                pay_total = 0
+                pay_indices = []
+                for i in sorted_hand:
+                    pay_total += hand[i]["value"]
+                    pay_indices.append(i)
+                    if pay_total >= mc["value"]:
+                        break
+                if pay_total >= mc["value"]:
+                    best_buy_value = mc["value"]
+                    idx_str = " ".join(str(i+1) for i in pay_indices)
+                    best_buy = f"buy {mi+1} {idx_str}"
+
+        if best_buy and (difficulty == 'hard' or random.random() < 0.5):
+            return best_buy
+
+        if len(hand) > 1:
+            worst = min(range(len(hand)), key=lambda i: hand[i]["value"])
+            return f"discard {worst+1}"
+
+        return "pass"
+
     def check_game_over(self):
         for i in range(2):
             if self.player_stall_count[i] >= self.stalls_to_win:

@@ -283,6 +283,132 @@ class DaraGame(BaseGame):
 
         return True
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        opp = 3 - cp
+
+        if self.pending_removal:
+            removable = []
+            for r in range(self.ROWS):
+                for c in range(self.COLS):
+                    if self.board[r][c] == opp:
+                        if not self._is_in_three_in_a_row(r, c, opp) or not self._opponent_has_removable_piece(opp):
+                            removable.append((r, c))
+            if not removable:
+                for r in range(self.ROWS):
+                    for c in range(self.COLS):
+                        if self.board[r][c] == opp:
+                            return ("remove", r, c)
+            if difficulty == 'easy':
+                return ("remove", *random.choice(removable))
+            best = removable[0]
+            best_score = -1
+            for r, c in removable:
+                sc = 0
+                self.board[r][c] = 0
+                if not self._player_can_move(opp):
+                    sc += 100
+                for nr, nc in self._get_adjacent(r, c):
+                    if self.board[nr][nc] == cp:
+                        sc += 1
+                self.board[r][c] = opp
+                if sc > best_score or (sc == best_score and random.random() < 0.3):
+                    best_score = sc
+                    best = (r, c)
+            if difficulty == 'medium' and random.random() < 0.2:
+                return ("remove", *random.choice(removable))
+            return ("remove", best[0], best[1])
+
+        if self.phase == 1:
+            empty = []
+            for r in range(self.ROWS):
+                for c in range(self.COLS):
+                    if self.board[r][c] == 0:
+                        self.board[r][c] = cp
+                        if not self._has_three_in_a_row(r, c, cp):
+                            empty.append((r, c))
+                        self.board[r][c] = 0
+            if not empty:
+                for r in range(self.ROWS):
+                    for c in range(self.COLS):
+                        if self.board[r][c] == 0:
+                            empty.append((r, c))
+                if not empty:
+                    return ("place", 0, 0)
+            if difficulty == 'easy':
+                return ("place", *random.choice(empty))
+            best = empty[0]
+            best_score = -1
+            for r, c in empty:
+                sc = 0
+                for nr, nc in self._get_adjacent(r, c):
+                    if self.board[nr][nc] == cp:
+                        sc += 2
+                    elif self.board[nr][nc] == opp:
+                        sc += 1
+                cr, cc = self.ROWS // 2, self.COLS // 2
+                sc += max(0, 3 - abs(r - cr) - abs(c - cc))
+                if sc > best_score or (sc == best_score and random.random() < 0.3):
+                    best_score = sc
+                    best = (r, c)
+            if difficulty == 'medium' and random.random() < 0.2:
+                return ("place", *random.choice(empty))
+            return ("place", best[0], best[1])
+
+        moves = []
+        for r in range(self.ROWS):
+            for c in range(self.COLS):
+                if self.board[r][c] == cp:
+                    for nr, nc in self._get_adjacent(r, c):
+                        if self.board[nr][nc] == 0:
+                            moves.append((r, c, nr, nc))
+        if not moves:
+            return ("move", 0, 0, 0, 1)
+
+        if difficulty == 'easy':
+            fr, fc, tr, tc = random.choice(moves)
+            return ("move", fr, fc, tr, tc)
+
+        winning = []
+        for fr, fc, tr, tc in moves:
+            self.board[fr][fc] = 0
+            self.board[tr][tc] = cp
+            if self._has_three_in_a_row(tr, tc, cp):
+                winning.append((fr, fc, tr, tc))
+            self.board[tr][tc] = 0
+            self.board[fr][fc] = cp
+
+        if winning:
+            if difficulty == 'medium' and random.random() < 0.15:
+                fr, fc, tr, tc = random.choice(moves)
+            else:
+                fr, fc, tr, tc = random.choice(winning)
+            return ("move", fr, fc, tr, tc)
+
+        scored = []
+        for fr, fc, tr, tc in moves:
+            sc = 0
+            self.board[fr][fc] = 0
+            self.board[tr][tc] = cp
+            for nr, nc in self._get_adjacent(tr, tc):
+                if self.board[nr][nc] == cp:
+                    sc += 2
+            cr, cc = self.ROWS // 2, self.COLS // 2
+            sc += max(0, 3 - abs(tr - cr) - abs(tc - cc))
+            self.board[tr][tc] = 0
+            self.board[fr][fc] = cp
+            scored.append((sc, fr, fc, tr, tc))
+
+        scored.sort(key=lambda x: -x[0])
+        if difficulty == 'medium' and len(scored) > 1:
+            top = scored[:max(2, len(scored) // 3)]
+            _, fr, fc, tr, tc = random.choice(top)
+        else:
+            _, fr, fc, tr, tc = scored[0]
+        return ("move", fr, fc, tr, tc)
+
     # -------------------------------------------------------- check_game_over
     def check_game_over(self):
         """Check if the game is over."""

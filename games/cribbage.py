@@ -508,6 +508,67 @@ class CribbageGame(BaseGame):
 
         self.round_messages.extend(messages)
 
+    def get_ai_move(self):
+        import random
+        from itertools import combinations as combos
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player - 1
+
+        if self.phase in ("show", "round_over"):
+            return "continue"
+
+        if self.phase == "discard":
+            hand = self.hands[cp]
+            if len(hand) != 6:
+                return "1 2"
+            if difficulty == 'easy':
+                picks = random.sample(range(len(hand)), 2)
+                picks.sort()
+                return f"{picks[0]+1} {picks[1]+1}"
+            best_score = -1
+            best_discard = (0, 1)
+            for i, j in combos(range(len(hand)), 2):
+                kept = [hand[k] for k in range(len(hand)) if k not in (i, j)]
+                dummy_starter = ('5', 'H')
+                sc, _ = score_hand(kept, dummy_starter)
+                if sc > best_score or (sc == best_score and random.random() < 0.3):
+                    best_score = sc
+                    best_discard = (i, j)
+            if difficulty == 'medium' and random.random() < 0.2:
+                picks = random.sample(range(len(hand)), 2)
+                picks.sort()
+                return f"{picks[0]+1} {picks[1]+1}"
+            return f"{best_discard[0]+1} {best_discard[1]+1}"
+
+        if self.phase == "pegging":
+            hand = self.pegging_hands[self.pegging_current]
+            playable = [i for i, c in enumerate(hand) if card_value(c) + self.pegging_total <= 31]
+            if not playable:
+                return "go"
+            if difficulty == 'easy':
+                return str(random.choice(playable) + 1)
+            best_idx = playable[0]
+            best_val = -1
+            for i in playable:
+                c = hand[i]
+                new_total = self.pegging_total + card_value(c)
+                sc = 0
+                if new_total == 15:
+                    sc += 2
+                if new_total == 31:
+                    sc += 2
+                if self.pegging_played:
+                    if self.pegging_played[-1][0] == c[0]:
+                        sc += 2
+                if sc > best_val or (sc == best_val and random.random() < 0.3):
+                    best_val = sc
+                    best_idx = i
+            if difficulty == 'medium' and random.random() < 0.25:
+                best_idx = random.choice(playable)
+            return str(best_idx + 1)
+
+        return "continue"
+
     def check_game_over(self):
         """Check if the game is over after a move."""
         if self.game_over:

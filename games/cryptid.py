@@ -356,6 +356,45 @@ class CryptidGame(BaseGame):
 
         return False
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        own_clue_fn = self.clues[cp - 1][1]
+        opp = 2 if cp == 1 else 1
+
+        all_pos = [(r, c) for r in range(self.rows) for c in range(self.cols)]
+        unknown = [(r, c) for r, c in all_pos if (r, c) not in self.player_tokens[opp - 1]]
+        own_yes = [(r, c) for r, c in all_pos if own_clue_fn(r, c)]
+        opp_yes = set((r, c) for (r, c), v in self.player_tokens[opp - 1].items() if v)
+        opp_no = set((r, c) for (r, c), v in self.player_tokens[opp - 1].items() if not v)
+
+        candidates = [pos for pos in own_yes if pos not in opp_no]
+
+        if difficulty == 'easy':
+            if unknown:
+                return ("search", *random.choice(unknown))
+            return ("search", *random.choice(all_pos))
+
+        if difficulty == 'hard' and len(candidates) == 1:
+            pos = candidates[0]
+            if pos in opp_yes:
+                return ("guess", pos[0], pos[1])
+
+        both_yes = [pos for pos in candidates if pos in opp_yes]
+        if difficulty == 'hard' and len(both_yes) == 1:
+            return ("guess", both_yes[0][0], both_yes[0][1])
+
+        search_targets = [pos for pos in candidates if pos not in opp_yes and pos not in opp_no]
+        if search_targets:
+            if difficulty == 'hard':
+                return ("search", *random.choice(search_targets))
+            return ("search", *random.choice(search_targets))
+
+        if unknown:
+            return ("search", *random.choice(unknown))
+        return ("search", *random.choice(all_pos))
+
     def check_game_over(self):
         # Already handled in make_move for guesses
         pass
