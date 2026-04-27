@@ -500,6 +500,192 @@ class HanamikojiGame(BaseGame):
                 self.round_number += 1
                 self._start_new_round()
 
+    # ---------------------------------------------------------- get_ai_move
+    def get_ai_move(self):
+        import random as _rand
+
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        opp = self._opponent()
+
+        def _card_value(card):
+            """Score a card: higher charm = more valuable; geishas where
+            AI is behind are more urgent."""
+            charm = self.geishas[card]["charm"]
+            my_cards = self.geisha_cards[card][cp]
+            opp_cards = self.geisha_cards[card][opp]
+            urgency = 0
+            if self.favor[card] == opp:
+                urgency = 2
+            elif self.favor[card] == 0 and opp_cards > my_cards:
+                urgency = 1
+            return charm + urgency
+
+        # ---- Pending action responses ----
+        if self._pending_action:
+            action_type = self._pending_action["type"]
+
+            if action_type == "gift":
+                offered = self._pending_action["cards"]
+                if difficulty == 'easy':
+                    idx = _rand.randint(0, len(offered) - 1)
+                else:
+                    scores = [_card_value(c) for c in offered]
+                    if difficulty == 'medium':
+                        weighted = [(s + _rand.random(), i) for i, s in enumerate(scores)]
+                        idx = max(weighted, key=lambda x: x[0])[1]
+                    else:  # hard
+                        idx = max(range(len(scores)), key=lambda i: scores[i])
+                return ("gift_response", idx)
+
+            elif action_type == "competition":
+                pair_a = self._pending_action["pair_a"]
+                pair_b = self._pending_action["pair_b"]
+                val_a = sum(_card_value(c) for c in pair_a)
+                val_b = sum(_card_value(c) for c in pair_b)
+                if difficulty == 'easy':
+                    return ("competition_response", _rand.choice([1, 2]))
+                elif difficulty == 'medium':
+                    val_a += _rand.random() * 2
+                    val_b += _rand.random() * 2
+                    return ("competition_response", 1 if val_a >= val_b else 2)
+                else:  # hard
+                    return ("competition_response", 1 if val_a >= val_b else 2)
+
+        # ---- Normal action selection ----
+        hand = list(self.hands[cp])
+        available = list(self.actions_remaining[cp])
+
+        if not available:
+            return None
+
+        # Filter actions by hand size requirements
+        valid_actions = []
+        for act in available:
+            if act == "secret" and len(hand) >= 1:
+                valid_actions.append(act)
+            elif act == "trade_off" and len(hand) >= 2:
+                valid_actions.append(act)
+            elif act == "gift" and len(hand) >= 3:
+                valid_actions.append(act)
+            elif act == "competition" and len(hand) >= 4:
+                valid_actions.append(act)
+
+        if not valid_actions:
+            return None
+
+        if difficulty == 'easy':
+            action = _rand.choice(valid_actions)
+            return self._ai_build_move(action, hand, _rand, _card_value, difficulty)
+
+        # Medium / Hard: score each action and pick best
+        best_move = None
+        best_score = -999
+
+        for action in valid_actions:
+            move, score = self._ai_evaluate_action(action, hand, _rand, _card_value, difficulty)
+            if difficulty == 'medium':
+                score += _rand.random() * 3
+            if score > best_score:
+                best_score = score
+                best_move = move
+
+        return best_move
+
+    def _ai_build_move(self, action, hand, _rand, _card_value, difficulty):
+        """Build a move for a given action (used by easy difficulty)."""
+        cp = self.current_player
+
+        if action == "secret":
+            card = _rand.choice(hand)
+            return ("secret", card)
+
+        elif action == "trade_off":
+            cards = _rand.sample(hand, 2)
+            return ("trade_off", cards)
+
+        elif action == "gift":
+            cards = _rand.sample(hand, 3)
+            return ("gift", cards)
+
+        elif action == "competition":
+            cards = _rand.sample(hand, 4)
+            _rand.shuffle(cards)
+            pair_a = cards[:2]
+            pair_b = cards[2:]
+            return ("competition", pair_a, pair_b)
+
+        return None
+
+    def _ai_evaluate_action(self, action, hand, _rand, _card_value, difficulty):
+        """Evaluate an action and return (move, score). Higher score = better."""
+        sorted_hand = sorted(hand, key=_card_value, reverse=True)
+
+        if action == "secret":
+            # Save the most valuable card (it goes to AI at round end)
+            card = sorted_hand[0]
+            score = _card_value(card)
+            return ("secret", card), score
+
+        elif action == "trade_off":
+            # Discard the 2 least valuable cards
+            discards = sorted_hand[-2:]
+            # Score = inverse of what we lose (low value lost = good)
+            score = 10 - sum(_card_value(c) for c in discards)
+            return ("trade_off", discards), score
+
+        elif action == "gift":
+            # Offer 3 cards where opponent's best pick is least valuable.
+            # We get 2, opponent gets 1. Choose 3 cards where the max
+            # single card value is minimized (opponent picks best).
+            best_trio = None
+            best_trio_score = -999
+            cards_by_val = sorted(hand, key=_card_value)
+            # Try combinations: pick 3 from hand
+            from itertools import combinations
+            for trio in combinations(range(len(hand)), 3):
+                trio_cards = [hand[i] for i in trio]
+                vals = sorted([_card_value(c) for c in trio_cards], reverse=True)
+                # Opponent picks highest value card; AI keeps the other 2
+                opp_gets = vals[0]
+                ai_gets = vals[1] + vals[2]
+                trio_score = ai_gets - opp_gets
+                if trio_score > best_trio_score:
+                    best_trio_score = trio_score
+                    best_trio = trio_cards
+            return ("gift", best_trio), best_trio_score
+
+        elif action == "competition":
+            # Split 4 cards into 2 pairs; opponent picks one pair.
+            # Minimize the advantage opponent gets by picking the better pair.
+            from itertools import combinations
+            best_split = None
+            best_split_score = -999
+            for quad in combinations(range(len(hand)), 4):
+                quad_cards = [hand[i] for i in quad]
+                # Try all ways to split 4 into 2 pairs
+                for pair_combo in combinations(range(4), 2):
+                    pair_a = [quad_cards[i] for i in pair_combo]
+                    pair_b = [quad_cards[i] for i in range(4) if i not in pair_combo]
+                    val_a = sum(_card_value(c) for c in pair_a)
+                    val_b = sum(_card_value(c) for c in pair_b)
+                    # Opponent picks the better pair; AI gets the worse one
+                    ai_gets = min(val_a, val_b)
+                    # Score: we want to maximize our minimum
+                    if ai_gets > best_split_score:
+                        best_split_score = ai_gets
+                        if val_a <= val_b:
+                            best_split = (pair_a, pair_b)
+                        else:
+                            best_split = (pair_b, pair_a)
+            if best_split:
+                return ("competition", best_split[0], best_split[1]), best_split_score
+            # Fallback
+            cards = hand[:4]
+            return ("competition", cards[:2], cards[2:]), 0
+
+        return None, -999
+
     # -------------------------------------------------------- check_game_over
     def check_game_over(self):
         # Already handled in _check_round_end_or_continue

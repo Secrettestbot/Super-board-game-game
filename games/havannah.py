@@ -335,6 +335,85 @@ class HavannahGame(BaseGame):
         """Check if a cell is on the boundary of the board (edge or corner)."""
         return cell in self.corners or cell in self.edges
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        empty = [c for c in self.cells if c not in self.board]
+        if not empty:
+            return empty[0] if empty else (0, 0)
+
+        my = self.current_player
+        opp = 3 - my
+        my_cells = {c for c, p in self.board.items() if p == my}
+        opp_cells = {c for c, p in self.board.items() if p == opp}
+
+        if difficulty == 'easy':
+            if my_cells:
+                near = set()
+                for cell in my_cells:
+                    for nb in self._neighbors(cell[0], cell[1]):
+                        if nb not in self.board:
+                            near.add(nb)
+                if near:
+                    return random.choice(list(near))
+            return random.choice(empty)
+
+        def score_pos(r, c):
+            s = 0.0
+            nbrs = self._neighbors(r, c)
+            for nb in nbrs:
+                if nb in my_cells:
+                    s += 4
+                elif nb in opp_cells:
+                    s += 1
+
+            if (r, c) in self.corners:
+                s += 3
+            elif (r, c) in self.edges:
+                s += 2
+
+            if difficulty == 'hard':
+                for pl_cells, weight in [(my_cells, 8), (opp_cells, 6)]:
+                    test_cells = pl_cells | {(r, c)} if pl_cells is my_cells else pl_cells
+                    visited = set()
+                    for start in test_cells:
+                        if start in visited:
+                            continue
+                        comp = set()
+                        queue = [start]
+                        comp.add(start)
+                        while queue:
+                            cell = queue.pop()
+                            for nb in self._neighbors(cell[0], cell[1]):
+                                if nb in test_cells and nb not in comp:
+                                    comp.add(nb)
+                                    queue.append(nb)
+                        visited.update(comp)
+                        if (r, c) in comp:
+                            corners_touched = sum(1 for x in comp if x in self.corners)
+                            edges_touched = len({self.edges[x] for x in comp if x in self.edges})
+                            if corners_touched >= 2:
+                                s += weight * 2
+                            if edges_touched >= 3:
+                                s += weight * 2
+                            elif edges_touched == 2:
+                                s += weight
+                            if corners_touched == 1:
+                                s += weight * 0.5
+            return s
+
+        scored = [(score_pos(r, c), r, c) for r, c in empty]
+        scored.sort(key=lambda x: -x[0])
+
+        if difficulty == 'medium':
+            top = scored[:max(3, len(scored) // 5)]
+            pick = random.choice(top)
+        else:
+            pick = scored[0]
+
+        return (pick[1], pick[2])
+
     def check_game_over(self):
         """Check if the current player has won by ring, bridge, or fork."""
         player = self.current_player

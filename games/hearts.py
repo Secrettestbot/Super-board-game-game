@@ -430,6 +430,124 @@ class HeartsGame(BaseGame):
             f"{self.players[1]} = {self.scores[1]}"
         )
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player - 1
+
+        if self.phase == "pass":
+            return self._ai_pass(cp, difficulty)
+        elif self.phase == "play":
+            return self._ai_play(cp, difficulty)
+        elif self.phase in ("trick_done", "hand_over"):
+            return "continue"
+        return ""
+
+    def _ai_pass(self, cp, difficulty):
+        already = len(self.pass_cards[cp])
+        if already >= 3:
+            return "done"
+
+        hand = self.hands[cp]
+        already_set = set(id(c) for c in self.pass_cards[cp])
+        available = [(i, c) for i, c in enumerate(hand) if id(c) not in already_set]
+
+        if not available:
+            return "done"
+
+        if difficulty == 'easy':
+            idx, _ = random.choice(available)
+            return str(idx + 1)
+
+        def pass_score(card):
+            s = 0.0
+            if card == ('Q', 'S'):
+                s += 20
+            elif card[1] == 'S' and rank_index(card[0]) >= rank_index('J'):
+                s += 10
+            if card[1] == 'H':
+                s += 5 + rank_index(card[0])
+            s += rank_index(card[0]) * 0.5
+            return s
+
+        available.sort(key=lambda x: -pass_score(x[1]))
+
+        if difficulty == 'medium' and len(available) > 1:
+            top = available[:max(2, len(available) // 3)]
+            idx, _ = random.choice(top)
+        else:
+            idx, _ = available[0]
+
+        return str(idx + 1)
+
+    def _ai_play(self, cp, difficulty):
+        hand = self.hands[cp]
+        playable = self._get_playable_cards(cp)
+
+        if not playable:
+            return "1"
+
+        if len(playable) == 1:
+            return str(hand.index(playable[0]) + 1)
+
+        if difficulty == 'easy':
+            card = random.choice(playable)
+            return str(hand.index(card) + 1)
+
+        leading = len(self.current_trick) == 0
+
+        def play_score(card):
+            s = 0.0
+            pts = card_points(card)
+
+            if leading:
+                if card[1] == 'H':
+                    s -= 5
+                if card == ('Q', 'S'):
+                    s -= 20
+                s -= rank_index(card[0]) * 0.3
+                if card[1] == 'S' and rank_index(card[0]) >= rank_index('Q'):
+                    s -= 8
+            else:
+                lead_suit = self.current_trick[0][1][1]
+                if card[1] == lead_suit:
+                    lead_rank = rank_index(self.current_trick[0][1][0])
+                    if rank_index(card[0]) < lead_rank:
+                        s += 3
+                    else:
+                        trick_pts = sum(card_points(c) for _, c in self.current_trick)
+                        if trick_pts > 0:
+                            s -= 10 - (13 - rank_index(card[0]))
+                        else:
+                            s += rank_index(card[0]) * 0.2
+                else:
+                    if card == ('Q', 'S'):
+                        s += 25
+                    elif card[1] == 'H':
+                        s += 10 + rank_index(card[0])
+                    else:
+                        s += rank_index(card[0]) * 0.5
+
+            if difficulty == 'hard':
+                if leading and card[1] != 'H' and card[1] != 'S':
+                    s += 2
+                if not leading and card[1] != self.current_trick[0][1][1]:
+                    if pts > 0:
+                        s += pts * 2
+
+            return s
+
+        scored = [(play_score(c), c) for c in playable]
+        scored.sort(key=lambda x: -x[0])
+
+        if difficulty == 'medium':
+            top = scored[:max(2, len(scored) // 3)]
+            _, card = random.choice(top)
+        else:
+            _, card = scored[0]
+
+        return str(hand.index(card) + 1)
+
     def check_game_over(self):
         """Check if someone has reached the target score."""
         if self.game_over:
