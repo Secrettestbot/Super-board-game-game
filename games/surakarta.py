@@ -25,6 +25,7 @@ class SurakartaGame(BaseGame):
     min_players = 2
     max_players = 2
     variations = {"standard": "Standard Surakarta"}
+    side_labels = ("X", "O")
 
     EMPTY = 0
     P1 = 1
@@ -337,6 +338,83 @@ class SurakartaGame(BaseGame):
         self.board[tr][tc] = player
         self.pieces_count[opponent] -= 1
         return True
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+        opponent = self.P2 if player == self.P1 else self.P1
+
+        loop_captures = []
+        normal_moves = []
+        for r in range(6):
+            for c in range(6):
+                if self.board[r][c] != player:
+                    continue
+                captures = self._find_loop_captures(r, c, player)
+                for tr, tc, li in captures:
+                    loop_captures.append((r, c, tr, tc))
+                for dr in [-1, 0, 1]:
+                    for dc in [-1, 0, 1]:
+                        if dr == 0 and dc == 0:
+                            continue
+                        nr, nc = r + dr, c + dc
+                        if 0 <= nr < 6 and 0 <= nc < 6 and self.board[nr][nc] == self.EMPTY:
+                            normal_moves.append((r, c, nr, nc))
+
+        if difficulty == "easy":
+            if loop_captures and rand.random() < 0.7:
+                fr, fc, tr, tc = rand.choice(loop_captures)
+                return ('loop', (fr, fc), (tr, tc))
+            if normal_moves:
+                fr, fc, tr, tc = rand.choice(normal_moves)
+                return ('move', (fr, fc), (tr, tc))
+            if loop_captures:
+                fr, fc, tr, tc = rand.choice(loop_captures)
+                return ('loop', (fr, fc), (tr, tc))
+            return None
+
+        if loop_captures:
+            scored = []
+            for fr, fc, tr, tc in loop_captures:
+                s = 20.0
+                if difficulty == "medium":
+                    s += rand.uniform(-3, 3)
+                scored.append((s, fr, fc, tr, tc))
+            scored.sort(reverse=True)
+            _, fr, fc, tr, tc = scored[0]
+            return ('loop', (fr, fc), (tr, tc))
+
+        scored = []
+        for fr, fc, tr, tc in normal_moves:
+            s = 0.0
+            center = 2.5
+            s += (2 - abs(tr - center)) * 0.5 + (2 - abs(tc - center)) * 0.5
+            on_loop = False
+            for loop in self.loops:
+                if (tr, tc) in loop:
+                    future_caps = self._find_loop_captures(tr, tc, player)
+                    if future_caps:
+                        s += 5
+                    on_loop = True
+            if on_loop:
+                s += 1
+            for dr in [-1, 0, 1]:
+                for dc in [-1, 0, 1]:
+                    if dr == 0 and dc == 0:
+                        continue
+                    ar, ac = tr + dr, tc + dc
+                    if 0 <= ar < 6 and 0 <= ac < 6 and self.board[ar][ac] == opponent:
+                        s -= 0.5
+            if difficulty == "medium":
+                s += rand.uniform(-2, 2)
+            scored.append((s, fr, fc, tr, tc))
+
+        if not scored:
+            return None
+        scored.sort(reverse=True)
+        _, fr, fc, tr, tc = scored[0]
+        return ('move', (fr, fc), (tr, tc))
 
     def check_game_over(self):
         """Check if game is over."""

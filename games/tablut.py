@@ -25,6 +25,7 @@ class TablutGame(BaseGame):
         "standard": "9x9 board: King + 8 defenders vs 16 attackers",
         "brandubh": "7x7 board: King + 4 defenders vs 8 attackers",
     }
+    side_labels = ("Attackers", "Defenders")
 
     # Piece constants
     EMPTY = 0
@@ -373,6 +374,86 @@ class TablutGame(BaseGame):
         self._check_captures_after_move(tr, tc)
 
         return True
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+        size = self.size
+        moves = []
+        for r in range(size):
+            for c in range(size):
+                piece = self.board[r][c]
+                if player == 1 and piece != self.ATTACKER:
+                    continue
+                if player == 2 and piece not in (self.DEFENDER, self.KING):
+                    continue
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    for dist in range(1, size):
+                        nr, nc = r + dr * dist, c + dc * dist
+                        if not (0 <= nr < size and 0 <= nc < size):
+                            break
+                        if self.board[nr][nc] != self.EMPTY:
+                            break
+                        if (nr, nc) in self.corners and piece != self.KING:
+                            continue
+                        if (nr, nc) == self.center and piece != self.KING:
+                            continue
+                        if piece != self.KING:
+                            cr, cc = self.center
+                            blocked = False
+                            if r == nr == cr and min(c, nc) < cc < max(c, nc):
+                                blocked = True
+                            if c == nc == cc and min(r, nr) < cr < max(r, nr):
+                                blocked = True
+                            if blocked:
+                                break
+                        moves.append((r, c, nr, nc, piece))
+        if not moves:
+            return None
+        if difficulty == "easy":
+            r, c, nr, nc, _ = rand.choice(moves)
+            return ((r, c), (nr, nc))
+        scored = []
+        for fr, fc, tr, tc, piece in moves:
+            s = 0.0
+            if piece == self.KING and (tr, tc) in self.corners:
+                s += 1000
+            if piece == self.KING:
+                for corner in self.corners:
+                    dist = abs(tr - corner[0]) + abs(tc - corner[1])
+                    if player == 2:
+                        s += (size - dist) * 2
+            if player == 1 and self.king_pos:
+                kr, kc = self.king_pos
+                old_dist = abs(fr - kr) + abs(fc - kc)
+                new_dist = abs(tr - kr) + abs(tc - kc)
+                if new_dist < old_dist:
+                    s += 3
+                for corner in self.corners:
+                    if tr == corner[0] or tc == corner[1]:
+                        if (abs(kr - corner[0]) + abs(kc - corner[1])) <= 3:
+                            s += 5
+            opp_type = self.ATTACKER if player == 2 else self.DEFENDER
+            for dr2, dc2 in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                adj_r, adj_c = tr + dr2, tc + dc2
+                if 0 <= adj_r < size and 0 <= adj_c < size:
+                    if self.board[adj_r][adj_c] == opp_type or (self.board[adj_r][adj_c] == self.KING and player == 1):
+                        far_r, far_c = adj_r + dr2, adj_c + dc2
+                        if 0 <= far_r < size and 0 <= far_c < size:
+                            far_cell = self.board[far_r][far_c]
+                            if player == 1 and far_cell == self.ATTACKER:
+                                s += 8
+                            elif player == 2 and far_cell in (self.DEFENDER, self.KING):
+                                s += 8
+                        if (far_r, far_c) == self.center or (far_r, far_c) in self.corners:
+                            s += 8
+            if difficulty == "medium":
+                s += rand.uniform(-3, 3)
+            scored.append((s, fr, fc, tr, tc))
+        scored.sort(reverse=True)
+        _, fr, fc, tr, tc = scored[0]
+        return ((fr, fc), (tr, tc))
 
     def check_game_over(self):
         """Check if game is over.

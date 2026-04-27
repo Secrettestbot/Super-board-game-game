@@ -141,6 +141,7 @@ class SushiGoGame(BaseGame):
         "standard": "Standard Sushi Go!",
         "party": "Party (with Tofu, Eel, Edamame)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -386,6 +387,64 @@ class SushiGoGame(BaseGame):
                 self.winner = 2
             else:
                 self.winner = None  # true tie
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player - 1
+        hand = self.hands[p]
+        plate = self.plates[p]
+        if not hand:
+            return "1"
+        if difficulty == "easy":
+            return str(rand.randint(1, len(hand)))
+        scored = []
+        has_wasabi = "Wasabi" in plate
+        wasabi_count = plate.count("Wasabi") - sum(1 for i, c in enumerate(plate) if c == "Wasabi" and i + 1 < len(plate) and plate[i+1] in ("SalmonNigiri", "SquidNigiri", "EggNigiri"))
+        for i, card in enumerate(hand):
+            s = 0.0
+            if card == "SquidNigiri":
+                s = 9 if wasabi_count > 0 else 3
+            elif card == "SalmonNigiri":
+                s = 6 if wasabi_count > 0 else 2
+            elif card == "EggNigiri":
+                s = 3 if wasabi_count > 0 else 1
+            elif card == "Wasabi":
+                s = 2.5
+            elif card == "Tempura":
+                count = plate.count("Tempura")
+                s = 5 if count % 2 == 1 else 2
+            elif card == "Sashimi":
+                count = plate.count("Sashimi")
+                s = 10 if count % 3 == 2 else (3 if count % 3 == 1 else 1.5)
+            elif card == "Dumpling":
+                count = plate.count("Dumpling")
+                s = min(count + 1, 5)
+            elif card.startswith("Maki"):
+                maki_val = int(card[-1])
+                s = maki_val * 1.5
+            elif card == "Pudding":
+                s = 2
+            elif card == "Chopsticks":
+                s = 1.5
+            elif card == "Tofu":
+                count = plate.count("Tofu")
+                if count == 0:
+                    s = 2
+                elif count == 1:
+                    s = 4
+                else:
+                    s = -5
+            elif card == "Eel":
+                count = plate.count("Eel")
+                s = 10 if count == 1 else (3 if count == 0 else 1)
+            elif card == "Edamame":
+                s = 1
+            if difficulty == "medium":
+                s += rand.uniform(-1, 1)
+            scored.append((s, i))
+        scored.sort(reverse=True)
+        return str(scored[0][1] + 1)
 
     def check_game_over(self):
         """Game over is handled in _score_end_game. No-op here."""
