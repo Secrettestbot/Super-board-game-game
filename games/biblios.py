@@ -321,6 +321,69 @@ class BibliosGame(BaseGame):
             paid += gc["value"]
         self.hands[player] = [c for c in self.hands[player] if c["id"] not in to_remove]
 
+    def get_ai_move(self):
+        """Return an AI-generated move for draft or auction phase."""
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        if self.phase == "draft":
+            if not self.draft_cards:
+                n = min(self.cards_per_draft, len(self.deck))
+                if n == 0:
+                    return "end_draft"
+                self.draft_cards = [self.deck.pop() for _ in range(n)]
+                self.draft_step = 0
+
+            card = self.draft_cards[self.draft_step]
+
+            if difficulty == 'easy':
+                return f"draft:{random.choice(['k', 'g', 'a'])}"
+
+            if card["type"] == "gold" and card["value"] >= 3:
+                return "draft:k"
+            if card["type"] == "influence":
+                my_inf = sum(c["value"] for c in self.hands[cp]
+                            if c["type"] == "influence" and c["category"] == card["category"])
+                if my_inf > 0 or card["value"] >= 2:
+                    return "draft:k"
+                return "draft:a"
+            if card["type"] == "church":
+                return "draft:k"
+
+            return f"draft:{random.choice(['k', 'a'])}"
+
+        if self.current_auction_card is None:
+            if self.auction_index >= len(self.auction_pile):
+                return "end_auction"
+            self.current_auction_card = self.auction_pile[self.auction_index]
+            self.bids = {1: 0, 2: 0}
+            self.bid_done = {1: False, 2: False}
+
+        card = self.current_auction_card
+        total_gold = sum(c["value"] for c in self.hands[cp] if c["type"] == "gold")
+
+        if difficulty == 'easy':
+            bid = random.randint(0, min(2, total_gold))
+            return f"bid:{bid}"
+
+        if card["type"] == "influence":
+            my_inf = sum(c["value"] for c in self.hands[cp]
+                        if c["type"] == "influence" and c["category"] == card["category"])
+            die_val = self.dice.get(card["category"], 3)
+            if my_inf > 0 and die_val >= 3:
+                bid = min(card["value"] + 1, total_gold)
+            else:
+                bid = min(1, total_gold)
+        elif card["type"] == "gold":
+            bid = 0
+        else:
+            bid = min(1, total_gold)
+
+        if difficulty == 'hard' and card["type"] == "influence" and card["value"] >= 3:
+            bid = min(bid + 1, total_gold)
+
+        return f"bid:{bid}"
+
     def check_game_over(self):
         if self.phase == "auction" and self.auction_index >= len(self.auction_pile):
             self.game_over = True

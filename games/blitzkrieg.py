@@ -305,6 +305,60 @@ class BlitzkriegGame(BaseGame):
         self.message = "Unknown action."
         return False
 
+    def get_ai_move(self):
+        """Return an AI-generated move: place a token in a theater."""
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        pd = self.player_data[str(p)]
+
+        if not pd['hand']:
+            return ('pass',)
+
+        moves = []
+        for ti in range(self.num_theaters):
+            slots = self.theater_slots[str(ti)]
+            if slots['resolved']:
+                continue
+            my_slots = slots[str(p)]
+            theater = self.theaters[ti]
+            if len(my_slots) >= theater['slots_per_player']:
+                continue
+            for hi, token in enumerate(pd['hand']):
+                moves.append((hi, ti, token, theater))
+
+        if not moves:
+            return ('pass',)
+
+        if difficulty == 'easy':
+            hi, ti, _, _ = random.choice(moves)
+            return ('place', str(hi + 1), str(ti + 1))
+
+        def score_move(m):
+            hi, ti, token, theater = m
+            score = token['strength']
+            if token['type'] == theater['bonus_type']:
+                score += 3
+            opp = 3 - p
+            opp_str = self._calc_theater_strength(ti, opp)
+            my_str = self._calc_theater_strength(ti, p)
+            if my_str + token['strength'] > opp_str:
+                score += 5
+            opp_slots = self.theater_slots[str(ti)][str(opp)]
+            if len(opp_slots) >= theater['slots_per_player']:
+                score += 2
+            return score
+
+        scored = [(score_move(m), random.random(), m) for m in moves]
+        scored.sort(key=lambda x: (-x[0], x[1]))
+
+        if difficulty == 'medium':
+            top = scored[:max(2, len(scored) // 3)]
+            _, _, (hi, ti, _, _) = random.choice(top)
+        else:
+            _, _, (hi, ti, _, _) = scored[0]
+
+        return ('place', str(hi + 1), str(ti + 1))
+
     def check_game_over(self):
         """Check if the game is over."""
         needed = self.num_theaters // 2 + 1

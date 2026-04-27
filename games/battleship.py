@@ -276,6 +276,69 @@ class BattleshipGame(BaseGame):
         input_with_quit("  Press Enter when ready...")
         return True
 
+    def get_ai_move(self):
+        """Return an AI-generated move for placement or shooting."""
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.phase == "placement":
+            ship_name, ship_len = self.ship_defs[self.placement_index]
+            for _ in range(200):
+                orient = random.choice(['H', 'V'])
+                r = random.randint(0, self.size - 1)
+                c = random.randint(0, self.size - 1)
+                cells = []
+                valid = True
+                for i in range(ship_len):
+                    nr = r + (i if orient == 'V' else 0)
+                    nc = c + (i if orient == 'H' else 0)
+                    if nr >= self.size or nc >= self.size:
+                        valid = False
+                        break
+                    if self.boards[self.placement_player][nr][nc] != EMPTY:
+                        valid = False
+                        break
+                    cells.append((nr, nc))
+                if valid:
+                    return ("place", r, c, orient, ship_name, ship_len)
+            return ("place", 0, 0, 'H', ship_name, ship_len)
+
+        p = self.current_player
+        opp = 3 - p
+
+        if difficulty == 'easy':
+            for _ in range(200):
+                r = random.randint(0, self.size - 1)
+                c = random.randint(0, self.size - 1)
+                if self.tracking[p][r][c] == EMPTY:
+                    return ("shoot", r, c)
+
+        hits = []
+        for r in range(self.size):
+            for c in range(self.size):
+                if self.tracking[p][r][c] == HIT:
+                    hits.append((r, c))
+
+        if hits:
+            for hr, hc in hits:
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = hr + dr, hc + dc
+                    if 0 <= nr < self.size and 0 <= nc < self.size:
+                        if self.tracking[p][nr][nc] == EMPTY:
+                            return ("shoot", nr, nc)
+
+        if difficulty == 'hard':
+            for r in range(self.size):
+                for c in range(self.size):
+                    if self.tracking[p][r][c] == EMPTY and (r + c) % 2 == 0:
+                        return ("shoot", r, c)
+
+        for r in range(self.size):
+            for c in range(self.size):
+                if self.tracking[p][r][c] == EMPTY:
+                    return ("shoot", r, c)
+
+        return ("shoot", 0, 0)
+
     # --------------------------------------------------------- check_game_over
     def check_game_over(self):
         for p in (1, 2):
