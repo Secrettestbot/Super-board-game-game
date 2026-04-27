@@ -244,7 +244,8 @@ class FoodChainGame(BaseGame):
     def _do_hire(self, p, parts):
         if len(parts) < 2:
             print("  Usage: hire <role>")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
 
         role_input = " ".join(parts[1:]).title()
@@ -252,7 +253,8 @@ class FoodChainGame(BaseGame):
         if role_input not in STAFF_TYPES:
             print(f"  Unknown role: {role_input}")
             print(f"  Available: {', '.join(STAFF_TYPES.keys())}")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
 
         cost = STAFF_TYPES[role_input]["cost"]
@@ -263,24 +265,28 @@ class FoodChainGame(BaseGame):
 
         if self.player_money[p] < cost:
             print(f"  Can't afford! Cost: ${cost}, You have: ${self.player_money[p]}")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
 
         self.player_money[p] -= cost
         self.player_staff[p].append(_make_staff(role_input))
         print(f"  Hired {role_input} for ${cost}!")
-        input("  Press Enter...")
+        if self.ai_player != self.current_player:
+            input("  Press Enter...")
         return True
 
     def _do_train(self, p, parts):
         if len(parts) < 2:
             print("  Usage: train <staff#>")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
 
         if self._count_staff(p, "Trainer") == 0:
             print("  You need a Trainer to train staff!")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
 
         try:
@@ -290,44 +296,51 @@ class FoodChainGame(BaseGame):
 
         if idx < 0 or idx >= len(self.player_staff[p]):
             print("  Invalid staff index.")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
 
         staff = self.player_staff[p][idx]
         if staff["senior"]:
             print("  Already senior!")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
 
         cost = 5
         if self.player_money[p] < cost:
             print(f"  Training costs ${cost}. You have ${self.player_money[p]}.")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
 
         self.player_money[p] -= cost
         staff["senior"] = True
         print(f"  {staff['role']} promoted to Senior!")
-        input("  Press Enter...")
+        if self.ai_player != self.current_player:
+            input("  Press Enter...")
         return True
 
     def _do_cook(self, p, parts):
         if len(parts) < 2:
             print("  Usage: cook <food type>")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
 
         food = parts[1].title()
         if food not in FOOD_TYPES:
             print(f"  Unknown food: {food}. Available: {', '.join(FOOD_LIST)}")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
 
         cooked_this_turn = len(self.food_produced_this_turn[p])
         capacity = self._cook_capacity(p)
         if cooked_this_turn >= capacity:
             print(f"  At cooking capacity ({capacity})! Need more Chefs.")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
 
         # Drinks (Soda, Lemonade) don't need ingredients
@@ -335,7 +348,8 @@ class FoodChainGame(BaseGame):
             cost = 3
             if self.player_money[p] < cost:
                 print(f"  Ingredients cost ${cost}. You have ${self.player_money[p]}.")
-                input("  Press Enter...")
+                if self.ai_player != self.current_player:
+                    input("  Press Enter...")
                 return False
             self.player_money[p] -= cost
 
@@ -346,7 +360,8 @@ class FoodChainGame(BaseGame):
     def _do_market(self, p, parts):
         if len(parts) < 2:
             print("  Usage: market <tile#>")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
         try:
             tile_idx = int(parts[1]) - 1
@@ -355,19 +370,22 @@ class FoodChainGame(BaseGame):
 
         if tile_idx < 0 or tile_idx >= len(self.neighborhood):
             print("  Invalid tile.")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
 
         tile = self.neighborhood[tile_idx]
         if tile["claimed_by"] == p:
             print("  Already claimed by you!")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
 
         power = self._marketing_power(p)
         if power <= 0:
             print("  No marketing power! Hire a Marketer first.")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
 
         # Can steal from opponent if more marketing power
@@ -376,7 +394,8 @@ class FoodChainGame(BaseGame):
             opp_power = self._marketing_power(opp)
             if power <= opp_power:
                 print(f"  Opponent's marketing power ({opp_power}) blocks you ({power})!")
-                input("  Press Enter...")
+                if self.ai_player != self.current_player:
+                    input("  Press Enter...")
                 return False
 
         tile["claimed_by"] = p
@@ -385,7 +404,8 @@ class FoodChainGame(BaseGame):
     def _do_serve(self, p, parts):
         if len(parts) < 3:
             print("  Usage: serve <tile#> <food>")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
         try:
             tile_idx = int(parts[1]) - 1
@@ -395,31 +415,37 @@ class FoodChainGame(BaseGame):
         food = parts[2].title()
         if tile_idx < 0 or tile_idx >= len(self.neighborhood):
             print("  Invalid tile.")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
 
         tile = self.neighborhood[tile_idx]
         if tile["claimed_by"] != p:
             print("  You haven't marketed to this tile!")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
         if tile["customers"] <= 0:
             print("  No customers left at this tile!")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
         if food not in self.player_food[p]:
             print(f"  You don't have {food} ready!")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
         if tile["demand"] != food:
             print(f"  This tile wants {tile['demand']}, not {food}!")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
 
         serve_cap = self._serve_capacity(p)
         if serve_cap <= 0:
             print("  No serving capacity! Hire a Waitress.")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return False
 
         # Serve one customer
@@ -429,7 +455,8 @@ class FoodChainGame(BaseGame):
         self.player_money[p] += price
         self.player_revenue[p] += price
         print(f"  Served {food} for ${price}!")
-        input("  Press Enter...")
+        if self.ai_player != self.current_player:
+            input("  Press Enter...")
         return True
 
     def _refresh_neighborhood(self):
@@ -439,6 +466,137 @@ class FoodChainGame(BaseGame):
                 tile["demand"] = random.choice(FOOD_LIST)
                 tile["customers"] = random.randint(1, 3)
                 tile["claimed_by"] = None
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player - 1
+        phase = self.round_phase
+
+        if phase == "hire":
+            money = self.player_money[p]
+
+            if difficulty == 'easy':
+                roles = list(STAFF_TYPES.keys())
+                affordable = [r for r in roles if STAFF_TYPES[r]["cost"] <= money]
+                if affordable and random.random() < 0.5:
+                    return f"hire {random.choice(affordable).lower()}"
+                return "next"
+
+            has_trainer = self._count_staff(p, "Trainer") > 0
+            non_senior = [i for i, s in enumerate(self.player_staff[p])
+                          if not s["senior"] and s["role"] != "Trainer"]
+
+            if has_trainer and non_senior and money >= 5:
+                if difficulty == 'hard':
+                    best = max(non_senior, key=lambda i: (
+                        3 if self.player_staff[p][i]["role"] == "Chef" else
+                        2 if self.player_staff[p][i]["role"] == "Waitress" else 1))
+                    return f"train {best + 1}"
+                return f"train {non_senior[0] + 1}"
+
+            chefs = self._count_staff(p, "Chef")
+            waitresses = self._count_staff(p, "Waitress")
+            marketers = self._count_staff(p, "Marketer")
+
+            if chefs == 0 and money >= 8:
+                return "hire chef"
+            if waitresses == 0 and money >= 6:
+                return "hire waitress"
+            if marketers == 0 and money >= 7:
+                return "hire marketer"
+
+            if difficulty == 'hard':
+                if chefs < 2 and money >= 8:
+                    return "hire chef"
+                if waitresses < chefs and money >= 6:
+                    return "hire waitress"
+                if marketers < 1 and money >= 7:
+                    return "hire marketer"
+                if not has_trainer and money >= 5:
+                    return "hire trainer"
+
+            return "next"
+
+        elif phase == "cook":
+            capacity = self._cook_capacity(p)
+            cooked = len(self.food_produced_this_turn[p])
+            if cooked >= capacity:
+                return "next"
+
+            claimed_tiles = [t for t in self.neighborhood if t["claimed_by"] == p and t["customers"] > 0]
+            needed_foods = {}
+            for t in claimed_tiles:
+                d = t["demand"]
+                needed_foods[d] = needed_foods.get(d, 0) + t["customers"]
+
+            have_foods = {}
+            for f in self.player_food[p]:
+                have_foods[f] = have_foods.get(f, 0) + 1
+
+            for food, need in sorted(needed_foods.items(), key=lambda x: -x[1]):
+                have = have_foods.get(food, 0)
+                if have < need and cooked < capacity:
+                    cost = 3 if FOOD_TYPES[food]["ingredients"] > 0 else 0
+                    if self.player_money[p] >= cost:
+                        return f"cook {food.lower()}"
+
+            if difficulty == 'easy' and cooked < capacity:
+                free_foods = [f for f in FOOD_LIST if FOOD_TYPES[f]["ingredients"] == 0]
+                if free_foods:
+                    return f"cook {random.choice(free_foods).lower()}"
+
+            return "next"
+
+        elif phase == "market":
+            power = self._marketing_power(p)
+            if power <= 0:
+                return "next"
+
+            unclaimed = [i for i, t in enumerate(self.neighborhood)
+                         if t["claimed_by"] is None and t["customers"] > 0]
+            stealable = [i for i, t in enumerate(self.neighborhood)
+                         if t["claimed_by"] == (1 - p) and t["customers"] > 0
+                         and power > self._marketing_power(1 - p)]
+
+            if difficulty == 'easy':
+                if unclaimed:
+                    return f"market {random.choice(unclaimed) + 1}"
+                return "next"
+
+            have_foods = {}
+            for f in self.player_food[p]:
+                have_foods[f] = have_foods.get(f, 0) + 1
+
+            targets = unclaimed + stealable
+            if not targets:
+                return "next"
+
+            scored = []
+            for i in targets:
+                t = self.neighborhood[i]
+                score = t["customers"]
+                if have_foods.get(t["demand"], 0) > 0:
+                    score += 5
+                scored.append((score, i))
+
+            scored.sort(key=lambda x: -x[0])
+            return f"market {scored[0][1] + 1}"
+
+        elif phase == "serve":
+            claimed = [t for t in self.neighborhood
+                       if t["claimed_by"] == p and t["customers"] > 0]
+            serve_cap = self._serve_capacity(p)
+            if serve_cap <= 0 or not claimed:
+                return "done"
+
+            for t in claimed:
+                food = t["demand"]
+                if food in self.player_food[p]:
+                    return f"serve {t['id'] + 1} {food.lower()}"
+            return "done"
+
+        return "next"
 
     def check_game_over(self):
         # Game ends after max_turns complete rounds

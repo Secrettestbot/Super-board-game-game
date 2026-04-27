@@ -250,7 +250,8 @@ class FleetGame(BaseGame):
         if action == "bid":
             if len(parts) < 2:
                 print("  Usage: bid <amount>")
-                input("  Press Enter...")
+                if self.ai_player != self.current_player:
+                    input("  Press Enter...")
                 return False
             try:
                 amount = int(parts[1])
@@ -264,13 +265,15 @@ class FleetGame(BaseGame):
 
             if amount < min_bid:
                 print(f"  Minimum bid is ${min_bid}.")
-                input("  Press Enter...")
+                if self.ai_player != self.current_player:
+                    input("  Press Enter...")
                 return False
 
             total_available = self._total_funds(p)
             if amount > total_available:
                 print(f"  Can't afford! You have ${total_available}.")
-                input("  Press Enter...")
+                if self.ai_player != self.current_player:
+                    input("  Press Enter...")
                 return False
 
             self.auction_bid[p] = amount
@@ -290,7 +293,8 @@ class FleetGame(BaseGame):
         if action == "launch":
             if len(parts) < 2:
                 print("  Usage: launch <license_type>")
-                input("  Press Enter...")
+                if self.ai_player != self.current_player:
+                    input("  Press Enter...")
                 return False
             ltype = parts[1].title()
             # Check player has an unused license of this type
@@ -298,13 +302,15 @@ class FleetGame(BaseGame):
             boats_of_type = sum(1 for b in self.player_boats[p] if b["type"] == ltype)
             if boats_of_type >= len(available):
                 print(f"  No unused {ltype} license! (Have {len(available)} licenses, {boats_of_type} boats)")
-                input("  Press Enter...")
+                if self.ai_player != self.current_player:
+                    input("  Press Enter...")
                 return False
 
             boat_cost = 2
             if self.player_money[p] < boat_cost:
                 print(f"  Launching a boat costs ${boat_cost}.")
-                input("  Press Enter...")
+                if self.ai_player != self.current_player:
+                    input("  Press Enter...")
                 return False
 
             self.player_money[p] -= boat_cost
@@ -314,7 +320,8 @@ class FleetGame(BaseGame):
         elif action == "captain":
             if len(parts) < 2:
                 print("  Usage: captain <boat#>")
-                input("  Press Enter...")
+                if self.ai_player != self.current_player:
+                    input("  Press Enter...")
                 return False
             try:
                 bi = int(parts[1]) - 1
@@ -323,19 +330,22 @@ class FleetGame(BaseGame):
 
             if bi < 0 or bi >= len(self.player_boats[p]):
                 print("  Invalid boat.")
-                input("  Press Enter...")
+                if self.ai_player != self.current_player:
+                    input("  Press Enter...")
                 return False
 
             boat = self.player_boats[p][bi]
             if boat["captain"]:
                 print("  Boat already has a captain!")
-                input("  Press Enter...")
+                if self.ai_player != self.current_player:
+                    input("  Press Enter...")
                 return False
 
             # Need to spend a fish card to assign captain
             if not self.player_fish[p]:
                 print("  Need a fish card to assign as captain!")
-                input("  Press Enter...")
+                if self.ai_player != self.current_player:
+                    input("  Press Enter...")
                 return False
 
             self.player_fish[p].pop()
@@ -352,7 +362,8 @@ class FleetGame(BaseGame):
         if action == "fish":
             if len(parts) < 2:
                 print("  Usage: fish <boat#>")
-                input("  Press Enter...")
+                if self.ai_player != self.current_player:
+                    input("  Press Enter...")
                 return False
             try:
                 bi = int(parts[1]) - 1
@@ -361,13 +372,15 @@ class FleetGame(BaseGame):
 
             if bi < 0 or bi >= len(self.player_boats[p]):
                 print("  Invalid boat.")
-                input("  Press Enter...")
+                if self.ai_player != self.current_player:
+                    input("  Press Enter...")
                 return False
 
             boat = self.player_boats[p][bi]
             if not self.fish_deck:
                 print("  No more fish in the sea!")
-                input("  Press Enter...")
+                if self.ai_player != self.current_player:
+                    input("  Press Enter...")
                 return False
 
             # Draw fish card - captain boats catch better
@@ -382,7 +395,8 @@ class FleetGame(BaseGame):
 
             catch_str = ", ".join(f"{f['type']}(${f['value']})" for f in caught)
             print(f"  Caught: {catch_str}")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return True
 
         elif action == "done":
@@ -395,7 +409,8 @@ class FleetGame(BaseGame):
         if action == "sell":
             if len(parts) < 2:
                 print("  Usage: sell <fish#> (fish index in your collection)")
-                input("  Press Enter...")
+                if self.ai_player != self.current_player:
+                    input("  Press Enter...")
                 return False
             try:
                 fi = int(parts[1]) - 1
@@ -404,13 +419,15 @@ class FleetGame(BaseGame):
 
             if fi < 0 or fi >= len(self.player_fish[p]):
                 print("  Invalid fish index.")
-                input("  Press Enter...")
+                if self.ai_player != self.current_player:
+                    input("  Press Enter...")
                 return False
 
             fish = self.player_fish[p].pop(fi)
             self.player_money[p] += fish["value"]
             print(f"  Sold {fish['type']} for ${fish['value']}!")
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return True
 
         elif action == "done":
@@ -443,6 +460,96 @@ class FleetGame(BaseGame):
             if len(types) >= 5:
                 points += 10
         return points
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player - 1
+
+        if self.phase == "auction":
+            if self.auction_current is None:
+                return "skip"
+
+            min_bid = max(self.auction_bid) + 1
+            base = self.auction_current["base_value"]
+            if min_bid < base:
+                min_bid = base
+            funds = self._total_funds(p)
+
+            if difficulty == 'easy':
+                if funds >= min_bid and random.random() < 0.4:
+                    return f"bid {min_bid}"
+                return "pass"
+
+            lic_value = self.auction_current["points"]
+            opp = 1 - p
+            opp_passed = self.auction_passed[opp]
+
+            if difficulty == 'medium':
+                max_willing = base + lic_value // 2
+                if funds >= min_bid and min_bid <= max_willing:
+                    return f"bid {min_bid}"
+                return "pass"
+            else:
+                max_willing = base + lic_value
+                if not self.player_licenses[p]:
+                    max_willing += 3
+                if funds >= min_bid and min_bid <= max_willing:
+                    bid = min_bid
+                    if opp_passed and bid > base:
+                        bid = base
+                    bid = max(min_bid, bid)
+                    if funds >= bid:
+                        return f"bid {bid}"
+                return "pass"
+
+        elif self.phase == "launch":
+            lic_types = {}
+            for lic in self.player_licenses[p]:
+                lic_types[lic["type"]] = lic_types.get(lic["type"], 0) + 1
+            boat_types = {}
+            for b in self.player_boats[p]:
+                boat_types[b["type"]] = boat_types.get(b["type"], 0) + 1
+
+            for lt, count in lic_types.items():
+                boats = boat_types.get(lt, 0)
+                if boats < count and self.player_money[p] >= 2:
+                    return f"launch {lt.lower()}"
+
+            uncaptained = [i for i, b in enumerate(self.player_boats[p])
+                           if not b["captain"] and self.player_fish[p]]
+            if uncaptained:
+                return f"captain {uncaptained[0] + 1}"
+
+            return "next"
+
+        elif self.phase == "fish":
+            if self.player_boats[p] and self.fish_deck:
+                captained = [i for i, b in enumerate(self.player_boats[p]) if b["captain"]]
+                uncaptained = [i for i, b in enumerate(self.player_boats[p]) if not b["captain"]]
+
+                if difficulty == 'easy':
+                    boats = list(range(len(self.player_boats[p])))
+                    if boats:
+                        return f"fish {random.choice(boats) + 1}"
+                else:
+                    if captained:
+                        return f"fish {captained[0] + 1}"
+                    if uncaptained:
+                        return f"fish {uncaptained[0] + 1}"
+            return "done"
+
+        elif self.phase == "trade":
+            if difficulty == 'easy':
+                return "done"
+
+            if self.player_money[p] < 5 and self.player_fish[p]:
+                worst = min(range(len(self.player_fish[p])),
+                            key=lambda i: self.player_fish[p][i]["value"])
+                return f"sell {worst + 1}"
+            return "done"
+
+        return "done"
 
     def check_game_over(self):
         if self.phase == "end" or self.round_number > self.max_rounds:
