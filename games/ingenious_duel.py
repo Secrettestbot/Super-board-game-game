@@ -327,6 +327,108 @@ class IngeniousDuelGame(BaseGame):
                     return True
         return False
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        me = self.current_player
+        hand = self.hands[me]
+
+        if not hand or not self._has_legal_move():
+            return "pass"
+
+        adj_empty = set()
+        if not self.board:
+            center = self.board_size // 2
+            adj_empty.add((center, center))
+            for nc, nr in hex_neighbors(center, center):
+                if self._is_valid_empty(nc, nr):
+                    adj_empty.add((nc, nr))
+        else:
+            for key in self.board:
+                c, r = map(int, key.split(","))
+                for nc, nr in hex_neighbors(c, r):
+                    if self._is_valid_empty(nc, nr):
+                        adj_empty.add((nc, nr))
+
+        pairs = []
+        for pos1 in adj_empty:
+            for pos2_tuple in hex_neighbors(pos1[0], pos1[1]):
+                if self._is_valid_empty(pos2_tuple[0], pos2_tuple[1]):
+                    pairs.append((pos1, pos2_tuple))
+
+        if not pairs:
+            return "pass"
+
+        if not self.board:
+            center = self.board_size // 2
+            pairs = [p for p in pairs if (p[0] == (center, center) or p[1] == (center, center))]
+
+        if difficulty == 'easy':
+            ti = random.randrange(len(hand))
+            p1, p2 = random.choice(pairs)
+            return f"{ti + 1} {p1[0]},{p1[1]} {p2[0]},{p2[1]}"
+
+        my_scores = self.scores[me]
+        min_score = min(my_scores.values())
+
+        best_val = -1
+        best_str = None
+
+        sample_pairs = pairs if len(pairs) <= 30 else random.sample(pairs, 30)
+
+        for ti, tile in enumerate(hand):
+            for p1, p2 in sample_pairs:
+                for (a, b, c1_col, c2_col) in [(p1, p2, tile[0], tile[1]), (p2, p1, tile[1], tile[0])]:
+                    self.board[self._pos_key(a[0], a[1])] = c1_col
+                    self.board[self._pos_key(b[0], b[1])] = c2_col
+
+                    pts1 = self._count_lines(a[0], a[1], c1_col)
+                    pts2 = self._count_lines(b[0], b[1], c2_col)
+
+                    del self.board[self._pos_key(a[0], a[1])]
+                    del self.board[self._pos_key(b[0], b[1])]
+
+                    gains = {c: 0 for c in self.colors}
+                    gains[c1_col] += pts1
+                    gains[c2_col] += pts2
+                    total = pts1 + pts2
+
+                    if difficulty == 'hard':
+                        new_scores = {c: min(self.max_score, my_scores[c] + gains[c]) for c in self.colors}
+                        new_min = min(new_scores.values())
+                        val = new_min * 5 + total
+                        for c in self.colors:
+                            if new_scores[c] == self.max_score and my_scores[c] < self.max_score:
+                                val += 10
+                    else:
+                        weak_boost = sum(gains[c] * 3 for c in self.colors if my_scores[c] == min_score and gains[c] > 0)
+                        val = total + weak_boost
+
+                    if val > best_val:
+                        best_val = val
+                        best_str = f"{ti + 1} {a[0]},{a[1]} {b[0]},{b[1]}"
+
+        if difficulty == 'medium' and best_str:
+            candidates = []
+            for ti, tile in enumerate(hand):
+                for p1, p2 in sample_pairs[:15]:
+                    self.board[self._pos_key(p1[0], p1[1])] = tile[0]
+                    self.board[self._pos_key(p2[0], p2[1])] = tile[1]
+                    pts = self._count_lines(p1[0], p1[1], tile[0]) + self._count_lines(p2[0], p2[1], tile[1])
+                    del self.board[self._pos_key(p1[0], p1[1])]
+                    del self.board[self._pos_key(p2[0], p2[1])]
+                    weak_boost = 0
+                    if tile[0] in my_scores and my_scores[tile[0]] == min_score:
+                        weak_boost += 3
+                    if tile[1] in my_scores and my_scores[tile[1]] == min_score:
+                        weak_boost += 3
+                    candidates.append((pts + weak_boost, f"{ti + 1} {p1[0]},{p1[1]} {p2[0]},{p2[1]}"))
+            candidates.sort(key=lambda x: -x[0])
+            top = candidates[:max(3, len(candidates) // 5)]
+            _, best_str = random.choice(top)
+
+        return best_str if best_str else "pass"
+
     def check_game_over(self):
         if self.bonus_turn:
             # Don't end turn, don't switch player

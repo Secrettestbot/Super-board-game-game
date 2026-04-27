@@ -479,6 +479,69 @@ class IngeniousGame(BaseGame):
 
         return True
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        me = self.current_player
+        hand = self.hands[me]
+        placements = self._get_valid_placements()
+
+        if not hand or not placements:
+            return (0, placements[0][0], placements[0][1], placements[0][2], placements[0][3]) if placements and hand else (0, 0, 0, 0, 1)
+
+        if difficulty == 'easy':
+            ti = random.randrange(len(hand))
+            r1, c1, r2, c2 = random.choice(placements)
+            return (ti, r1, c1, r2, c2)
+
+        my_scores = self.scores[me]
+        min_color = min(my_scores, key=lambda c: my_scores[c])
+        min_score = my_scores[min_color]
+
+        best_val = -1
+        best_move = None
+
+        for ti, (color1, color2) in enumerate(hand):
+            for r1, c1, r2, c2 in placements:
+                for (cr1, cc1, cr2, cc2, tc1, tc2) in [(r1, c1, r2, c2, color1, color2),
+                                                         (r2, c2, r1, c1, color2, color1)]:
+                    gains = self._score_placement(cr1, cc1, tc1, cr2, cc2, tc2)
+                    total = sum(gains.values())
+
+                    weak_boost = 0
+                    for c in COLORS:
+                        effective = min(18, my_scores[c] + gains.get(c, 0))
+                        if my_scores[c] == min_score and gains.get(c, 0) > 0:
+                            weak_boost += gains[c] * 3
+
+                    val = total + weak_boost
+
+                    if difficulty == 'hard':
+                        new_min = min(min(18, my_scores[c] + gains.get(c, 0)) for c in COLORS)
+                        val = new_min * 5 + total
+                        for c in COLORS:
+                            if min(18, my_scores[c] + gains.get(c, 0)) == 18 and my_scores[c] < 18:
+                                val += 10
+
+                    if val > best_val:
+                        best_val = val
+                        best_move = (ti, cr1, cc1, cr2, cc2)
+
+        if difficulty == 'medium' and best_move:
+            candidates = []
+            for ti, (color1, color2) in enumerate(hand):
+                for r1, c1, r2, c2 in placements[:20]:
+                    gains = self._score_placement(r1, c1, color1, r2, c2, color2)
+                    total = sum(gains.values())
+                    weak_boost = sum(gains[c] * 3 for c in COLORS if my_scores[c] == min_score and gains.get(c, 0) > 0)
+                    val = total + weak_boost
+                    candidates.append((val, (ti, r1, c1, r2, c2)))
+            candidates.sort(key=lambda x: -x[0])
+            top = candidates[:max(3, len(candidates) // 5)]
+            _, best_move = random.choice(top)
+
+        return best_move if best_move else (0, placements[0][0], placements[0][1], placements[0][2], placements[0][3])
+
     def check_game_over(self):
         """Check if the game is over (no valid placements possible)."""
         # Check if any placements exist at all
