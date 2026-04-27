@@ -318,6 +318,98 @@ class GobbletGame(BaseGame):
 
         return False
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+        opponent = 2 if player == 1 else 1
+        n = self.board_size
+
+        moves = []
+        for si, stack in enumerate(self.reserves[player]):
+            if stack:
+                size = stack[-1]
+                for r in range(n):
+                    for c in range(n):
+                        if self._can_place_on(size, r, c):
+                            moves.append({'action': 'place', 'stack_idx': si, 'to': (r, c)})
+
+        for r in range(n):
+            for c in range(n):
+                top = self._top_piece(r, c)
+                if top and top[0] == player:
+                    for tr in range(n):
+                        for tc in range(n):
+                            if (tr, tc) != (r, c) and self._can_place_on(top[1], tr, tc):
+                                moves.append({'action': 'move', 'from': (r, c), 'to': (tr, tc)})
+
+        if not moves:
+            return {'action': 'place', 'stack_idx': 0, 'to': (0, 0)}
+
+        if difficulty == 'easy':
+            return random.choice(moves)
+
+        scored = []
+        for move in moves:
+            score = self._ai_eval_move(move, player, opponent, difficulty)
+            scored.append((score, move))
+
+        scored.sort(key=lambda x: -x[0])
+        if difficulty == 'medium':
+            top = scored[:max(1, len(scored) // 3)]
+            return random.choice(top)[1]
+        return scored[0][1]
+
+    def _ai_eval_move(self, move, player, opponent, difficulty):
+        n = self.board_size
+        old_board = [[list(cell) for cell in row] for row in self.board]
+        old_reserves = {p: [list(s) for s in self.reserves[p]] for p in [1, 2]}
+
+        if move['action'] == 'place':
+            si = move['stack_idx']
+            tr, tc = move['to']
+            piece = (player, self.reserves[player][si][-1])
+            self.reserves[player][si].pop()
+            self.board[tr][tc].append(piece)
+        else:
+            fr, fc = move['from']
+            tr, tc = move['to']
+            piece = self.board[fr][fc].pop()
+            self.board[tr][tc].append(piece)
+
+        score = 0
+        if self._check_win_for(player):
+            score += 1000
+        if self._check_win_for(opponent):
+            score -= 800
+
+        lines = []
+        for r in range(n):
+            lines.append([(r, c) for c in range(n)])
+        for c in range(n):
+            lines.append([(r, c) for r in range(n)])
+        lines.append([(i, i) for i in range(n)])
+        lines.append([(i, n - 1 - i) for i in range(n)])
+
+        for line in lines:
+            own = sum(1 for r, c in line if self._top_piece(r, c) and self._top_piece(r, c)[0] == player)
+            opp_c = sum(1 for r, c in line if self._top_piece(r, c) and self._top_piece(r, c)[0] == opponent)
+            if opp_c == 0 and own > 0:
+                score += own * own * 2
+            if own == 0 and opp_c >= self.win_length - 1:
+                tr2, tc2 = move['to']
+                if (tr2, tc2) in line:
+                    score += 50
+
+        if difficulty == 'hard':
+            center = (n - 1) / 2
+            tr2, tc2 = move['to']
+            score -= abs(tr2 - center) + abs(tc2 - center)
+
+        self.board = old_board
+        self.reserves = old_reserves
+        return score
+
     # -------------------------------------------------------- check_game_over
     def check_game_over(self):
         """Check if someone has won. Current player just moved, so check them.

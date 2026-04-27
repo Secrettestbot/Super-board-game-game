@@ -341,6 +341,51 @@ class GuillotineGame(BaseGame):
             self._setup_round()
             self.log.append(f"Round {self.current_round} begins!")
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        sp = str(self.current_player)
+
+        if self.phase == "action":
+            if difficulty == 'easy':
+                hand = self.hands[sp]
+                if hand and self.noble_line and random.random() < 0.5:
+                    return {"action": "play_card", "index": random.randint(0, len(hand) - 1)}
+                return {"action": "skip"}
+            choice = self._ai_pick_action(sp, difficulty)
+            if choice is not None:
+                return {"action": "play_card", "index": choice}
+            return {"action": "skip"}
+        return {"action": "collect"}
+
+    def _ai_pick_action(self, sp, difficulty):
+        hand = self.hands[sp]
+        if not hand or not self.noble_line:
+            return None
+        front_val = self.noble_line[0]["value"]
+        threshold = 3 if difficulty == 'hard' else 4
+        if front_val >= threshold:
+            return None
+        best_card = None
+        best_score = front_val
+        for i, card in enumerate(hand):
+            saved_line = list(self.noble_line)
+            saved_collected = {k: list(v) for k, v in self.collected.items()}
+            saved_take = self.take_extra
+            saved_protected = dict(self.protected)
+            saved_hands = {k: list(v) for k, v in self.hands.items()}
+            self._apply_action(card, int(sp))
+            new_front_val = self.noble_line[0]["value"] if self.noble_line else -10
+            self.noble_line = saved_line
+            self.collected = saved_collected
+            self.take_extra = saved_take
+            self.protected = saved_protected
+            self.hands = saved_hands
+            if new_front_val > best_score:
+                best_score = new_front_val
+                best_card = i
+        return best_card
+
     def check_game_over(self):
         if not self.noble_line and self.current_round >= self.total_rounds:
             self.game_over = True
