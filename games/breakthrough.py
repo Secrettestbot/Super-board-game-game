@@ -170,6 +170,55 @@ class BreakthroughGame(BaseGame):
         self.board[dr][dc] = player
         return True
 
+    def get_ai_move(self):
+        """Return an AI-generated move as ((sr,sc),(dr,dc))."""
+        import random
+        player = self.current_player
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        forward = -1 if player == 1 else 1
+        opponent = 3 - player
+
+        moves = []
+        for r in range(self.size):
+            for c in range(self.size):
+                if self.board[r][c] != player:
+                    continue
+                dr = r + forward
+                if dr < 0 or dr >= self.size:
+                    continue
+                for dc_off in [-1, 0, 1]:
+                    dc = c + dc_off
+                    if dc < 0 or dc >= self.size:
+                        continue
+                    if dc_off == 0 and self.board[dr][dc] != 0:
+                        continue
+                    if dc_off != 0 and self.board[dr][dc] == player:
+                        continue
+                    score = 0
+                    if self.board[dr][dc] == opponent:
+                        score += 10
+                    if (player == 1 and dr == 0) or (player == 2 and dr == self.size - 1):
+                        score += 50
+                    if player == 1:
+                        score += (self.size - dr)
+                    else:
+                        score += dr
+                    moves.append(((r, c), (dr, dc), score))
+
+        if not moves:
+            return ((0, 0), (0, 0))
+
+        if difficulty == 'easy':
+            return random.choice(moves)[:2]
+
+        moves.sort(key=lambda x: -x[2])
+        if difficulty == 'medium':
+            top = moves[:max(3, len(moves) // 4)]
+            m = random.choice(top)
+        else:
+            m = moves[0]
+        return (m[0], m[1])
+
     def check_game_over(self):
         """Check if a player has reached the opponent's back row, or opponent has no pieces."""
         # Player 1 wins by reaching row 0

@@ -341,6 +341,71 @@ class CaboGame(BaseGame):
 
         return False
 
+    def get_ai_move(self):
+        """Return an AI-generated move for any phase."""
+        cp = self.current_player
+        sp = str(cp)
+        opp = "2" if sp == "1" else "1"
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.phase == "turn":
+            known_total = sum(self.hands[sp][i] for i in range(len(self.hands[sp]))
+                             if self.known[sp][i])
+            known_count = sum(1 for k in self.known[sp] if k)
+
+            if (self.cabo_called_by is None and known_count == len(self.hands[sp])
+                    and known_total <= 5):
+                return {"action": "call_cabo"}
+
+            return {"action": "draw_deck"}
+
+        elif self.phase == "drawn":
+            drawn = getattr(self, '_drawn_card', 99)
+            worst_known_idx = None
+            worst_known_val = -1
+            for i in range(len(self.hands[sp])):
+                if self.known[sp][i] and self.hands[sp][i] > worst_known_val:
+                    worst_known_val = self.hands[sp][i]
+                    worst_known_idx = i
+
+            if drawn <= 4:
+                if worst_known_idx is not None and worst_known_val > drawn:
+                    return {"action": "swap_drawn", "index": worst_known_idx}
+                unknown = [i for i in range(len(self.hands[sp])) if not self.known[sp][i]]
+                if unknown:
+                    return {"action": "swap_drawn", "index": unknown[0]}
+                if worst_known_idx is not None:
+                    return {"action": "swap_drawn", "index": worst_known_idx}
+
+            if worst_known_idx is not None and worst_known_val > drawn + 3:
+                return {"action": "swap_drawn", "index": worst_known_idx}
+
+            return {"action": "discard_drawn"}
+
+        elif self.phase == "ability":
+            ability = ABILITIES.get(getattr(self, '_drawn_card', 0), None)
+            if ability == "peek":
+                unknown = [i for i, k in enumerate(self.known[sp]) if not k]
+                if unknown:
+                    return {"action": "ability_peek", "index": unknown[0]}
+                return {"action": "ability_skip"}
+            elif ability == "spy":
+                return {"action": "ability_spy", "index": 0}
+            elif ability == "swap":
+                worst_idx = 0
+                worst_val = -1
+                for i in range(len(self.hands[sp])):
+                    if self.known[sp][i] and self.hands[sp][i] > worst_val:
+                        worst_val = self.hands[sp][i]
+                        worst_idx = i
+                if worst_val >= 8:
+                    return {"action": "ability_swap", "my_index": worst_idx,
+                            "opp_index": random.randint(0, len(self.hands[opp]) - 1)}
+                return {"action": "ability_skip"}
+            return {"action": "ability_skip"}
+
+        return {"action": "draw_deck"}
+
     def check_game_over(self):
         if self.cabo_called_by is not None and self.phase == "turn":
             self.cabo_final_turns += 1

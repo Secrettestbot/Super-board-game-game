@@ -348,6 +348,46 @@ class BotanikGame(BaseGame):
 
         return False
 
+    def get_ai_move(self):
+        """Return an AI-generated move for draft or place phase."""
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.phase == "draft":
+            if not self.display_tiles:
+                return "no_tiles"
+            if difficulty == 'easy':
+                return ("draft", str(random.randint(0, len(self.display_tiles) - 1)))
+            p = self.current_player - 1
+            best_idx = 0
+            best_score = -1
+            for i, tile in enumerate(self.display_tiles):
+                score = 0
+                for r in range(self.grid_size):
+                    for c in range(self.grid_size):
+                        if self.grids[p][r][c] is None:
+                            if self._check_pipe_match(p, r, c, tile):
+                                score += 1
+                if score > best_score:
+                    best_score = score
+                    best_idx = i
+            return ("draft", str(best_idx))
+
+        grid = self.grids[self.current_player - 1]
+        valid = []
+        for r in range(self.grid_size):
+            for c in range(self.grid_size):
+                if grid[r][c] is None:
+                    if self._check_pipe_match(self.current_player - 1, r, c, self.drafted_tile):
+                        valid.append((r, c))
+        if not valid:
+            return ("discard",)
+
+        if difficulty == 'easy':
+            r, c = random.choice(valid)
+        else:
+            r, c = valid[len(valid) // 2]
+        return ("place", f"{r},{c}")
+
     def check_game_over(self):
         # Game ends when both grids are full or no tiles remain
         both_full = all(
