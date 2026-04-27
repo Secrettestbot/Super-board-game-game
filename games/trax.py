@@ -111,6 +111,7 @@ class TraxGame(BaseGame):
         "standard": "Standard Trax",
         "small": "Small Trax (win with loop or 6-line)",
     }
+    side_labels = ("White", "Red")
 
     def __init__(self, variation=None):
         super().__init__(variation or "standard")
@@ -435,6 +436,105 @@ class TraxGame(BaseGame):
             return False
 
         return True
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        my_color = 'W' if self.current_player == 1 else 'R'
+
+        if not self.tiles:
+            if difficulty == 'easy':
+                return (0, 0, rand.choice([0, 1, 2, 3]))
+            return (0, 0, 2 if my_color == 'W' else 3)
+
+        candidates = set()
+        for (r, c) in self.tiles:
+            for edge in [N, E, S, W]:
+                dr, dc = DIRECTION[edge]
+                nr, nc = r + dr, c + dc
+                if (nr, nc) not in self.tiles:
+                    candidates.add((nr, nc))
+
+        valid_moves = []
+        for (r, c) in candidates:
+            valid_types = self._valid_tiles_for_position(r, c)
+            for tt in valid_types:
+                valid_moves.append((r, c, tt))
+
+        if not valid_moves:
+            for (r, c) in candidates:
+                for tt in range(4):
+                    edges = TILE_EDGES[tt]
+                    required = self._get_required_edges(r, c)
+                    ok = all(edges[e] == rc for e, rc in required.items())
+                    if ok:
+                        valid_moves.append((r, c, tt))
+            if not valid_moves:
+                return list(self.tiles.keys())[0] + (0,)
+
+        if difficulty == 'easy':
+            return rand.choice(valid_moves)
+
+        scored = []
+        for r, c, tt in valid_moves:
+            score = 0.0
+            edges = TILE_EDGES[tt]
+            for edge in [N, E, S, W]:
+                if edges[edge] == my_color:
+                    dr, dc = DIRECTION[edge]
+                    nr, nc = r + dr, c + dc
+                    if (nr, nc) in self.tiles:
+                        neighbor_edge = TILE_EDGES[self.tiles[(nr, nc)]][OPPOSITE[edge]]
+                        if neighbor_edge == my_color:
+                            score += 3
+                    else:
+                        score += 1
+            conns = TILE_CONNECTIONS[tt]
+            for ea, eb in conns:
+                if edges[ea] == my_color:
+                    score += 1.5
+
+            self.tiles[(r, c)] = tt
+            old_bounds = (self.min_row, self.max_row, self.min_col, self.max_col)
+            self._update_bounds()
+            graph = self._build_track_graph(my_color)
+            max_span = 0
+            if graph:
+                visited = set()
+                for start in graph:
+                    if start in visited:
+                        continue
+                    comp = set()
+                    stack = [start]
+                    while stack:
+                        node = stack.pop()
+                        if node in comp:
+                            continue
+                        comp.add(node)
+                        visited.add(node)
+                        for nb in graph.get(node, []):
+                            if nb not in comp:
+                                stack.append(nb)
+                    tiles_in = {(n[0], n[1]) for n in comp}
+                    if tiles_in:
+                        rows = [tr for tr, tc in tiles_in]
+                        cols = [tc for tr, tc in tiles_in]
+                        span = max(max(rows) - min(rows) + 1, max(cols) - min(cols) + 1)
+                        if span > max_span:
+                            max_span = span
+            score += max_span * 0.5
+            del self.tiles[(r, c)]
+            self.min_row, self.max_row, self.min_col, self.max_col = old_bounds
+
+            scored.append((score, r, c, tt))
+
+        scored.sort(key=lambda x: -x[0])
+        if difficulty == 'medium':
+            top = scored[:max(1, len(scored) // 3)]
+            pick = rand.choice(top)
+        else:
+            pick = scored[0]
+        return (pick[1], pick[2], pick[3])
 
     def check_game_over(self):
         """Check for loops or spanning lines."""

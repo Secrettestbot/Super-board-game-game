@@ -81,6 +81,7 @@ class TrajanGame(BaseGame):
         "standard": "Full game - 4 quarters (16 rounds), full scoring",
         "quick": "Quick game - 2 quarters (8 rounds), accelerated scoring",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def setup(self):
         is_quick = self.variation == "quick"
@@ -437,6 +438,47 @@ class TrajanGame(BaseGame):
                     self.available_goods.append(self.goods_pool.pop())
             self.message = (f"Quarter {self.current_quarter} begins! "
                             f"Senate bonus VP awarded.")
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.player_data[str(self.current_player)]
+        bowls = p["bowls"]
+
+        if difficulty == 'easy':
+            non_empty = [i for i in range(6) if bowls[i] > 0]
+            if not non_empty:
+                return "1"
+            return str(rand.choice(non_empty) + 1)
+
+        action_scores = [0.0] * 6
+        action_scores[0] = 3.0 + p["military"] * 0.5
+        action_scores[1] = 2.5 + (1.5 if p["senate"] % 2 == 1 else 0)
+        action_scores[2] = 3.0 if self.construction_pool else 0.5
+        action_scores[3] = 3.0 if self.available_goods else 0.5
+        unique_goods = len(set(p["goods"]))
+        if unique_goods >= 2:
+            action_scores[3] += unique_goods
+        action_scores[4] = 2.5 if self.forum_deck else 0.5
+        action_scores[5] = 4.0 if p["trajan_tiles"] else (2.0 if self.trajan_pool else 0.5)
+
+        best_bowl = -1
+        best_score = -999
+        for bi in range(6):
+            if bowls[bi] == 0:
+                continue
+            markers = bowls[bi]
+            landing = (bi + markers) % 6
+            score = action_scores[landing]
+            if difficulty == 'medium':
+                score += rand.uniform(-1, 1)
+            if score > best_score:
+                best_score = score
+                best_bowl = bi
+
+        if best_bowl < 0:
+            return "1"
+        return str(best_bowl + 1)
 
     def check_game_over(self):
         if self.current_quarter > self.num_quarters:

@@ -113,6 +113,7 @@ class TinyTownsGame(BaseGame):
         "standard": "Standard Game",
         "fortune": "Fortune Variant",
     }
+    side_labels = ("Player 1", "Player 2")
 
     GRID_SIZE = 4
 
@@ -442,6 +443,98 @@ class TinyTownsGame(BaseGame):
         else:
             self.current_resource = None
             self.phase = "choose_resource"
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = str(self.current_player)
+
+        if self.phase == "choose_resource":
+            if difficulty == 'easy':
+                return {"action": "choose_resource", "resource": rand.choice(RESOURCES)}
+            scored = []
+            for res in RESOURCES:
+                score = 0.0
+                res_cells = self._resource_cells(cp)
+                for bld in self.buildings_available:
+                    needed = [r for _, _, r in bld["pattern"]]
+                    have = [rc[2] for rc in res_cells]
+                    have_copy = list(have) + [res]
+                    still_need = list(needed)
+                    for h in have_copy:
+                        if h in still_need:
+                            still_need.remove(h)
+                    if len(still_need) < len(needed):
+                        score += (len(needed) - len(still_need)) * 2
+                    if len(still_need) == 0:
+                        score += bld.get("points", 3) * 3
+                scored.append((score, res))
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'medium':
+                top = scored[:max(1, len(scored) // 2)]
+                return {"action": "choose_resource", "resource": rand.choice(top)[1]}
+            return {"action": "choose_resource", "resource": scored[0][1]}
+
+        if self.phase == "place_resource":
+            empties = []
+            for r in range(self.GRID_SIZE):
+                for c in range(self.GRID_SIZE):
+                    if self.boards[cp][r][c] is None:
+                        empties.append((r, c))
+            if not empties:
+                return {"action": "place_resource", "row": 0, "col": 0}
+            if difficulty == 'easy':
+                r, c = rand.choice(empties)
+                return {"action": "place_resource", "row": r, "col": c}
+            best_pos = empties[0]
+            best_score = -1
+            for r, c in empties:
+                score = 0.0
+                self.boards[cp][r][c] = {"type": "resource", "resource": self.current_resource}
+                buildable = self._find_buildable(cp)
+                if buildable:
+                    score += 10
+                    best_pts = max(b[0].get("points", 0) for b in buildable)
+                    score += best_pts
+                self.boards[cp][r][c] = None
+                center = (self.GRID_SIZE - 1) / 2.0
+                score -= abs(r - center) * 0.1 + abs(c - center) * 0.1
+                if score > best_score:
+                    best_score = score
+                    best_pos = (r, c)
+            r, c = best_pos
+            return {"action": "place_resource", "row": r, "col": c}
+
+        if self.phase == "build":
+            buildable = self._find_buildable(cp)
+            if not buildable:
+                return {"action": "skip_build"}
+            if difficulty == 'easy':
+                bld, anchor_r, anchor_c = rand.choice(buildable)
+                cells = [(anchor_r + dr, anchor_c + dc) for dr, dc, _ in bld["pattern"]]
+                pr, pc = cells[0]
+                return {"action": "build", "building_idx": buildable.index((bld, anchor_r, anchor_c)),
+                        "anchor_r": anchor_r, "anchor_c": anchor_c,
+                        "place_r": pr, "place_c": pc, "buildable": buildable}
+            best_idx = 0
+            best_score = -1
+            for i, (bld, ar, ac) in enumerate(buildable):
+                score = bld.get("points", 0) * 2
+                if bld["name"] == "Tavern":
+                    score += 5
+                if bld["name"] == "Cottage":
+                    score += 4
+                if score > best_score:
+                    best_score = score
+                    best_idx = i
+            bld, anchor_r, anchor_c = buildable[best_idx]
+            cells = [(anchor_r + dr, anchor_c + dc) for dr, dc, _ in bld["pattern"]]
+            pr, pc = cells[0]
+            return {"action": "build", "building_idx": best_idx,
+                    "anchor_r": anchor_r, "anchor_c": anchor_c,
+                    "place_r": pr, "place_c": pc, "buildable": buildable}
+
+        return {"action": "skip_build"}
 
     def check_game_over(self):
         if self.rounds_played >= self.max_rounds:

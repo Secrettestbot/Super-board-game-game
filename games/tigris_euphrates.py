@@ -31,6 +31,7 @@ class TigrisEuphratesGame(BaseGame):
         "standard": "Standard 11x16 board with full tile set",
         "quick": "Smaller 8x10 board with fewer tiles for faster play",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -361,6 +362,83 @@ class TigrisEuphratesGame(BaseGame):
                     self.leaders[lp][color] = None
                     # Winner gets a point
                     self.scores[winner[1]][RED] += 1
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        hand = self.hands[p]
+
+        if difficulty == 'easy':
+            if hand:
+                color = rand.choice(hand)
+                empties = []
+                for r in range(self.rows):
+                    for c in range(self.cols):
+                        cell = self.board[r][c]
+                        if color == BLUE and cell == RIVER:
+                            empties.append((r, c))
+                        elif color != BLUE and cell == EMPTY:
+                            empties.append((r, c))
+                if empties:
+                    r, c = rand.choice(empties)
+                    return f"t {r} {c} {color}"
+            return "p"
+
+        moves = []
+        for color in hand:
+            for r in range(self.rows):
+                for c in range(self.cols):
+                    cell = self.board[r][c]
+                    if color == BLUE and cell != RIVER:
+                        continue
+                    if color != BLUE and cell != EMPTY:
+                        continue
+                    score = 0.0
+                    kingdom = self._find_kingdom(r, c)
+                    has_my_leader = False
+                    for kr, kc in kingdom:
+                        val = self.board[kr][kc]
+                        if val.startswith("L") and val[1] == str(p):
+                            if val[2] == color:
+                                score += 5
+                                has_my_leader = True
+                            elif val[2] == BLACK and color != RED:
+                                score += 2
+                    adj_cells = self._adjacent(r, c)
+                    for ar, ac in adj_cells:
+                        val = self.board[ar][ac]
+                        if val in COLORS:
+                            score += 0.5
+                    cr, cc = self.rows / 2, self.cols / 2
+                    score -= abs(r - cr) * 0.1 + abs(c - cc) * 0.1
+                    moves.append((score, f"t {r} {c} {color}"))
+
+        for color in COLORS:
+            if self.leaders[p][color] is not None:
+                continue
+            for r in range(self.rows):
+                for c in range(self.cols):
+                    if self.board[r][c] != EMPTY:
+                        continue
+                    adj = self._adjacent(r, c)
+                    has_temple = any(self.board[ar][ac] == RED for ar, ac in adj)
+                    if not has_temple:
+                        continue
+                    score = 8.0
+                    kingdom = self._find_kingdom(r, c)
+                    matching = sum(1 for kr, kc in kingdom if self.board[kr][kc] == color)
+                    score += matching * 0.5
+                    moves.append((score, f"l {r} {c} {color}"))
+
+        if not moves:
+            return "p"
+
+        moves.sort(key=lambda x: -x[0])
+        if difficulty == 'medium':
+            top = moves[:max(1, len(moves) // 3)]
+            return rand.choice(top)[1]
+        return moves[0][1]
 
     def check_game_over(self):
         if len(self.tile_bag) == 0 and all(len(h) == 0 for h in self.hands.values()):

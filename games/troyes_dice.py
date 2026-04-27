@@ -62,6 +62,7 @@ class TroyesDiceGame(BaseGame):
         "standard": "Standard Game",
         "ladies": "Ladies of Troyes Expansion",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -407,6 +408,65 @@ class TroyesDiceGame(BaseGame):
                 return True
 
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        sp = str(cp)
+
+        if self.phase == "draft":
+            if not self.dice_pool:
+                return {"action": "end_draft"}
+            if difficulty == 'easy':
+                idx = rand.randrange(len(self.dice_pool))
+                return {"action": "draft", "index": idx}
+            scored = []
+            for i, (color, val) in enumerate(self.dice_pool):
+                score = val * 1.5
+                if color == "Yellow" and self.civil[sp] < self.military[sp] and self.civil[sp] < self.religion[sp]:
+                    score += 3
+                elif color == "Red" and self.military[sp] < self.civil[sp] and self.military[sp] < self.religion[sp]:
+                    score += 3
+                elif color == "White" and self.religion[sp] < self.civil[sp] and self.religion[sp] < self.military[sp]:
+                    score += 3
+                scored.append((score, i))
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'medium':
+                top = scored[:max(1, len(scored) // 2)]
+                return {"action": "draft", "index": rand.choice(top)[1]}
+            return {"action": "draft", "index": scored[0][1]}
+
+        if self.phase == "event":
+            if self.military[sp] >= 2:
+                return {"action": "handle_event", "method": 1}
+            if self.coins[sp] >= 2:
+                return {"action": "handle_event", "method": 2}
+            return {"action": "handle_event", "method": 3}
+
+        if self.phase == "build":
+            buildable = [(i, b) for i, b in enumerate(self.available_buildings)
+                         if self._can_build(cp, b)]
+            if not buildable:
+                return {"action": "end_build"}
+            if difficulty == 'easy':
+                if rand.random() < 0.5 and buildable:
+                    idx, _ = rand.choice(buildable)
+                    return {"action": "build", "index": idx}
+                return {"action": "end_build"}
+            scored = []
+            for idx, b in buildable:
+                score = b["points"] * 2
+                if b["bonus"] == "coins":
+                    score += 2
+                scored.append((score, idx))
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'medium':
+                top = scored[:max(1, len(scored) // 2)]
+                return {"action": "build", "index": rand.choice(top)[1]}
+            return {"action": "build", "index": scored[0][1]}
+
+        return {"action": "end_build"}
 
     def check_game_over(self):
         if self.round_number > MAX_ROUNDS:
