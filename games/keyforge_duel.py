@@ -659,6 +659,74 @@ class KeyforgeDuelGame(BaseGame):
                 print(f"  {dead['name']} destroyed!")
             print(f"  All damaged enemy creatures destroyed!")
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player - 1
+        opp = 1 - p
+
+        if self.phase == "choose_house":
+            if self.aember[p] >= self.aember_to_forge:
+                return ("forge", "")
+            best_idx = 0
+            best_score = -1
+            for i, house in enumerate(self.houses[p]):
+                hand_count = sum(1 for c in self.hands[p] if c["house"] == house)
+                field_ready = sum(1 for c in self.battlefields[p]
+                                 if c["house"] == house and c["ready"] and not c["stunned"])
+                score = hand_count * 2 + field_ready * 3
+                if difficulty == 'hard':
+                    field_total = sum(1 for c in self.battlefields[p] if c["house"] == house)
+                    score += field_total
+                if score > best_score:
+                    best_score = score
+                    best_idx = i
+            return ("choose_house", str(best_idx + 1))
+
+        elif self.phase == "play_use":
+            active = self.active_house[p]
+            playable = [(i, c) for i, c in enumerate(self.hands[p]) if c["house"] == active]
+            usable = [(i, c) for i, c in enumerate(self.battlefields[p])
+                      if c["house"] == active and c["ready"] and not c["stunned"]]
+
+            if difficulty == 'easy':
+                options = []
+                for i, c in playable:
+                    options.append(("play", str(i + 1)))
+                for i, c in usable:
+                    if self.battlefields[opp]:
+                        options.append(("fight", f"{i + 1} 1"))
+                    options.append(("reap", str(i + 1)))
+                if not options:
+                    return ("end_turn", "")
+                return random.choice(options)
+
+            for i, c in playable:
+                if c["type"] == "creature":
+                    return ("play", str(i + 1))
+            for i, c in playable:
+                if c["type"] == "action":
+                    return ("play", str(i + 1))
+            for i, c in playable:
+                if c["type"] == "artifact":
+                    return ("play", str(i + 1))
+
+            for i, c in usable:
+                if self.battlefields[opp] and difficulty == 'hard':
+                    for ti, target in enumerate(self.battlefields[opp]):
+                        my_dmg = c["power"] + c["fight_bonus"]
+                        for art in self.artifacts[p]:
+                            if art["effect"] == "fight_bonus_1":
+                                my_dmg += 1
+                        actual = max(0, my_dmg - target["armor"])
+                        if actual >= target["power"] - target["damage"]:
+                            return ("fight", f"{i + 1} {ti + 1}")
+                return ("reap", str(i + 1))
+
+            return ("end_turn", "")
+
+        return ("end_turn", "")
+
     def check_game_over(self):
         for pi in range(2):
             if self.keys[pi] >= 3:
