@@ -83,6 +83,7 @@ class OmenGame(BaseGame):
         "standard": "Standard game - first to claim 5 cities wins",
         "quick": "Quick game - first to claim 3 cities wins",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -470,6 +471,72 @@ class OmenGame(BaseGame):
                         "units": {1: [], 2: []},
                         "claimed_by": 0,
                     }
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        opp = 2 if p == 1 else 1
+
+        if self.phase == "offering":
+            if difficulty == 'easy':
+                return ("offering", random.choice(["1", "2"]))
+            if self.gold[p] < 2:
+                return ("offering", "1")
+            if len(self.hands[p]) < 3:
+                return ("offering", "2")
+            return ("offering", "1")
+
+        elif self.phase == "action":
+            if self.actions_left <= 0:
+                return ("action", "done")
+            hand = self.hands[p]
+            if not hand:
+                return ("action", "done")
+
+            unclaimed = [j for j, city in enumerate(self.cities) if city["claimed_by"] == 0]
+            if not unclaimed:
+                return ("action", "done")
+
+            affordable = [(i, c) for i, c in enumerate(hand) if c["cost"] <= self.gold[p]]
+
+            if difficulty == 'easy':
+                if not affordable or random.random() < 0.4:
+                    return ("action", "done")
+                idx, card = random.choice(affordable)
+                city = random.choice(unclaimed)
+                return ("play", str(idx + 1), str(city + 1))
+
+            if not affordable:
+                return ("action", "done")
+
+            best_play = None
+            best_score = -1
+            for card_idx, card in affordable:
+                for city_idx in unclaimed:
+                    score = card["strength"] * 5
+                    my_str = self._total_strength(p, city_idx)
+                    opp_str = self._total_strength(opp, city_idx)
+                    if my_str + card["strength"] > opp_str and opp_str > 0:
+                        score += 30
+                    if card["ability"]:
+                        score += 10
+                    if difficulty == 'hard':
+                        score += (card["strength"] / max(1, card["cost"])) * 10
+                    if score > best_score:
+                        best_score = score
+                        best_play = ("play", str(card_idx + 1), str(city_idx + 1))
+
+            if best_play and best_score > 5:
+                if difficulty == 'medium' and random.random() < 0.2:
+                    return ("action", "done")
+                return best_play
+            return ("action", "done")
+
+        elif self.phase == "war":
+            return ("war",)
+
+        return ("action", "done")
 
     def check_game_over(self):
         """Check if someone has claimed enough cities."""

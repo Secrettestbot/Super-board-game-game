@@ -86,6 +86,7 @@ class OnitamaGame(BaseGame):
         "standard": "Standard Onitama",
         "sensei": "Sensei's Path (alternate win)",
     }
+    side_labels = ("Player 1 (s/M)", "Player 2 (S/m)")
 
     def __init__(self, variation=None):
         super().__init__(variation or "standard")
@@ -398,6 +399,64 @@ class OnitamaGame(BaseGame):
         self.spare_card = card_name
 
         return True
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+        opp = 2 if player == 1 else 1
+        valid_moves = self._get_all_valid_moves(player)
+
+        if not valid_moves:
+            card = random.choice(self.player_cards[player])
+            return ('pass', card)
+
+        if difficulty == 'easy':
+            move = random.choice(valid_moves)
+            return ('move',) + move
+
+        scored = []
+        for card_name, fr, fc, tr, tc in valid_moves:
+            score = 10
+            target = self.board[tr][tc]
+            piece = self.board[fr][fc]
+            opp_master = P2_MASTER if player == 1 else P1_MASTER
+
+            if target == opp_master:
+                score += 10000
+            elif _owner(target) == opp:
+                score += 50
+
+            if _is_master(piece) and (tr, tc) == self.temples[opp]:
+                score += 10000
+
+            center = self.size // 2
+            score -= abs(tr - center) + abs(tc - center)
+
+            if player == 1:
+                score += tr * 2
+            else:
+                score += (4 - tr) * 2
+
+            if difficulty == 'hard' and _is_master(piece):
+                for dr in range(-2, 3):
+                    for dc in range(-2, 3):
+                        if dr == 0 and dc == 0:
+                            continue
+                        nr, nc = tr + dr, tc + dc
+                        if 0 <= nr < self.size and 0 <= nc < self.size:
+                            if _owner(self.board[nr][nc]) == opp:
+                                score -= 5
+
+            scored.append(((card_name, fr, fc, tr, tc), score))
+
+        scored.sort(key=lambda x: x[1], reverse=True)
+        if difficulty == 'medium':
+            top = scored[:max(2, len(scored) // 3)]
+            move_data = random.choice(top)[0]
+        else:
+            move_data = scored[0][0]
+        return ('move',) + move_data
 
     # ------------------------------------------------------------------ game over
 

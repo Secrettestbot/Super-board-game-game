@@ -94,6 +94,7 @@ class NusfjordGame(BaseGame):
         "standard": "Full game - 7 rounds with all buildings and elders",
         "quick": "Quick game - 5 rounds, smaller building deck, start with extra resources",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def setup(self):
         is_quick = self.variation == "quick"
@@ -399,6 +400,83 @@ class NusfjordGame(BaseGame):
                 5, self.player_data[str(i)]["forest_tiles"] + 1)
         if self.current_round <= self.max_rounds:
             self.message = f"Round {self.current_round}/{self.max_rounds} begins!"
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.player_data[str(self.current_player)]
+
+        if self.phase == "feed":
+            return ""
+
+        if p["workers_placed"] >= p["workers"]:
+            return str(len(ACTION_SPACES) + 1)
+
+        available = []
+        for i, act in enumerate(ACTION_SPACES):
+            if act not in self.used_actions:
+                available.append((i + 1, act))
+
+        if not available:
+            return str(len(ACTION_SPACES) + 1)
+
+        if difficulty == 'easy':
+            choices = [str(i) for i, _ in available] + [str(len(ACTION_SPACES) + 1)]
+            return random.choice(choices)
+
+        candidates = []
+        for idx, act in available:
+            score = 0
+            if act == "go_fishing":
+                fish = p["ships"] * p["ship_capacity"]
+                if any(BUILDING_CARDS[b]["name"] == "Boathouse" for b in p["buildings"]):
+                    fish += 1
+                score = 30 + fish * 5
+            elif act == "forestry":
+                if p["forest_tiles"] > 0:
+                    score = 25
+                else:
+                    continue
+            elif act == "build_ship":
+                cost = 2
+                if any(BUILDING_CARDS[b]["name"] == "Shipyard" for b in p["buildings"]):
+                    cost = 1
+                if p["wood"] >= cost:
+                    score = 20 + (5 - p["ships"]) * 5
+                else:
+                    continue
+            elif act == "build_building":
+                if p["wood"] >= 1 and self.building_pool:
+                    score = 35
+                else:
+                    continue
+            elif act == "employ_elder":
+                if p["fish"] >= 1 and self.elder_pool:
+                    score = 25
+                else:
+                    continue
+            elif act == "issue_shares":
+                if p["shares_issued"] < 3:
+                    score = 15 - p["shares_issued"] * 5
+                else:
+                    continue
+            elif act == "trade":
+                if p["fish"] >= 2 or p["gold"] >= 2:
+                    score = 12
+                else:
+                    continue
+            candidates.append((str(idx), score))
+
+        candidates.append((str(len(ACTION_SPACES) + 1), 5))
+
+        if not candidates:
+            return str(len(ACTION_SPACES) + 1)
+
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        if difficulty == 'medium':
+            top = candidates[:max(2, len(candidates) // 3)]
+            return random.choice(top)[0]
+        return candidates[0][0]
 
     def check_game_over(self):
         if self.current_round > self.max_rounds and self.phase == "actions":
