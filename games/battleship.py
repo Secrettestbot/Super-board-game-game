@@ -218,21 +218,23 @@ class BattleshipGame(BaseGame):
         # Check if this player finished placing
         if self.placement_index >= len(self.ship_defs):
             if self.placement_player == 1:
-                # Switch to player 2 placement
                 self.placement_player = 2
                 self.placement_index = 0
-                print(f"\n  {self.players[0]} has placed all ships!")
-                print(f"  Hand the device to {self.players[1]}.")
-                input_with_quit("  Press Enter when ready...")
-                clear_screen()
+                if self.ai_player != 1:
+                    print(f"\n  {self.players[0]} has placed all ships!")
+                    print(f"  Hand the device to {self.players[1]}.")
+                    input_with_quit("  Press Enter when ready...")
+                    clear_screen()
             else:
-                # Both players done, move to shooting phase
                 self.phase = "shooting"
                 self.current_player = 1
-                print(f"\n  All ships placed! Battle begins!")
-                print(f"  Hand the device to {self.players[0]}.")
-                input_with_quit("  Press Enter when ready...")
-                clear_screen()
+                if self.ai_player is not None:
+                    pass
+                else:
+                    print(f"\n  All ships placed! Battle begins!")
+                    print(f"  Hand the device to {self.players[0]}.")
+                    input_with_quit("  Press Enter when ready...")
+                    clear_screen()
         return True
 
     def _do_shot(self, move):
@@ -269,11 +271,11 @@ class BattleshipGame(BaseGame):
             self.boards[opp][r][c] = MISS
             self.tracking[p][r][c] = MISS
             print(f"\n  Miss.")
-        input_with_quit("  Press Enter to continue...")
-        # Clear screen before switching turns
-        clear_screen()
-        print(f"\n  Hand the device to {self.players[(p % 2)]}")
-        input_with_quit("  Press Enter when ready...")
+        if self.ai_player != p:
+            input_with_quit("  Press Enter to continue...")
+            clear_screen()
+            print(f"\n  Hand the device to {self.players[(p % 2)]}")
+            input_with_quit("  Press Enter when ready...")
         return True
 
     def get_ai_move(self):
@@ -392,34 +394,40 @@ class BattleshipGame(BaseGame):
     # ------------------------------------------------------------ play override
     def play(self):
         """Custom play loop to handle two-phase game and turn switching."""
-        self.setup()
+        if not self._resumed:
+            self.setup()
         while not self.game_over:
-            clear_screen()
-            self.display()
-            try:
-                move = self.get_move()
-            except Exception as e:
-                # Re-raise engine exceptions (QuitGame, SuspendGame, etc.)
-                from engine.base import QuitGame, SuspendGame, ShowHelp, ShowTutorial
-                if isinstance(e, (QuitGame, SuspendGame, ShowHelp, ShowTutorial)):
-                    if isinstance(e, QuitGame):
-                        print("\nGame ended.")
-                        input_with_quit("Press Enter to return to menu...")
-                        return None
-                    elif isinstance(e, SuspendGame):
-                        slot = self.save_game()
-                        print(f"\nGame saved as '{slot}'")
-                        input_with_quit("Press Enter to return to menu...")
-                        return 'suspended'
-                    elif isinstance(e, ShowHelp):
-                        self.show_help()
-                        continue
-                    elif isinstance(e, ShowTutorial):
-                        clear_screen()
-                        print(self.get_tutorial())
-                        input_with_quit("\nPress Enter to continue...")
-                        continue
-                raise
+            active = self.placement_player if self.phase == "placement" else self.current_player
+            if self.ai_player == active:
+                import time as _time
+                move = self.get_ai_move()
+                _time.sleep(0.5)
+            else:
+                clear_screen()
+                self.display()
+                try:
+                    move = self.get_move()
+                except Exception as e:
+                    from engine.base import QuitGame, SuspendGame, ShowHelp, ShowTutorial
+                    if isinstance(e, (QuitGame, SuspendGame, ShowHelp, ShowTutorial)):
+                        if isinstance(e, QuitGame):
+                            print("\nGame ended.")
+                            input_with_quit("Press Enter to return to menu...")
+                            return None
+                        elif isinstance(e, SuspendGame):
+                            slot = self.save_game()
+                            print(f"\nGame saved as '{slot}'")
+                            input_with_quit("Press Enter to return to menu...")
+                            return 'suspended'
+                        elif isinstance(e, ShowHelp):
+                            self.show_help()
+                            continue
+                        elif isinstance(e, ShowTutorial):
+                            clear_screen()
+                            print(self.get_tutorial())
+                            input_with_quit("\nPress Enter to continue...")
+                            continue
+                    raise
 
             if self.make_move(move):
                 self.move_history.append(str(move))

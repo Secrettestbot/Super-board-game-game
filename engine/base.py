@@ -166,6 +166,19 @@ class BaseGame(ABC):
             if self.ai_player == self.current_player:
                 move = self.get_ai_move()
                 time.sleep(0.5)
+                if not self.make_move(move):
+                    for _retry in range(9):
+                        move = self.get_ai_move()
+                        if self.make_move(move):
+                            break
+                    else:
+                        continue
+                self.move_history.append(str(move))
+                self.turn_number += 1
+                self.check_game_over()
+                if not self.game_over:
+                    self.switch_player()
+                continue
             else:
                 try:
                     move = self.get_move()

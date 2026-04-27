@@ -628,40 +628,45 @@ class BlackjackGame(BaseGame):
             if self.game_over:
                 break
 
-            try:
-                move = self.get_move()
-            except Exception as e:
-                from engine.base import QuitGame, SuspendGame, ShowHelp, ShowTutorial
-                if isinstance(e, QuitGame):
-                    print("\nGame ended.")
-                    input_with_quit("Press Enter to return to menu...")
-                    return None
-                elif isinstance(e, SuspendGame):
-                    slot = self.save_game()
-                    print(f"\nGame saved as '{slot}'")
-                    input_with_quit("Press Enter to return to menu...")
-                    return 'suspended'
-                elif isinstance(e, ShowHelp):
-                    self.show_help()
-                    continue
-                elif isinstance(e, ShowTutorial):
-                    clear_screen()
-                    print(self.get_tutorial())
-                    input_with_quit("\nPress Enter to continue...")
-                    continue
-                elif isinstance(e, KeyboardInterrupt):
-                    print("\n\nInterrupted! Save before quitting? (y/n): ", end="")
-                    try:
-                        ans = input_with_quit().strip().lower()
-                        if ans == 'y':
-                            slot = self.save_game()
-                            print(f"Game saved as '{slot}'")
-                        print("Returning to menu...")
-                        input_with_quit("Press Enter to continue...")
-                    except KeyboardInterrupt:
-                        pass
-                    return None
-                raise
+            if self.ai_player == self.current_player:
+                import time as _time
+                move = self.get_ai_move()
+                _time.sleep(0.5)
+            else:
+                try:
+                    move = self.get_move()
+                except Exception as e:
+                    from engine.base import QuitGame, SuspendGame, ShowHelp, ShowTutorial
+                    if isinstance(e, QuitGame):
+                        print("\nGame ended.")
+                        input_with_quit("Press Enter to return to menu...")
+                        return None
+                    elif isinstance(e, SuspendGame):
+                        slot = self.save_game()
+                        print(f"\nGame saved as '{slot}'")
+                        input_with_quit("Press Enter to return to menu...")
+                        return 'suspended'
+                    elif isinstance(e, ShowHelp):
+                        self.show_help()
+                        continue
+                    elif isinstance(e, ShowTutorial):
+                        clear_screen()
+                        print(self.get_tutorial())
+                        input_with_quit("\nPress Enter to continue...")
+                        continue
+                    elif isinstance(e, KeyboardInterrupt):
+                        print("\n\nInterrupted! Save before quitting? (y/n): ", end="")
+                        try:
+                            ans = input_with_quit().strip().lower()
+                            if ans == 'y':
+                                slot = self.save_game()
+                                print(f"Game saved as '{slot}'")
+                            print("Returning to menu...")
+                            input_with_quit("Press Enter to continue...")
+                        except KeyboardInterrupt:
+                            pass
+                        return None
+                    raise
 
             if self.make_move(move):
                 self.move_history.append(str(move))
