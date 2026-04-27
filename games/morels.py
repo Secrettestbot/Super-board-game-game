@@ -52,6 +52,7 @@ class MorelGame(BaseGame):
         "quick": "Quick game (6 species, smaller deck)",
         "expert": "Expert game (10 species, Night cards active)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -375,6 +376,69 @@ class MorelGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        candidates = []
+
+        species_count = {}
+        for card in self.hands[p]:
+            sp = card["species"]
+            if sp not in species_count:
+                species_count[sp] = {"count": 0, "value": card["value"]}
+            species_count[sp]["count"] += 1
+
+        if self.pans[p] > 0:
+            for sp, info in species_count.items():
+                if info["count"] >= 3:
+                    points = info["value"] * info["count"] * 2
+                    candidates.append((f"cook {sp}", 50 + points))
+
+        for i, card in enumerate(self.forest):
+            cost = i
+            if cost <= self.sticks[p]:
+                if card["type"] == "mushroom" and len(self.hands[p]) < self.hand_limit[p]:
+                    score = card["value"] * 3 - cost * 2
+                    candidates.append((f"take {i}", max(5, score)))
+                elif card["type"] == "pan":
+                    candidates.append((f"take {i}", 25 - cost * 2))
+                elif card["type"] == "night":
+                    candidates.append((f"take {i}", 20 - cost * 2))
+
+        if self.decay_pile:
+            mushrooms_val = sum(c["value"] for c in self.decay_pile if c["type"] == "mushroom")
+            pans_count = sum(1 for c in self.decay_pile if c["type"] == "pan")
+            space = self.hand_limit[p] - len(self.hands[p])
+            if space > 0 or pans_count > 0:
+                score = mushrooms_val + pans_count * 10
+                if score > 0:
+                    candidates.append(("decay", score))
+
+        if self.sticks[p] < 2:
+            for sp, info in species_count.items():
+                if info["count"] < 3 and info["value"] <= 2:
+                    candidates.append((f"sell {sp} 1", 8))
+
+        if not candidates:
+            if self.forest:
+                return "take 0"
+            if self.decay_pile:
+                return "decay"
+            for sp, info in species_count.items():
+                return f"sell {sp} 1"
+            return "take 0"
+
+        if difficulty == 'easy':
+            return random.choice(candidates)[0]
+
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        if difficulty == 'medium':
+            top = candidates[:max(2, len(candidates) // 3)]
+            return random.choice(top)[0]
+        return candidates[0][0]
 
     def check_game_over(self):
         if not self.deck and not self.forest:

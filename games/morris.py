@@ -156,6 +156,7 @@ class MorrisGame(BaseGame):
 
     PIECES_COUNT = {"nine": 9, "six": 6, "three": 3, "twelve": 12}
     SYMBOLS = {0: ".", 1: "W", 2: "B"}
+    side_labels = ("White (W)", "Black (B)")
 
     def __init__(self, variation=None):
         super().__init__(variation or "nine")
@@ -445,6 +446,106 @@ class MorrisGame(BaseGame):
         if self.must_remove:
             return
         super().switch_player()
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        opp = 2 if p == 1 else 1
+        idx = p - 1
+
+        if self.must_remove:
+            removable = []
+            for pos in range(self.num_positions):
+                if self.board[pos] == opp:
+                    if not self._in_mill(pos, opp) or self._all_in_mills(opp):
+                        removable.append(pos)
+            if not removable:
+                return ("remove", 0)
+            if difficulty == 'easy':
+                return ("remove", random.choice(removable))
+            scored = []
+            for pos in removable:
+                score = 10
+                for mill in self.mills:
+                    if pos in mill:
+                        opp_in = sum(1 for p2 in mill if self.board[p2] == opp)
+                        if opp_in >= 2:
+                            score += 20
+                score += len(self.adjacency[pos]) * 3
+                scored.append((pos, score))
+            scored.sort(key=lambda x: x[1], reverse=True)
+            if difficulty == 'medium':
+                top = scored[:max(2, len(scored) // 3)]
+                return ("remove", random.choice(top)[0])
+            return ("remove", scored[0][0])
+
+        if self.pieces_to_place[idx] > 0:
+            empty = [pos for pos in range(self.num_positions) if self.board[pos] == 0]
+            if not empty:
+                return ("place", 0)
+            if difficulty == 'easy':
+                return ("place", random.choice(empty))
+            scored = []
+            for pos in empty:
+                score = 0
+                self.board[pos] = p
+                if self._in_mill(pos, p):
+                    score += 50
+                self.board[pos] = 0
+                for mill in self.mills:
+                    if pos in mill:
+                        own = sum(1 for p2 in mill if self.board[p2] == p)
+                        opp_c = sum(1 for p2 in mill if self.board[p2] == opp)
+                        if own == 1 and opp_c == 0:
+                            score += 10
+                        if opp_c == 2 and own == 0:
+                            score += 30
+                score += len(self.adjacency[pos]) * 2
+                scored.append((pos, score))
+            scored.sort(key=lambda x: x[1], reverse=True)
+            if difficulty == 'medium':
+                top = scored[:max(2, len(scored) // 3)]
+                return ("place", random.choice(top)[0])
+            return ("place", scored[0][0])
+
+        flying = self._can_fly(p)
+        moves = []
+        for pos in range(self.num_positions):
+            if self.board[pos] != p:
+                continue
+            targets = list(range(self.num_positions)) if flying else self.adjacency[pos]
+            for to in targets:
+                if self.board[to] == 0:
+                    moves.append((pos, to))
+        if not moves:
+            return ("move", 0, 0)
+        if difficulty == 'easy':
+            frm, to = random.choice(moves)
+            return ("move", frm, to)
+        scored = []
+        for frm, to in moves:
+            score = 0
+            self.board[frm] = 0
+            self.board[to] = p
+            if self._in_mill(to, p):
+                score += 50
+            for mill in self.mills:
+                if to in mill:
+                    own = sum(1 for p2 in mill if self.board[p2] == p)
+                    if own == 2:
+                        score += 15
+            self.board[to] = 0
+            self.board[frm] = p
+            score += len(self.adjacency[to]) * 2
+            scored.append(((frm, to), score))
+        scored.sort(key=lambda x: x[1], reverse=True)
+        if difficulty == 'medium':
+            top = scored[:max(2, len(scored) // 3)]
+            frm, to = random.choice(top)[0]
+            return ("move", frm, to)
+        frm, to = scored[0][0]
+        return ("move", frm, to)
 
     # ---------------------------------------------------- check_game_over
     def check_game_over(self):
