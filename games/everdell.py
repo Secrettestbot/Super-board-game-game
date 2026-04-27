@@ -542,6 +542,116 @@ class EverdellGame(BaseGame):
 
         return False
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player - 1
+        avail_w = self._available_workers(p)
+
+        def card_value(card):
+            val = card.get("points", 0)
+            effect = card.get("on_play")
+            if isinstance(effect, dict):
+                val += sum(effect.values()) * 0.5
+            elif effect == "draw1":
+                val += 0.5
+            elif effect == "draw2":
+                val += 1.0
+            elif effect == "berry_per_construction":
+                count = sum(1 for c in self.cities[p] if c["type"] == "construction")
+                val += count * 0.5
+            scoring = card.get("scoring")
+            if scoring == "critter_count":
+                val += sum(1 for c in self.cities[p] if c["type"] == "critter") * 0.3
+            elif scoring == "construction_count":
+                val += sum(1 for c in self.cities[p] if c["type"] == "construction") * 0.3
+            return val
+
+        def card_efficiency(card):
+            cost_total = sum(card["cost"].values())
+            if cost_total == 0:
+                return card_value(card) + 5
+            return card_value(card) / cost_total
+
+        claimable = []
+        for i, event in enumerate(self.available_events):
+            if self._check_event(p, event):
+                claimable.append((event.get("points", 0), i))
+
+        if claimable:
+            claimable.sort(key=lambda x: -x[0])
+            return f"claim {claimable[0][1] + 1}"
+
+        affordable_hand = []
+        for i, card in enumerate(self.hands[p]):
+            if self._can_pay(p, card["cost"]) and len(self.cities[p]) < self.MAX_CITY_SIZE:
+                affordable_hand.append((card_efficiency(card), card_value(card), i, card))
+
+        affordable_meadow = []
+        for i, card in enumerate(self.meadow):
+            if self._can_pay(p, card["cost"]) and len(self.cities[p]) < self.MAX_CITY_SIZE:
+                affordable_meadow.append((card_efficiency(card), card_value(card), i, card))
+
+        all_affordable = ([(eff, val, f"play hand {i + 1}", card)
+                           for eff, val, i, card in affordable_hand] +
+                          [(eff, val, f"play meadow {i + 1}", card)
+                           for eff, val, i, card in affordable_meadow])
+
+        if difficulty == 'easy':
+            if all_affordable and random.random() < 0.6:
+                _, _, move_str, _ = random.choice(all_affordable)
+                return move_str
+            if avail_w > 0:
+                available_spots = []
+                for i, spot in enumerate(WORKER_SPOTS):
+                    occupants = self.spot_occupants.get(i, [])
+                    if len(occupants) < spot["limit"]:
+                        available_spots.append(i)
+                if available_spots:
+                    return f"place {random.choice(available_spots) + 1}"
+            return "prepare"
+
+        if all_affordable:
+            all_affordable.sort(key=lambda x: (-x[1] if difficulty == 'hard' else -x[0]))
+            if difficulty == 'medium':
+                top = all_affordable[:max(1, len(all_affordable) // 2)]
+                _, _, move_str, _ = random.choice(top)
+            else:
+                _, _, move_str, _ = all_affordable[0]
+
+            if all_affordable[0][1] >= 3 or avail_w == 0:
+                return move_str
+
+        if avail_w > 0:
+            available_spots = []
+            for i, spot in enumerate(WORKER_SPOTS):
+                occupants = self.spot_occupants.get(i, [])
+                if len(occupants) < spot["limit"]:
+                    gain = spot["gain"]
+                    value = 0
+                    if isinstance(gain, dict):
+                        value = sum(gain.values())
+                    elif gain == "draw2":
+                        value = 2
+                    elif gain == "journey":
+                        value = min(3, len(self.hands[p]))
+                    available_spots.append((value, i))
+
+            if available_spots:
+                available_spots.sort(key=lambda x: -x[0])
+                if difficulty == 'medium':
+                    top = available_spots[:max(1, len(available_spots) // 2)]
+                    _, idx = random.choice(top)
+                else:
+                    _, idx = available_spots[0]
+                return f"place {idx + 1}"
+
+        if all_affordable:
+            _, _, move_str, _ = all_affordable[0]
+            return move_str
+
+        return "prepare"
+
     def check_game_over(self):
         # Game ends when both players have advanced past their final season
         # and have no workers left to place

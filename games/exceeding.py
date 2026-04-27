@@ -343,6 +343,91 @@ class ExceedingGame(BaseGame):
 
         return False
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        opp = 2 if p == 1 else 1
+
+        if not self.hands[p]:
+            return ("draw",)
+
+        dist = self._distance()
+        hand = self.hands[p]
+
+        attacks_in_range = [(i, c) for i, c in enumerate(hand)
+                            if c["type"] == "attack"
+                            and c["range_min"] <= dist <= c["range_max"]]
+        move_cards = [(i, c) for i, c in enumerate(hand) if c["type"] == "move"]
+
+        if difficulty == 'easy':
+            if attacks_in_range and random.random() < 0.5:
+                idx, _ = random.choice(attacks_in_range)
+                return ("play", str(idx + 1))
+            if move_cards and random.random() < 0.4:
+                idx, _ = random.choice(move_cards)
+                return ("play", str(idx + 1))
+            if hand:
+                idx = random.randint(0, len(hand) - 1)
+                return ("discard", str(idx + 1))
+            return ("draw",)
+
+        if attacks_in_range:
+            scored = []
+            for idx, card in attacks_in_range:
+                opp_guard = max((c.get("guard", 0) for c in self.hands[opp]
+                                 if c["type"] == "attack" and c.get("guard", 0) > 0),
+                                default=0)
+                expected_dmg = max(0, card["power"] - opp_guard)
+                score = expected_dmg * 2 + card["speed"]
+                scored.append((score, idx, card))
+
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'medium':
+                top = scored[:max(1, len(scored) // 2)]
+                _, idx, _ = random.choice(top)
+            else:
+                _, idx, _ = scored[0]
+            return ("play", str(idx + 1))
+
+        advance_cards = [(i, c) for i, c in move_cards if c["direction"] == "forward"]
+        retreat_cards = [(i, c) for i, c in move_cards if c["direction"] == "backward"]
+
+        close_range_attacks = [c for c in hand if c["type"] == "attack" and c["range_min"] <= 2]
+        long_range_attacks = [c for c in hand if c["type"] == "attack" and c["range_max"] >= 3]
+
+        if close_range_attacks and dist > 2 and advance_cards:
+            if difficulty == 'hard':
+                advance_cards.sort(key=lambda x: -x[1]["move"])
+                idx, _ = advance_cards[0]
+            else:
+                idx, _ = random.choice(advance_cards)
+            return ("play", str(idx + 1))
+
+        if long_range_attacks and dist < 3 and retreat_cards:
+            if difficulty == 'hard':
+                retreat_cards.sort(key=lambda x: -x[1]["move"])
+                idx, _ = retreat_cards[0]
+            else:
+                idx, _ = random.choice(retreat_cards)
+            return ("play", str(idx + 1))
+
+        if move_cards:
+            idx, _ = random.choice(move_cards)
+            return ("play", str(idx + 1))
+
+        worst_idx = 0
+        worst_val = float('inf')
+        for i, c in enumerate(hand):
+            if c["type"] == "attack":
+                val = c["power"] + c["speed"]
+            else:
+                val = c["move"]
+            if val < worst_val:
+                worst_val = val
+                worst_idx = i
+        return ("discard", str(worst_idx + 1))
+
     def check_game_over(self):
         """Check if a player's HP reached 0."""
         for player in [1, 2]:

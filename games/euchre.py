@@ -444,6 +444,167 @@ class EuchreGame(BaseGame):
             self._start_hand()
         return True
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player - 1
+
+        if self.phase == "trick_done":
+            return ("continue", "")
+        if self.phase == "hand_over":
+            return ("next_hand", "")
+
+        if self.phase == "bid_round1":
+            trump_suit = self.kitty_card[1]
+            hand = self.hands[cp]
+            trump_count = sum(1 for c in hand if effective_suit(c, trump_suit) == trump_suit)
+            has_bower = any(c[0] == 'J' and (c[1] == trump_suit or c[1] == SAME_COLOR[trump_suit])
+                           for c in hand)
+
+            if difficulty == 'easy':
+                if trump_count >= 3 or (trump_count >= 2 and has_bower):
+                    return ("bid1", "order")
+                return ("bid1", "pass")
+            elif difficulty == 'medium':
+                high_trump = sum(1 for c in hand
+                                 if effective_suit(c, trump_suit) == trump_suit
+                                 and card_trick_value(c, trump_suit, trump_suit) >= 100)
+                if high_trump >= 2 or (has_bower and trump_count >= 2):
+                    return ("bid1", "order")
+                if cp == self.dealer and trump_count >= 2:
+                    return ("bid1", "order")
+                return ("bid1", "pass")
+            else:
+                trump_strength = sum(card_trick_value(c, trump_suit, trump_suit)
+                                     for c in hand if effective_suit(c, trump_suit) == trump_suit)
+                off_aces = sum(1 for c in hand if c[0] == 'A'
+                               and effective_suit(c, trump_suit) != trump_suit)
+                if trump_strength >= 300 or (has_bower and trump_count >= 2 and off_aces >= 1):
+                    return ("bid1", "order")
+                if cp == self.dealer and (trump_count >= 2 or has_bower):
+                    return ("bid1", "order")
+                return ("bid1", "pass")
+
+        if self.phase == "bid_round2":
+            turned_suit = self.kitty_card[1]
+            available = [s for s in SUITS if s != turned_suit]
+            hand = self.hands[cp]
+            stick = (self.variation == "stick_the_dealer" and cp == self.dealer)
+
+            best_suit = None
+            best_count = -1
+            for s in available:
+                count = sum(1 for c in hand if effective_suit(c, s) == s)
+                strength = sum(card_trick_value(c, s, s) for c in hand if effective_suit(c, s) == s)
+                if difficulty == 'easy':
+                    metric = count
+                else:
+                    metric = strength
+                if metric > best_count:
+                    best_count = metric
+                    best_suit = s
+
+            trump_count = sum(1 for c in hand if effective_suit(c, best_suit) == best_suit)
+
+            if difficulty == 'easy':
+                if trump_count >= 3 or stick:
+                    return ("bid2", SUIT_NAMES[best_suit].lower())
+                return ("bid2", "pass")
+            elif difficulty == 'medium':
+                if trump_count >= 2 or stick:
+                    return ("bid2", SUIT_NAMES[best_suit].lower())
+                return ("bid2", "pass")
+            else:
+                has_bower = any(c[0] == 'J' and (c[1] == best_suit or c[1] == SAME_COLOR[best_suit])
+                                for c in hand)
+                if (trump_count >= 2 and has_bower) or trump_count >= 3 or stick:
+                    return ("bid2", SUIT_NAMES[best_suit].lower())
+                return ("bid2", "pass")
+
+        if self.phase == "discard":
+            hand = self.hands[cp]
+            if difficulty == 'easy':
+                return ("discard", str(random.randint(0, len(hand) - 1)))
+
+            worst_idx = 0
+            worst_val = float('inf')
+            for i, c in enumerate(hand):
+                val = card_trick_value(c, self.trump, self.trump)
+                if effective_suit(c, self.trump) != self.trump:
+                    val = card_trick_value(c, self.trump, c[1])
+                if val < worst_val:
+                    worst_val = val
+                    worst_idx = i
+            return ("discard", str(worst_idx))
+
+        if self.phase == "play":
+            hand = self.hands[cp]
+            valid = self._valid_plays(cp)
+
+            if difficulty == 'easy':
+                card = random.choice(valid)
+                return ("play", str(hand.index(card)))
+
+            if not self.current_trick:
+                if difficulty == 'hard':
+                    best_card = None
+                    best_val = -1
+                    for c in valid:
+                        es = effective_suit(c, self.trump)
+                        if es != self.trump:
+                            val = card_trick_value(c, self.trump, es)
+                            if c[0] == 'A' and val > best_val:
+                                best_val = val
+                                best_card = c
+                    if best_card:
+                        return ("play", str(hand.index(best_card)))
+                    for c in valid:
+                        es = effective_suit(c, self.trump)
+                        if es == self.trump:
+                            val = card_trick_value(c, self.trump, self.trump)
+                            if val >= 190:
+                                return ("play", str(hand.index(c)))
+
+                scored = []
+                for c in valid:
+                    es = effective_suit(c, self.trump)
+                    val = card_trick_value(c, self.trump, es if es != self.trump else self.trump)
+                    scored.append((val, c))
+                scored.sort(key=lambda x: -x[0])
+                if difficulty == 'medium':
+                    top = scored[:max(1, len(scored) // 2)]
+                    _, card = random.choice(top)
+                else:
+                    _, card = scored[0]
+                return ("play", str(hand.index(card)))
+            else:
+                led_card = self.current_trick[0][1]
+                led_suit = effective_suit(led_card, self.trump)
+                led_val = card_trick_value(led_card, self.trump, led_suit)
+
+                winners = []
+                losers = []
+                for c in valid:
+                    val = card_trick_value(c, self.trump, led_suit)
+                    if val > led_val:
+                        winners.append((val, c))
+                    else:
+                        losers.append((val, c))
+
+                if winners:
+                    winners.sort(key=lambda x: x[0])
+                    if difficulty == 'hard':
+                        _, card = winners[0]
+                    else:
+                        _, card = random.choice(winners)
+                    return ("play", str(hand.index(card)))
+                else:
+                    losers.sort(key=lambda x: x[0])
+                    _, card = losers[0]
+                    return ("play", str(hand.index(card)))
+
+        return ("unknown", "")
+
     def check_game_over(self):
         """Check if a player has reached the target score."""
         for i in range(2):

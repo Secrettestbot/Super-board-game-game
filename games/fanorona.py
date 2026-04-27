@@ -386,6 +386,12 @@ class FanoronaGame(BaseGame):
         withdraw_match = [m for m in matching if m[4] == 'W']
 
         if approach_match and withdraw_match:
+            if self.ai_player == self.current_player:
+                a_caps = len(approach_match[0][5])
+                w_caps = len(withdraw_match[0][5])
+                m = approach_match[0] if a_caps >= w_caps else withdraw_match[0]
+                _, _, _, _, ct, caps = m
+                return ('chain_capture', cr, cc, tr, tc, ct, caps)
             while True:
                 choice = input_with_quit("  Approach (A) or Withdrawal (W)? ").strip().upper()
                 if choice in ('A', 'W'):
@@ -436,6 +442,12 @@ class FanoronaGame(BaseGame):
             withdraw_match = [m for m in matching if m[4] == 'W']
 
             if approach_match and withdraw_match:
+                if self.ai_player == self.current_player:
+                    a_caps = len(approach_match[0][5])
+                    w_caps = len(withdraw_match[0][5])
+                    m = approach_match[0] if a_caps >= w_caps else withdraw_match[0]
+                    _, _, _, _, ct, caps = m
+                    return ('capture', fr, fc, tr, tc, ct, caps)
                 while True:
                     choice = input_with_quit("  Approach (A) or Withdrawal (W)? ").strip().upper()
                     if choice in ('A', 'W'):
@@ -540,6 +552,98 @@ class FanoronaGame(BaseGame):
             self.chain_last_dir = None
 
         return True
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+
+        if self.chain_piece is not None:
+            cr, cc = self.chain_piece
+            chain_moves = self._get_chain_capturing_moves(
+                cr, cc, player, self.chain_visited, self.chain_last_dir
+            )
+            if not chain_moves:
+                return ('end_chain',)
+
+            if difficulty == 'easy':
+                if random.random() < 0.3:
+                    return ('end_chain',)
+                m = random.choice(chain_moves)
+                return ('chain_capture', m[0], m[1], m[2], m[3], m[4], m[5])
+
+            best = max(chain_moves, key=lambda m: len(m[5]))
+            if difficulty == 'medium':
+                top = [m for m in chain_moves if len(m[5]) >= len(best[5]) - 1]
+                m = random.choice(top)
+            else:
+                m = best
+            return ('chain_capture', m[0], m[1], m[2], m[3], m[4], m[5])
+
+        capturing_moves = self._get_all_capturing_moves(player)
+
+        if capturing_moves:
+            if difficulty == 'easy':
+                m = random.choice(capturing_moves)
+                return ('capture', m[0], m[1], m[2], m[3], m[4], m[5])
+
+            scored = []
+            for m in capturing_moves:
+                fr, fc, tr, tc, ct, caps = m
+                score = len(caps) * 10
+                chain_after = self._get_chain_capturing_moves(
+                    tr, tc, player,
+                    {(fr, fc), (tr, tc)},
+                    self._get_direction(fr, fc, tr, tc)
+                )
+                if difficulty == 'hard':
+                    score += len(chain_after) * 5
+                    if tr == self.rows // 2 or tc == self.cols // 2:
+                        score += 2
+                scored.append((score, m))
+
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'medium':
+                top = scored[:max(1, len(scored) // 3)]
+                _, m = random.choice(top)
+            else:
+                _, m = scored[0]
+            return ('capture', m[0], m[1], m[2], m[3], m[4], m[5])
+
+        non_cap = self._get_non_capturing_moves(player)
+        if not non_cap:
+            return ('move', 0, 0, 0, 0)
+
+        if difficulty == 'easy':
+            fr, fc, tr, tc = random.choice(non_cap)
+            return ('move', fr, fc, tr, tc)
+
+        scored = []
+        for fr, fc, tr, tc in non_cap:
+            score = 0
+            if difficulty == 'hard':
+                if abs(tr - self.rows // 2) < abs(fr - self.rows // 2):
+                    score += 1
+                if abs(tc - self.cols // 2) < abs(fc - self.cols // 2):
+                    score += 1
+                self.board[fr][fc] = self.EMPTY
+                self.board[tr][tc] = player
+                opp_caps = self._get_all_capturing_moves(
+                    self.P2 if player == self.P1 else self.P1)
+                my_caps = self._get_all_capturing_moves(player)
+                score -= len(opp_caps) * 2
+                score += len(my_caps)
+                self.board[tr][tc] = self.EMPTY
+                self.board[fr][fc] = player
+            scored.append((score, fr, fc, tr, tc))
+
+        scored.sort(key=lambda x: -x[0])
+        if difficulty == 'medium':
+            top = scored[:max(1, len(scored) // 3)]
+            _, fr, fc, tr, tc = random.choice(top)
+        else:
+            _, fr, fc, tr, tc = scored[0]
+        return ('move', fr, fc, tr, tc)
 
     def check_game_over(self):
         """Check if the game is over."""
