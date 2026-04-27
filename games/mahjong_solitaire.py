@@ -329,6 +329,43 @@ class MahjongSolitaireGame(BaseGame):
             return matches[0]
         return None
 
+    side_labels = ("Player 1", "Player 2")
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        pairs = self._find_available_pairs()
+        if not pairs:
+            return "X X"
+
+        if difficulty == 'easy':
+            pos1, pos2 = random.choice(pairs)
+            return f"{pos1[0]},{pos1[1]},{pos1[2]} {pos2[0]},{pos2[1]},{pos2[2]}"
+
+        scored = []
+        for pos1, pos2 in pairs:
+            score = 0
+            saved_t1 = self.board[pos1]
+            saved_t2 = self.board[pos2]
+            del self.board[pos1]
+            del self.board[pos2]
+            new_free = len(self._get_free_tiles())
+            new_pairs = len(self._find_available_pairs())
+            score = new_free * 2 + new_pairs * 5
+            self.board[pos1] = saved_t1
+            self.board[pos2] = saved_t2
+            scored.append((score, pos1, pos2))
+
+        scored.sort(key=lambda x: -x[0])
+
+        if difficulty == 'medium':
+            top = scored[:max(1, len(scored) // 3)]
+            _, pos1, pos2 = random.choice(top)
+        else:
+            _, pos1, pos2 = scored[0]
+
+        return f"{pos1[0]},{pos1[1]},{pos1[2]} {pos2[0]},{pos2[1]},{pos2[2]}"
+
     def check_game_over(self):
         """Game ends when board is empty or no more pairs available."""
         if not self.board:

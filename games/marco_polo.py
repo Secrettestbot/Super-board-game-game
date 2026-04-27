@@ -448,6 +448,114 @@ class MarcoPoloGame(BaseGame):
 
         return False
 
+    side_labels = ("Player 1", "Player 2")
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        if self.phase == 'choose_character':
+            available = self.char_pool[:min(4, len(self.char_pool))]
+            if not available:
+                return ('choose_char', 0)
+            if difficulty == 'easy':
+                return ('choose_char', random.randint(0, len(available) - 1))
+            prefs = {'Matteo Polo': 10, 'Marco Polo': 9, 'Kublai Khan': 8,
+                     'Mercator': 8, 'Ibn Battuta': 7, 'Rashid al-Din': 7,
+                     'Berke Khan': 6, 'Wilhelm von Rubruk': 6, 'Niccolo Polo': 7}
+            best_idx = 0
+            best_val = -1
+            for i, char in enumerate(available):
+                val = prefs.get(char, 5)
+                if val > best_val:
+                    best_val = val
+                    best_idx = i
+            return ('choose_char', best_idx)
+
+        elif self.phase == 'roll':
+            return ('roll',)
+
+        elif self.phase == 'place_dice':
+            if not self.dice[cp]:
+                return ('end_placement',)
+            actions = list(ACTION_SPACES.keys())
+            if difficulty == 'easy':
+                die_idx = 0
+                action = random.choice(actions)
+                occupied = self.action_spaces_used.get(action, [])
+                if occupied and self.characters[cp] != 'Berke Khan':
+                    if self.resources[cp]['gold'] < self.dice[cp][die_idx]:
+                        return ('end_placement',)
+                return ('place_die', action, die_idx)
+
+            best_action = None
+            best_die = 0
+            best_score = -999
+            for ai, action in enumerate(actions):
+                for di in range(len(self.dice[cp])):
+                    die_val = self.dice[cp][di]
+                    occupied = self.action_spaces_used.get(action, [])
+                    cost = 0
+                    if occupied and self.characters[cp] != 'Berke Khan':
+                        cost = die_val
+                        if self.resources[cp]['gold'] < cost:
+                            continue
+                    score = 0
+                    if action == 'khan_favor':
+                        score = die_val - cost
+                    elif action == 'bazaar':
+                        amount = (die_val + 1) // 2
+                        if self.characters[cp] == 'Wilhelm von Rubruk':
+                            amount *= 2
+                        score = amount * 2 - cost
+                    elif action == 'contracts':
+                        score = 4 - cost
+                    elif action == 'travel':
+                        steps = max(1, die_val // 2)
+                        if self.characters[cp] == 'Marco Polo':
+                            steps += 1
+                        travel_cost = self._travel_cost(cp) * steps
+                        if self.resources[cp]['gold'] >= travel_cost + cost:
+                            score = steps * 3 - cost - travel_cost
+                            if difficulty == 'hard':
+                                current = self.positions[cp]
+                                fwd = [c for c in CITIES[current]['connections']
+                                       if CITIES[c]['pos'] > CITIES[current]['pos']]
+                                if fwd and 'Beijing' not in self.visited_cities[cp]:
+                                    score += 5
+                        else:
+                            score = -10
+                    elif action == 'city_action':
+                        city_res = CITIES[self.positions[cp]]['resources']
+                        score = sum(city_res.values()) * 2 - cost
+
+                    if score > best_score:
+                        best_score = score
+                        best_action = action
+                        best_die = di
+
+            if best_action and best_score > -5:
+                return ('place_die', best_action, best_die)
+            return ('end_placement',)
+
+        elif self.phase == 'fulfill':
+            contracts = self.contracts_held[cp]
+            for i, con in enumerate(contracts):
+                can = True
+                for r, needed in con['requires'].items():
+                    if self.resources[cp].get(r, 0) < needed:
+                        can = False
+                        break
+                if can:
+                    return ('fulfill', i)
+            return ('end_fulfill',)
+
+        elif self.phase == 'end_round':
+            return ('next_round',)
+
+        return ('end_placement',)
+
     def check_game_over(self):
         if self.round_num > self.max_rounds:
             self.game_over = True
