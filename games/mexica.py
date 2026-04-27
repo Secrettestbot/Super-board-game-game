@@ -24,6 +24,7 @@ class MexicaGame(BaseGame):
         "standard": "Full 11x11 board, 10 districts, 6 temples each",
         "quick": "Smaller 8x8 board, 6 districts, 4 temples each",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -410,6 +411,87 @@ class MexicaGame(BaseGame):
             # Tie with temples: split
             self.scores[1] += points // 2
             self.scores[2] += points // 2
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        fr, fc = self.founder_pos[p]
+        opp = 3 - p
+
+        candidates = []
+
+        if self.temples_remaining[p] > 0 and self.action_points >= 1:
+            for size in set(self.temple_sizes[p]):
+                for r in range(max(0, fr - 2), min(self.rows, fr + 3)):
+                    for c in range(max(0, fc - 2), min(self.cols, fc + 3)):
+                        if abs(fr - r) + abs(fc - c) <= 2 and self.board[r][c] == EMPTY:
+                            score = 30 + size * 10
+                            if self._adjacent_to_canal(r, c):
+                                score += 15
+                            candidates.append((f"temple {r} {c} {size}", score))
+
+        if self.districts_founded < len(self.required_districts) and self.action_points >= 2:
+            req_size = self.required_districts[self.districts_founded]
+            checked = set()
+            for r in range(self.rows):
+                for c in range(self.cols):
+                    if (r, c) in checked or self.board[r][c] in (CANAL, BRIDGE):
+                        continue
+                    area = self._find_enclosed_area(r, c)
+                    checked.update(area)
+                    if len(area) >= req_size:
+                        my_str = sum(ts for tr, tc, ts in self.temples[p] if (tr, tc) in area)
+                        opp_str = sum(ts for tr, tc, ts in self.temples[opp] if (tr, tc) in area)
+                        score = 50
+                        if my_str > opp_str:
+                            score += 40 + my_str * 10
+                        elif my_str > 0:
+                            score += 20
+                        else:
+                            score -= 10
+                        ar, ac = next(iter(area))
+                        candidates.append((f"found {ar} {ac}", score))
+
+        if self.action_points >= 2:
+            for r in range(max(0, fr - 2), min(self.rows, fr + 3)):
+                for c in range(max(0, fc - 2), min(self.cols, fc + 3)):
+                    if abs(fr - r) + abs(fc - c) <= 2 and self.board[r][c] == EMPTY:
+                        score = 15
+                        if self._adjacent_to_canal(r, c):
+                            score += 10
+                        candidates.append((f"canal {r} {c}", score))
+
+        for r in range(self.rows):
+            for c in range(self.cols):
+                if (r, c) == (fr, fc):
+                    continue
+                cell = self.board[r][c]
+                if cell.startswith("F") or cell.startswith("T"):
+                    continue
+                dist = abs(r - fr) + abs(c - fc)
+                path_cost = dist
+                if self.board[fr][fc] == CANAL or self._adjacent_to_canal(fr, fc):
+                    if self._adjacent_to_canal(r, c) or self.board[r][c] == CANAL:
+                        path_cost = 1
+                if path_cost > self.action_points:
+                    continue
+                center_dist = abs(r - self.rows // 2) + abs(c - self.cols // 2)
+                score = 10 - center_dist
+                empty_near = sum(1 for nr, nc in self._adjacent(r, c) if self.board[nr][nc] == EMPTY)
+                score += empty_near * 2
+                candidates.append((f"move {r} {c}", score))
+
+        candidates.append(("pass", 5))
+
+        if difficulty == 'easy':
+            return random.choice(candidates)[0]
+
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        if difficulty == 'medium':
+            top = candidates[:max(3, len(candidates) // 4)]
+            return random.choice(top)[0]
+        return candidates[0][0]
 
     def check_game_over(self):
         # Game ends when all districts are founded and scored,

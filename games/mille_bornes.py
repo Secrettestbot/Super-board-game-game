@@ -197,6 +197,7 @@ class MilleBornesGame(BaseGame):
         "standard": "Standard Mille Bornes (1000 km)",
         "short": "Short Race (700 km)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -596,6 +597,99 @@ class MilleBornesGame(BaseGame):
         """Undo the automatic draw at start of turn (put last card back)."""
         if ps.hand:
             self.deck.append(ps.hand.pop())
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        me = self._current_state()
+        opp = self._opponent_state()
+        hand = me.hand
+
+        if not hand:
+            return ("discard", 0)
+
+        if difficulty == 'easy':
+            idx = random.randrange(len(hand))
+            return random.choice([("play", idx), ("discard", idx)])
+
+        play_scores = []
+        for i, card in enumerate(hand):
+            score = -100
+
+            if card["type"] == SAFETY:
+                score = 80
+            elif card["type"] == REMEDY:
+                if card["name"] == "Go":
+                    if me.battle_area == "Stop" or (me.battle_area is None and not me.is_rolling):
+                        score = 70
+                elif card["name"] == "End of Limit":
+                    if me.speed_limit:
+                        score = 65
+                else:
+                    expected_hazard = HAZARD_FOR_REMEDY.get(card["name"])
+                    if me.battle_area == expected_hazard:
+                        score = 70
+            elif card["type"] == DISTANCE:
+                if me.can_play_distance(card["value"], self.target_miles):
+                    score = 40 + card["value"] // 10
+                    if card["value"] == 200:
+                        score = 55
+            elif card["type"] == HAZARD:
+                matching_safety = SAFETY_COUNTERS.get(card["name"])
+                if matching_safety and opp.has_safety(matching_safety):
+                    score = -100
+                elif card["name"] == "Speed Limit":
+                    if not opp.speed_limit and not opp.has_safety("Right of Way"):
+                        score = 35
+                elif card["name"] == "Stop":
+                    if opp.is_rolling or opp.has_safety("Right of Way"):
+                        score = 38
+                else:
+                    if opp.battle_area is None and (opp.is_rolling or opp.has_safety("Right of Way")):
+                        score = 36
+
+            play_scores.append((i, score))
+
+        play_scores.sort(key=lambda x: x[1], reverse=True)
+        best_idx, best_score = play_scores[0]
+
+        if best_score > 0:
+            if difficulty == 'medium':
+                good = [(i, s) for i, s in play_scores if s > 0]
+                if len(good) > 1:
+                    chosen = random.choice(good[:3])
+                    return ("play", chosen[0])
+            return ("play", best_idx)
+
+        discard_scores = []
+        for i, card in enumerate(hand):
+            score = 50
+            if card["type"] == SAFETY:
+                score = 10
+            elif card["type"] == REMEDY:
+                if card["name"] == "Go":
+                    score = 20
+                elif HAZARD_FOR_REMEDY.get(card["name"]) == me.battle_area:
+                    score = 15
+                else:
+                    score = 55
+            elif card["type"] == DISTANCE:
+                if card["value"] == 200 and me.two_hundreds_played >= 2:
+                    score = 90
+                elif me.mileage + card["value"] > self.target_miles:
+                    score = 85
+                else:
+                    score = 30
+            elif card["type"] == HAZARD:
+                ms = SAFETY_COUNTERS.get(card["name"])
+                if ms and opp.has_safety(ms):
+                    score = 90
+                else:
+                    score = 45
+            discard_scores.append((i, score))
+
+        discard_scores.sort(key=lambda x: x[1], reverse=True)
+        return ("discard", discard_scores[0][0])
 
     def check_game_over(self):
         """Check if the game is over."""
