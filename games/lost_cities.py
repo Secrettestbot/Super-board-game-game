@@ -336,6 +336,98 @@ class LostCitiesGame(BaseGame):
         self.pending_action = None
         return True
 
+    side_labels = ("Player 1", "Player 2")
+
+    def switch_player(self):
+        if self.phase == 'draw':
+            pass
+        else:
+            super().switch_player()
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        if self.phase == 'play':
+            hand = self.hands[cp]
+
+            if difficulty == 'easy':
+                card = random.choice(hand)
+                color, value = card
+                val_str = 'x' if value == INVESTMENT_SYMBOL else str(value)
+                if self._can_play_on_expedition(self.expeditions[cp][color], card):
+                    return ('play_phase', f'play {color} {val_str}')
+                return ('play_phase', f'discard {color} {val_str}')
+
+            best_play = None
+            best_play_score = -999
+            best_discard = None
+            best_discard_score = -999
+
+            for card in hand:
+                color, value = card
+                val_str = 'x' if value == INVESTMENT_SYMBOL else str(value)
+                expedition = self.expeditions[cp][color]
+
+                if self._can_play_on_expedition(expedition, card):
+                    score = 0
+                    if expedition:
+                        if value == INVESTMENT_SYMBOL:
+                            score = 15
+                        else:
+                            score = value
+                    else:
+                        if value == INVESTMENT_SYMBOL:
+                            score = 3
+                        elif value >= 7:
+                            score = value - 5
+                        else:
+                            score = -5
+                    if difficulty == 'hard' and expedition:
+                        _, _, _, proj = score_expedition(expedition + [card])
+                        score = proj
+                    if score > best_play_score:
+                        best_play_score = score
+                        best_play = f'play {color} {val_str}'
+
+                dscore = 0
+                if not expedition:
+                    dscore = (10 - (0 if value == INVESTMENT_SYMBOL else value))
+                else:
+                    dscore = -10
+                if dscore > best_discard_score:
+                    best_discard_score = dscore
+                    best_discard = f'discard {color} {val_str}'
+
+            if best_play and best_play_score > -3:
+                return ('play_phase', best_play)
+            if best_discard:
+                return ('play_phase', best_discard)
+            card = hand[0]
+            val_str = 'x' if card[1] == INVESTMENT_SYMBOL else str(card[1])
+            return ('play_phase', f'discard {card[0]} {val_str}')
+
+        best_draw = 'draw deck'
+        if difficulty == 'easy':
+            return ('draw_phase', best_draw)
+
+        best_score = 0
+        for color in self.colors:
+            if not self.discard_piles[color]:
+                continue
+            if self.pending_action and self.pending_action[0] == 'discard':
+                if self.pending_action[1][0] == color:
+                    continue
+            top = self.discard_piles[color][-1]
+            expedition = self.expeditions[cp][color]
+            if self._can_play_on_expedition(expedition, top):
+                score = 10 if expedition else (5 if top[1] != INVESTMENT_SYMBOL and top[1] >= 7 else 1)
+                if score > best_score:
+                    best_score = score
+                    best_draw = f'draw {color}'
+        return ('draw_phase', best_draw)
+
     def check_game_over(self):
         """Check if the round/game is over."""
         if len(self.deck) == 0:

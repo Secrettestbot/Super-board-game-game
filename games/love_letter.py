@@ -635,6 +635,83 @@ class LoveLetterGame(BaseGame):
 
     # -------------------------------------------------------- check_game_over
 
+    side_labels = ("Player 1", "Player 2")
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        if self.round_over:
+            return "next_round"
+
+        drawn = self._draw()
+        if drawn is None:
+            return "resolve"
+
+        self.hands[cp].append(drawn)
+        self._add_log(f"  {self.players[cp - 1]} draws a card.")
+
+        if self._must_play_countess(self.hands[cp]):
+            countess_val = self._countess_value()
+            idx = self.hands[cp].index(countess_val)
+            return ("play", idx)
+
+        hand = self.hands[cp]
+        princess_val = self._princess_value()
+
+        if difficulty == 'easy':
+            choices = [i for i in range(2) if hand[i] != princess_val]
+            if not choices:
+                choices = [0, 1]
+            return ("play", random.choice(choices))
+
+        opp = self._opponent()
+        scores = []
+        for i in range(2):
+            card = hand[i]
+            other = hand[1 - i]
+            score = 0
+
+            if card == princess_val:
+                score = -1000
+            elif card == self._countess_value():
+                score = 5
+            elif card == 4:
+                score = 20
+            elif card == 1:
+                score = 15 if not self.protected[opp] else 2
+            elif card == 5:
+                score = 10 if not self.protected[opp] else -5
+            elif card == 3:
+                if not self.protected[opp]:
+                    score = 18 if other > 4 else (5 if other > 2 else -5)
+                else:
+                    score = -3
+            elif card == 2:
+                score = 12 if not self.protected[opp] else 3
+            elif card == self._king_value():
+                score = 8 if other <= 3 else -3
+                if self.protected[opp]:
+                    score = -2
+            elif self.variation == "premium" and card == 0:
+                score = 3
+            elif self.variation == "premium" and card == 6:
+                score = 10
+
+            if difficulty == 'hard' and card != princess_val:
+                score -= card * 2
+
+            scores.append((score, i))
+
+        scores.sort(key=lambda x: -x[0])
+
+        if difficulty == 'medium' and len(scores) > 1:
+            if abs(scores[0][0] - scores[1][0]) < 5:
+                return ("play", random.choice([s[1] for s in scores]))
+
+        return ("play", scores[0][1])
+
     def check_game_over(self):
         # Check if someone won enough tokens
         for p in (1, 2):
