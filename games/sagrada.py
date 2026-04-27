@@ -120,6 +120,7 @@ class SagradaGame(BaseGame):
         "standard": "Standard Sagrada (pattern constraints, full scoring)",
         "beginner": "Beginner mode (open patterns, simplified objectives)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     ROWS = 4
     COLS = 5
@@ -494,6 +495,64 @@ class SagradaGame(BaseGame):
             return count
 
         return 0
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self._current_drafter()
+
+        if not self._has_valid_placement(p):
+            return "pass"
+
+        scored = []
+        for die_idx, die in enumerate(self.draft_pool):
+            for r in range(self.ROWS):
+                for c in range(self.COLS):
+                    if not self._is_valid_placement(p, r, c, die):
+                        continue
+                    score = 0
+                    if die["color"] == self.private_objectives[p]:
+                        score += die["value"] * 2
+                    else:
+                        score += die["value"]
+
+                    constraint = self.patterns[p][r][c]
+                    if constraint is not None:
+                        score += 3
+
+                    if r == 0 or r == self.ROWS - 1 or c == 0 or c == self.COLS - 1:
+                        pass
+                    else:
+                        score += 1
+
+                    if difficulty == "hard":
+                        for obj in self.public_objectives:
+                            if obj["id"] in ("row_color", "col_color"):
+                                score += 1
+                            elif obj["id"] == "color_diag":
+                                for dr, dc in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
+                                    nr, nc = r + dr, c + dc
+                                    if 0 <= nr < self.ROWS and 0 <= nc < self.COLS:
+                                        adj = self.windows[p][nr][nc]
+                                        if adj and adj["color"] == die["color"]:
+                                            score += 2
+
+                    if difficulty == "medium":
+                        score += rand.uniform(-2, 2)
+                    elif difficulty == "easy":
+                        score += rand.uniform(-5, 5)
+
+                    scored.append((score, f"{die_idx + 1} {r + 1} {c + 1}"))
+
+        if not scored:
+            return "pass"
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        if difficulty == "hard":
+            return scored[0][1]
+        elif difficulty == "easy":
+            return rand.choice(scored[:max(1, len(scored) // 3)])[1]
+        return rand.choice(scored[:3])[1] if len(scored) >= 3 else scored[0][1]
 
     def check_game_over(self):
         """Game over is handled in _advance_turn. No-op here."""

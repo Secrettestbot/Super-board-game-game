@@ -69,6 +69,7 @@ class RollThroughAgesGame(BaseGame):
         'standard': 'Standard monuments and developments',
         'iron_age': 'Extra developments and monuments',
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -362,6 +363,9 @@ class RollThroughAgesGame(BaseGame):
         return True
 
     # -- Game over ------------------------------------------------------- #
+
+    def get_ai_move(self):
+        return ('turn',)
 
     def check_game_over(self):
         all_done = all(
