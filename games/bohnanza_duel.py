@@ -432,6 +432,44 @@ class BohnanzaDuelGame(BaseGame):
         self.gift_area = []
         self.round_number += 1
 
+    def get_ai_move(self):
+        """Return an AI-generated move for any phase."""
+        cp = self.current_player
+        sp = str(cp)
+
+        if self.phase == "plant":
+            if self.plants_remaining <= 0 or not self.hands[sp]:
+                return {"action": "end_plant"}
+            bean = self.hands[sp][0]
+            field_idx = self._find_field_for_bean(cp, bean)
+            if field_idx is not None:
+                return {"action": "plant", "field": field_idx}
+            best_harvest = None
+            worst_val = float('inf')
+            for i, field in enumerate(self.fields[sp]):
+                if field:
+                    val = calc_harvest_value(field["bean"], field["count"])
+                    if val < worst_val:
+                        worst_val = val
+                        best_harvest = i
+            if best_harvest is not None:
+                return {"action": "harvest", "field": best_harvest}
+            return {"action": "end_plant"}
+
+        elif self.phase == "gift":
+            return {"action": "draw_gifts"}
+
+        elif self.phase == "resolve_gift":
+            if not self.gift_area:
+                return {"action": "end_gift"}
+            bean = self.gift_area[0]
+            field_idx = self._find_field_for_bean(cp, bean)
+            if field_idx is not None:
+                return {"action": "take_gift", "gift_idx": 0, "field": field_idx}
+            return {"action": "give_gift", "gift_idx": 0}
+
+        return {"action": "end_plant"}
+
     def check_game_over(self):
         # Game ends when deck runs out for 3rd time or someone reaches target
         for p in [1, 2]:

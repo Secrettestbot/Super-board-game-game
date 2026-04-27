@@ -275,6 +275,43 @@ class BlokusDuoGame(BaseGame):
         self.passed[cp] = False
         return True
 
+    def get_ai_move(self):
+        """Return an AI-generated move."""
+        import random
+        cp = self.current_player
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        n = self.board_size
+
+        valid_moves = []
+        piece_items = list(self.pieces[cp].items())
+        if difficulty == 'easy':
+            random.shuffle(piece_items)
+
+        for piece_name, cells in piece_items:
+            for rot_idx, orientation in enumerate(_all_orientations(cells)):
+                for r in range(n):
+                    for c in range(n):
+                        if self._can_place(cp, orientation, r, c):
+                            valid_moves.append(('place', piece_name, r, c, rot_idx, len(cells)))
+                            if difficulty == 'easy' and len(valid_moves) >= 3:
+                                m = random.choice(valid_moves)
+                                return ('place', m[1], m[2], m[3], m[4])
+
+        if not valid_moves:
+            return ('pass',)
+
+        if difficulty == 'easy':
+            m = random.choice(valid_moves)
+            return ('place', m[1], m[2], m[3], m[4])
+
+        valid_moves.sort(key=lambda x: -x[5])
+        if difficulty == 'medium':
+            top = valid_moves[:max(5, len(valid_moves) // 5)]
+            m = random.choice(top)
+        else:
+            m = valid_moves[0]
+        return ('place', m[1], m[2], m[3], m[4])
+
     def check_game_over(self):
         # Both passed or both out of pieces
         if self.passed[1] and self.passed[2]:

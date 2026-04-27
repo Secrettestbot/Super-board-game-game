@@ -307,6 +307,71 @@ class BlueLagoonGame(BaseGame):
 
         return True
 
+    def get_ai_move(self):
+        """Return an AI-generated move string."""
+        p = self.current_player
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.settlers_remaining[p] <= 0 and self.villages_remaining[p] <= 0:
+            return "pass"
+
+        occupied = set()
+        for pp in [1, 2]:
+            for pr, pc, _ in self.pieces[pp]:
+                occupied.add((pr, pc))
+
+        moves = []
+        for r in range(self.rows):
+            for c in range(self.cols):
+                if (r, c) in occupied:
+                    continue
+
+                if self.settlers_remaining[p] > 0:
+                    valid = False
+                    if self.phase == 1:
+                        valid = True
+                    elif not self.pieces[p]:
+                        valid = self.terrain[r][c] == LAND
+                    elif self._is_adjacent_to_own_piece(p, r, c):
+                        valid = True
+                    if valid:
+                        score = 0
+                        key = f"{r},{c}"
+                        if key in self.resources:
+                            score += 10
+                        iid = self._get_island_id(r, c)
+                        if iid and iid not in self.islands_connected[p]:
+                            score += 8
+                        elif iid:
+                            score += 3
+                        moves.append((f"settler {r} {c}", score))
+
+                if self.villages_remaining[p] > 0 and self.terrain[r][c] == LAND:
+                    valid = True
+                    if self.phase == 2 and self.pieces[p]:
+                        valid = self._is_adjacent_to_own_piece(p, r, c)
+                    if valid:
+                        score = 5
+                        key = f"{r},{c}"
+                        if key in self.resources:
+                            score += 10
+                        iid = self._get_island_id(r, c)
+                        if iid and iid not in self.islands_connected[p]:
+                            score += 12
+                        moves.append((f"village {r} {c}", score))
+
+        if not moves:
+            return "pass"
+
+        if difficulty == 'easy':
+            return random.choice(moves)[0]
+
+        moves.sort(key=lambda x: -x[1])
+        if difficulty == 'medium':
+            top = moves[:max(3, len(moves) // 5)]
+            return random.choice(top)[0]
+        return moves[0][0]
+
     def check_game_over(self):
         # Check if both players have no moves
         both_empty = all(
