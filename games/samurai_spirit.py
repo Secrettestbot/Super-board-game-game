@@ -17,6 +17,7 @@ class SamuraiSpiritGame(BaseGame):
         "hard": "Hard mode (3 waves, endurance 6)",
         "heroic": "Heroic mode (4 waves, endurance 5)",
     }
+    side_labels = ("Hayato", "Kenji")
 
     SAMURAI_NAMES = ["Hayato", "Kenji"]
     RAIDER_NAMES = [
@@ -286,6 +287,71 @@ class SamuraiSpiritGame(BaseGame):
         self.current_player = 1
         self._build_raider_deck()
         self._add_log(f"Wave {self.current_wave} begins! {self.raiders_remaining} raiders approach!")
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        if self.phase == "draw":
+            return "draw"
+        if self.phase == "wave_end":
+            return "next_wave"
+        if self.phase == "game_end":
+            return "end"
+
+        if self.phase == "action":
+            raider = self.current_raider
+            if not raider:
+                return "P"
+            r_str = raider["strength"]
+            total = self.combat_totals[cp]
+            headroom = self.endurance - total
+
+            if difficulty == "easy":
+                if headroom >= r_str:
+                    return rand.choice(["F", "F", "F", "D"])
+                return rand.choice(["D", "S", "P"])
+
+            other = 2 if cp == 1 else 1
+            other_headroom = self.endurance - self.combat_totals[other]
+
+            scored = []
+            if headroom >= r_str:
+                score = 10 + min(headroom - r_str, 3)
+                scored.append((score, "F"))
+            elif headroom > 0:
+                score = 3
+                scored.append((score, "F"))
+
+            d_score = 5
+            if self.barricades < self.max_barricades:
+                d_score += 3
+            scored.append((d_score, "D"))
+
+            if self.overwhelmed[other] or (other_headroom < 3 and total < self.endurance - 2):
+                s_score = 8
+                if self.overwhelmed[other]:
+                    s_score += 5
+                scored.append((s_score, "S"))
+
+            if headroom < r_str and self.raiders_remaining > 2:
+                p_score = 6
+                scored.append((p_score, "P"))
+
+            if not scored:
+                return "P"
+
+            if difficulty == "medium":
+                for i in range(len(scored)):
+                    scored[i] = (scored[i][0] + rand.uniform(-2, 2), scored[i][1])
+
+            scored.sort(key=lambda x: x[0], reverse=True)
+            if difficulty == "hard":
+                return scored[0][1]
+            return rand.choice(scored[:2])[1]
+
+        return "P"
 
     def check_game_over(self):
         if self.phase == "game_end":

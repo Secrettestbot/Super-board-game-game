@@ -21,6 +21,7 @@ class SantoriniGame(BaseGame):
         "standard": "Standard 5x5 Santorini",
         "simple": "No god powers, simpler display",
     }
+    side_labels = ("Player 1 (A,B)", "Player 2 (Y,Z)")
 
     # Worker labels per player
     WORKER_LABELS = {1: ["A", "B"], 2: ["Y", "Z"]}
@@ -248,6 +249,99 @@ class SantoriniGame(BaseGame):
         self.board[build_r][build_c] += 1
 
         return True
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        if self.phase == "place":
+            if difficulty == "easy":
+                while True:
+                    r, c = rand.randint(0, 4), rand.randint(0, 4)
+                    if not self._occupied(r, c):
+                        return ("place", r + 1, c + 1)
+            corners = [(0, 0), (0, 4), (4, 0), (4, 4)]
+            edges = [(r, c) for r in range(5) for c in range(5)
+                     if (r in (0, 4) or c in (0, 4)) and (r, c) not in corners]
+            for positions in [corners, edges]:
+                rand.shuffle(positions)
+                for r, c in positions:
+                    if not self._occupied(r, c):
+                        return ("place", r + 1, c + 1)
+            for r in range(5):
+                for c in range(5):
+                    if not self._occupied(r, c):
+                        return ("place", r + 1, c + 1)
+
+        labels = self.WORKER_LABELS[p]
+        all_moves = []
+        for label in labels:
+            if label not in self.workers:
+                continue
+            wr, wc = self.workers[label]
+            cur_level = self.board[wr][wc]
+            for mr, mc in self._adjacent(wr, wc):
+                if self._occupied(mr, mc):
+                    continue
+                if self.board[mr][mc] == 4:
+                    continue
+                dest_level = self.board[mr][mc]
+                if dest_level - cur_level > 1:
+                    continue
+                old_pos = self.workers[label]
+                self.workers[label] = (mr, mc)
+                for br, bc in self._adjacent(mr, mc):
+                    if not self._occupied(br, bc) and self.board[br][bc] < 4:
+                        all_moves.append((label, mr, mc, br, bc, dest_level, cur_level))
+                self.workers[label] = old_pos
+
+        if not all_moves:
+            return None
+
+        if difficulty == "easy":
+            m = rand.choice(all_moves)
+            return ("move", m[0], m[1] + 1, m[2] + 1, m[3] + 1, m[4] + 1)
+
+        scored = []
+        opp = 2 if p == 1 else 1
+        for label, mr, mc, br, bc, dest_level, cur_level in all_moves:
+            score = 0
+            if dest_level == 3:
+                score += 1000
+            score += dest_level * 10
+            if dest_level > cur_level:
+                score += 15
+            if self.board[br][bc] == 2:
+                near_opp = False
+                for ol in self.WORKER_LABELS[opp]:
+                    if ol in self.workers:
+                        owr, owc = self.workers[ol]
+                        if abs(owr - br) <= 1 and abs(owc - bc) <= 1:
+                            near_opp = True
+                if near_opp:
+                    score -= 20
+                else:
+                    score += 5
+            if self.board[br][bc] == 3:
+                score -= 30
+            for ol in self.WORKER_LABELS[opp]:
+                if ol in self.workers:
+                    owr, owc = self.workers[ol]
+                    if abs(owr - mr) <= 1 and abs(owc - mc) <= 1:
+                        if self.board[owr][owc] + 1 == dest_level:
+                            score -= 10
+            if difficulty == "medium":
+                score += rand.uniform(-5, 5)
+            scored.append((score, (label, mr, mc, br, bc)))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        if difficulty == "hard":
+            best = scored[0][1]
+        else:
+            best = rand.choice(scored[:3])[1] if len(scored) >= 3 else scored[0][1]
+        label, mr, mc, br, bc = best
+        return ("move", label, mr + 1, mc + 1, br + 1, bc + 1)
 
     def check_game_over(self):
         """Check if game is over. Win by moving onto level 3.

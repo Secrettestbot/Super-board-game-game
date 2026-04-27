@@ -17,6 +17,7 @@ class SailGame(BaseGame):
         "easy": "Calm seas (4 challenges)",
         "storm": "Storm voyage (6 challenges, harder hazards)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     SUITS = ["Anchor", "Compass", "Star"]
     SUIT_SYMBOLS = ["A", "C", "S"]
@@ -326,6 +327,66 @@ class SailGame(BaseGame):
         self._deal_hands()
         ch = self.challenges[self.current_challenge]
         self._add_log(f"Challenge {self.current_challenge + 1}: {ch['name']} - {ch['desc']}")
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.phase == "resolve":
+            return "resolve"
+        if self.phase == "challenge_end":
+            return "next_challenge"
+        if self.phase == "voyage_end":
+            return "end"
+
+        if self.phase in ("play_lead", "play_follow"):
+            player = self.lead_player if self.phase == "play_lead" else (2 if self.lead_player == 1 else 1)
+            hand = self.player_hands[player]
+            if not hand:
+                return ["auto", player]
+
+            if difficulty == "easy":
+                return ["play", player, rand.randint(0, len(hand) - 1)]
+
+            ch = self.challenges[self.current_challenge]
+            htype = ch["name"]
+            scored = []
+            for idx, card in enumerate(hand):
+                score = 0
+                if self.phase == "play_lead":
+                    if htype == "Reef" and card["suit"] == 0:
+                        score += 10
+                    if htype in ("Storm", "Pirates") and card["value"] >= 5:
+                        score += 10
+                    if htype == "Whirlpool" and card["value"] % 2 == 1:
+                        score += 5
+                    score += card["value"]
+                else:
+                    lead = self.lead_card
+                    would_win = (card["suit"] == lead["suit"] and card["value"] > lead["value"]) or card["suit"] == lead["suit"]
+                    if htype == "Reef":
+                        if would_win and card["suit"] == 0:
+                            score += 10
+                    if htype in ("Storm", "Pirates"):
+                        if would_win and card["value"] >= 5:
+                            score += 10
+                    if htype == "Kraken":
+                        if not would_win and card["value"] < 4:
+                            score += 10
+                    if htype == "Fog" and card["suit"] != lead["suit"]:
+                        score += 8
+                    if htype == "Whirlpool" and (lead["value"] + card["value"]) % 2 == 1:
+                        score += 8
+                    score += card["value"]
+                if difficulty == "medium":
+                    score += rand.uniform(-3, 3)
+                scored.append((score, idx))
+            scored.sort(key=lambda x: x[0], reverse=True)
+            if difficulty == "hard":
+                return ["play", player, scored[0][1]]
+            return ["play", player, rand.choice(scored[:2])[1]]
+
+        return None
 
     def check_game_over(self):
         if self.phase == "voyage_end":
