@@ -612,6 +612,107 @@ class CartographersGame(BaseGame):
             count += self._flood_fill(pmap, visited, r + dr, c + dc, target)
         return count
 
+    def get_ai_move(self):
+        """Return an AI-generated move."""
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        card = self.current_card
+        shape = card['shapes'][0]
+
+        if self.is_monster_card:
+            target = 2 if cp == 1 else 1
+            tmap = self.maps[str(target)]
+            options = []
+            for rot in [0, 90, 180, 270]:
+                for do_flip in [False, True]:
+                    transformed = self._get_transformed_shape(shape, rot, do_flip)
+                    for r in range(self.grid_size):
+                        for c in range(self.grid_size):
+                            valid = True
+                            for dr, dc in transformed:
+                                nr, nc = r + dr, c + dc
+                                if not (0 <= nr < self.grid_size and 0 <= nc < self.grid_size):
+                                    valid = False
+                                    break
+                                if tmap[nr][nc] != EMPTY:
+                                    valid = False
+                                    break
+                            if not valid:
+                                continue
+                            score = 0
+                            for dr, dc in transformed:
+                                nr, nc = r + dr, c + dc
+                                for ddr, ddc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                                    nnr, nnc = nr + ddr, nc + ddc
+                                    if 0 <= nnr < self.grid_size and 0 <= nnc < self.grid_size:
+                                        if tmap[nnr][nnc] == EMPTY:
+                                            score += 1
+                            options.append((r, c, rot, do_flip, score))
+
+            if not options:
+                return ('monster', '0,0', '0', 'n')
+
+            if difficulty == 'easy':
+                ch = random.choice(options)
+            else:
+                options.sort(key=lambda x: -x[4])
+                if difficulty == 'medium':
+                    top = options[:max(2, len(options) // 3)]
+                    ch = random.choice(top)
+                else:
+                    ch = options[0]
+
+            return ('monster', f'{ch[0]},{ch[1]}', str(ch[2]),
+                    'y' if ch[3] else 'n')
+
+        pmap = self.maps[str(cp)]
+        terrains = card['terrains']
+        options = []
+        for ti, terrain in enumerate(terrains):
+            for rot in [0, 90, 180, 270]:
+                for do_flip in [False, True]:
+                    transformed = self._get_transformed_shape(shape, rot, do_flip)
+                    for r in range(self.grid_size):
+                        for c in range(self.grid_size):
+                            valid = True
+                            for dr, dc in transformed:
+                                nr, nc = r + dr, c + dc
+                                if not (0 <= nr < self.grid_size and 0 <= nc < self.grid_size):
+                                    valid = False
+                                    break
+                                if pmap[nr][nc] != EMPTY:
+                                    valid = False
+                                    break
+                            if not valid:
+                                continue
+                            score = len(transformed)
+                            for dr, dc in transformed:
+                                nr, nc = r + dr, c + dc
+                                for ddr, ddc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                                    nnr, nnc = nr + ddr, nc + ddc
+                                    if 0 <= nnr < self.grid_size and 0 <= nnc < self.grid_size:
+                                        if pmap[nnr][nnc] == terrain:
+                                            score += 2
+                            options.append((ti, r, c, rot, do_flip, score))
+
+        if not options:
+            return ('place', '1', '0,0', '0', 'n')
+
+        if difficulty == 'easy':
+            ch = random.choice(options)
+        else:
+            options.sort(key=lambda x: -x[5])
+            if difficulty == 'medium':
+                top = options[:max(3, len(options) // 4)]
+                ch = random.choice(top)
+            else:
+                ch = options[0]
+
+        return ('place', str(ch[0] + 1), f'{ch[1]},{ch[2]}', str(ch[3]),
+                'y' if ch[4] else 'n')
+
     def check_game_over(self):
         """Check if the game is over."""
         if self.current_season >= self.num_seasons:

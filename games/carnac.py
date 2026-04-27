@@ -149,6 +149,54 @@ class CarnacGame(BaseGame):
         self.dominoes_placed += 1
         return True
 
+    # -------------------------------------------------------- AI
+    def get_ai_move(self):
+        """Return an AI-generated move."""
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        my_sym = self.current_player
+        opp_sym = 3 - my_sym
+
+        placements = []
+        for r in range(self.rows):
+            for c in range(self.cols):
+                if self.board[r][c] != 0:
+                    continue
+                if c + 1 < self.cols and self.board[r][c + 1] == 0:
+                    placements.append((r, c, 0, 1))
+                if r + 1 < self.rows and self.board[r + 1][c] == 0:
+                    placements.append((r, c, 1, 0))
+
+        if not placements:
+            return (0, 0, 0, 1, 1, 1)
+
+        sym_combos = [
+            (my_sym, my_sym), (my_sym, opp_sym), (opp_sym, my_sym),
+        ]
+
+        options = []
+        for r, c, dr, dc in placements:
+            for s1, s2 in sym_combos:
+                self.board[r][c] = s1
+                self.board[r + dr][c + dc] = s2
+                scores = self._compute_scores()
+                val = scores[my_sym] - scores[opp_sym]
+                self.board[r][c] = 0
+                self.board[r + dr][c + dc] = 0
+                options.append((r, c, dr, dc, s1, s2, val))
+
+        if difficulty == 'easy':
+            choice = random.choice(options)
+        else:
+            options.sort(key=lambda x: -x[6])
+            if difficulty == 'medium':
+                top = options[:max(3, len(options) // 4)]
+                choice = random.choice(top)
+            else:
+                choice = options[0]
+
+        return (choice[0], choice[1], choice[2], choice[3], choice[4], choice[5])
+
     # -------------------------------------------------------- check_game_over
     def check_game_over(self):
         # Game ends when no more dominoes can be placed

@@ -443,6 +443,88 @@ class CartographersHeroesGame(BaseGame):
             f"{SEASON_NAMES[self.season]} scored! "
             f"P1: +{self.season_scores['1'][-1]}, P2: +{self.season_scores['2'][-1]}")
 
+    def get_ai_move(self):
+        """Return an AI-generated move."""
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        sp = str(cp)
+
+        if self.phase == "score":
+            return {"action": "next_season"}
+
+        card = self.current_card
+        shape = card["shapes"][0]
+
+        if self.phase == "monster":
+            grid = self.grids[sp]
+            options = []
+            for r in range(self.GRID_SIZE):
+                for c in range(self.GRID_SIZE):
+                    if self._can_place_shape(grid, shape, r, c, "Monster"):
+                        score = 0
+                        for dr, dc in shape:
+                            nr, nc = r + dr, c + dc
+                            for ddr, ddc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                                nnr, nnc = nr + ddr, nc + ddc
+                                if 0 <= nnr < self.GRID_SIZE and 0 <= nnc < self.GRID_SIZE:
+                                    if grid[nnr][nnc] in ("Empty", "Ruins"):
+                                        score += 1
+                        options.append((r, c, score))
+
+            if not options:
+                return {"action": "place_monster", "row": 0, "col": 0,
+                        "placer": 2 if cp == 1 else 1}
+
+            if difficulty == 'easy':
+                r, c, _ = random.choice(options)
+            else:
+                options.sort(key=lambda x: -x[2])
+                if difficulty == 'medium':
+                    top = options[:max(2, len(options) // 3)]
+                    r, c, _ = random.choice(top)
+                else:
+                    r, c, _ = options[0]
+
+            return {"action": "place_monster", "row": r, "col": c,
+                    "placer": 2 if cp == 1 else 1}
+
+        if self.phase == "place":
+            grid = self.grids[sp]
+            terrains = card["terrains"]
+            options = []
+            for terrain in terrains:
+                for r in range(self.GRID_SIZE):
+                    for c in range(self.GRID_SIZE):
+                        if self._can_place_shape(grid, shape, r, c, terrain):
+                            score = len(shape)
+                            for dr, dc in shape:
+                                nr, nc = r + dr, c + dc
+                                for ddr, ddc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                                    nnr, nnc = nr + ddr, nc + ddc
+                                    if 0 <= nnr < self.GRID_SIZE and 0 <= nnc < self.GRID_SIZE:
+                                        if grid[nnr][nnc] == terrain:
+                                            score += 2
+                            options.append((r, c, terrain, score))
+
+            if not options:
+                return None
+
+            if difficulty == 'easy':
+                r, c, terrain, _ = random.choice(options)
+            else:
+                options.sort(key=lambda x: -x[3])
+                if difficulty == 'medium':
+                    top = options[:max(2, len(options) // 3)]
+                    r, c, terrain, _ = random.choice(top)
+                else:
+                    r, c, terrain, _ = options[0]
+
+            return {"action": "place", "row": r, "col": c,
+                    "terrain": terrain, "shape_idx": 0}
+
+        return None
+
     def check_game_over(self):
         if self.game_over:
             s1 = sum(self.season_scores["1"])

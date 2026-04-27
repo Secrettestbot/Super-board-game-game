@@ -611,6 +611,86 @@ class CarcassonneGame(BaseGame):
             self.meeples[mp - 1] += 1
             del self.meeple_map[(r, c)]
 
+    def get_ai_move(self):
+        """Return an AI-generated move."""
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.phase == "place":
+            if self.current_tile is None:
+                return None
+            td = TILE_DEFS[self.current_tile]
+            edges_base = (td[0], td[1], td[2], td[3])
+
+            options = []
+            for rot in range(4):
+                edges = rotate_tile(edges_base, rot)
+                for (r, c) in self._valid_positions(edges):
+                    score = 0
+                    for d_idx, (dr, dc) in enumerate(DIRECTIONS):
+                        nr, nc = r + dr, c + dc
+                        if (nr, nc) in self.board:
+                            score += 2
+                    for d_idx in range(4):
+                        if edges[d_idx] == 'C':
+                            score += 3
+                        elif edges[d_idx] == 'R':
+                            score += 1
+                    options.append((r, c, rot, score))
+
+            if not options:
+                return "skip"
+
+            if difficulty == 'easy':
+                choice = random.choice(options)
+            else:
+                options.sort(key=lambda x: -x[3])
+                if difficulty == 'medium':
+                    top = options[:max(2, len(options) // 3)]
+                    choice = random.choice(top)
+                else:
+                    choice = options[0]
+
+            return ("place", choice[0], choice[1], choice[2])
+
+        else:
+            r, c = self.last_placed
+            edges, has_mon = self.board[(r, c)]
+            available = self._available_meeple_features(r, c, edges, has_mon)
+
+            if not available or self.meeples[self.current_player - 1] <= 0:
+                return ("meeple", "pass")
+
+            if difficulty == 'easy':
+                if random.random() < 0.3:
+                    return ("meeple", "pass")
+                feature = random.choice(available)
+                if not self._feature_has_meeple(r, c, feature):
+                    return ("meeple", feature)
+                return ("meeple", "pass")
+
+            best_feature = None
+            best_score = -1
+            for feature in available:
+                if self._feature_has_meeple(r, c, feature):
+                    continue
+                score = 0
+                if feature == "city":
+                    score = 8
+                elif feature == "monastery":
+                    score = 6
+                elif feature == "road":
+                    score = 4
+                elif feature == "field":
+                    score = 2
+                if score > best_score:
+                    best_score = score
+                    best_feature = feature
+
+            if best_feature and (difficulty == 'hard' or random.random() < 0.7):
+                return ("meeple", best_feature)
+            return ("meeple", "pass")
+
     def check_game_over(self):
         """Check if the game is over (no tiles left)."""
         if self.current_tile is None and self.phase == "place":

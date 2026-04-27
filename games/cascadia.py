@@ -479,6 +479,69 @@ class CascadiaGame(BaseGame):
             score += len(adj_types) * FOX_SCORE_PER
         return score
 
+    def get_ai_move(self):
+        """Return an AI-generated move."""
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player - 1
+        board = self.boards[p]
+        adj = self._board_adjacent_positions(board)
+
+        if not adj or not self.display_pairs:
+            adj_list = sorted(adj) if adj else [(2, 4)]
+            return f"1 {adj_list[0][0]} {adj_list[0][1]} n"
+
+        options = []
+        for pair_idx, (tile, wildlife) in enumerate(self.display_pairs):
+            if tile is None:
+                continue
+            for r, c in adj:
+                score = 0
+                for nr, nc in hex_neighbors(r, c):
+                    if (nr, nc) in board and board[(nr, nc)]["terrain"] == tile["terrain"]:
+                        score += 3
+
+                can_place_w = wildlife and wildlife in tile["wildlife_slots"]
+                if can_place_w:
+                    score += 5
+                    if wildlife == "hawk":
+                        hawk_adj = any(
+                            (nr, nc) in board and board[(nr, nc)].get("placed_wildlife") == "hawk"
+                            for nr, nc in hex_neighbors(r, c)
+                        )
+                        if not hawk_adj:
+                            score += 3
+                    elif wildlife == "bear":
+                        for nr, nc in hex_neighbors(r, c):
+                            if (nr, nc) in board and board[(nr, nc)].get("placed_wildlife") == "bear":
+                                score += 4
+                                break
+                    elif wildlife == "fox":
+                        adj_types = set()
+                        for nr, nc in hex_neighbors(r, c):
+                            if (nr, nc) in board and board[(nr, nc)].get("placed_wildlife"):
+                                adj_types.add(board[(nr, nc)]["placed_wildlife"])
+                        score += len(adj_types) * 2
+
+                options.append((pair_idx, r, c, can_place_w, score))
+
+        if not options:
+            adj_list = sorted(adj)
+            return f"1 {adj_list[0][0]} {adj_list[0][1]} n"
+
+        if difficulty == 'easy':
+            choice = random.choice(options)
+        else:
+            options.sort(key=lambda x: -x[4])
+            if difficulty == 'medium':
+                top = options[:max(3, len(options) // 4)]
+                choice = random.choice(top)
+            else:
+                choice = options[0]
+
+        w = "y" if choice[3] else "n"
+        return f"{choice[0] + 1} {choice[1]} {choice[2]} {w}"
+
     def check_game_over(self):
         """Check if max turns reached."""
         if self.turns_taken >= self.max_turns * 2:  # 2 players
