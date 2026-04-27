@@ -68,6 +68,7 @@ class QuacksGame(BaseGame):
         'standard': 'Standard ingredient set',
         'herb_witches': 'Herb Witches variant with modified ingredients',
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -337,6 +338,69 @@ class QuacksGame(BaseGame):
         self.stopped = {1: False, 2: False}
         self.round_done_players = set()
         self.rat_tails = {1: 0, 2: 0}
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        if self.phase == 'draw':
+            if self.busted[p] or self.stopped[p]:
+                return ('next_player',)
+
+            white_s = self._white_sum(p)
+            if difficulty == "easy":
+                threshold = 5
+            elif difficulty == "hard":
+                threshold = 6
+            else:
+                threshold = 5
+
+            if white_s >= threshold:
+                return ('stop',)
+
+            if self.rubies[p] >= 2 and white_s >= 4:
+                whites_in_cauldron = [c for c in self.cauldrons[p] if c[0] == 'white']
+                if whites_in_cauldron:
+                    return ('ruby_return',)
+
+            if not self.bags[p]:
+                return ('stop',)
+
+            return ('draw',)
+
+        elif self.phase == 'buy':
+            shop = self._get_shop()
+            if difficulty == "easy":
+                affordable = [i for i, item in enumerate(shop) if self.coins[p] >= item['cost']]
+                if affordable and rand.random() < 0.7:
+                    return ('buy', rand.choice(affordable))
+                return ('done_buying',)
+
+            best_idx = None
+            best_val = -1
+            for i, item in enumerate(shop):
+                if self.coins[p] < item['cost']:
+                    continue
+                val = item['value'] * 3
+                if item['type'] == 'green':
+                    val += 5
+                elif item['type'] == 'blue':
+                    val += 3
+                elif item['type'] == 'red':
+                    val += 4
+                elif item['type'] == 'purple':
+                    val += 6
+                if difficulty == "medium":
+                    val += rand.uniform(-2, 2)
+                if val > best_val:
+                    best_val = val
+                    best_idx = i
+            if best_idx is not None:
+                return ('buy', best_idx)
+            return ('done_buying',)
+
+        return ('done_buying',)
 
     def check_game_over(self):
         if self.round_num > self.max_rounds:

@@ -16,6 +16,7 @@ class PuebloGame(BaseGame):
         "standard": "Standard (4x4 grid, 3 height levels)",
         "small": "Small (3x3 grid, 2 height levels)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     # Tetromino shapes as relative (row, col) offsets
     PIECES = {
@@ -395,6 +396,56 @@ class PuebloGame(BaseGame):
         self.round_number += 1
 
         return True
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        if not self.pieces_remaining[p]:
+            return "pass"
+
+        pieces = self.pieces_remaining[p]
+        best_move = None
+        best_score = -9999
+
+        candidates = []
+        for piece_name in pieces:
+            rotations = self._get_all_rotations(piece_name)
+            for rot_idx, cells in enumerate(rotations):
+                for r in range(self.grid_size):
+                    for c in range(self.grid_size):
+                        if self._can_place_piece(cells, r, c):
+                            candidates.append((piece_name, rot_idx, r, c, cells))
+
+        if not candidates:
+            return "pass"
+
+        if difficulty == "easy":
+            pick = rand.choice(candidates)
+            return {"piece": pick[0], "rotation": pick[1], "row": pick[2], "col": pick[3]}
+
+        sample = candidates if difficulty == "hard" else rand.sample(candidates, min(20, len(candidates)))
+
+        for piece_name, rot_idx, r, c, cells in sample:
+            score = 0
+            for dr, dc in cells:
+                pr, pc = r + dr, c + dc
+                height = len(self.grid[pr][pc])
+                score -= height * 3
+                on_edge = pr == 0 or pr == self.grid_size - 1 or pc == 0 or pc == self.grid_size - 1
+                if not on_edge:
+                    score += 5
+                if height > 0 and self.grid[pr][pc][-1] != p:
+                    score += 4
+
+            if difficulty == "medium":
+                score += rand.uniform(-3, 3)
+            if score > best_score:
+                best_score = score
+                best_move = {"piece": piece_name, "rotation": rot_idx, "row": r, "col": c}
+
+        return best_move if best_move else {"piece": candidates[0][0], "rotation": candidates[0][1], "row": candidates[0][2], "col": candidates[0][3]}
 
     def check_game_over(self):
         # Game ends when all pieces are placed

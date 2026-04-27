@@ -60,6 +60,7 @@ class PuertoRicoCardGame(BaseGame):
         'standard': 'Standard game (12 rounds)',
         'quick': 'Quick game (8 rounds)',
     }
+    side_labels = ("Player 1", "Player 2")
 
     def setup(self):
         self.max_rounds = 12 if self.variation == 'standard' else 8
@@ -350,6 +351,84 @@ class PuertoRicoCardGame(BaseGame):
             return True  # switch to other player's role pick
         else:
             return True  # switch to other player for role execution
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        if self.role_phase:
+            available_roles = [r for r in ROLES if r not in self.roles_used]
+            if not available_roles:
+                return ('choose_role', ROLES[0])
+
+            if difficulty == "easy":
+                return ('choose_role', rand.choice(available_roles))
+
+            scored = []
+            for role in available_roles:
+                score = 0
+                if role == 'Builder' and self.hands[p]:
+                    affordable = [c for c in self.hands[p]
+                                  if c['cost'] <= len(self.hands[p])]
+                    if affordable:
+                        best_vp = max(c['vp'] + (2 if c.get('production') else 0) for c in affordable)
+                        score = 10 + best_vp * 3
+                elif role == 'Producer':
+                    prod_count = sum(1 for c in self.tableaux[p]
+                                    if c['production'] and c['production'] not in self.goods[p])
+                    score = prod_count * 8
+                elif role == 'Trader' and self.goods[p]:
+                    total_val = sum(TRADE_VALUES.get(g, 1) for g in self.goods[p])
+                    score = total_val * 4 + 5
+                elif role == 'Councillor':
+                    score = 12 if len(self.hands[p]) < 4 else 6
+                elif role == 'Prospector':
+                    score = 4
+                if difficulty == "medium":
+                    score += rand.uniform(-3, 3)
+                scored.append((score, role))
+            scored.sort(reverse=True)
+            return ('choose_role', scored[0][1])
+
+        if self.chosen_role == 'Builder':
+            if not self.hands[p]:
+                return ('pass',)
+            discount = 1 if p == self.role_chooser else 0
+            if self._has_building(p, 'Smithy'):
+                discount += 1
+            best_idx = None
+            best_val = -1
+            for i, card in enumerate(self.hands[p]):
+                eff_cost = max(0, card['cost'] - discount)
+                if len(self.hands[p]) - 1 >= eff_cost:
+                    val = card['vp'] * 3 + (5 if card.get('production') else 0)
+                    if card['cost'] >= 6:
+                        val += 8
+                    if difficulty == "medium":
+                        val += rand.uniform(-2, 2)
+                    if val > best_val:
+                        best_val = val
+                        best_idx = i
+            if best_idx is not None:
+                return ('build', best_idx)
+            return ('pass',)
+
+        elif self.chosen_role == 'Producer':
+            return ('produce_all',)
+
+        elif self.chosen_role == 'Trader':
+            if self.goods[p]:
+                return ('trade_all',)
+            return ('pass',)
+
+        elif self.chosen_role == 'Councillor':
+            return ('councillor',)
+
+        elif self.chosen_role == 'Prospector':
+            return ('prospector',)
+
+        return ('pass',)
 
     def check_game_over(self):
         if self.round_num > self.max_rounds:

@@ -73,6 +73,7 @@ class QuartoGame(BaseGame):
         "standard": "Standard Quarto (lines only)",
         "advanced": "Advanced Quarto (lines + 2x2 squares count)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation or "standard")
@@ -262,6 +263,105 @@ class QuartoGame(BaseGame):
         return True
 
     # -------------------------------------------------------- check_game_over
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.first_turn:
+            if difficulty == "easy":
+                return {'row': None, 'col': None, 'chosen_piece': rand.choice(self.available)}
+            piece = rand.choice(self.available)
+            return {'row': None, 'col': None, 'chosen_piece': piece}
+
+        empty = [(r, c) for r in range(4) for c in range(4) if self.board[r][c] is None]
+
+        if difficulty == "easy":
+            r, c = rand.choice(empty)
+            remaining = [p for p in self.available if p != self.piece_to_place] if self.available else []
+            chosen = rand.choice(remaining) if remaining else None
+            return {'row': r, 'col': c, 'chosen_piece': chosen}
+
+        def _check_win_at(board, r, c):
+            for line in self._get_lines_through(r, c):
+                pieces = [board[lr][lc] for lr, lc in line]
+                if all(p is not None for p in pieces) and pieces_share_attribute(pieces):
+                    return True
+            return False
+
+        best_place = None
+        best_place_score = -9999
+        for r, c in empty:
+            self.board[r][c] = self.piece_to_place
+            if _check_win_at(self.board, r, c):
+                self.board[r][c] = None
+                remaining = [p for p in self.available] if self.available else []
+                chosen = rand.choice(remaining) if remaining else None
+                return {'row': r, 'col': c, 'chosen_piece': chosen}
+
+            score = 0
+            for line in self._get_lines_through(r, c):
+                pieces = [self.board[lr][lc] for lr, lc in line]
+                filled = [p for p in pieces if p is not None]
+                if len(filled) >= 2 and pieces_share_attribute(filled):
+                    score += len(filled) ** 2
+            if difficulty == "medium":
+                score += rand.uniform(-2, 2)
+            if score > best_place_score:
+                best_place_score = score
+                best_place = (r, c)
+            self.board[r][c] = None
+
+        r, c = best_place if best_place else empty[0]
+        self.board[r][c] = self.piece_to_place
+
+        remaining = list(self.available)
+        if not remaining:
+            self.board[r][c] = None
+            return {'row': r, 'col': c, 'chosen_piece': None}
+
+        best_piece = None
+        best_piece_score = 9999
+        for piece in remaining:
+            danger = 0
+            for er, ec in empty:
+                if (er, ec) == (r, c):
+                    continue
+                self.board[er][ec] = piece
+                if _check_win_at(self.board, er, ec):
+                    danger += 100
+                else:
+                    for line in self._get_lines_through(er, ec):
+                        pcs = [self.board[lr][lc] for lr, lc in line]
+                        filled = [p for p in pcs if p is not None]
+                        if len(filled) >= 3 and pieces_share_attribute(filled):
+                            danger += 5
+                self.board[er][ec] = None
+            if difficulty == "medium":
+                danger += rand.uniform(-3, 3)
+            if danger < best_piece_score:
+                best_piece_score = danger
+                best_piece = piece
+
+        self.board[r][c] = None
+        return {'row': r, 'col': c, 'chosen_piece': best_piece}
+
+    def _get_lines_through(self, r, c):
+        lines = []
+        lines.append([(r, cc) for cc in range(4)])
+        lines.append([(rr, c) for rr in range(4)])
+        if r == c:
+            lines.append([(i, i) for i in range(4)])
+        if r + c == 3:
+            lines.append([(i, 3 - i) for i in range(4)])
+        if self.variation == "advanced":
+            for dr in range(max(0, r - 1), min(3, r) + 1):
+                for dc in range(max(0, c - 1), min(3, c) + 1):
+                    if dr <= r and dc <= c and dr + 1 >= r and dc + 1 >= c:
+                        sq = [(dr, dc), (dr, dc + 1), (dr + 1, dc), (dr + 1, dc + 1)]
+                        if all(0 <= sr < 4 and 0 <= sc < 4 for sr, sc in sq):
+                            lines.append(sq)
+        return lines
+
     def check_game_over(self):
         """Check if someone has won or if the board is full (draw)."""
         if self._check_win():
