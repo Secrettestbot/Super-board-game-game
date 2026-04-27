@@ -26,6 +26,7 @@ class ShutTheBoxGame(BaseGame):
         "standard": "Standard (tiles 1-9)",
         "twelve": "Extended (tiles 1-12)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -316,6 +317,51 @@ class ShutTheBoxGame(BaseGame):
             # Player 2 just finished; start new round
             self._start_new_round()
             self.current_player = 1
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+        tiles = set(self.tiles_up[player])
+
+        while True:
+            can_one = not ({7, 8, 9} & tiles)
+            num_dice = 1 if can_one and max(tiles) <= 6 else 2
+            if can_one and difficulty == "easy":
+                num_dice = rand.choice([1, 2])
+
+            dice_vals = [rand.randint(1, 6) for _ in range(num_dice)]
+            total = sum(dice_vals)
+            combos = _find_combinations(sorted(tiles), total)
+
+            if not combos:
+                score = sum(tiles)
+                return ("end_turn", score, False)
+
+            if difficulty == "easy":
+                chosen = rand.choice(combos)
+            else:
+                scored = []
+                for combo in combos:
+                    s = 0
+                    s += sum(combo)
+                    if max(combo) >= 7:
+                        s += 5
+                    if len(combo) >= 2:
+                        s += 2
+                    if difficulty == "medium":
+                        s += rand.uniform(-2, 2)
+                    scored.append((s, combo))
+                scored.sort(reverse=True)
+                chosen = scored[0][1]
+
+            for t in chosen:
+                tiles.discard(t)
+
+            if not tiles:
+                return ("end_turn", 0, True)
+
+        self.tiles_up[player] = tiles
 
     def check_game_over(self):
         """Check if the game is over."""

@@ -16,6 +16,7 @@ class SkullGame(BaseGame):
         "standard": "Standard Skull",
         "extended": "Extended (5 discs)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -455,6 +456,72 @@ class SkullGame(BaseGame):
             super().switch_player()
 
     # -------------------------------------------------------- check_game_over
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        opp = self._opponent(cp)
+
+        if self.phase == "round_over":
+            return "next_round"
+
+        if self.phase == "flipping":
+            return "flip"
+
+        if self.phase == "placing":
+            hand = self._hand(cp)
+            if not hand:
+                return "start_bid"
+
+            if not self.has_placed[cp]:
+                if "skull" in hand and difficulty != "easy" and rand.random() < 0.3:
+                    return "place skull"
+                if "rose" in hand:
+                    return "place rose"
+                return "place skull"
+
+            if self.has_placed[opp] and len(self.stacks[cp]) >= 1:
+                own_roses = self.stacks[cp].count("rose")
+                total_placed = self._total_placed()
+                if own_roses == len(self.stacks[cp]) and own_roses >= 1:
+                    if difficulty == "hard" and rand.random() < 0.5:
+                        return f"bid {min(own_roses, total_placed)}"
+                    elif rand.random() < 0.3:
+                        return f"bid {min(own_roses, total_placed)}"
+
+            if "rose" in hand and rand.random() < 0.7:
+                return "place rose"
+            if "skull" in hand and rand.random() < 0.4:
+                return "place skull"
+            if "rose" in hand:
+                return "place rose"
+            return "place skull"
+
+        if self.phase == "bidding":
+            total_placed = self._total_placed()
+            own_roses = self.stacks[cp].count("rose")
+
+            if difficulty == "easy":
+                if rand.random() < 0.5:
+                    return "pass"
+                new_bid = self.current_bid + 1
+                if new_bid <= total_placed:
+                    return f"bid {new_bid}"
+                return "pass"
+
+            safe_bid = own_roses
+            if self.current_bid >= safe_bid:
+                if difficulty == "hard" and self.current_bid < total_placed and rand.random() < 0.2:
+                    return f"bid {self.current_bid + 1}"
+                return "pass"
+
+            new_bid = self.current_bid + 1
+            if new_bid <= min(safe_bid, total_placed):
+                return f"bid {new_bid}"
+            return "pass"
+
+        return "pass"
+
     def check_game_over(self):
         # Win by score
         for p in (1, 2):
