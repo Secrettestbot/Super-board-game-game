@@ -355,6 +355,110 @@ class FungiGame(BaseGame):
 
         return False
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        hand = self.hands[p]
+
+        mushroom_counts = {}
+        for c in hand:
+            if c["type"] == "mushroom":
+                mushroom_counts[c["name"]] = mushroom_counts.get(c["name"], 0) + 1
+
+        cookable = {k: v for k, v in mushroom_counts.items() if v >= 3}
+        sellable = {k: v for k, v in mushroom_counts.items() if v >= 2}
+
+        if difficulty == 'easy':
+            actions = []
+            if cookable and self.pans[p] > 0:
+                for name in cookable:
+                    actions.append({"action": "cook", "mushroom": name})
+            if self.path:
+                for i in range(len(self.path)):
+                    cost = max(0, i - 1)
+                    if cost <= self.sticks[p]:
+                        card = self.path[i]
+                        if card["type"] == "pan" or len(hand) < self.hand_limit:
+                            actions.append({"action": "take", "index": i, "cost": cost})
+            if sellable:
+                for name in sellable:
+                    actions.append({"action": "sell", "mushroom": name})
+            if actions:
+                return random.choice(actions)
+            if self.path and (self.path[0]["type"] == "pan" or len(hand) < self.hand_limit):
+                return {"action": "take", "index": 0, "cost": 0}
+            if sellable:
+                return {"action": "sell", "mushroom": list(sellable.keys())[0]}
+            return {"action": "take", "index": 0, "cost": 0}
+
+        best_action = None
+        best_score = -999
+
+        if cookable and self.pans[p] > 0:
+            for name, count in cookable.items():
+                points = MUSHROOM_POINTS[name] * count
+                score = points * 2
+                if difficulty == 'hard':
+                    score += MUSHROOM_POINTS[name]
+                if score > best_score:
+                    best_score = score
+                    best_action = {"action": "cook", "mushroom": name}
+
+        if self.path:
+            for i in range(len(self.path)):
+                cost = max(0, i - 1)
+                if cost > self.sticks[p]:
+                    continue
+                card = self.path[i]
+                if card["type"] != "pan" and len(hand) >= self.hand_limit:
+                    continue
+                score = 0
+                if card["type"] == "mushroom":
+                    pts = MUSHROOM_POINTS.get(card["name"], 0)
+                    count_in_hand = mushroom_counts.get(card["name"], 0)
+                    score = pts + count_in_hand * 3
+                    if count_in_hand >= 2:
+                        score += 10
+                elif card["type"] == "pan":
+                    score = 8 if self.pans[p] == 0 else 3
+                elif card["type"] == "night":
+                    score = -2
+                score -= cost * 2
+                if difficulty == 'hard' and card["type"] == "mushroom":
+                    opp = 2 if p == 1 else 1
+                    opp_count = self._count_in_hand(opp, card["name"])
+                    if opp_count >= 2:
+                        score += 4
+                if score > best_score:
+                    best_score = score
+                    best_action = {"action": "take", "index": i, "cost": cost}
+
+        if sellable:
+            for name, count in sellable.items():
+                sticks_gained = count
+                score = sticks_gained * 2
+                score -= MUSHROOM_POINTS[name]
+                if self.sticks[p] == 0:
+                    score += 5
+                if score > best_score:
+                    best_score = score
+                    best_action = {"action": "sell", "mushroom": name}
+
+        if best_action:
+            return best_action
+
+        if self.path:
+            for i in range(len(self.path)):
+                cost = max(0, i - 1)
+                if cost <= self.sticks[p]:
+                    card = self.path[i]
+                    if card["type"] == "pan" or len(hand) < self.hand_limit:
+                        return {"action": "take", "index": i, "cost": cost}
+        if sellable:
+            return {"action": "sell", "mushroom": list(sellable.keys())[0]}
+        return {"action": "take", "index": 0, "cost": 0}
+
     def check_game_over(self):
         # Game ends when deck is empty and path is empty
         if not self.deck and not self.path:

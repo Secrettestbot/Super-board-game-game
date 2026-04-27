@@ -658,6 +658,96 @@ class GinRummyGame(BaseGame):
 
         self.phase = "scoring"
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player - 1
+
+        if self.phase in ("scoring", "round_over"):
+            return "continue"
+        if self.phase == "knock_melds":
+            return ""
+        if self.phase == "opponent_layoff":
+            for i, card in enumerate(self.opponent_deadwood):
+                if can_lay_off(card, self.knocker_melds):
+                    return str(i + 1)
+            return "done"
+        if self.phase == "draw":
+            return self._ai_draw(difficulty, cp)
+        if self.phase == "discard":
+            return self._ai_discard(difficulty, cp)
+        return ""
+
+    def _ai_draw(self, difficulty, cp):
+        import random
+        hand = self.hands[cp]
+
+        if difficulty == 'easy':
+            if self.discard_pile and random.random() < 0.3:
+                return "draw discard"
+            return "draw deck"
+
+        if self.discard_pile:
+            discard_card = self.discard_pile[-1]
+            test_hand = list(hand) + [discard_card]
+            _, _, new_dw = find_best_melds(test_hand)
+            _, _, cur_dw = find_best_melds(hand)
+            improvement = cur_dw - (new_dw - card_value(discard_card))
+            threshold = 3 if difficulty == 'hard' else 5
+            if improvement >= threshold:
+                return "draw discard"
+
+        return "draw deck"
+
+    def _ai_discard(self, difficulty, cp):
+        import random
+        hand = self.hands[cp]
+
+        for i in range(len(hand)):
+            remaining = hand[:i] + hand[i + 1:]
+            _, _, dw = find_best_melds(remaining)
+            if dw == 0:
+                return f"gin {i + 1}"
+
+        melds, dw_cards, dw_val = find_best_melds(hand)
+        if dw_val == 0 and len(hand) == 11:
+            return "big gin"
+
+        best_knock_idx = None
+        best_knock_dw = 999
+        for i in range(len(hand)):
+            remaining = hand[:i] + hand[i + 1:]
+            _, _, dw = find_best_melds(remaining)
+            if dw <= self.knock_value and dw < best_knock_dw:
+                best_knock_dw = dw
+                best_knock_idx = i
+
+        if best_knock_idx is not None:
+            if difficulty == 'easy':
+                if best_knock_dw <= 3:
+                    return f"knock {best_knock_idx + 1}"
+            elif difficulty == 'medium':
+                if best_knock_dw <= 6:
+                    return f"knock {best_knock_idx + 1}"
+            else:
+                return f"knock {best_knock_idx + 1}"
+
+        if difficulty == 'easy':
+            return str(random.randint(1, len(hand)))
+
+        best_discard = None
+        best_dw = 999
+        for i in range(len(hand)):
+            remaining = hand[:i] + hand[i + 1:]
+            _, _, dw = find_best_melds(remaining)
+            if dw < best_dw:
+                best_dw = dw
+                best_discard = i
+
+        if best_discard is not None:
+            return f"discard {best_discard + 1}"
+        return "discard 1"
+
     def check_game_over(self):
         """Check if the game is over after a move."""
         if self.game_over:
