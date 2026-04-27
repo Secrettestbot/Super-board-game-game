@@ -263,6 +263,50 @@ class CatanDiceGame(BaseGame):
 
         return False
 
+    def get_ai_move(self):
+        """Return an AI-generated move."""
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.phase == 'roll':
+            if not self.dice and self.rolls_left == 3:
+                return ('roll_all',)
+
+            if self.rolls_left == 0:
+                return ('done_rolling',)
+
+            if difficulty == 'easy':
+                if random.random() < 0.5:
+                    return ('keep_all',)
+                return ('reroll',)
+
+            keep_indices = []
+            for i, d in enumerate(self.dice):
+                if d in ('Ore', 'Gold', 'Wheat'):
+                    keep_indices.append(i)
+                elif d in ('Brick', 'Wood', 'Sheep') and difficulty == 'hard':
+                    keep_indices.append(i)
+
+            if keep_indices and len(keep_indices) < len(self.dice):
+                return ('keep', keep_indices)
+
+            if self.rolls_left > 0:
+                return ('reroll',)
+            return ('done_rolling',)
+
+        elif self.phase == 'build':
+            priority = ['city', 'settlement', 'knight', 'road']
+            if difficulty == 'easy':
+                random.shuffle(priority)
+
+            for building in priority:
+                if self._can_build(building):
+                    return ('build', building)
+
+            return ('end_build',)
+
+        return ('roll_all',)
+
     def check_game_over(self):
         if self.round_num > self.max_rounds:
             self.game_over = True

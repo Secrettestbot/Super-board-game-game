@@ -442,6 +442,89 @@ class CenturySpiceGame(BaseGame):
         print("  Unknown action. Use: play, acquire, claim, or rest")
         return False
 
+    def get_ai_move(self):
+        """Return an AI-generated move."""
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        pi = self.current_player - 1
+
+        claimable = []
+        for i, card in enumerate(self.point_row):
+            can_claim = all(
+                self.player_spices[pi].get(s, 0) >= v
+                for s, v in card["cost"].items()
+            )
+            if can_claim:
+                score = card["points"]
+                if i == 0 and self.gold_coins > 0:
+                    score += 3
+                elif i <= 1 and self.silver_coins > 0:
+                    score += 1
+                claimable.append((i, score))
+
+        if claimable:
+            claimable.sort(key=lambda x: -x[1])
+            if difficulty == 'easy':
+                idx, _ = random.choice(claimable)
+            else:
+                idx, _ = claimable[0]
+            return f"claim {idx + 1}"
+
+        if self.player_hand[pi]:
+            playable = []
+            for i, card in enumerate(self.player_hand[pi]):
+                score = 0
+                if card["action"] == "produce":
+                    total = _total_spices(self.player_spices[pi])
+                    room = self.CARAVAN_LIMIT - total
+                    if room <= 0:
+                        continue
+                    score = sum(SPICE_VALUES.get(s, 1) * v
+                                for s, v in card.get("gain", {}).items())
+                elif card["action"] == "upgrade":
+                    has_upgradeable = any(
+                        self.player_spices[pi].get(s, 0) > 0
+                        for s in SPICE_ORDER[:-1]
+                    )
+                    if not has_upgradeable:
+                        continue
+                    score = card.get("upgrades", 0) * 2
+                elif card["action"] == "trade":
+                    can_trade = all(
+                        self.player_spices[pi].get(s, 0) >= v
+                        for s, v in card.get("give", {}).items()
+                    )
+                    if not can_trade:
+                        continue
+                    give_val = sum(SPICE_VALUES.get(s, 1) * v
+                                   for s, v in card.get("give", {}).items())
+                    recv_val = sum(SPICE_VALUES.get(s, 1) * v
+                                   for s, v in card.get("receive", {}).items())
+                    score = recv_val - give_val
+                playable.append((i, score))
+
+            if playable:
+                if difficulty == 'easy':
+                    idx, _ = random.choice(playable)
+                else:
+                    playable.sort(key=lambda x: -x[1])
+                    idx, _ = playable[0]
+                return f"play {idx + 1}"
+
+        if len(self.player_hand[pi]) < 3 and self.merchant_row:
+            affordable = [i for i in range(len(self.merchant_row))
+                          if self.player_spices[pi].get("Y", 0) >= i]
+            if affordable:
+                return f"acquire {affordable[0] + 1}"
+
+        if self.player_discard[pi]:
+            return "rest"
+
+        if self.merchant_row:
+            return "acquire 1"
+
+        return "rest"
+
     def check_game_over(self):
         pi = self.current_player - 1
         if not self.final_round and len(self.player_claimed[pi]) >= self.target_cards:

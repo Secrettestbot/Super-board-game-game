@@ -277,6 +277,44 @@ class CathedralGame(BaseGame):
 
         return True
 
+    def get_ai_move(self):
+        """Return an AI-generated move."""
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+
+        if not self.pieces[player]:
+            return ("pass",)
+
+        options = []
+        center = self.size // 2
+        for piece_size in set(self.pieces[player]):
+            base = self.PIECE_SHAPES[piece_size]["base"]
+            for rotation in (0, 90, 180, 270):
+                cells = self._get_rotated_shape(base, rotation)
+                for r in range(self.size):
+                    for c in range(self.size):
+                        if self._can_place(cells, r, c, player):
+                            score = piece_size * 3
+                            for dr, dc in cells:
+                                score -= abs(r + dr - center) + abs(c + dc - center)
+                            options.append((piece_size, r, c, rotation, score))
+
+        if not options:
+            return ("pass",)
+
+        if difficulty == 'easy':
+            choice = random.choice(options)
+        else:
+            options.sort(key=lambda x: -x[4])
+            if difficulty == 'medium':
+                top = options[:max(3, len(options) // 4)]
+                choice = random.choice(top)
+            else:
+                choice = options[0]
+
+        return ("place", choice[0], choice[1], choice[2], choice[3])
+
     def check_game_over(self):
         """Check if the game is over."""
         # Game over if both players pass consecutively
