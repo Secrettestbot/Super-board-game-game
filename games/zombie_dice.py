@@ -46,6 +46,7 @@ class ZombieDiceGame(BaseGame):
         "standard": "Standard Zombie Dice (13 dice cup)",
         "double_feature": "Double Feature (adds special dice)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -305,6 +306,56 @@ class ZombieDiceGame(BaseGame):
         )
         self._start_turn()
         return True
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.phase == "bust":
+            return "bust"
+        if self.phase == "turn_over":
+            return "end_turn"
+        if self.phase == "draw_roll":
+            return "roll"
+
+        # decide phase: roll or stop
+        shotguns = self.turn_shotguns
+        brains = self.turn_brains
+
+        if difficulty == 'easy':
+            if shotguns >= 2:
+                return "stop" if rand.random() < 0.5 else "roll"
+            return "roll"
+
+        red_in_hand = sum(1 for c in self.runners_in_hand if c == "red")
+        green_in_hand = sum(1 for c in self.runners_in_hand if c == "green")
+        risk = shotguns * 3 + red_in_hand * 2 - green_in_hand
+
+        if difficulty == 'hard':
+            opp = self._opponent()
+            behind = self.scores[opp] - self.scores[self.current_player]
+            if self.final_round and brains + self.scores[self.current_player] <= self.scores[opp]:
+                return "roll"
+            if shotguns >= 2:
+                if brains >= 4 or (brains >= 2 and risk >= 6):
+                    return "stop"
+                if red_in_hand >= 2:
+                    return "stop"
+                return "roll" if rand.random() < 0.3 else "stop"
+            if brains >= 5:
+                return "stop"
+            if risk >= 7 and brains >= 3:
+                return "stop"
+            return "roll"
+
+        # medium
+        if shotguns >= 2:
+            if brains >= 3:
+                return "stop"
+            return "roll" if rand.random() < 0.35 else "stop"
+        if brains >= 4 and risk >= 5:
+            return "stop"
+        return "roll"
 
     # -------------------------------------------------------- switch_player
     def switch_player(self):

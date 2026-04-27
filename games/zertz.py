@@ -15,6 +15,8 @@ class ZertzGame(BaseGame):
         "quick": "Quick ZÈRTZ (19 spaces)",
     }
 
+    side_labels = ("Player 1", "Player 2")
+
     # Hex directions (axial coordinates)
     DIRS = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, -1), (-1, 1)]
 
@@ -324,6 +326,122 @@ class ZertzGame(BaseGame):
             self.captured[self.current_player].append(cap_marble)
 
         return True
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+
+        if self.must_capture:
+            sequences = self._get_all_capture_sequences()
+            if not sequences:
+                return ""
+            if difficulty == 'easy':
+                path, captured = rand.choice(sequences)
+                return " ".join(f"{q},{r}" for q, r in path)
+
+            scored = []
+            for path, captured in sequences:
+                score = 0.0
+                for _, marble in captured:
+                    if marble == 'W':
+                        score += 5
+                    elif marble == 'G':
+                        score += 3
+                    else:
+                        score += 1.5
+                my_caps = list(self.captured[player])
+                for _, marble in captured:
+                    my_caps.append(marble)
+                w = my_caps.count('W')
+                g = my_caps.count('G')
+                b = my_caps.count('B')
+                if w >= 2 or g >= 3 or b >= 4 or (w >= 1 and g >= 1 and b >= 1):
+                    score += 50
+                score += len(captured) * 2
+                scored.append((score, path))
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'hard':
+                path = scored[0][1]
+            else:
+                top = scored[:max(2, len(scored) // 3)]
+                path = rand.choice(top)[1]
+            return " ".join(f"{q},{r}" for q, r in path)
+
+        # Place move: pick color, pick position, pick space to remove
+        available_colors = [c for c, n in self.pool.items() if n > 0]
+        if not available_colors:
+            return ""
+
+        empty_positions = [p for p in self.board if self.board[p] is None]
+        if not empty_positions:
+            return ""
+
+        removable_after = []
+        for pos in empty_positions:
+            self.board[pos] = 'X'
+            rem = [p for p in self.board if p != pos and self.board[p] is None and self._is_edge(p)]
+            self.board[pos] = None
+            if rem:
+                removable_after.append((pos, rem))
+
+        if not removable_after:
+            rem_spaces = self._removable_spaces()
+            if not rem_spaces or not empty_positions:
+                return ""
+            color = rand.choice(available_colors)
+            pos = rand.choice(empty_positions)
+            rp = rand.choice(rem_spaces)
+            return f"{color} {pos[0]},{pos[1]} remove {rp[0]},{rp[1]}"
+
+        if difficulty == 'easy':
+            color = rand.choice(available_colors)
+            pos, rems = rand.choice(removable_after)
+            rp = rand.choice(rems)
+            return f"{color} {pos[0]},{pos[1]} remove {rp[0]},{rp[1]}"
+
+        my_caps = self.captured[player]
+        w, g, b = my_caps.count('W'), my_caps.count('G'), my_caps.count('B')
+        if w >= 1 and g >= 1:
+            color_pref = ['B', 'G', 'W']
+        elif w >= 1 and b >= 1:
+            color_pref = ['G', 'B', 'W']
+        elif g >= 1 and b >= 1:
+            color_pref = ['W', 'G', 'B']
+        elif w >= 1:
+            color_pref = ['W', 'G', 'B']
+        elif g >= 2:
+            color_pref = ['G', 'W', 'B']
+        elif b >= 3:
+            color_pref = ['B', 'W', 'G']
+        else:
+            color_pref = ['W', 'G', 'B']
+
+        color = None
+        for c in color_pref:
+            if c in available_colors:
+                color = c
+                break
+        if color is None:
+            color = available_colors[0]
+
+        scored = []
+        for pos, rems in removable_after:
+            for rp in rems:
+                score = 0.0
+                dist_center = abs(pos[0]) + abs(pos[1]) + abs(pos[0] + pos[1])
+                score += 5 - dist_center * 0.5
+                rp_dist = abs(rp[0]) + abs(rp[1]) + abs(rp[0] + rp[1])
+                score += rp_dist * 0.3
+                scored.append((score, pos, rp))
+        scored.sort(key=lambda x: -x[0])
+        if difficulty == 'hard':
+            pos, rp = scored[0][1], scored[0][2]
+        else:
+            top = scored[:max(3, len(scored) // 3)]
+            pick = rand.choice(top)
+            pos, rp = pick[1], pick[2]
+        return f"{color} {pos[0]},{pos[1]} remove {rp[0]},{rp[1]}"
 
     def check_game_over(self):
         for p in [1, 2]:

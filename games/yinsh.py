@@ -54,6 +54,7 @@ class YinshGame(BaseGame):
         "standard": "Standard YINSH",
         "blitz": "Blitz YINSH (first to 2 rings)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     # Hex directions on an 11x11 grid: the six hex directions.
     # We use axial-like coordinates on a square grid offset system.
@@ -523,6 +524,110 @@ class YinshGame(BaseGame):
             self.pending_rows = other_rows
             self.pending_row_player = other
             self.phase = 'remove_row'
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+
+        if self.phase == 'placement':
+            empty = [p for p in self.valid_positions if self.board[p] == EMPTY]
+            if not empty:
+                return ('place_ring', list(self.valid_positions)[0])
+            if difficulty == 'easy':
+                return ('place_ring', rand.choice(empty))
+            center_r, center_c = 5, 5
+            scored = []
+            for p in empty:
+                dist = max(abs(p[0] - center_r), abs(p[1] - center_c), abs(p[0] + p[1] - center_r - center_c))
+                lines = 0
+                for dr, dc in self.HEX_DIRS:
+                    nr, nc = p[0] + dr, p[1] + dc
+                    if (nr, nc) in self.valid_positions:
+                        lines += 1
+                score = lines * 2 - dist
+                scored.append((score, p))
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'hard':
+                return ('place_ring', scored[0][1])
+            top = scored[:max(3, len(scored) // 3)]
+            return ('place_ring', rand.choice(top)[1])
+
+        if self.phase == 'remove_row':
+            if len(self.pending_rows) == 1:
+                return ('remove_row', 0)
+            if difficulty == 'easy':
+                return ('remove_row', rand.randrange(len(self.pending_rows)))
+            return ('remove_row', 0)
+
+        if self.phase == 'remove_ring':
+            rings = self._get_rings(player)
+            if len(rings) == 1:
+                return ('remove_ring', rings[0])
+            if difficulty == 'easy':
+                return ('remove_ring', rand.choice(rings))
+            center_r, center_c = 5, 5
+            scored = []
+            for rp in rings:
+                dests = self._find_valid_ring_destinations(rp)
+                dist = max(abs(rp[0] - center_r), abs(rp[1] - center_c), abs(rp[0] + rp[1] - center_r - center_c))
+                score = -len(dests) + dist * 0.5
+                scored.append((score, rp))
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'hard':
+                return ('remove_ring', scored[0][1])
+            top = scored[:max(2, len(scored) // 2)]
+            return ('remove_ring', rand.choice(top)[1])
+
+        # Main phase
+        rings = self._get_rings(player)
+        movable = []
+        for rp in rings:
+            dests = self._find_valid_ring_destinations(rp)
+            if dests:
+                movable.append((rp, dests))
+        if not movable:
+            return ('pass',)
+
+        if difficulty == 'easy':
+            rp, dests = rand.choice(movable)
+            return ('move', rp, rand.choice(dests))
+
+        marker = _marker_for(player)
+        opp_marker = _marker_for(3 - player)
+        best_moves = []
+        for rp, dests in movable:
+            for dest in dests:
+                score = 0.0
+                dr = 0 if dest[0] == rp[0] else (1 if dest[0] > rp[0] else -1)
+                dc = 0 if dest[1] == rp[1] else (1 if dest[1] > rp[1] else -1)
+                r, c = rp[0] + dr, rp[1] + dc
+                my_flips = 0
+                opp_flips = 0
+                while (r, c) != dest:
+                    cell = self.board.get((r, c))
+                    if cell == opp_marker:
+                        my_flips += 1
+                    elif cell == marker:
+                        opp_flips += 1
+                    r += dr
+                    c += dc
+                score += my_flips * 3 - opp_flips * 3
+                center_r, center_c = 5, 5
+                dest_dist = max(abs(dest[0] - center_r), abs(dest[1] - center_c),
+                               abs(dest[0] + dest[1] - center_r - center_c))
+                score -= dest_dist * 0.3
+                my_count = sum(1 for p in self.valid_positions if self.board.get(p) == marker)
+                if my_count + my_flips >= 4:
+                    score += 5
+                best_moves.append((score, rp, dest))
+
+        best_moves.sort(key=lambda x: -x[0])
+        if difficulty == 'hard':
+            return ('move', best_moves[0][1], best_moves[0][2])
+        top = best_moves[:max(3, len(best_moves) // 3)]
+        pick = rand.choice(top)
+        return ('move', pick[1], pick[2])
 
     def check_game_over(self):
         """Check if a player has removed enough rings to win."""

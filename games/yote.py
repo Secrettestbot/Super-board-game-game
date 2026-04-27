@@ -17,6 +17,8 @@ class YoteGame(BaseGame):
 
     SYMBOLS = {0: " ", 1: "\u25cf", 2: "\u25cb"}  # ● and ○
 
+    side_labels = ("Player 1", "Player 2")
+
     BOARD_CONFIGS = {
         "standard": {"rows": 5, "cols": 6, "pieces": 12},
         "small": {"rows": 4, "cols": 5, "pieces": 8},
@@ -325,6 +327,141 @@ class YoteGame(BaseGame):
         if self.pending_removal:
             return
         super().switch_player()
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+        opponent = 3 - player
+
+        if self.pending_removal:
+            opp_pieces = [(r, c) for r in range(self.rows) for c in range(self.cols)
+                          if self.board[r][c] == opponent]
+            if not opp_pieces:
+                return ("remove", 0, 0)
+            if difficulty == 'easy':
+                r, c = rand.choice(opp_pieces)
+                return ("remove", r, c)
+            scored = []
+            for r, c in opp_pieces:
+                score = 0.0
+                adj = self._get_adjacent(r, c)
+                for nr, nc in adj:
+                    if self.board[nr][nc] == opponent:
+                        score += 2
+                cr, cc = self.rows / 2.0, self.cols / 2.0
+                score += 3 - (abs(r - cr) + abs(c - cc))
+                scored.append((score, r, c))
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'hard':
+                r, c = scored[0][1], scored[0][2]
+            else:
+                top = scored[:max(2, len(scored) // 2)]
+                pick = rand.choice(top)
+                r, c = pick[1], pick[2]
+            return ("remove", r, c)
+
+        can_place = self.reserve[player] > 0
+        my_pieces = [(r, c) for r in range(self.rows) for c in range(self.cols)
+                     if self.board[r][c] == player]
+
+        captures = []
+        simple_moves = []
+        for fr, fc in my_pieces:
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = fr + dr, fc + dc
+                if 0 <= nr < self.rows and 0 <= nc < self.cols and self.board[nr][nc] == 0:
+                    simple_moves.append((fr, fc, nr, nc))
+                tr, tc = fr + 2 * dr, fc + 2 * dc
+                mr, mc = fr + dr, fc + dc
+                if (0 <= tr < self.rows and 0 <= tc < self.cols
+                        and self.board[mr][mc] == opponent and self.board[tr][tc] == 0):
+                    captures.append((fr, fc, tr, tc))
+
+        if difficulty == 'easy':
+            all_moves = []
+            if captures:
+                for fr, fc, tr, tc in captures:
+                    all_moves.append(("move", fr, fc, tr, tc))
+            if simple_moves:
+                for fr, fc, tr, tc in simple_moves:
+                    all_moves.append(("move", fr, fc, tr, tc))
+            if can_place:
+                empties = [(r, c) for r in range(self.rows) for c in range(self.cols)
+                           if self.board[r][c] == 0]
+                for r, c in empties:
+                    all_moves.append(("place", r, c))
+            if all_moves:
+                return rand.choice(all_moves)
+            empties = [(r, c) for r in range(self.rows) for c in range(self.cols)
+                       if self.board[r][c] == 0]
+            if empties and can_place:
+                r, c = rand.choice(empties)
+                return ("place", r, c)
+            return ("place", 0, 0)
+
+        scored_moves = []
+        for fr, fc, tr, tc in captures:
+            score = 15.0
+            cr, cc = self.rows / 2.0, self.cols / 2.0
+            score += 2 - (abs(tr - cr) + abs(tc - cc)) * 0.3
+            scored_moves.append((score, ("move", fr, fc, tr, tc)))
+
+        for fr, fc, tr, tc in simple_moves:
+            score = 1.0
+            cr, cc = self.rows / 2.0, self.cols / 2.0
+            score += 2 - (abs(tr - cr) + abs(tc - cc)) * 0.3
+            safe = True
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = tr + dr, tc + dc
+                jr, jc = tr - dr, tc - dc
+                if (0 <= nr < self.rows and 0 <= nc < self.cols
+                        and self.board[nr][nc] == opponent
+                        and 0 <= jr < self.rows and 0 <= jc < self.cols
+                        and self.board[jr][jc] == 0):
+                    safe = False
+                    break
+            if not safe:
+                score -= 5
+            scored_moves.append((score, ("move", fr, fc, tr, tc)))
+
+        if can_place:
+            empties = [(r, c) for r in range(self.rows) for c in range(self.cols)
+                       if self.board[r][c] == 0]
+            for r, c in empties:
+                score = 3.0
+                cr, cc = self.rows / 2.0, self.cols / 2.0
+                score += 2 - (abs(r - cr) + abs(c - cc)) * 0.3
+                adj_friends = sum(1 for nr, nc in self._get_adjacent(r, c)
+                                  if self.board[nr][nc] == player)
+                score += adj_friends * 1.5
+                safe = True
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = r + dr, c + dc
+                    jr, jc = r - dr, c - dc
+                    if (0 <= nr < self.rows and 0 <= nc < self.cols
+                            and self.board[nr][nc] == opponent
+                            and 0 <= jr < self.rows and 0 <= jc < self.cols
+                            and self.board[jr][jc] == 0):
+                        safe = False
+                        break
+                if not safe:
+                    score -= 4
+                scored_moves.append((score, ("place", r, c)))
+
+        if not scored_moves:
+            empties = [(r, c) for r in range(self.rows) for c in range(self.cols)
+                       if self.board[r][c] == 0]
+            if empties and can_place:
+                r, c = rand.choice(empties)
+                return ("place", r, c)
+            return ("place", 0, 0)
+
+        scored_moves.sort(key=lambda x: -x[0])
+        if difficulty == 'hard':
+            return scored_moves[0][1]
+        top = scored_moves[:max(3, len(scored_moves) // 3)]
+        return rand.choice(top)[1]
 
     # -------------------------------------------------------- check_game_over
     def check_game_over(self):
