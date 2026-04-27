@@ -41,6 +41,7 @@ class XiangqiGame(BaseGame):
         "standard": "Standard Xiangqi",
         "small": "Half-board Xiangqi (5x9, fewer pieces)",
     }
+    side_labels = ("Red", "Black")
 
     def __init__(self, variation=None):
         super().__init__(variation or "standard")
@@ -545,6 +546,67 @@ class XiangqiGame(BaseGame):
                     if self._get_legal_moves(r, c):
                         return True
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        color = self.current_player
+
+        all_moves = []
+        for r in range(self.rows):
+            for c in range(self.cols):
+                piece = self.board[r][c]
+                if piece is not None and piece_color(piece) == color:
+                    legal = self._get_legal_moves(r, c)
+                    for tr, tc in legal:
+                        all_moves.append((r, c, tr, tc))
+
+        if not all_moves:
+            return "a1 a1"
+
+        if difficulty == 'easy':
+            fr, fc, tr, tc = rand.choice(all_moves)
+            return f"{self._square_name(fr, fc)} {self._square_name(tr, tc)}"
+
+        piece_val = {'K': 999, 'R': 9, 'C': 4.5, 'H': 4, 'A': 2, 'E': 2, 'S': 1}
+        opp = 2 if color == 1 else 1
+
+        scored = []
+        for fr, fc, tr, tc in all_moves:
+            score = 0
+            piece = self.board[fr][fc]
+            captured = self.board[tr][tc]
+            if captured:
+                score += piece_val.get(captured.upper(), 1) * 10
+
+            score += (4 - abs(tc - 4)) * 0.1
+
+            old_board = [row[:] for row in self.board]
+            old_gp = dict(self.general_pos)
+            self.board[tr][tc] = piece
+            self.board[fr][fc] = None
+            if piece.upper() == 'K':
+                self.general_pos[color] = (tr, tc)
+            if self._is_in_check(opp):
+                score += 3
+            self.board = old_board
+            self.general_pos = old_gp
+
+            if piece.upper() == 'S' and self._crossed_river(tr, color):
+                score += 1
+
+            scored.append((score, fr, fc, tr, tc))
+
+        scored.sort(key=lambda x: -x[0])
+
+        if difficulty == 'hard':
+            choice = scored[0]
+        else:
+            top = scored[:max(1, len(scored) // 3 + 1)]
+            choice = rand.choice(top)
+
+        _, fr, fc, tr, tc = choice
+        return f"{self._square_name(fr, fc)} {self._square_name(tr, tc)}"
 
     def check_game_over(self):
         opponent = 2 if self.current_player == 1 else 1

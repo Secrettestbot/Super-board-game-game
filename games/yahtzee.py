@@ -84,6 +84,7 @@ class YahtzeeGame(BaseGame):
         "standard": "Standard Yahtzee",
         "triple": "Triple Yahtzee (3x score sheet)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -355,6 +356,8 @@ class YahtzeeGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move. Returns True if valid (turn may continue internally)."""
+        if isinstance(move, tuple) and move[0] == "ai_done":
+            return True
         action = move[0]
 
         if action == 'roll':
@@ -457,6 +460,99 @@ class YahtzeeGame(BaseGame):
     # ------------------------------------------------------------------ #
     #  Game over
     # ------------------------------------------------------------------ #
+
+    def _ai_decide_keep(self, difficulty):
+        dice = list(self.dice)
+        counts = [0] * 7
+        for d in dice:
+            counts[d] += 1
+        max_count = max(counts[1:])
+        max_face = counts[1:].index(max_count) + 1
+
+        if max_count >= 4:
+            return {i for i in range(5) if dice[i] == max_face}
+        if max_count >= 3:
+            if difficulty == 'easy':
+                return None
+            return {i for i in range(5) if dice[i] == max_face}
+        s = sorted(set(dice))
+        if len(s) >= 4:
+            return None
+        if max_count == 2 and difficulty != 'easy':
+            return {i for i in range(5) if dice[i] == max_face}
+        if difficulty == 'easy':
+            return None
+        highest = max(dice)
+        return {i for i in range(5) if dice[i] == highest}
+
+    def _ai_choose_category(self, difficulty):
+        import random as rand
+        player = self.current_player
+        dice = list(self.dice)
+
+        best_cat = None
+        best_col = 0
+        best_val = -999
+
+        for col in range(self.num_columns):
+            for cat in ALL_CATEGORIES:
+                if self.scores[player][col][cat] is not None:
+                    continue
+                score = _calc_score(dice, cat)
+                value = score
+
+                if cat in UPPER_CATEGORIES and difficulty != 'easy':
+                    upper_so_far = self._upper_total(player, col)
+                    if upper_so_far < 63 and upper_so_far + score >= 63:
+                        value += 35
+
+                if score == 0 and difficulty != 'easy':
+                    if cat == 'yahtzee':
+                        value -= 25
+                    elif cat == 'lg_straight':
+                        value -= 15
+                    elif cat == 'full_house':
+                        value -= 8
+
+                if difficulty == 'easy':
+                    value += rand.random() * 5
+
+                if value > best_val:
+                    best_val = value
+                    best_cat = cat
+                    best_col = col
+
+        if best_cat is None:
+            for col in range(self.num_columns):
+                for cat in ALL_CATEGORIES:
+                    if self.scores[player][col][cat] is None:
+                        return (cat, col)
+
+        return (best_cat, best_col)
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        for i in range(5):
+            self.dice[i] = rand.randint(1, 6)
+        self.rolls_left = 2
+
+        for _ in range(2):
+            if self.rolls_left <= 0:
+                break
+            keep_set = self._ai_decide_keep(difficulty)
+            if keep_set is None:
+                break
+            for i in range(5):
+                if i not in keep_set:
+                    self.dice[i] = rand.randint(1, 6)
+            self.rolls_left -= 1
+
+        best_cat, best_col = self._ai_choose_category(difficulty)
+        self._apply_score(best_cat, best_col)
+
+        return ("ai_done",)
 
     def check_game_over(self):
         """Check if all categories are filled for both players."""

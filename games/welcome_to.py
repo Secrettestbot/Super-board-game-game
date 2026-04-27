@@ -48,6 +48,7 @@ class WelcomeToGame(BaseGame):
         "standard": "Standard Game",
         "halloween": "Halloween Theme",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -368,6 +369,74 @@ class WelcomeToGame(BaseGame):
             self._flip_cards()
             self.current_player = 1
             return True
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        sp = str(cp)
+
+        if difficulty == 'easy':
+            for ci, (number, action) in enumerate(self.flipped):
+                placements = self._get_valid_placements(cp, number)
+                if placements:
+                    si, hi = rand.choice(placements)
+                    move = {"action": "place", "combo": ci, "number": number,
+                            "street": si, "house": hi, "act_action": action}
+                    if action == "Pool" and hi in self.pool_positions[si] and not self.pools[sp][si][hi]:
+                        move["pool"] = True
+                    return move
+            return {"action": "refuse"}
+
+        best_score = -999
+        best_move = None
+
+        for ci, (number, action) in enumerate(self.flipped):
+            nums_to_try = [number]
+            if action == "Temp":
+                nums_to_try = [max(1, min(15, number + a)) for a in range(-2, 3)]
+
+            for num in nums_to_try:
+                placements = self._get_valid_placements(cp, num)
+                for si, hi in placements:
+                    score = 0
+                    filled = sum(1 for x in self.streets[sp][si] if x is not None)
+                    score += filled * 0.5
+
+                    pool_bonus = False
+                    if action == "Pool" and hi in self.pool_positions[si] and not self.pools[sp][si][hi]:
+                        score += 5
+                        pool_bonus = True
+                    if action == "Landscaper":
+                        score += 3
+                    if action == "Agent":
+                        score += 2
+
+                    fence_pos = None
+                    if action == "Surveyor":
+                        fence_opts = []
+                        if hi > 0 and not self.fences[sp][si][hi - 1]:
+                            fence_opts.append(hi - 1)
+                        if hi < STREET_SIZES[si] - 1 and not self.fences[sp][si][hi]:
+                            fence_opts.append(hi)
+                        if fence_opts:
+                            fence_pos = fence_opts[0]
+                            score += 2
+
+                    if difficulty == 'medium':
+                        score += rand.random()
+
+                    if score > best_score:
+                        best_score = score
+                        move = {"action": "place", "combo": ci, "number": num,
+                                "street": si, "house": hi, "act_action": action}
+                        if pool_bonus:
+                            move["pool"] = True
+                        if fence_pos is not None:
+                            move["fence"] = fence_pos
+                        best_move = move
+
+        return best_move if best_move else {"action": "refuse"}
 
     def check_game_over(self):
         # Game ends after ~25 rounds or when all streets filled or 3 refusals

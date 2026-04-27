@@ -126,6 +126,7 @@ class WingspanCardGame(BaseGame):
         "standard": "Standard game - 4 rounds, 8 turns per round",
         "quick": "Quick game - 3 rounds, 5 turns per round",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -592,6 +593,62 @@ class WingspanCardGame(BaseGame):
             for i in range(2):
                 print(f"  {self.players[i]}: {scores[i]} -> earns {self.round_scores[i][-1]} points")
             input("\n  Press Enter to continue...")
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        pi = self.current_player - 1
+
+        if difficulty == 'easy':
+            actions = []
+            if self.hands[pi]:
+                for i, bird in enumerate(self.hands[pi]):
+                    if bird.habitat in HABITATS and len(self.habitats[pi][bird.habitat]) < 5:
+                        has_food = all(self.food[pi].get(f, 0) >= 1 for f in bird.food_cost)
+                        col = len(self.habitats[pi][bird.habitat])
+                        egg_cost = 1 if col >= 2 else (2 if col >= 4 else 0)
+                        total_eggs = sum(b.eggs for h in HABITATS for b in self.habitats[pi][h])
+                        if has_food and total_eggs >= egg_cost:
+                            actions.append(("play", i, bird.habitat))
+            actions.extend([("food",), ("egg",), ("draw", "deck")])
+            return rand.choice(actions)
+
+        scored = []
+
+        for i, bird in enumerate(self.hands[pi]):
+            if len(self.habitats[pi][bird.habitat]) >= 5:
+                continue
+            has_food = all(self.food[pi].get(f, 0) >= 1 for f in bird.food_cost)
+            col = len(self.habitats[pi][bird.habitat])
+            egg_cost = 1 if col >= 2 else (2 if col >= 4 else 0)
+            total_eggs = sum(b.eggs for h in HABITATS for b in self.habitats[pi][h])
+            if has_food and total_eggs >= egg_cost:
+                score = bird.points + bird.egg_capacity * 0.5
+                if "when activated" in bird.power.lower():
+                    score += 2
+                scored.append((score, ("play", i, bird.habitat)))
+
+        food_score = 3 + len(self.habitats[pi]["Forest"]) * 0.5
+        scored.append((food_score, ("food",)))
+
+        egg_birds = [b for h in HABITATS for b in self.habitats[pi][h] if b.eggs < b.egg_capacity]
+        egg_score = 2 + len(egg_birds) * 0.5 + len(self.habitats[pi]["Grassland"]) * 0.5
+        scored.append((egg_score, ("egg",)))
+
+        draw_score = 2.5 + len(self.habitats[pi]["Wetland"]) * 0.5
+        if self.tray:
+            best_tray = max(self.tray, key=lambda b: b.points)
+            draw_score += best_tray.points * 0.3
+            scored.append((draw_score + 0.5, ("draw", self.tray.index(best_tray))))
+        scored.append((draw_score, ("draw", "deck")))
+
+        scored.sort(key=lambda x: -x[0])
+
+        if difficulty == 'hard':
+            return scored[0][1]
+
+        top = scored[:max(1, len(scored) // 2 + 1)]
+        return rand.choice(top)[1]
 
     def check_game_over(self):
         # Check if both players used all turns this round
