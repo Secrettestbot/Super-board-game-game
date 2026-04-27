@@ -339,6 +339,120 @@ class CanvasGame(BaseGame):
 
         return False
 
+    def get_ai_move(self):
+        """Return an AI-generated move."""
+        import random
+        from itertools import combinations
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player - 1
+
+        can_paint = len(self.hands[p]) >= 3
+        must_paint = len(self.hands[p]) >= 5
+        needs_paintings = len(self.paintings[p]) < self.paintings_needed
+
+        if not needs_paintings:
+            return ("pass", "")
+
+        if must_paint:
+            return self._ai_pick_painting(p, difficulty)
+
+        if can_paint and (len(self.hands[p]) >= 4 or self._ai_best_painting_score(p) >= 4):
+            return self._ai_pick_painting(p, difficulty)
+
+        if self.market:
+            return self._ai_pick_card(p, difficulty)
+
+        if can_paint:
+            return self._ai_pick_painting(p, difficulty)
+
+        return ("pass", "")
+
+    def _ai_pick_card(self, p, difficulty):
+        import random
+        if not self.market:
+            return ("pass", "")
+
+        if difficulty == 'easy':
+            affordable = [i for i in range(len(self.market)) if i <= self.tokens[p]]
+            if not affordable:
+                return ("pass", "")
+            return ("take", str(random.choice(affordable) + 1))
+
+        best_idx = -1
+        best_score = -999
+        for i, card in enumerate(self.market):
+            cost = i
+            if cost > self.tokens[p]:
+                continue
+            score = len(card["icons"]) * 2 - cost
+            for icon in card["icons"]:
+                for cond in self.scoring_conditions:
+                    cid = cond["id"]
+                    if cid == "hue_harmony" and icon == "Hue":
+                        score += 2
+                    elif cid == "comp_focus" and icon == "Composition":
+                        score += 2
+                    elif cid == "shape_mastery" and icon == "Shape":
+                        score += 2
+                    elif cid == "texture_blend" and icon == "Texture":
+                        score += 2
+                    elif cid == "tone_balance" and icon == "Tone":
+                        score += 1
+                    elif cid == "variety":
+                        score += 1
+            if score > best_score:
+                best_score = score
+                best_idx = i
+
+        if best_idx < 0:
+            return ("pass", "")
+        return ("take", str(best_idx + 1))
+
+    def _ai_best_painting_score(self, p):
+        from itertools import combinations
+        if len(self.hands[p]) < 3:
+            return 0
+        best = 0
+        for combo in combinations(range(len(self.hands[p])), 3):
+            icons = []
+            for i in combo:
+                icons.extend(self.hands[p][i]["icons"])
+            result = score_painting(icons, self.scoring_conditions)
+            total = sum(result.values())
+            if total > best:
+                best = total
+        return best
+
+    def _ai_pick_painting(self, p, difficulty):
+        import random
+        from itertools import combinations
+        hand = self.hands[p]
+        if len(hand) < 3:
+            return ("pass", "")
+
+        combos = list(combinations(range(len(hand)), 3))
+        if difficulty == 'easy':
+            combo = random.choice(combos)
+            return ("paint", f"{combo[0]+1} {combo[1]+1} {combo[2]+1}")
+
+        scored = []
+        for combo in combos:
+            icons = []
+            for i in combo:
+                icons.extend(hand[i]["icons"])
+            result = score_painting(icons, self.scoring_conditions)
+            total = sum(result.values())
+            scored.append((combo, total))
+
+        scored.sort(key=lambda x: -x[1])
+        if difficulty == 'medium':
+            top = scored[:max(2, len(scored) // 3)]
+            combo, _ = random.choice(top)
+        else:
+            combo, _ = scored[0]
+
+        return ("paint", f"{combo[0]+1} {combo[1]+1} {combo[2]+1}")
+
     def check_game_over(self):
         # Game ends when both players have completed all paintings
         all_done = all(

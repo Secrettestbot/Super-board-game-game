@@ -373,6 +373,93 @@ class CaperGame(BaseGame):
 
             pd['score'] = total
 
+    def get_ai_move(self):
+        """Return an AI-generated move."""
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        pd = self.player_data[str(self.current_player)]
+
+        if not pd['hand']:
+            return ('no_cards',)
+
+        opp = '2' if self.current_player == 1 else '1'
+
+        if self.phase == 'thief':
+            options = []
+            for ci, card in enumerate(pd['hand']):
+                for li in range(self.num_locations):
+                    loc_data = pd['locations'][str(li)]
+                    if len(loc_data['thieves']) >= 2:
+                        continue
+                    score = card['power'] * 2
+                    if not loc_data['thieves']:
+                        score += 3
+                    score += self.locations[li]['reward'] // 2
+                    opp_data = self.player_data[opp]['locations'][str(li)]
+                    opp_power = sum(t['power'] for t in opp_data['thieves'])
+                    if opp_power > 3:
+                        score -= 2
+                    options.append((ci, li, score))
+
+            if not options:
+                for ci in range(len(pd['hand'])):
+                    for li in range(self.num_locations):
+                        if len(pd['locations'][str(li)]['thieves']) < 2:
+                            return ('draft_thief', str(ci + 1), str(li + 1))
+                return ('no_cards',)
+
+            if difficulty == 'easy':
+                choice = random.choice(options)
+            else:
+                options.sort(key=lambda x: -x[2])
+                if difficulty == 'medium':
+                    top = options[:max(2, len(options) // 3)]
+                    choice = random.choice(top)
+                else:
+                    choice = options[0]
+
+            return ('draft_thief', str(choice[0] + 1), str(choice[1] + 1))
+
+        else:
+            options = []
+            for ci, card in enumerate(pd['hand']):
+                for li in range(self.num_locations):
+                    loc_data = pd['locations'][str(li)]
+                    if not loc_data['thieves']:
+                        continue
+                    if len(loc_data['gear']) >= 3:
+                        continue
+                    score = card['capture'] * 2 + card['points'] * 2
+                    my_power = sum(t['power'] for t in loc_data['thieves'])
+                    my_capture = my_power + sum(g['capture'] for g in loc_data['gear'])
+                    gap = self.locations[li]['security'] - my_capture
+                    if gap > 0 and card['capture'] >= gap:
+                        score += 10
+                    elif gap <= 0:
+                        score += card['points'] * 2
+                    score += self.locations[li]['reward'] // 3
+                    options.append((ci, li, score))
+
+            if not options:
+                for ci in range(len(pd['hand'])):
+                    for li in range(self.num_locations):
+                        loc_data = pd['locations'][str(li)]
+                        if loc_data['thieves'] and len(loc_data['gear']) < 3:
+                            return ('draft_gear', str(ci + 1), str(li + 1))
+                return ('no_cards',)
+
+            if difficulty == 'easy':
+                choice = random.choice(options)
+            else:
+                options.sort(key=lambda x: -x[2])
+                if difficulty == 'medium':
+                    top = options[:max(2, len(options) // 3)]
+                    choice = random.choice(top)
+                else:
+                    choice = options[0]
+
+            return ('draft_gear', str(choice[0] + 1), str(choice[1] + 1))
+
     def check_game_over(self):
         """Check if the game is over."""
         if self.round_num > self.max_rounds:
