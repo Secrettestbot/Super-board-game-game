@@ -413,6 +413,86 @@ class CircleOfLifeGame(BaseGame):
 
         return all_chains
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        hand = self.hands[p]
+        grid = self.grids[p]
+
+        empty_cells = []
+        for r in range(self.grid_size):
+            for c in range(self.grid_size):
+                if grid[r][c] is None:
+                    empty_cells.append((r, c))
+
+        if hand and empty_cells:
+            if difficulty == 'easy':
+                ci = random.randint(0, len(hand) - 1)
+                r, c = random.choice(empty_cells)
+                return f"place {ci + 1} {r} {c}"
+
+            best_score = -1
+            best_move = None
+            for ci, card in enumerate(hand):
+                for r, c in empty_cells:
+                    grid[r][c] = card
+                    self._recalculate_score(p)
+                    sc = self.scores[p]
+                    grid[r][c] = None
+                    if sc > best_score or best_move is None:
+                        best_score = sc
+                        best_move = f"place {ci + 1} {r} {c}"
+            self._recalculate_score(p)
+
+            if difficulty == 'medium' and random.random() < 0.2 and len(hand) > 1:
+                ci = random.randint(0, len(hand) - 1)
+                r, c = random.choice(empty_cells)
+                return f"place {ci + 1} {r} {c}"
+
+            if best_move:
+                return best_move
+
+        if self.market and len(hand) < 7:
+            if difficulty == 'easy':
+                return f"draft {random.randint(1, len(self.market))}"
+            best_idx = 0
+            best_val = -1
+            for i, card in enumerate(self.market):
+                val = card['tier'] * 10 + card['points']
+                if val > best_val:
+                    best_val = val
+                    best_idx = i
+            return f"draft {best_idx + 1}"
+
+        if hand and not empty_cells:
+            weakest = None
+            weakest_val = 999
+            for r in range(self.grid_size):
+                for c in range(self.grid_size):
+                    if grid[r][c] is not None:
+                        val = grid[r][c]['tier'] * 10 + grid[r][c]['points']
+                        if val < weakest_val:
+                            weakest_val = val
+                            weakest = (r, c)
+            strongest_ci = 0
+            strongest_val = -1
+            for ci, card in enumerate(hand):
+                val = card['tier'] * 10 + card['points']
+                if val > strongest_val:
+                    strongest_val = val
+                    strongest_ci = ci
+            if weakest and strongest_val > weakest_val:
+                return f"swap {strongest_ci + 1} {weakest[0]} {weakest[1]}"
+
+        if self.market:
+            return "draft 1"
+
+        if hand and empty_cells:
+            return f"place 1 {empty_cells[0][0]} {empty_cells[0][1]}"
+
+        return "draft 1"
+
     def check_game_over(self):
         # Game ends when both grids are full or deck + market exhausted
         both_full = True

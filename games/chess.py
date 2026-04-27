@@ -595,6 +595,77 @@ class ChessGame(BaseGame):
                         return True
         return False
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        color = self.current_player
+
+        all_moves = []
+        for r in range(8):
+            for c in range(8):
+                piece = self.board[r][c]
+                if piece is not None and piece_color(piece) == color:
+                    legal = self._get_legal_moves(r, c)
+                    for to_r, to_c in legal:
+                        if piece.upper() == 'K' and abs(to_c - c) >= 2:
+                            continue
+                        all_moves.append((r, c, to_r, to_c, piece))
+
+        if not all_moves:
+            return "a1a1"
+
+        if difficulty == 'easy':
+            r, c, tr, tc, piece = random.choice(all_moves)
+            move_str = self._square_name(r, c) + self._square_name(tr, tc)
+            if piece.upper() == 'P' and (tr == 0 or tr == 7):
+                move_str += 'q'
+            return move_str
+
+        def score_move(fr, fc, tr, tc, p):
+            score = 0
+            target = self.board[tr][tc]
+            if target is not None:
+                score += PIECE_VALUES.get(target.upper(), 0) * 10
+            if 2 <= tr <= 5 and 2 <= tc <= 5:
+                score += 2
+            if 3 <= tr <= 4 and 3 <= tc <= 4:
+                score += 3
+            if p.upper() == 'P':
+                if color == 1:
+                    score += (6 - tr)
+                else:
+                    score += (tr - 1)
+            if p.upper() == 'P' and (tr == 0 or tr == 7):
+                score += 80
+            if difficulty == 'hard':
+                old_board = [row[:] for row in self.board]
+                old_kp = dict(self.king_pos)
+                self.board[tr][tc] = p
+                self.board[fr][fc] = None
+                if p.upper() == 'K':
+                    self.king_pos[color] = (tr, tc)
+                opp = 2 if color == 1 else 1
+                if self._is_in_check(opp):
+                    score += 15
+                self.board = old_board
+                self.king_pos = old_kp
+            return score
+
+        scored = [(score_move(r, c, tr, tc, p), r, c, tr, tc, p)
+                  for r, c, tr, tc, p in all_moves]
+        scored.sort(key=lambda x: -x[0])
+
+        if difficulty == 'medium':
+            top = scored[:max(3, len(scored) // 4)]
+            s, r, c, tr, tc, piece = random.choice(top)
+        else:
+            s, r, c, tr, tc, piece = scored[0]
+
+        move_str = self._square_name(r, c) + self._square_name(tr, tc)
+        if piece.upper() == 'P' and (tr == 0 or tr == 7):
+            move_str += 'q'
+        return move_str
+
     def check_game_over(self):
         opponent = 2 if self.current_player == 1 else 1
 
