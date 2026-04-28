@@ -194,7 +194,7 @@ class LiarsDiceGame(BaseGame):
         cp = self.current_player
 
         if self.phase == "round_over":
-            input_with_quit("  Press Enter to start next round... ")
+            self._pause("  Press Enter to start next round... ")
             return "next_round"
 
         if self.phase == "bidding":
@@ -330,7 +330,7 @@ class LiarsDiceGame(BaseGame):
         print(f"  {self.players[loser - 1]} now has {self.dice_count[loser]} dice.")
         self.round_starter = loser
         self.phase = "round_over"
-        input_with_quit("\n  Press Enter to continue... ")
+        self._pause("\n  Press Enter to continue... ")
         return True
 
     def _do_exact_call(self, cp):
@@ -372,7 +372,7 @@ class LiarsDiceGame(BaseGame):
             self.round_starter = caller
 
         self.phase = "round_over"
-        input_with_quit("\n  Press Enter to continue... ")
+        self._pause("\n  Press Enter to continue... ")
         return True
 
     def _do_next_round(self):

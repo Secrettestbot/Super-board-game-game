@@ -149,10 +149,14 @@ class PigGame(BaseGame):
         while True:
             clear_screen()
             self.display()
-            try:
-                move = self.get_move()
-            except Exception:
-                raise  # propagate QuitGame, SuspendGame, etc.
+
+            if self.ai_player == self.current_player:
+                move = self.get_ai_move()
+            else:
+                try:
+                    move = self.get_move()
+                except Exception:
+                    raise  # propagate QuitGame, SuspendGame, etc.
 
             if move == 'hold':
                 return self._do_hold()

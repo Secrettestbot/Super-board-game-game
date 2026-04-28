@@ -70,11 +70,11 @@ class DaraGame(BaseGame):
     def _has_three_in_a_row(self, row, col, player):
         """Check if placing/moving to (row, col) creates 3 in a row for player."""
         # Check horizontal runs through this cell
-        for start_c in range(max(0, col - 2), min(self.COLS - 2, col) + 1):
+        for start_c in range(max(0, col - 2), min(self.COLS - 3, col) + 1):
             if all(self.board[row][start_c + i] == player for i in range(3)):
                 return True
         # Check vertical runs through this cell
-        for start_r in range(max(0, row - 2), min(self.ROWS - 2, row) + 1):
+        for start_r in range(max(0, row - 2), min(self.ROWS - 3, row) + 1):
             if all(self.board[start_r + i][col] == player for i in range(3)):
                 return True
         return False
@@ -82,10 +82,10 @@ class DaraGame(BaseGame):
     def _count_three_in_a_rows_at(self, row, col, player):
         """Count how many three-in-a-row lines pass through (row, col) for player."""
         count = 0
-        for start_c in range(max(0, col - 2), min(self.COLS - 2, col) + 1):
+        for start_c in range(max(0, col - 2), min(self.COLS - 3, col) + 1):
             if all(self.board[row][start_c + i] == player for i in range(3)):
                 count += 1
-        for start_r in range(max(0, row - 2), min(self.ROWS - 2, row) + 1):
+        for start_r in range(max(0, row - 2), min(self.ROWS - 3, row) + 1):
             if all(self.board[start_r + i][col] == player for i in range(3)):
                 count += 1
         return count
@@ -138,6 +138,8 @@ class DaraGame(BaseGame):
 
     def _get_removal_move(self):
         """Get a piece to remove from the opponent."""
+        if self.ai_player == self.current_player:
+            return self.get_ai_move()
         opponent = 3 - self.current_player
         while True:
             raw = input_with_quit(
@@ -163,6 +165,8 @@ class DaraGame(BaseGame):
 
     def _get_placement_move(self):
         """Get placement position during phase 1."""
+        if self.ai_player == self.current_player:
+            return self.get_ai_move()
         while True:
             raw = input_with_quit(
                 f"  {self.players[self.current_player - 1]}, place piece (row,col): "
@@ -182,6 +186,8 @@ class DaraGame(BaseGame):
 
     def _get_movement_move(self):
         """Get from/to positions during phase 2."""
+        if self.ai_player == self.current_player:
+            return self.get_ai_move()
         while True:
             raw = input_with_quit(
                 f"  {self.players[self.current_player - 1]}, move piece (from_row,col to_row,col): "
@@ -297,10 +303,14 @@ class DaraGame(BaseGame):
                         if not self._is_in_three_in_a_row(r, c, opp) or not self._opponent_has_removable_piece(opp):
                             removable.append((r, c))
             if not removable:
+                # Fallback: allow removing any opponent piece
                 for r in range(self.ROWS):
                     for c in range(self.COLS):
                         if self.board[r][c] == opp:
-                            return ("remove", r, c)
+                            removable.append((r, c))
+            if not removable:
+                # No opponent pieces at all; return a no-op that make_move will reject
+                return ("remove", 0, 0)
             if difficulty == 'easy':
                 return ("remove", *random.choice(removable))
             best = removable[0]
@@ -365,7 +375,9 @@ class DaraGame(BaseGame):
                         if self.board[nr][nc] == 0:
                             moves.append((r, c, nr, nc))
         if not moves:
-            return ("move", 0, 0, 0, 1)
+            # No legal moves available; return a no-op that make_move will reject
+            # (the game loop will retry, and check_game_over should end the game)
+            return ("move", 0, 0, 0, 0)
 
         if difficulty == 'easy':
             fr, fc, tr, tc = random.choice(moves)

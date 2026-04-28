@@ -245,14 +245,24 @@ class WordGame(BaseGame):
         challenged_player = self.last_player
 
         print(f"\n  {self.players[challenger - 1]} challenges '{self.last_play}'!")
-        print(f"  Does {self.players[challenged_player - 1]} accept the challenge?")
-        print(f"  (If the word is invalid, type 'remove'. If valid, type 'keep')")
+        if self.ai_player == self.current_player:
+            # AI decides whether the challenge succeeds
+            difficulty = getattr(self, 'ai_difficulty', 'medium')
+            if difficulty == 'hard':
+                resp = "remove"
+            elif difficulty == 'medium':
+                resp = random.choice(["remove", "keep"])
+            else:
+                resp = "keep"
+        else:
+            print(f"  Does {self.players[challenged_player - 1]} accept the challenge?")
+            print(f"  (If the word is invalid, type 'remove'. If valid, type 'keep')")
 
-        while True:
-            resp = input_with_quit("  remove/keep: ").strip().lower()
-            if resp in ("remove", "keep"):
-                break
-            print("  Please type 'remove' or 'keep'.")
+            while True:
+                resp = input_with_quit("  remove/keep: ").strip().lower()
+                if resp in ("remove", "keep"):
+                    break
+                print("  Please type 'remove' or 'keep'.")
 
         if resp == "remove":
             # Remove tiles from board, return to player's rack
@@ -264,10 +274,10 @@ class WordGame(BaseGame):
             self.scores[challenged_player - 1] -= self.last_play_score
             print(f"  Word removed! {self.players[challenged_player - 1]} "
                   f"loses {self.last_play_score} points.")
-            input_with_quit("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
         else:
             print(f"  Word kept. {self.players[challenger - 1]} loses their turn.")
-            input_with_quit("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
 
         self.last_play = None
         self.last_play_tiles = []
@@ -447,7 +457,7 @@ class WordGame(BaseGame):
         self.last_player = self.current_player
         self.consecutive_passes = 0
 
-        input_with_quit("  Press Enter to continue...")
+        self._pause("  Press Enter to continue...")
         return True
 
     def _calculate_score(self, word, row, col, dr, dc, placed_positions):

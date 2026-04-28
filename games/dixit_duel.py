@@ -181,12 +181,15 @@ class DixitDuelGame(BaseGame):
             print()
             print(f"  {self.players[guesser]}, which card matches the clue?")
 
+    def switch_player(self):
+        """Override: Dixit Duel manages current_player internally per phase."""
+        pass
+
     def get_move(self):
         st = self.storyteller
         guesser = 1 - st
 
         if self.round_phase == "clue":
-            self.current_player = st + 1
             print()
             card_input = input_with_quit(f"  Choose card number (1-{len(self.hands[st])}): ").strip()
             try:
@@ -201,7 +204,6 @@ class DixitDuelGame(BaseGame):
             return ("clue", card_idx, clue)
 
         elif self.round_phase == "lineup":
-            self.current_player = guesser + 1
             print()
             card_input = input_with_quit(f"  Choose card number (1-{len(self.hands[guesser])}): ").strip()
             try:
@@ -213,7 +215,6 @@ class DixitDuelGame(BaseGame):
             return ("lineup", card_idx)
 
         elif self.round_phase == "guess":
-            self.current_player = guesser + 1
             print()
             guess_input = input_with_quit(f"  Choose card number (1-{len(self.lineup)}): ").strip()
             try:
@@ -238,6 +239,7 @@ class DixitDuelGame(BaseGame):
             self.storyteller_card = self.hands[st].pop(card_idx)
             self.current_clue = clue
             self.round_phase = "lineup"
+            self.current_player = guesser + 1
             return True
 
         elif move[0] == "lineup":
@@ -263,6 +265,7 @@ class DixitDuelGame(BaseGame):
             self.lineup_sources = list(self.lineup_sources)
 
             self.round_phase = "guess"
+            self.current_player = guesser + 1
             return True
 
         elif move[0] == "guess":
@@ -319,7 +322,8 @@ class DixitDuelGame(BaseGame):
             # Show the results before continuing
             clear_screen()
             print("\n".join(summary_lines))
-            self._pause("\n  Press Enter to continue...")
+            if self.ai_player is None:
+                input("\n  Press Enter to continue...")
             return True
 
         return False

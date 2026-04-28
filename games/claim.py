@@ -170,6 +170,10 @@ class ClaimGame(BaseGame):
                 print(f"  {msg}")
         print()
 
+    def switch_player(self):
+        """No-op: ClaimGame manages current_player internally in make_move/resolve_trick."""
+        pass
+
     def _card_str(self, card):
         return f"{card['faction']}({card['rank']})"
 
@@ -184,6 +188,9 @@ class ClaimGame(BaseGame):
             self.hands[player] = hand
         else:
             self.followers[player] = hand
+
+    def switch_player(self):
+        pass
 
     def get_move(self):
         hand = self._get_hand(self.current_player)
@@ -208,9 +215,14 @@ class ClaimGame(BaseGame):
         for i, c in enumerate(hand):
             print(f"  {i+1}:{self._card_str(c)}", end="")
         print()
+        if self.ai_player == self.current_player:
+            return None  # Should not be called during AI turns
         return ("play", input_with_quit(f"  Choose card (1-{len(hand)}): "))
 
     def make_move(self, move):
+        if move is None:
+            return False
+
         action, value = move
 
         if action == "auto":

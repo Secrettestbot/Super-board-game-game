@@ -277,11 +277,24 @@ class TicketToRideCardGame(BaseGame):
         if not available:
             return
 
+        min_keep = 2 if initial else 1
+
+        # AI auto-selects tickets without prompting for input
+        if self.ai_player == player:
+            discard_idx = self._ai_choose_tickets(available, min_keep)
+            for i, ticket in enumerate(available):
+                if i in discard_idx:
+                    self.tickets_deck.insert(0, ticket)
+                else:
+                    self.tickets[player].append(ticket)
+            kept = [available[i] for i in range(len(available)) if i not in discard_idx]
+            print(f"  AI keeps {len(kept)} ticket(s).")
+            return
+
         print(f"\n  {self.players[player - 1]}, choose destination tickets to keep:")
         for i, (a, b, pts) in enumerate(available, 1):
             print(f"    {i}. {a} -> {b}  ({pts} pts)")
 
-        min_keep = 2 if initial else 1
         print(f"  You must keep at least {min_keep}. Enter numbers to DISCARD (e.g. '3' or '1 3'), or press Enter to keep all:")
 
         while True:
@@ -311,6 +324,62 @@ class TicketToRideCardGame(BaseGame):
 
         kept = [available[i] for i in range(len(available)) if i not in discard_idx]
         print(f"  Kept {len(kept)} ticket(s).")
+
+    def _ai_choose_tickets(self, available, min_keep):
+        """AI selects which tickets to discard. Returns set of indices to discard."""
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.ai_player
+
+        if difficulty == 'hard':
+            # Hard AI keeps all tickets (greedy for points)
+            return set()
+
+        if difficulty == 'easy':
+            # Easy AI keeps exactly the minimum, chosen randomly
+            keep_indices = set(rand.sample(range(len(available)), min(min_keep, len(available))))
+            return set(range(len(available))) - keep_indices
+
+        # Medium AI: score each ticket and keep the best ones
+        # Prefer shorter-distance tickets and ones that share cities with
+        # already-held tickets or claimed routes
+        connected_cities = set()
+        for i, (a, b, _, _, _) in enumerate(self.routes):
+            if self.claimed.get(i) == cp:
+                connected_cities.add(a)
+                connected_cities.add(b)
+        for a, b, _ in self.tickets[cp]:
+            connected_cities.add(a)
+            connected_cities.add(b)
+
+        scored = []
+        for idx, (a, b, pts) in enumerate(available):
+            score = pts  # base: ticket point value
+            # Bonus if cities overlap with existing network/tickets
+            if a in connected_cities:
+                score += 4
+            if b in connected_cities:
+                score += 4
+            # Penalize very long tickets slightly (harder to complete)
+            if pts >= 15:
+                score -= 3
+            scored.append((score, idx))
+
+        scored.sort(key=lambda x: -x[0])
+
+        # Keep min_keep or more -- keep tickets with positive-ish scores
+        keep_indices = set()
+        for _, idx in scored:
+            keep_indices.add(idx)
+            if len(keep_indices) >= min_keep:
+                # Keep going only if remaining tickets also look good
+                break
+
+        # If we'd discard more than allowed, keep all
+        if len(available) - len(keep_indices) > len(available) - min_keep:
+            keep_indices = set(range(len(available)))
+
+        return set(range(len(available))) - keep_indices
 
     # ---------------------------------------------------------------- display
 

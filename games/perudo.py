@@ -201,7 +201,7 @@ class PerudoGame(BaseGame):
     # ---------------------------------------------------------------- get_move
     def get_move(self):
         if self.phase == "round_over":
-            input_with_quit("  Press Enter to start next round... ")
+            self._pause("  Press Enter to start next round... ")
             return "next_round"
 
         cp = self.current_player
@@ -322,7 +322,7 @@ class PerudoGame(BaseGame):
             self.round_starter = loser
 
         self.phase = "round_over"
-        input_with_quit("\n  Press Enter to continue... ")
+        self._pause("\n  Press Enter to continue... ")
         return True
 
     def _do_calza(self, cp):
@@ -365,7 +365,7 @@ class PerudoGame(BaseGame):
                 self.round_starter = cp
 
         self.phase = "round_over"
-        input_with_quit("\n  Press Enter to continue... ")
+        self._pause("\n  Press Enter to continue... ")
         return True
 
     def _do_next_round(self):

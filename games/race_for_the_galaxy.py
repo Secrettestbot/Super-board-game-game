@@ -203,8 +203,12 @@ class RaceForTheGalaxyGame(BaseGame):
         # Step 1: Both players pick roles simultaneously (ask in sequence)
         roles_chosen = {}
         for p in (1, 2):
-            role = self._pick_role(p)
-            roles_chosen[p] = role
+            if self.ai_player == p:
+                import random as _rand
+                difficulty = getattr(self, 'ai_difficulty', 'medium')
+                roles_chosen[p] = self._ai_pick_role(p, difficulty, _rand)
+            else:
+                roles_chosen[p] = self._pick_role(p)
 
         return ("turn", roles_chosen)
 
@@ -276,9 +280,15 @@ class RaceForTheGalaxyGame(BaseGame):
 
     def _ask_discard(self, player, n):
         """Ask player to choose n cards to discard from hand."""
+        hand = self.hands[player]
+
+        # AI auto-discards lowest-VP cards
+        if self.ai_player == player:
+            candidates = sorted(hand, key=lambda c: c["vp"])
+            return candidates[:n]
+
         clear_screen()
         self.display()
-        hand = self.hands[player]
         print(f"\n{BOLD}{self.players[player-1]}: Discard {n} card(s) from hand{RESET}")
         for i, c in enumerate(hand, 1):
             print(f"  {i}. {_card_str(c, show_good=True)}")
@@ -335,10 +345,19 @@ class RaceForTheGalaxyGame(BaseGame):
 
     def _ask_play_card(self, player, options, card_type, discount):
         """Ask player to choose a card to play or skip."""
-        clear_screen()
-        self.display()
         effective = [(c, max(0, c["cost"] - discount)) for c in options]
         hand_size = len(self.hands[player])
+
+        # AI auto-selects the best affordable card (highest VP)
+        if self.ai_player == player:
+            affordable = [(c, cost) for c, cost in effective if hand_size - 1 >= cost]
+            if not affordable:
+                return None
+            affordable.sort(key=lambda x: x[0]["vp"], reverse=True)
+            return affordable[0][0]
+
+        clear_screen()
+        self.display()
         print(f"\n{BOLD}{self.players[player-1]}: Play a {card_type}? "
               f"(hand={hand_size} cards){RESET}")
         if discount:

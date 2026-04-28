@@ -44,26 +44,34 @@ class SudokuGame(BaseGame):
     # ------------------------------------------------------------------ setup
     def setup(self):
         """Generate a new Sudoku puzzle."""
-        clear_screen()
-        print(f"\n{'='*50}")
-        print(f"  SUDOKU ({self.label}) - Player Setup")
-        print(f"{'='*50}")
-        print("\n  How many players?")
-        print("  1. Single player (solve the puzzle)")
-        print("  2. Two players (take turns, penalties for errors)")
-        while True:
-            choice = input_with_quit("  Enter 1 or 2: ").strip()
-            if choice in ("1", "2"):
-                self.num_players = int(choice)
-                break
-            print("  Please enter 1 or 2.")
-
-        if self.num_players == 1:
-            self.players = [self._get_player_name(1)]
+        if self.ai_player:
+            # AI mode: force 2-player competitive mode, skip interactive prompts.
+            # Player names are already set by the menu ("You" / "Computer").
+            self.num_players = 2
+            if len(self.players) < 2:
+                self.players = ["You", "Computer"]
+            print("\n  Generating puzzle...")
         else:
-            self.players = [self._get_player_name(1), self._get_player_name(2)]
+            clear_screen()
+            print(f"\n{'='*50}")
+            print(f"  SUDOKU ({self.label}) - Player Setup")
+            print(f"{'='*50}")
+            print("\n  How many players?")
+            print("  1. Single player (solve the puzzle)")
+            print("  2. Two players (take turns, penalties for errors)")
+            while True:
+                choice = input_with_quit("  Enter 1 or 2: ").strip()
+                if choice in ("1", "2"):
+                    self.num_players = int(choice)
+                    break
+                print("  Please enter 1 or 2.")
 
-        print("\n  Generating puzzle...")
+            if self.num_players == 1:
+                self.players = [self._get_player_name(1)]
+            else:
+                self.players = [self._get_player_name(1), self._get_player_name(2)]
+
+            print("\n  Generating puzzle...")
         self.solution = [[0] * 9 for _ in range(9)]
         self._generate_full_board(self.solution)
         self.puzzle = [row[:] for row in self.solution]
@@ -206,7 +214,7 @@ class SudokuGame(BaseGame):
             return ("hint",)
         else:
             print("  Invalid action. Use P, E, or H.")
-            input_with_quit("  Press Enter to try again...")
+            self._pause("  Press Enter to try again...")
             return None
 
     # --------------------------------------------------------------- make_move
