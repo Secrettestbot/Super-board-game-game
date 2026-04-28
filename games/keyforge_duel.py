@@ -358,7 +358,7 @@ class KeyforgeDuelGame(BaseGame):
             self.aember[p] -= self.aember_to_forge
             self.keys[p] += 1
             print(f"\n  KEY FORGED! {self.players[p]} now has {self.keys[p]} key(s)!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             # Still need to choose house
             return True
 
@@ -393,7 +393,7 @@ class KeyforgeDuelGame(BaseGame):
             card = self.hands[p][idx]
             if card["house"] != self.active_house[p]:
                 print(f"  Can only play {self.active_house[p]} cards this turn!")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
 
             # Play the card
@@ -412,7 +412,7 @@ class KeyforgeDuelGame(BaseGame):
                 print(f"  {card['name']} artifact deployed!")
 
             self.actions_this_turn += 1
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return True
 
         if action == "reap":
@@ -426,11 +426,11 @@ class KeyforgeDuelGame(BaseGame):
             creature = self.battlefields[p][idx]
             if creature["house"] != self.active_house[p]:
                 print(f"  Can only use {self.active_house[p]} creatures!")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             if not creature["ready"]:
                 print(f"  {creature['name']} is not ready!")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
 
             creature["ready"] = False
@@ -445,7 +445,7 @@ class KeyforgeDuelGame(BaseGame):
                         aember_gained += 1
             self.aember[p] += aember_gained
             print(f"  {creature['name']} reaps for {aember_gained} Aember!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return True
 
         if action == "fight":
@@ -465,11 +465,11 @@ class KeyforgeDuelGame(BaseGame):
 
             if creature["house"] != self.active_house[p]:
                 print(f"  Can only use {self.active_house[p]} creatures!")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             if not creature["ready"]:
                 print(f"  {creature['name']} is not ready!")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
 
             creature["ready"] = False
@@ -520,7 +520,7 @@ class KeyforgeDuelGame(BaseGame):
                         "fight_bonus": dead["fight_bonus"],
                     })
 
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return True
 
         if action == "end_turn":

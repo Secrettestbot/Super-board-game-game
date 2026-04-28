@@ -481,7 +481,7 @@ class RaptorGame(BaseGame):
 
         if self.action_points <= 0:
             print("  No action points remaining!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             self._end_turn()
             return True
 
@@ -498,7 +498,7 @@ class RaptorGame(BaseGame):
                 if self.mother_pos and self.mother_pos[0] == r1 and self.mother_pos[1] == c1:
                     if self.mother_immobile:
                         print("  Mother is immobilized!")
-                        input("  Press Enter...")
+                        self._pause("  Press Enter...")
                         return False
                     dist = abs(r2 - r1) + abs(c2 - c1)
                     if dist > 1 or r2 < 0 or r2 >= self.rows or c2 < 0 or c2 >= self.cols:
@@ -544,7 +544,7 @@ class RaptorGame(BaseGame):
             mr, mc = self.mother_pos
             if abs(r - mr) > 1 or abs(c - mc) > 1:
                 print("  Target not adjacent to mother!")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             for s in self.scientists:
                 if s["active"] and s["pos"][0] == r and s["pos"][1] == c:
@@ -576,7 +576,7 @@ class RaptorGame(BaseGame):
                     return True
                 else:
                     print("  No scientist has line of sight!")
-                    input("  Press Enter...")
+                    self._pause("  Press Enter...")
                     return False
             return False
 
@@ -603,7 +603,7 @@ class RaptorGame(BaseGame):
                         return True
                     else:
                         print("  No adjacent scientist!")
-                        input("  Press Enter...")
+                        self._pause("  Press Enter...")
                         return False
             return False
 

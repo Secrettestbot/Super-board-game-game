@@ -260,7 +260,7 @@ class RollThroughAgesGame(BaseGame):
                     d['food'] = 0
                     d['disaster'] += short
                     print(f"  Lost {short} VP from starvation!")
-                    input("  Press Enter...")
+                    self._pause("  Press Enter...")
                 self.phase = 'build'
                 return
 
@@ -288,36 +288,36 @@ class RollThroughAgesGame(BaseGame):
                 for dv, info in self.devs.items():
                     if dv not in d['devs']:
                         print(f"    {dv:<14s} cost:{info['cost']:>3}  VP:{info['vp']:>2}  {info['desc']}")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 continue
 
             if cmd == 'city':
                 if d['cities'] >= 7:
-                    print("  Max 7 cities!"); input("  Press Enter..."); continue
+                    print("  Max 7 cities!"); self._pause("  Press Enter..."); continue
                 cost = 3 + d['cities']
                 if d['workers'] < cost:
-                    print(f"  Need {cost} workers, have {d['workers']}."); input("  Press Enter..."); continue
+                    print(f"  Need {cost} workers, have {d['workers']}."); self._pause("  Press Enter..."); continue
                 d['workers'] -= cost
                 d['cities'] += 1
                 print(f"  Built city! Now {d['cities']} cities.")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
 
             elif cmd == 'monument' and len(parts) >= 3:
                 name = parts[1]
                 try:
                     w = int(parts[2])
                 except ValueError:
-                    print("  Usage: monument <name> <workers>"); input("  Press Enter..."); continue
+                    print("  Usage: monument <name> <workers>"); self._pause("  Press Enter..."); continue
                 if name not in self.mons:
-                    print(f"  Unknown. Options: {', '.join(self.mons)}"); input("  Press Enter..."); continue
+                    print(f"  Unknown. Options: {', '.join(self.mons)}"); self._pause("  Press Enter..."); continue
                 if name in d['mon_done']:
-                    print("  Already completed!"); input("  Press Enter..."); continue
+                    print("  Already completed!"); self._pause("  Press Enter..."); continue
                 total_w = self.mons[name]['w'] - (2 if self._has('masonry') else 0)
                 total_w = max(1, total_w)
                 remain = total_w - d['mon_prog'][name]
                 actual = min(w, d['workers'], remain)
                 if actual <= 0:
-                    print("  No workers or already done."); input("  Press Enter..."); continue
+                    print("  No workers or already done."); self._pause("  Press Enter..."); continue
                 d['workers'] -= actual
                 d['mon_prog'][name] += actual
                 if d['mon_prog'][name] >= total_w:
@@ -330,24 +330,24 @@ class RollThroughAgesGame(BaseGame):
                         print(f"  Completed {nm}! VP: {self.mons[name]['vp']}")
                 else:
                     print(f"  +{actual} workers -> {d['mon_prog'][name]}/{total_w}")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
 
             elif cmd == 'buy' and len(parts) >= 2:
                 dv = parts[1]
                 if dv not in self.devs:
-                    print("  Unknown dev. Type 'list'."); input("  Press Enter..."); continue
+                    print("  Unknown dev. Type 'list'."); self._pause("  Press Enter..."); continue
                 if dv in d['devs']:
-                    print("  Already owned!"); input("  Press Enter..."); continue
+                    print("  Already owned!"); self._pause("  Press Enter..."); continue
                 cost = self.devs[dv]['cost']
                 funds = d['coins'] + d['goods']
                 if funds < cost:
-                    print(f"  Need {cost}, have {d['coins']}c+{d['goods']}g={funds}."); input("  Press Enter..."); continue
+                    print(f"  Need {cost}, have {d['coins']}c+{d['goods']}g={funds}."); self._pause("  Press Enter..."); continue
                 g_spent = min(d['goods'], cost)
                 d['goods'] -= g_spent
                 d['coins'] -= (cost - g_spent)
                 d['devs'].append(dv)
                 print(f"  Bought {dv}! {self.devs[dv]['desc']}")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
             else:
                 print("  Unknown command.")
 

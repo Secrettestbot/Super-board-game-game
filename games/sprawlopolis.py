@@ -363,7 +363,7 @@ class SprawlopolisGame(BaseGame):
 
             if not has_connection:
                 print("  Card must be adjacent to or overlapping the existing city!")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
 
             self._place_block(self.current_card, row, col)

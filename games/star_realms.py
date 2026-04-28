@@ -417,7 +417,7 @@ class StarRealms(BaseGame):
                 self.combat_pool = 0
                 self.authority[opp] -= dmg
                 print(f"  Dealt {dmg} damage to {self.players[opp - 1]}!")
-                input("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
                 return True
             else:
                 try:
@@ -434,7 +434,7 @@ class StarRealms(BaseGame):
                 destroyed = self.bases[opp].pop(idx)
                 self.discards[opp].append(destroyed)
                 print(f"  Destroyed {destroyed['name']}!")
-                input("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
                 return True
 
         elif action == "scrap":
@@ -465,7 +465,7 @@ class StarRealms(BaseGame):
             self._scrap_card(card, p)
             # Card is removed from game (not put in discard)
             print(f"  Scrapped {card['name']} for its ability!")
-            input("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
             return True
 
         elif action == "end":

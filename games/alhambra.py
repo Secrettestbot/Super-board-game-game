@@ -383,7 +383,7 @@ class AlhambraGame(BaseGame):
                 print(f"\n  *** SCORING ROUND {i+1}! ***")
                 for pi in range(2):
                     print(f"  P{pi+1} score: {self.scores[pi]}")
-                input("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
 
     def check_game_over(self):
         """Game ends after 3rd scoring round."""

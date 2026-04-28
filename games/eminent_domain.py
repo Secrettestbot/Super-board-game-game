@@ -429,7 +429,8 @@ class EminentDomainGame(BaseGame):
             self.phase = "follow"
             self.follow_player = opp
             self.current_player = opp + 1
-            input("  Press Enter...")
+            if self.ai_player != p + 1:
+                input("  Press Enter...")
             return True
 
         if action == "follow":
@@ -442,14 +443,16 @@ class EminentDomainGame(BaseGame):
                 print(f"  No {role} cards to follow with! Drawing instead.")
                 self._draw_card(p)
             self._end_turn()
-            input("  Press Enter...")
+            if self.ai_player != p + 1:
+                input("  Press Enter...")
             return True
 
         if action == "dissent":
             self._draw_card(p)
             print(f"  Drew 1 card.")
             self._end_turn()
-            input("  Press Enter...")
+            if self.ai_player != p + 1:
+                input("  Press Enter...")
             return True
 
         return False
@@ -558,15 +561,16 @@ class EminentDomainGame(BaseGame):
         while len(self.hands[follower]) < self.hand_size:
             self._draw_card(follower)
 
-        # Next turn: the leader's opponent becomes active
-        self.current_player = leader + 1  # switch_player will be called by game loop
+        # Next turn: the follower becomes the new active player
+        self.current_player = follower + 1
         self.phase = "action"
         self.current_role = None
 
     def switch_player(self):
-        """Override to handle follow phase player switching."""
-        if self.phase != "follow":
-            self.current_player = 2 if self.current_player == 1 else 1
+        """Phase transitions handle their own player switching."""
+        if self.phase in ("action", "role", "follow"):
+            return
+        super().switch_player()
 
     def get_ai_move(self):
         import random

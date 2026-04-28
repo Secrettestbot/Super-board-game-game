@@ -299,7 +299,7 @@ class CryptidGame(BaseGame):
         action, row, col = move
         if row < 0 or row >= self.rows or col < 0 or col >= self.cols:
             print(f"  Position ({row},{col}) is out of bounds!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         p = self.current_player  # 1 or 2
@@ -317,7 +317,7 @@ class CryptidGame(BaseGame):
                 print(f"  >>> {self.players[opp - 1]} says: YES, my clue matches ({row},{col})!")
             else:
                 print(f"  >>> {self.players[opp - 1]} says: NO, my clue does NOT match ({row},{col}).")
-            input("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
             return True
 
         elif action == "guess":
@@ -328,7 +328,7 @@ class CryptidGame(BaseGame):
                 print(f"  Your own clue doesn't match ({row},{col})! Bad guess.")
                 print(f"  You must place a NO token there for yourself.")
                 self.player_tokens[p - 1][(row, col)] = False
-                input("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
                 return True
 
             # Check opponent's clue
@@ -341,7 +341,7 @@ class CryptidGame(BaseGame):
                 self.winner = p
                 print(f"\n  >>> CORRECT! The creature was at ({row},{col})!")
                 print(f"  >>> {self.players[p - 1]} WINS!")
-                input("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
             else:
                 clear_screen()
                 self.display()
@@ -351,7 +351,7 @@ class CryptidGame(BaseGame):
                 else:
                     print(f"  >>> {self.players[opp - 1]}'s clue DID match, but something else is wrong.")
                 self.player_tokens[p - 1][(row, col)] = False
-                input("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
             return True
 
         return False

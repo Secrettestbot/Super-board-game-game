@@ -247,25 +247,25 @@ class StoneAgeGame(BaseGame):
                     gained = total // self._divisor_for_resource(res)
                     self.resources[pi][res] += gained
                     print(f"  Rolled {dice} = {total}, gained {gained} {res}")
-                    input("  Press Enter to continue...")
+                    self._pause("  Press Enter to continue...")
                 elif loc == "hunt":
                     dice = self._roll_dice(placed)
                     total = sum(dice)
                     gained = total // 2
                     self.food[pi] += gained
                     print(f"  Rolled {dice} = {total}, gained {gained} food")
-                    input("  Press Enter to continue...")
+                    self._pause("  Press Enter to continue...")
                 elif loc == "farm":
                     self.food_production[pi] += 1
                     print(f"  Food production increased to {self.food_production[pi]}!")
-                    input("  Press Enter to continue...")
+                    self._pause("  Press Enter to continue...")
                 elif loc == "breed":
                     if self.workers[pi] < 10:
                         self.workers[pi] += 1
                         print(f"  New worker! Total: {self.workers[pi]}")
                     else:
                         print("  Max workers reached!")
-                    input("  Press Enter to continue...")
+                    self._pause("  Press Enter to continue...")
                 elif loc == "tool":
                     upgraded = False
                     for i in range(3):
@@ -276,7 +276,7 @@ class StoneAgeGame(BaseGame):
                             break
                     if not upgraded:
                         print("  All tools at max level!")
-                    input("  Press Enter to continue...")
+                    self._pause("  Press Enter to continue...")
                 else:
                     return False
                 del self.placements[pi][loc]
@@ -362,7 +362,7 @@ class StoneAgeGame(BaseGame):
                     self.food[pi] = 0
                     self.score[pi] -= deficit * 3
                     print(f"  Not enough food! Lost {deficit*3} points.")
-                input("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
                 # Reset for next player or next round
                 self.tools_used[pi] = [False, False, False]
                 self.workers_available[pi] = self.workers[pi]

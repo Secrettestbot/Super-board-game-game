@@ -365,6 +365,24 @@ class SequenceGame(BaseGame):
                 best = max(best, count)
             return best
 
+        # Replace dead cards (no open board positions) before building options
+        replaced = True
+        while replaced:
+            replaced = False
+            for ci, card in enumerate(hand):
+                if _is_two_eyed_jack(card) or _is_one_eyed_jack(card):
+                    continue
+                positions = self._find_board_positions(card)
+                if not any(self.chips[r][c] == 0 for r, c in positions):
+                    hand.pop(ci)
+                    if self.deck:
+                        hand.append(self.deck.pop())
+                    replaced = True
+                    break
+
+        if not hand:
+            return None
+
         options = []
         for ci, card in enumerate(hand):
             if _is_two_eyed_jack(card):
@@ -386,11 +404,6 @@ class SequenceGame(BaseGame):
             else:
                 positions = self._find_board_positions(card)
                 open_positions = [(r, c) for r, c in positions if self.chips[r][c] == 0]
-                if not open_positions:
-                    hand.pop(ci)
-                    if self.deck:
-                        hand.append(self.deck.pop())
-                    return None
                 for r, c in open_positions:
                     score = _count_inline(r, c, p) * 10
                     if difficulty == "medium":
@@ -398,10 +411,6 @@ class SequenceGame(BaseGame):
                     options.append((score, ("place", ci, (r, c))))
 
         if not options:
-            if hand:
-                hand.pop(0)
-                if self.deck:
-                    hand.append(self.deck.pop())
             return None
 
         if difficulty == "easy":

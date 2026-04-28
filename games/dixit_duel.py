@@ -319,7 +319,7 @@ class DixitDuelGame(BaseGame):
             # Show the results before continuing
             clear_screen()
             print("\n".join(summary_lines))
-            input("\n  Press Enter to continue...")
+            self._pause("\n  Press Enter to continue...")
             return True
 
         return False

@@ -251,7 +251,7 @@ class FleetGame(BaseGame):
             if len(parts) < 2:
                 print("  Usage: bid <amount>")
                 if self.ai_player != self.current_player:
-                    input("  Press Enter...")
+                    self._pause("  Press Enter...")
                 return False
             try:
                 amount = int(parts[1])
@@ -266,14 +266,14 @@ class FleetGame(BaseGame):
             if amount < min_bid:
                 print(f"  Minimum bid is ${min_bid}.")
                 if self.ai_player != self.current_player:
-                    input("  Press Enter...")
+                    self._pause("  Press Enter...")
                 return False
 
             total_available = self._total_funds(p)
             if amount > total_available:
                 print(f"  Can't afford! You have ${total_available}.")
                 if self.ai_player != self.current_player:
-                    input("  Press Enter...")
+                    self._pause("  Press Enter...")
                 return False
 
             self.auction_bid[p] = amount
@@ -294,7 +294,7 @@ class FleetGame(BaseGame):
             if len(parts) < 2:
                 print("  Usage: launch <license_type>")
                 if self.ai_player != self.current_player:
-                    input("  Press Enter...")
+                    self._pause("  Press Enter...")
                 return False
             ltype = parts[1].title()
             # Check player has an unused license of this type
@@ -303,14 +303,14 @@ class FleetGame(BaseGame):
             if boats_of_type >= len(available):
                 print(f"  No unused {ltype} license! (Have {len(available)} licenses, {boats_of_type} boats)")
                 if self.ai_player != self.current_player:
-                    input("  Press Enter...")
+                    self._pause("  Press Enter...")
                 return False
 
             boat_cost = 2
             if self.player_money[p] < boat_cost:
                 print(f"  Launching a boat costs ${boat_cost}.")
                 if self.ai_player != self.current_player:
-                    input("  Press Enter...")
+                    self._pause("  Press Enter...")
                 return False
 
             self.player_money[p] -= boat_cost
@@ -321,7 +321,7 @@ class FleetGame(BaseGame):
             if len(parts) < 2:
                 print("  Usage: captain <boat#>")
                 if self.ai_player != self.current_player:
-                    input("  Press Enter...")
+                    self._pause("  Press Enter...")
                 return False
             try:
                 bi = int(parts[1]) - 1
@@ -331,21 +331,21 @@ class FleetGame(BaseGame):
             if bi < 0 or bi >= len(self.player_boats[p]):
                 print("  Invalid boat.")
                 if self.ai_player != self.current_player:
-                    input("  Press Enter...")
+                    self._pause("  Press Enter...")
                 return False
 
             boat = self.player_boats[p][bi]
             if boat["captain"]:
                 print("  Boat already has a captain!")
                 if self.ai_player != self.current_player:
-                    input("  Press Enter...")
+                    self._pause("  Press Enter...")
                 return False
 
             # Need to spend a fish card to assign captain
             if not self.player_fish[p]:
                 print("  Need a fish card to assign as captain!")
                 if self.ai_player != self.current_player:
-                    input("  Press Enter...")
+                    self._pause("  Press Enter...")
                 return False
 
             self.player_fish[p].pop()
@@ -363,7 +363,7 @@ class FleetGame(BaseGame):
             if len(parts) < 2:
                 print("  Usage: fish <boat#>")
                 if self.ai_player != self.current_player:
-                    input("  Press Enter...")
+                    self._pause("  Press Enter...")
                 return False
             try:
                 bi = int(parts[1]) - 1
@@ -373,14 +373,14 @@ class FleetGame(BaseGame):
             if bi < 0 or bi >= len(self.player_boats[p]):
                 print("  Invalid boat.")
                 if self.ai_player != self.current_player:
-                    input("  Press Enter...")
+                    self._pause("  Press Enter...")
                 return False
 
             boat = self.player_boats[p][bi]
             if not self.fish_deck:
                 print("  No more fish in the sea!")
                 if self.ai_player != self.current_player:
-                    input("  Press Enter...")
+                    self._pause("  Press Enter...")
                 return False
 
             # Draw fish card - captain boats catch better
@@ -396,7 +396,7 @@ class FleetGame(BaseGame):
             catch_str = ", ".join(f"{f['type']}(${f['value']})" for f in caught)
             print(f"  Caught: {catch_str}")
             if self.ai_player != self.current_player:
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
             return True
 
         elif action == "done":
@@ -410,7 +410,7 @@ class FleetGame(BaseGame):
             if len(parts) < 2:
                 print("  Usage: sell <fish#> (fish index in your collection)")
                 if self.ai_player != self.current_player:
-                    input("  Press Enter...")
+                    self._pause("  Press Enter...")
                 return False
             try:
                 fi = int(parts[1]) - 1
@@ -420,14 +420,14 @@ class FleetGame(BaseGame):
             if fi < 0 or fi >= len(self.player_fish[p]):
                 print("  Invalid fish index.")
                 if self.ai_player != self.current_player:
-                    input("  Press Enter...")
+                    self._pause("  Press Enter...")
                 return False
 
             fish = self.player_fish[p].pop(fi)
             self.player_money[p] += fish["value"]
             print(f"  Sold {fish['type']} for ${fish['value']}!")
             if self.ai_player != self.current_player:
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
             return True
 
         elif action == "done":

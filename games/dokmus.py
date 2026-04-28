@@ -295,7 +295,7 @@ class DokmusGame(BaseGame):
         """Shift a row or column of tiles."""
         if len(parts) < 4:
             print("  Usage: shift <tile_row> <tile_col> <up/down/left/right>")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
         try:
             tr = int(parts[1])
@@ -306,7 +306,7 @@ class DokmusGame(BaseGame):
 
         if tr < 0 or tr >= self.grid_rows or tc < 0 or tc >= self.grid_cols:
             print("  Invalid tile position.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         if direction == "up" and self.grid_rows > 1:
@@ -328,7 +328,7 @@ class DokmusGame(BaseGame):
             self.tile_layout[tr] = [row[-1]] + row[:-1]
         else:
             print("  Invalid direction or grid too small.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         self.phase = "place"
@@ -339,7 +339,7 @@ class DokmusGame(BaseGame):
         """Rotate a tile 90 degrees clockwise."""
         if len(parts) < 3:
             print("  Usage: rotate <tile_row> <tile_col>")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
         try:
             tr = int(parts[1])
@@ -349,7 +349,7 @@ class DokmusGame(BaseGame):
 
         if tr < 0 or tr >= self.grid_rows or tc < 0 or tc >= self.grid_cols:
             print("  Invalid tile position.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         tile_idx = self.tile_layout[tr][tc]
@@ -377,7 +377,7 @@ class DokmusGame(BaseGame):
     def _do_place(self, p, parts):
         if len(parts) < 3:
             print("  Usage: place <row> <col>")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
         try:
             r = int(parts[1])
@@ -389,12 +389,12 @@ class DokmusGame(BaseGame):
 
         if self.player_tokens_remaining[p] <= 0:
             print("  No tokens remaining!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         if self.tokens_placed_this_turn >= self.max_place_per_turn:
             print(f"  Already placed {self.max_place_per_turn} tokens this turn. Type 'done'.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         if not self._can_place_token(r, c, player):
@@ -407,7 +407,7 @@ class DokmusGame(BaseGame):
                 print("  Cell already occupied!")
             else:
                 print("  Must place adjacent to your existing tokens or on a map edge!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         self._set_token_at(r, c, player)
@@ -417,7 +417,7 @@ class DokmusGame(BaseGame):
 
         if self.tokens_placed_this_turn >= self.max_place_per_turn:
             print(f"  Placed {self.max_place_per_turn} tokens. Turn ending.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             self.phase = "manipulate"
             self.tokens_placed_this_turn = 0
             self.round_number += 1

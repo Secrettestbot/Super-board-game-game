@@ -287,7 +287,7 @@ class CanvasGame(BaseGame):
             cost = idx  # position 0 is free, position 1 costs 1, etc.
             if self.tokens[p] < cost:
                 print(f"  Not enough tokens! Need {cost}, have {self.tokens[p]}")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
 
             # Pay cost - tokens go to cards being skipped
@@ -308,11 +308,11 @@ class CanvasGame(BaseGame):
                 indices = [int(x) - 1 for x in data.split()]
                 if len(indices) != 3:
                     print("  Must select exactly 3 cards!")
-                    input("  Press Enter...")
+                    self._pause("  Press Enter...")
                     return False
                 if len(set(indices)) != 3:
                     print("  Must select 3 different cards!")
-                    input("  Press Enter...")
+                    self._pause("  Press Enter...")
                     return False
                 for idx in indices:
                     if idx < 0 or idx >= len(self.hands[p]):
@@ -333,7 +333,7 @@ class CanvasGame(BaseGame):
             for card in painting:
                 icons.extend(card["icons"])
             print(f"\n  Created painting with icons: {', '.join(icons)}")
-            input("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
 
             return True
 

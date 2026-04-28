@@ -404,8 +404,6 @@ class BurgundyCardGame(BaseGame):
         if self.actions_left > 0:
             return
 
-        self.actions_left = self.actions_per_turn
-
         # Check if round is over (both players have gone)
         if self.current_player == 2:
             # End of round pair - check round end
@@ -456,7 +454,8 @@ class BurgundyCardGame(BaseGame):
 
     def switch_player(self):
         if self.actions_left > 0:
-            return  # Don't switch mid-actions
+            return
+        self.actions_left = self.actions_per_turn
         super().switch_player()
 
     def get_state(self):

@@ -373,6 +373,11 @@ class DiceThroneGame(BaseGame):
             self.poison[opp] += 3
             self._add_log(f"{self.players[opp - 1]} is poisoned! (3 per turn)")
 
+    def switch_player(self):
+        if self.phase in ("choose_keep", "activate"):
+            return
+        super().switch_player()
+
     def get_ai_move(self):
         import random
         difficulty = getattr(self, 'ai_difficulty', 'medium')
@@ -405,14 +410,15 @@ class DiceThroneGame(BaseGame):
                 counts.setdefault(d, []).append(i)
             best_val = max(counts, key=lambda v: len(counts[v]))
             if len(counts[best_val]) >= 3:
+                if ability and ability["damage"] >= 10:
+                    return ("keep", "done")
+                indices_to_toggle = []
                 for i in range(5):
-                    self.kept[i] = (self.dice[i] == best_val)
-                keep_str = " ".join(str(i+1) for i in range(5) if self.dice[i] == best_val)
-                self._reroll()
-                self.rerolls_left -= 1
-                if self.rerolls_left == 0:
-                    self.phase = "activate"
-                return ("keep", "done") if ability and ability["damage"] >= 10 else ("keep", "")
+                    want_kept = (self.dice[i] == best_val)
+                    if want_kept != self.kept[i]:
+                        indices_to_toggle.append(str(i + 1))
+                if indices_to_toggle:
+                    return ("keep", " ".join(indices_to_toggle))
             return ("keep", "")
 
         if self.phase == "activate":

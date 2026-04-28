@@ -208,25 +208,25 @@ class DaleOfMerchantsGame(BaseGame):
         """Buy a card from market using hand cards as payment."""
         if len(parts) < 3:
             print("  Usage: buy <market#> <hand card indices to pay, e.g. 1 3 4>")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
         try:
             market_idx = int(parts[1]) - 1
             pay_indices = sorted([int(x) - 1 for x in parts[2:]], reverse=True)
         except ValueError:
             print("  Invalid numbers.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         hand = self.player_hands[p]
         if market_idx < 0 or market_idx >= len(self.market_display):
             print("  Invalid market card.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
         for idx in pay_indices:
             if idx < 0 or idx >= len(hand):
                 print("  Invalid hand card index.")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
 
         target_card = self.market_display[market_idx]
@@ -234,7 +234,7 @@ class DaleOfMerchantsGame(BaseGame):
 
         if payment < target_card["value"]:
             print(f"  Not enough value! Need {target_card['value']}, paying {payment}.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         # Remove payment cards from hand (descending order to preserve indices)
@@ -265,20 +265,20 @@ class DaleOfMerchantsGame(BaseGame):
         """Build a stall from hand cards."""
         if len(parts) < 2:
             print("  Usage: stall <hand card indices, e.g. 1 3 4>")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
         try:
             indices = sorted([int(x) - 1 for x in parts[1:]], reverse=True)
         except ValueError:
             print("  Invalid numbers.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         hand = self.player_hands[p]
         for idx in indices:
             if idx < 0 or idx >= len(hand):
                 print("  Invalid hand card index.")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
 
         # All cards in a stall must be the same folk type (or Platypus versatile)
@@ -293,11 +293,11 @@ class DaleOfMerchantsGame(BaseGame):
 
         if not has_versatile and len(folk_types) > 1:
             print("  All stall cards must be the same folk type!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
         if has_versatile and len(folk_types) > 1:
             print("  Non-versatile cards must all be the same folk type!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         total_value = sum(c["value"] for c in chosen_cards)
@@ -305,7 +305,7 @@ class DaleOfMerchantsGame(BaseGame):
 
         if total_value < next_level:
             print(f"  Need total value >= {next_level}, got {total_value}.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         # Build the stall
@@ -328,7 +328,7 @@ class DaleOfMerchantsGame(BaseGame):
         """Discard a card from hand (technique action)."""
         if len(parts) < 2:
             print("  Usage: discard <hand card#>")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
         try:
             idx = int(parts[1]) - 1
@@ -338,7 +338,7 @@ class DaleOfMerchantsGame(BaseGame):
         hand = self.player_hands[p]
         if idx < 0 or idx >= len(hand):
             print("  Invalid card index.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         card = hand.pop(idx)

@@ -335,6 +335,7 @@ class ShutTheBoxGame(BaseGame):
             combos = _find_combinations(sorted(tiles), total)
 
             if not combos:
+                self.tiles_up[player] = tiles
                 score = sum(tiles)
                 return ("end_turn", score, False)
 
@@ -359,9 +360,8 @@ class ShutTheBoxGame(BaseGame):
                 tiles.discard(t)
 
             if not tiles:
+                self.tiles_up[player] = tiles
                 return ("end_turn", 0, True)
-
-        self.tiles_up[player] = tiles
 
     def check_game_over(self):
         """Check if the game is over."""

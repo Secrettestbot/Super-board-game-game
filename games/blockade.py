@@ -354,6 +354,7 @@ class BlockadeGame(BaseGame):
 
     def get_ai_move(self):
         """Return an AI-generated move string."""
+        import random
         difficulty = getattr(self, 'ai_difficulty', 'medium')
         p = self.current_player
         num_pawns = len(self.pawns[p])

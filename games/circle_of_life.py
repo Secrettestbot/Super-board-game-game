@@ -289,7 +289,7 @@ class CircleOfLifeGame(BaseGame):
                 return False
             if len(self.hands[p]) >= 7:  # hand limit
                 print("  Hand full (7 cards max)! Place some cards first.")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             card = self.market.pop(idx)
             self.hands[p].append(card)
@@ -310,7 +310,7 @@ class CircleOfLifeGame(BaseGame):
                 return False
             if self.grids[p][r][c] is not None:
                 print("  Cell occupied! Use 'swap' to replace.")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
 
             card = self.hands[p].pop(cidx)
@@ -332,7 +332,7 @@ class CircleOfLifeGame(BaseGame):
                 return False
             if self.grids[p][r][c] is None:
                 print("  Cell empty! Use 'place' instead.")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
 
             old_card = self.grids[p][r][c]

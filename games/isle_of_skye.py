@@ -411,7 +411,7 @@ class IsleOfSkyeGame(BaseGame):
                 for pi in range(2):
                     self.scores[pi] += self.journey_track[pi]
                     print(f"  P{pi+1} journey bonus: +{self.journey_track[pi]}")
-            input("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
         self.round_number += 1
         self.phase = "draw"
         self.drawn_tiles = [[], []]

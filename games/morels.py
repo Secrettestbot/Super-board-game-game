@@ -270,12 +270,12 @@ class MorelGame(BaseGame):
             cost = idx
             if cost > self.sticks[p]:
                 print(f"  Need {cost} sticks, have {self.sticks[p]}!")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             # Check hand limit
             if len(self.hands[p]) >= self.hand_limit[p] and self.forest[idx]["type"] == "mushroom":
                 print(f"  Hand full ({self.hand_limit[p]} cards)! Cook or sell first.")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
 
             self.sticks[p] -= cost
@@ -291,7 +291,7 @@ class MorelGame(BaseGame):
         elif action == "decay":
             if not self.decay_pile:
                 print("  Decay pile is empty!")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             mushrooms_in_decay = [c for c in self.decay_pile if c["type"] == "mushroom"]
             space = self.hand_limit[p] - len(self.hands[p])
@@ -319,17 +319,17 @@ class MorelGame(BaseGame):
                     break
             if not matching_species:
                 print(f"  Unknown species: {species_name}")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             # Count matching cards in hand
             matching = [c for c in self.hands[p] if c["species"] == matching_species]
             if len(matching) < 3:
                 print(f"  Need at least 3 {matching_species} to cook (have {len(matching)})!")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             if self.pans[p] < 1:
                 print("  Need a pan to cook! Find one in the forest.")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
 
             # Cook all matching
@@ -360,12 +360,12 @@ class MorelGame(BaseGame):
                     break
             if not matching_species:
                 print(f"  Unknown species: {species_name}")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             matching = [c for c in self.hands[p] if c["species"] == matching_species]
             if len(matching) < count or count < 1:
                 print(f"  Can't sell {count} {matching_species} (have {len(matching)})!")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             # Sell: remove cards, gain 2 sticks per card
             for c in matching[:count]:

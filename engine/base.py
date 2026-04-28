@@ -121,6 +121,12 @@ class BaseGame(ABC):
         print(f"{'='*50}")
         input("\nPress Enter to continue...")
 
+    def _pause(self, message="  Press Enter..."):
+        """Pause for human acknowledgement; skip during AI turns."""
+        if self.ai_player == self.current_player:
+            return
+        input(message)
+
     def switch_player(self):
         """Switch to the next player."""
         self.current_player = 2 if self.current_player == 1 else 1

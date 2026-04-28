@@ -265,7 +265,7 @@ class SobekGame(BaseGame):
                         if t["type"] == "good" and t["good"] == good_type]
             if len(matching) < 2:
                 print(f"  Need at least 2 {good_type} to sell (have {len(matching)})")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             # Sell: remove 2 matching, gain points equal to their values
             sold = matching[:2]
@@ -284,7 +284,7 @@ class SobekGame(BaseGame):
                         if t["type"] == "good" and t["good"] == good_type]
             if len(matching) < 3:
                 print(f"  Need at least 3 {good_type} to score (have {len(matching)})")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             # Score set: remove all matching, big bonus
             for t in matching:

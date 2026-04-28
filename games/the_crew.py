@@ -296,7 +296,7 @@ class TheCrew(BaseGame):
             self.comm_cards[p] = {"suit": card["suit"], "value": card["value"]}
             self.comm_position[p] = pos
             print(f"  Shared: {_card_str(card)} ({pos} in {card['suit']})")
-            input("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
             return True
 
         # Play a card
@@ -355,7 +355,7 @@ class TheCrew(BaseGame):
                     target = _card_str(m["card"])
                     aname = self.players[m["assigned_to"] - 1]
 
-            input("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
 
             self.current_trick = []
             self.lead_player = winner

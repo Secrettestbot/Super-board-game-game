@@ -417,7 +417,7 @@ class PowerGridGame(BaseGame):
                 if max_cities >= 4 and self.step == 1:
                     self.step = 2
                     print("  *** STEP 2 REACHED! Multiple players per city allowed. ***")
-                    input("  Press Enter to continue...")
+                    self._pause("  Press Enter to continue...")
                 elif max_cities >= 6 and self.step == 2:
                     self.step = 3
                     print("  *** STEP 3 REACHED! Final phase! ***")
@@ -425,7 +425,7 @@ class PowerGridGame(BaseGame):
                     if self.market_current:
                         self.market_current.pop(0)
                         self._refill_market()
-                    input("  Press Enter to continue...")
+                    self._pause("  Press Enter to continue...")
                 return True
             elif cmd == "done":
                 self.phase = "power"
@@ -469,7 +469,7 @@ class PowerGridGame(BaseGame):
                 income = INCOME_TABLE[min(powered, len(INCOME_TABLE) - 1)]
                 self.money[pi] += income
                 print(f"  Powered {powered} cities, earned {income} money!")
-                input("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
                 # End of round processing
                 if self.current_player == 2:
                     self._replenish_resources()
@@ -483,7 +483,7 @@ class PowerGridGame(BaseGame):
                 income = INCOME_TABLE[min(powered, len(INCOME_TABLE) - 1)]
                 self.money[pi] += income
                 print(f"  Powered 0 cities, earned {income} money.")
-                input("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
                 if self.current_player == 2:
                     self._replenish_resources()
                     self.round_number += 1

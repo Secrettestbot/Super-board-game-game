@@ -241,7 +241,7 @@ class QuacksGame(BaseGame):
             if white_s > BUST_LIMIT:
                 self.busted[cp] = True
                 print(f"  {RED}BUST! White total {white_s} > {BUST_LIMIT}!{RESET}")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
             return False
 
         elif move[0] == 'stop':

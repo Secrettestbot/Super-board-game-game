@@ -356,7 +356,7 @@ class PointSalad(BaseGame):
             veggie = card["veggie_back"]
             self.player_veggies[p][veggie] += 1
             print(f"  Flipped scoring card to {veggie}!")
-            input("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
             # Flipping doesn't count as main action; player still takes a turn
             # Actually in Point Salad, flipping is a free action - let them continue
             # But for simplicity in our game loop, treat it as a turn action
