@@ -124,8 +124,7 @@ class ArchaeologyGame(BaseGame):
         self.log.append(f"  {self.players[player-1]} must discard {to_discard} card(s)!")
         # For current player, let them choose; for opponent, discard randomly
         discarded = []
-        if player == self.current_player:
-            # Player chooses which to discard
+        if player == self.current_player and self.ai_player != player:
             while len(discarded) < to_discard:
                 remaining = [c for c in self.hands[player] if c in TREASURE_ICONS]
                 if not remaining:

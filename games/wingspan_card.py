@@ -680,30 +680,25 @@ class WingspanCardGame(BaseGame):
                     self.winner = 2
                 else:
                     self.winner = None
-                input("\n  Press Enter...")
+                self._pause("\n  Press Enter...")
             else:
                 # Next round
                 self.round_number += 1
-                # Each round players get 1 fewer turn (like wingspan)
                 turns = self.turns_per_round - (self.round_number - 1)
                 if turns < 3:
                     turns = 3
                 self.turns_left = [turns, turns]
-                self.current_player = 1
-        else:
-            # Switch to player who still has turns, or alternate
-            if self.turns_left[self.current_player - 1] <= 0:
-                # Current player done, don't switch back to them
-                other = 2 if self.current_player == 1 else 1
-                if self.turns_left[other - 1] > 0:
-                    self.current_player = other
+                self._new_round_pending = True
 
     def switch_player(self):
-        """Override to handle asymmetric turn counts."""
+        """Override to handle asymmetric turn counts and round transitions."""
+        if getattr(self, '_new_round_pending', False):
+            self._new_round_pending = False
+            self.current_player = 1
+            return
         other = 2 if self.current_player == 1 else 1
         if self.turns_left[other - 1] > 0:
             self.current_player = other
-        # If other player has no turns, stay on current player
 
     def get_state(self):
         return {

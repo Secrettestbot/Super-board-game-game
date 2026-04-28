@@ -464,9 +464,16 @@ class AzulStainedGlassGame(BaseGame):
         else:
             # New round
             self.round_number += 1
-            self.current_player = self.first_player_next
+            self._new_round_started = True
             self._fill_factories()
             self.log.append(f"Round {self.round_number} begins!")
+
+    def switch_player(self):
+        if getattr(self, '_new_round_started', False):
+            self._new_round_started = False
+            self.current_player = self.first_player_next
+        else:
+            super().switch_player()
 
     def get_state(self):
         return {

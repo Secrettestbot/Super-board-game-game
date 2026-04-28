@@ -489,7 +489,14 @@ class ParksGame(BaseGame):
                 # Start next season
                 self.season += 1
                 self._setup_season()
-                self.current_player = 1  # reset to player 1
+                self._new_season_pending = True
+
+    def switch_player(self):
+        if getattr(self, '_new_season_pending', False):
+            self._new_season_pending = False
+            self.current_player = 1
+        else:
+            super().switch_player()
 
     def get_state(self):
         return {
