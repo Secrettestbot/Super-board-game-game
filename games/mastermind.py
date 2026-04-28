@@ -164,13 +164,13 @@ class MastermindGame(BaseGame):
         # Validate length
         if len(guess) != self.code_length:
             print(f"  Guess must be exactly {self.code_length} characters long.")
-            input_with_quit("  Press Enter to try again...")
+            self._pause("  Press Enter to try again...")
             return False
 
         # Validate colors
         if not all(c in self.colors for c in guess):
             print(f"  Invalid color(s). Use only: {' '.join(self.colors)}")
-            input_with_quit("  Press Enter to try again...")
+            self._pause("  Press Enter to try again...")
             return False
 
         # Compute feedback

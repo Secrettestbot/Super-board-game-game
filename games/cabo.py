@@ -306,7 +306,7 @@ class CaboGame(BaseGame):
             val = self.hands[sp][i]
             self.known[sp][i] = True
             print(f"\n  Your card {i+1} is [{val}]!")
-            input_with_quit("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
             self.log.append(f"{self.players[cp-1]} peeked at card {i+1}.")
             self.phase = "turn"
             return True
@@ -315,7 +315,7 @@ class CaboGame(BaseGame):
             i = move["index"]
             val = self.hands[opp][i]
             print(f"\n  {self.players[int(opp)-1]}'s card {i+1} is [{val}]!")
-            input_with_quit("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
             self.log.append(
                 f"{self.players[cp-1]} spied on opponent's card {i+1}.")
             self.phase = "turn"
