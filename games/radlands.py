@@ -599,9 +599,6 @@ class RadlandsGame(BaseGame):
         p = self.current_player
         opp = 2 if p == 1 else 1
 
-        if self.phase == "scoring":
-            return "score" if hasattr(self, 'phase') and self.phase == "scoring" else "end"
-
         hand = self.hands[p]
         people = self.people[p]
         opp_people = self.people[opp]

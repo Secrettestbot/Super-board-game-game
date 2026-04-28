@@ -270,6 +270,10 @@ class RaptorGame(BaseGame):
         """Resolve simultaneously revealed cards."""
         rc = self.raptor_card
         sc = self.scientist_card
+        if rc is None or sc is None:
+            self.phase = "select"
+            self.current_player = 1
+            return
         self.log.append(f"Raptor plays {rc}, Scientist plays {sc}")
 
         if rc < sc:
@@ -627,7 +631,7 @@ class RaptorGame(BaseGame):
         if self.phase == "select":
             hand = self.raptor_hand if p == 1 else self.scientist_hand
             if not hand:
-                return ("select", str(hand[0]) if hand else "1")
+                return ("done", "")
 
             if difficulty == "easy":
                 return ("select", str(rand.choice(hand)))
