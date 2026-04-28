@@ -446,20 +446,40 @@ class LoveLetterGame(BaseGame):
         else:
             guessable = {v: n for v, n in self.card_names.items() if n != "Guard" and v != 1}
 
-        print("  Guess opponent's card (not Guard):")
-        for v in sorted(guessable.keys()):
-            print(f"    {guessable[v].lower()} ({v})")
+        # AI auto-guess
+        if self.ai_player == cp:
+            difficulty = getattr(self, 'ai_difficulty', 'medium')
+            if difficulty == 'easy':
+                matched_val = random.choice(list(guessable.keys()))
+            else:
+                # Guess the most common remaining card not yet seen in played piles
+                seen = self.played[1] + self.played[2] + self.removed_visible
+                counts = {}
+                for v in guessable:
+                    total = sum(1 for _, val, cnt in self.card_defs if val == v for _ in range(cnt))
+                    seen_count = seen.count(v)
+                    remaining = total - seen_count
+                    if remaining > 0:
+                        counts[v] = remaining
+                if counts:
+                    matched_val = max(counts, key=counts.get)
+                else:
+                    matched_val = random.choice(list(guessable.keys()))
+        else:
+            print("  Guess opponent's card (not Guard):")
+            for v in sorted(guessable.keys()):
+                print(f"    {guessable[v].lower()} ({v})")
 
-        while True:
-            guess = input_with_quit("  Your guess: ").strip().lower()
-            matched_val = None
-            for v, n in guessable.items():
-                if guess == n.lower() or guess == str(v):
-                    matched_val = v
+            while True:
+                guess = input_with_quit("  Your guess: ").strip().lower()
+                matched_val = None
+                for v, n in guessable.items():
+                    if guess == n.lower() or guess == str(v):
+                        matched_val = v
+                        break
+                if matched_val is not None:
                     break
-            if matched_val is not None:
-                break
-            print("  Invalid guess. Enter a card name or number (not Guard).")
+                print("  Invalid guess. Enter a card name or number (not Guard).")
 
         guess_name = self.card_names[matched_val]
         self._add_log(f"  {self.players[cp - 1]} guesses {guess_name}.")
@@ -471,7 +491,7 @@ class LoveLetterGame(BaseGame):
         else:
             print(f"  Wrong guess.")
             self._add_log(f"  Wrong guess.")
-        input_with_quit("  Press Enter to continue...")
+        self._pause("  Press Enter to continue...")
 
     def _effect_priest(self, cp, opp):
         """Priest(2): Look at opponent's card."""
@@ -485,14 +505,14 @@ class LoveLetterGame(BaseGame):
             self._priest_reveal = seen
             print(f"  You see opponent's card: {self._card_label(seen)}")
             self._add_log(f"  {self.players[cp - 1]} sees opponent's card.")
-        input_with_quit("  Press Enter to continue...")
+        self._pause("  Press Enter to continue...")
 
     def _effect_baron(self, cp, opp):
         """Baron(3): Compare hands. Lower card is out."""
         if self.protected[opp] or self.eliminated[opp]:
             print("  Opponent is protected or eliminated. Baron has no effect.")
             self._add_log("  Baron has no effect (opponent protected/eliminated).")
-            input_with_quit("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
             return
 
         my_val = self.hands[cp][0] if self.hands[cp] else 0
@@ -513,7 +533,7 @@ class LoveLetterGame(BaseGame):
         else:
             print("  Tie! No one is eliminated.")
             self._add_log("  Baron comparison: tie.")
-        input_with_quit("  Press Enter to continue...")
+        self._pause("  Press Enter to continue...")
 
     def _effect_handmaid(self, cp):
         """Handmaid(4): Protected until your next turn."""
@@ -528,6 +548,13 @@ class LoveLetterGame(BaseGame):
             target = cp
             print("  Opponent is protected. You must target yourself!")
             self._add_log("  Prince targets self (opponent protected).")
+        elif self.ai_player == cp:
+            # AI auto-pick target
+            difficulty = getattr(self, 'ai_difficulty', 'medium')
+            if difficulty == 'easy':
+                target = random.choice([cp, opp])
+            else:
+                target = opp
         else:
             print(f"  Choose target: (1) {self.players[cp - 1]} (self)  (2) {self.players[opp - 1]}")
             while True:
@@ -564,14 +591,14 @@ class LoveLetterGame(BaseGame):
                 else:
                     self.eliminated[target] = True
 
-        input_with_quit("  Press Enter to continue...")
+        self._pause("  Press Enter to continue...")
 
     def _effect_king(self, cp, opp):
         """King(6/7): Trade hands with opponent."""
         if self.protected[opp] or self.eliminated[opp]:
             print("  Opponent is protected or eliminated. King has no effect.")
             self._add_log("  King has no effect (opponent protected/eliminated).")
-            input_with_quit("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
             return
 
         self.hands[cp], self.hands[opp] = self.hands[opp], self.hands[cp]
@@ -579,7 +606,7 @@ class LoveLetterGame(BaseGame):
         print(f"  Your new card: {self._card_label(self.hands[cp][0]) if self.hands[cp] else 'none'}")
         self._add_log(f"  {self.players[cp - 1]} trades hands with {self.players[opp - 1]} (King).")
         self._priest_reveal = None  # Priest info is now stale
-        input_with_quit("  Press Enter to continue...")
+        self._pause("  Press Enter to continue...")
 
     def _effect_countess(self, cp):
         """Countess(7/8): No effect when played (but must be played if holding King/Prince)."""
@@ -614,24 +641,40 @@ class LoveLetterGame(BaseGame):
             return
 
         combined = self.hands[cp] + drawn
-        print(f"  You drew: {', '.join(self._card_label(c) for c in drawn)}")
-        print(f"  Your cards: {', '.join(f'[{i}] {self._card_label(c)}' for i, c in enumerate(combined, 1))}")
-        print(f"  Keep 1 card, put the rest on bottom of deck.")
 
-        while True:
-            choice = input_with_quit(f"  Keep which card? (1-{len(combined)}): ").strip()
-            if choice.isdigit() and 1 <= int(choice) <= len(combined):
-                keep_idx = int(choice) - 1
-                kept = combined[keep_idx]
-                returned = [c for i, c in enumerate(combined) if i != keep_idx]
-                self.hands[cp] = [kept]
-                random.shuffle(returned)
-                self.deck = self.deck + returned  # put returned cards on bottom (drawn last)
-                print(f"  You kept {self._card_label(kept)}.")
-                self._add_log(f"  {self.players[cp - 1]} uses Chancellor (drew {len(drawn)}, kept 1).")
-                break
-            print("  Invalid choice.")
-        input_with_quit("  Press Enter to continue...")
+        # AI auto-pick card to keep
+        if self.ai_player == cp:
+            difficulty = getattr(self, 'ai_difficulty', 'medium')
+            if difficulty == 'easy':
+                keep_idx = random.randrange(len(combined))
+            else:
+                # Keep highest value card
+                keep_idx = max(range(len(combined)), key=lambda i: combined[i])
+            kept = combined[keep_idx]
+            returned = [c for i, c in enumerate(combined) if i != keep_idx]
+            self.hands[cp] = [kept]
+            random.shuffle(returned)
+            self.deck = self.deck + returned
+            self._add_log(f"  {self.players[cp - 1]} uses Chancellor (drew {len(drawn)}, kept 1).")
+        else:
+            print(f"  You drew: {', '.join(self._card_label(c) for c in drawn)}")
+            print(f"  Your cards: {', '.join(f'[{i}] {self._card_label(c)}' for i, c in enumerate(combined, 1))}")
+            print(f"  Keep 1 card, put the rest on bottom of deck.")
+
+            while True:
+                choice = input_with_quit(f"  Keep which card? (1-{len(combined)}): ").strip()
+                if choice.isdigit() and 1 <= int(choice) <= len(combined):
+                    keep_idx = int(choice) - 1
+                    kept = combined[keep_idx]
+                    returned = [c for i, c in enumerate(combined) if i != keep_idx]
+                    self.hands[cp] = [kept]
+                    random.shuffle(returned)
+                    self.deck = self.deck + returned  # put returned cards on bottom (drawn last)
+                    print(f"  You kept {self._card_label(kept)}.")
+                    self._add_log(f"  {self.players[cp - 1]} uses Chancellor (drew {len(drawn)}, kept 1).")
+                    break
+                print("  Invalid choice.")
+        self._pause("  Press Enter to continue...")
 
     # -------------------------------------------------------- check_game_over
 

@@ -428,13 +428,16 @@ class MachiKoroGame(BaseGame):
 
         # Radio Tower reroll
         if (self._has_landmark(cp, "Radio Tower") and not self.used_reroll):
-            clear_screen()
-            self.display()
-            print(f"  Radio Tower: Reroll? ('yes' or 'no')")
-            try:
-                choice = input_with_quit("  > ").strip().lower()
-            except Exception:
-                raise
+            if self.ai_player == cp:
+                choice = "yes"
+            else:
+                clear_screen()
+                self.display()
+                print(f"  Radio Tower: Reroll? ('yes' or 'no')")
+                try:
+                    choice = input_with_quit("  > ").strip().lower()
+                except Exception:
+                    raise
             if choice == "yes":
                 self.used_reroll = True
                 dice = [random.randint(1, 6) for _ in range(count)]

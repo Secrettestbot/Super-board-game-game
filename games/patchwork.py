@@ -442,7 +442,76 @@ class PatchworkGame(BaseGame):
         return False
 
     def _get_placement(self, p, shape):
-        """Interactive prompt to get placement details for a patch."""
+        """Interactive prompt to get placement details for a patch.
+
+        When the active player is the AI, auto-compute a valid placement
+        instead of prompting for input.
+        """
+        # --- AI bypass: compute placement automatically ---
+        if self.ai_player == p + 1:
+            difficulty = getattr(self, 'ai_difficulty', 'medium')
+            valid_placements = []
+            for rot in range(4):
+                for flip in [False, True]:
+                    transformed = self._transform_shape(shape, rot, flip)
+                    for row_off in range(self.board_size):
+                        for col_off in range(self.board_size):
+                            if self._can_place_patch(p, transformed, row_off, col_off):
+                                valid_placements.append((rot, flip, row_off, col_off))
+            if not valid_placements:
+                return None
+
+            if difficulty == 'easy':
+                choice = random.choice(valid_placements)
+            else:
+                # For medium/hard: score each placement and pick the best.
+                # Prefer placements that fill interior cells and are adjacent
+                # to existing patches.
+                best_score = -1
+                best = valid_placements[0]
+                for rot, flip, row_off, col_off in valid_placements:
+                    transformed = self._transform_shape(shape, rot, flip)
+                    score = 0
+                    for r, c in transformed:
+                        nr, nc = r + row_off, c + col_off
+                        # Reward interior cells (not on the border)
+                        if 0 < nr < self.board_size - 1 and 0 < nc < self.board_size - 1:
+                            score += 2
+                        # Reward adjacency to existing patches
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            ar, ac = nr + dr, nc + dc
+                            if (0 <= ar < self.board_size and
+                                    0 <= ac < self.board_size and
+                                    self.quilts[p][ar][ac]):
+                                score += 3
+                    if score > best_score:
+                        best_score = score
+                        best = (rot, flip, row_off, col_off)
+                if difficulty == 'medium':
+                    # Add some randomness: pick from top candidates
+                    scored = []
+                    for rot, flip, row_off, col_off in valid_placements:
+                        transformed = self._transform_shape(shape, rot, flip)
+                        s = 0
+                        for r, c in transformed:
+                            nr, nc = r + row_off, c + col_off
+                            if 0 < nr < self.board_size - 1 and 0 < nc < self.board_size - 1:
+                                s += 2
+                            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                                ar, ac = nr + dr, nc + dc
+                                if (0 <= ar < self.board_size and
+                                        0 <= ac < self.board_size and
+                                        self.quilts[p][ar][ac]):
+                                    s += 3
+                        scored.append((s, (rot, flip, row_off, col_off)))
+                    scored.sort(key=lambda x: x[0], reverse=True)
+                    top_n = max(1, len(scored) // 4)
+                    choice = random.choice(scored[:top_n])[1]
+                else:
+                    choice = best
+            return choice
+
+        # --- Human path: interactive prompt ---
         print(f"\n  Place the patch on your quilt.")
         print(f"  Current shape: {self._shape_to_ascii(shape)}")
         print(f"  Enter: rotation(0-3) flip(n/y) row col")

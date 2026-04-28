@@ -241,27 +241,37 @@ class TrajanGame(BaseGame):
                 p["vp"] += 2
                 self.message += " No buildings available. +2 VP instead."
                 return
-            print("  Available buildings:")
             show = self.construction_pool[:4]
-            for idx, ci in enumerate(show):
-                c = CONSTRUCTION_TILES[ci]
-                bonus = f" ({c['bonus']})" if c["bonus"] else ""
-                print(f"    {idx + 1}. {c['name']} - {c['vp']} VP{bonus}")
-            print(f"    {len(show) + 1}. Skip (+1 VP instead)")
-            bi = input_with_quit("  Choose building: ").strip()
-            try:
-                bi = int(bi) - 1
-                if bi == len(show):
+            if self.ai_player == self.current_player:
+                # AI auto-selects a building
+                difficulty = getattr(self, 'ai_difficulty', 'medium')
+                if difficulty == 'easy':
+                    bi = random.randint(0, len(show) - 1)
+                else:
+                    # Pick highest VP building
+                    bi = max(range(len(show)),
+                             key=lambda x: CONSTRUCTION_TILES[show[x]]["vp"])
+            else:
+                print("  Available buildings:")
+                for idx, ci in enumerate(show):
+                    c = CONSTRUCTION_TILES[ci]
+                    bonus = f" ({c['bonus']})" if c["bonus"] else ""
+                    print(f"    {idx + 1}. {c['name']} - {c['vp']} VP{bonus}")
+                print(f"    {len(show) + 1}. Skip (+1 VP instead)")
+                raw = input_with_quit("  Choose building: ").strip()
+                try:
+                    bi = int(raw) - 1
+                    if bi == len(show):
+                        p["vp"] += 1
+                        self.message += " Skipped construction. +1 VP."
+                        return
+                    if bi < 0 or bi >= len(show):
+                        p["vp"] += 1
+                        self.message += " Invalid choice. +1 VP."
+                        return
+                except ValueError:
                     p["vp"] += 1
-                    self.message += " Skipped construction. +1 VP."
                     return
-                if bi < 0 or bi >= len(show):
-                    p["vp"] += 1
-                    self.message += " Invalid choice. +1 VP."
-                    return
-            except ValueError:
-                p["vp"] += 1
-                return
             ci = show[bi]
             ct = CONSTRUCTION_TILES[ci]
             p["buildings"].append(ci)
@@ -274,17 +284,32 @@ class TrajanGame(BaseGame):
                 p["vp"] += 2
                 self.message += " No goods available. +2 VP instead."
                 return
-            print("  Available goods:")
-            for idx, g in enumerate(self.available_goods):
-                print(f"    {idx + 1}. {g}")
-            gi = input_with_quit("  Choose good to collect: ").strip()
-            try:
-                gi = int(gi) - 1
-                if gi < 0 or gi >= len(self.available_goods):
-                    self.message += " Invalid, no good collected."
+            if self.ai_player == self.current_player:
+                # AI auto-selects a good
+                difficulty = getattr(self, 'ai_difficulty', 'medium')
+                if difficulty == 'easy':
+                    gi = random.randint(0, len(self.available_goods) - 1)
+                else:
+                    # Prefer a good type the player doesn't already have (set collection)
+                    owned = set(p["goods"])
+                    new_types = [i for i, g in enumerate(self.available_goods)
+                                 if g not in owned]
+                    if new_types:
+                        gi = new_types[0]
+                    else:
+                        gi = 0
+            else:
+                print("  Available goods:")
+                for idx, g in enumerate(self.available_goods):
+                    print(f"    {idx + 1}. {g}")
+                raw = input_with_quit("  Choose good to collect: ").strip()
+                try:
+                    gi = int(raw) - 1
+                    if gi < 0 or gi >= len(self.available_goods):
+                        self.message += " Invalid, no good collected."
+                        return
+                except ValueError:
                     return
-            except ValueError:
-                return
             good = self.available_goods.pop(gi)
             p["goods"].append(good)
             # Check for set collection
@@ -347,12 +372,35 @@ class TrajanGame(BaseGame):
                 p["vp"] += 3
                 self.message += " No Trajan tiles. +3 VP."
                 return
-            # Draw a new tile or try to complete one
-            print("  Trajan options:")
-            print("    1. Draw a new Trajan tile")
-            if p["trajan_tiles"]:
-                print("    2. Attempt to complete a Trajan tile")
-            ti = input_with_quit("  Choose: ").strip()
+            if self.ai_player == self.current_player:
+                # AI auto-selects draw vs complete
+                difficulty = getattr(self, 'ai_difficulty', 'medium')
+                if difficulty == 'easy':
+                    # Easy: random choice between draw and complete (if possible)
+                    if p["trajan_tiles"] and self.trajan_pool:
+                        ti = random.choice(["1", "2"])
+                    elif p["trajan_tiles"]:
+                        ti = "2"
+                    else:
+                        ti = "1"
+                else:
+                    # Medium/Hard: try to complete a satisfiable tile first
+                    completable = self._find_completable_trajan(p)
+                    if completable is not None and p["trajan_tiles"]:
+                        ti = "2"
+                    elif self.trajan_pool:
+                        ti = "1"
+                    elif p["trajan_tiles"]:
+                        ti = "2"
+                    else:
+                        ti = "1"
+            else:
+                # Human player
+                print("  Trajan options:")
+                print("    1. Draw a new Trajan tile")
+                if p["trajan_tiles"]:
+                    print("    2. Attempt to complete a Trajan tile")
+                ti = input_with_quit("  Choose: ").strip()
             if ti == "1":
                 if self.trajan_pool:
                     new_tile = self.trajan_pool.pop()
@@ -371,45 +419,74 @@ class TrajanGame(BaseGame):
         """Auto-check if any trajan tiles are satisfied."""
         pass  # Manual completion via Trajan action
 
-    def _attempt_trajan(self, p):
-        """Let player try to complete a trajan tile."""
-        print("  Your Trajan tiles:")
-        for idx, ti in enumerate(p["trajan_tiles"]):
-            t = TRAJAN_TILES[ti]
-            print(f"    {idx + 1}. {t['name']}: {t['condition']} -> {t['vp']} VP")
-        ci = input_with_quit("  Choose tile to complete: ").strip()
-        try:
-            ci = int(ci) - 1
-            if ci < 0 or ci >= len(p["trajan_tiles"]):
-                self.message += " Invalid tile."
-                return
-        except ValueError:
-            return
-        ti = p["trajan_tiles"][ci]
-        t = TRAJAN_TILES[ti]
-        # Check condition
-        satisfied = False
+    def _is_trajan_satisfied(self, p, tile_idx):
+        """Check if a trajan tile's condition is satisfied."""
+        t = TRAJAN_TILES[tile_idx]
         check = t["check"]
         if check == "military":
-            satisfied = p["military"] >= (5 if t["vp"] >= 9 else 3)
+            return p["military"] >= (5 if t["vp"] >= 9 else 3)
         elif check == "senate":
-            satisfied = p["senate"] >= (5 if t["vp"] >= 9 else 3)
+            return p["senate"] >= (5 if t["vp"] >= 9 else 3)
         elif check == "construction":
-            satisfied = len(p["buildings"]) >= (5 if t["vp"] >= 9 else 3)
+            return len(p["buildings"]) >= (5 if t["vp"] >= 9 else 3)
         elif check == "shipping":
-            satisfied = len(p["goods"]) >= (5 if t["vp"] >= 9 else 3)
+            return len(p["goods"]) >= (5 if t["vp"] >= 9 else 3)
         elif check == "forum":
-            satisfied = len(p["forum_cards"]) >= (5 if t["vp"] >= 9 else 3)
+            return len(p["forum_cards"]) >= (5 if t["vp"] >= 9 else 3)
         elif check == "any_two":
             counts = [p["military"], p["senate"], len(p["buildings"]),
                       len(p["goods"]), len(p["forum_cards"])]
-            satisfied = sum(1 for c in counts if c >= 3) >= 2
+            return sum(1 for c in counts if c >= 3) >= 2
         elif check == "all":
             counts = [p["military"], p["senate"], len(p["buildings"]),
                       len(p["goods"]), len(p["forum_cards"])]
-            satisfied = all(c >= 2 for c in counts)
+            return all(c >= 2 for c in counts)
+        return False
 
-        if satisfied:
+    def _find_completable_trajan(self, p):
+        """Return the index (into p['trajan_tiles']) of the best completable tile, or None."""
+        best_idx = None
+        best_vp = -1
+        for idx, tile_idx in enumerate(p["trajan_tiles"]):
+            if self._is_trajan_satisfied(p, tile_idx):
+                vp = TRAJAN_TILES[tile_idx]["vp"]
+                if vp > best_vp:
+                    best_vp = vp
+                    best_idx = idx
+        return best_idx
+
+    def _attempt_trajan(self, p):
+        """Let player try to complete a trajan tile."""
+        if self.ai_player == self.current_player:
+            # AI auto-selects a tile to complete
+            difficulty = getattr(self, 'ai_difficulty', 'medium')
+            if difficulty == 'easy':
+                ci = random.randint(0, len(p["trajan_tiles"]) - 1)
+            else:
+                # Pick the best completable tile, or fall back to highest VP tile
+                completable = self._find_completable_trajan(p)
+                if completable is not None:
+                    ci = completable
+                else:
+                    ci = max(range(len(p["trajan_tiles"])),
+                             key=lambda x: TRAJAN_TILES[p["trajan_tiles"][x]]["vp"])
+        else:
+            print("  Your Trajan tiles:")
+            for idx, ti in enumerate(p["trajan_tiles"]):
+                t = TRAJAN_TILES[ti]
+                print(f"    {idx + 1}. {t['name']}: {t['condition']} -> {t['vp']} VP")
+            raw = input_with_quit("  Choose tile to complete: ").strip()
+            try:
+                ci = int(raw) - 1
+                if ci < 0 or ci >= len(p["trajan_tiles"]):
+                    self.message += " Invalid tile."
+                    return
+            except ValueError:
+                return
+        ti = p["trajan_tiles"][ci]
+        t = TRAJAN_TILES[ti]
+        # Check condition
+        if self._is_trajan_satisfied(p, ti):
             p["vp"] += t["vp"]
             p["completed_trajan"].append(ti)
             p["trajan_tiles"].pop(ci)

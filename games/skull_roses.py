@@ -320,7 +320,7 @@ class SkullRosesGame(BaseGame):
                 print(f"\n  You hit your own skull!")
                 self._penalty(bidder, own_skull=True)
                 self.phase = "round_over"
-                input_with_quit("\n  Press Enter to continue... ")
+                self._pause("\n  Press Enter to continue... ")
                 return True
 
         # Then flip opponent's stack (top to bottom)
@@ -334,7 +334,7 @@ class SkullRosesGame(BaseGame):
                 print(f"\n  You hit a skull!")
                 self._penalty(bidder, own_skull=False)
                 self.phase = "round_over"
-                input_with_quit("\n  Press Enter to continue... ")
+                self._pause("\n  Press Enter to continue... ")
                 return True
 
         # All flipped successfully
@@ -346,7 +346,7 @@ class SkullRosesGame(BaseGame):
         print(f"\n  Success! Flipped {to_flip} coaster(s) without a skull!")
         print(f"  Wins: {self.wins[bidder]}/{self.wins_needed}")
         self.phase = "round_over"
-        input_with_quit("\n  Press Enter to continue... ")
+        self._pause("\n  Press Enter to continue... ")
         return True
 
     def _penalty(self, loser, own_skull):
@@ -366,6 +366,14 @@ class SkullRosesGame(BaseGame):
                 self._add_log(f"{self.players[player - 1]} lost their last coaster ({lost}).")
                 print(f"  Lost your last coaster ({lost}).")
             return
+
+        if self.ai_player == player:
+            flower_indices = [i for i, c in enumerate(self.coasters[player]) if c != "skull"]
+            idx = flower_indices[0] if flower_indices else 0
+            lost = self.coasters[player].pop(idx)
+            self._add_log(f"{self.players[player - 1]} lost a {lost}.")
+            return
+
         print(f"  Your coasters:")
         for i, c in enumerate(self.coasters[player], 1):
             print(f"    {i}. {c}")

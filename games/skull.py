@@ -169,7 +169,7 @@ class SkullGame(BaseGame):
         if not hand:
             # Player has no discs left in hand, must start bidding or pass turn
             print("  You have no discs in hand. Starting bid phase.")
-            input_with_quit("  Press Enter to start bidding... ")
+            self._pause("  Press Enter to start bidding... ")
             return "start_bid"
 
         can_bid = self.has_placed[cp]
@@ -358,7 +358,7 @@ class SkullGame(BaseGame):
                 print(f"\n  You hit your own skull!")
                 self._handle_skull_penalty(bidder, own_skull=True)
                 self.phase = "round_over"
-                input_with_quit("\n  Press Enter to continue... ")
+                self._pause("\n  Press Enter to continue... ")
                 return True
 
         # Then flip opponent's discs from top of their stack
@@ -373,7 +373,7 @@ class SkullGame(BaseGame):
                 print(f"\n  You hit {self.players[opp - 1]}'s skull!")
                 self._handle_skull_penalty(bidder, own_skull=False)
                 self.phase = "round_over"
-                input_with_quit("\n  Press Enter to continue... ")
+                self._pause("\n  Press Enter to continue... ")
                 return True
 
         # Success! All flipped without hitting a skull
@@ -385,7 +385,7 @@ class SkullGame(BaseGame):
         print(f"\n  Success! You flipped {to_flip} disc(s) without hitting a skull!")
         print(f"  Score: {self.scores[bidder]}/{self.points_to_win}")
         self.phase = "round_over"
-        input_with_quit("\n  Press Enter to continue... ")
+        self._pause("\n  Press Enter to continue... ")
         return True
 
     def _handle_skull_penalty(self, loser, own_skull):
@@ -408,6 +408,14 @@ class SkullGame(BaseGame):
                 lost = self.discs[player].pop(0)
                 self._add_log(f"{self.players[player - 1]} lost their last disc ({lost}).")
                 print(f"  You lost your last disc ({lost}).")
+            return
+
+        if self.ai_player == player:
+            # AI prefers to lose a flower over a skull
+            flower_indices = [i for i, d in enumerate(self.discs[player]) if d != "skull"]
+            idx = flower_indices[0] if flower_indices else 0
+            lost = self.discs[player].pop(idx)
+            self._add_log(f"{self.players[player - 1]} chose to lose a {lost}.")
             return
 
         print(f"  Your discs: ")

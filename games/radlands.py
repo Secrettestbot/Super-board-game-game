@@ -425,71 +425,87 @@ class RadlandsGame(BaseGame):
             self.water[p] -= 1
 
             if ability == "heal":
-                # Heal 2 HP to any friendly camp or person
-                print("  Heal targets:")
                 targets = []
                 for i, camp in enumerate(self.camps[p]):
                     if not camp["destroyed"] and camp["hp"] < camp["max_hp"]:
-                        print(f"    C{i+1}. {camp['name']} ({camp['hp']}/{camp['max_hp']})")
                         targets.append(("camp", i))
                 for i, per in enumerate(self.people[p]):
                     if per["hp"] < per["max_hp"]:
-                        print(f"    P{i+1}. {per['name']} ({per['hp']}/{per['max_hp']})")
                         targets.append(("person", i))
                 if not targets:
                     self.log.append("Nothing to heal!")
                     self.water[p] += 1
                     return False
-                target = input_with_quit("  Heal target (C1/P1/etc): ").strip().upper()
-                try:
-                    tt = target[0]
-                    ti = int(target[1:]) - 1
-                    if tt == "C" and 0 <= ti < len(self.camps[p]):
-                        self.camps[p][ti]["hp"] = min(self.camps[p][ti]["hp"] + 2,
-                                                      self.camps[p][ti]["max_hp"])
-                        self.log.append(f"{person['name']} heals {self.camps[p][ti]['name']}.")
-                    elif tt == "P" and 0 <= ti < len(self.people[p]):
-                        self.people[p][ti]["hp"] = min(self.people[p][ti]["hp"] + 2,
-                                                       self.people[p][ti]["max_hp"])
-                        self.log.append(f"{person['name']} heals {self.people[p][ti]['name']}.")
-                    else:
+                if self.ai_player == self.current_player:
+                    tt, ti = targets[0]
+                else:
+                    print("  Heal targets:")
+                    for ttype, tidx in targets:
+                        if ttype == "camp":
+                            print(f"    C{tidx+1}. {self.camps[p][tidx]['name']} ({self.camps[p][tidx]['hp']}/{self.camps[p][tidx]['max_hp']})")
+                        else:
+                            print(f"    P{tidx+1}. {self.people[p][tidx]['name']} ({self.people[p][tidx]['hp']}/{self.people[p][tidx]['max_hp']})")
+                    raw = input_with_quit("  Heal target (C1/P1/etc): ").strip().upper()
+                    try:
+                        tt_char = raw[0]
+                        ti = int(raw[1:]) - 1
+                        tt = "camp" if tt_char == "C" else "person"
+                    except (ValueError, IndexError):
                         self.water[p] += 1
                         return False
-                except (ValueError, IndexError):
+                if tt == "camp" and 0 <= ti < len(self.camps[p]):
+                    self.camps[p][ti]["hp"] = min(self.camps[p][ti]["hp"] + 2,
+                                                  self.camps[p][ti]["max_hp"])
+                    self.log.append(f"{person['name']} heals {self.camps[p][ti]['name']}.")
+                elif tt == "person" and 0 <= ti < len(self.people[p]):
+                    self.people[p][ti]["hp"] = min(self.people[p][ti]["hp"] + 2,
+                                                   self.people[p][ti]["max_hp"])
+                    self.log.append(f"{person['name']} heals {self.people[p][ti]['name']}.")
+                else:
                     self.water[p] += 1
                     return False
 
             elif ability == "damage":
-                # Deal 2 damage to any enemy
-                print("  Damage targets (opponent's):")
-                for i, per in enumerate(self.people[opp]):
-                    print(f"    P{i+1}. {per['name']} (HP:{per['hp']})")
-                for i, camp in enumerate(self.camps[opp]):
-                    if not camp["destroyed"]:
-                        print(f"    C{i+1}. {camp['name']} (HP:{camp['hp']})")
-                target = input_with_quit("  Target (P1/C1/etc): ").strip().upper()
-                try:
-                    tt = target[0]
-                    ti = int(target[1:]) - 1
-                    if tt == "P" and 0 <= ti < len(self.people[opp]):
-                        self.people[opp][ti]["hp"] -= 2
-                        self.log.append(f"{person['name']} deals 2 damage to "
-                                      f"{self.people[opp][ti]['name']}!")
-                        if self.people[opp][ti]["hp"] <= 0:
-                            self.discard_pile.append(self.people[opp].pop(ti))
-                            self.log.append("  Target destroyed!")
-                    elif tt == "C" and 0 <= ti < len(self.camps[opp]):
-                        self.camps[opp][ti]["hp"] -= 2
-                        self.log.append(f"{person['name']} deals 2 damage to "
-                                      f"{self.camps[opp][ti]['name']}!")
-                        if self.camps[opp][ti]["hp"] <= 0:
-                            self.camps[opp][ti]["destroyed"] = True
-                            self.camps[opp][ti]["hp"] = 0
-                            self.log.append(f"  {self.camps[opp][ti]['name']} DESTROYED!")
+                if self.ai_player == self.current_player:
+                    if self.people[opp]:
+                        tt, ti = "person", 0
                     else:
+                        valid = [i for i, c in enumerate(self.camps[opp]) if not c["destroyed"]]
+                        if valid:
+                            tt, ti = "camp", valid[0]
+                        else:
+                            self.water[p] += 1
+                            return False
+                else:
+                    print("  Damage targets (opponent's):")
+                    for i, per in enumerate(self.people[opp]):
+                        print(f"    P{i+1}. {per['name']} (HP:{per['hp']})")
+                    for i, camp in enumerate(self.camps[opp]):
+                        if not camp["destroyed"]:
+                            print(f"    C{i+1}. {camp['name']} (HP:{camp['hp']})")
+                    raw = input_with_quit("  Target (P1/C1/etc): ").strip().upper()
+                    try:
+                        tt = "person" if raw[0] == "P" else "camp"
+                        ti = int(raw[1:]) - 1
+                    except (ValueError, IndexError):
                         self.water[p] += 1
                         return False
-                except (ValueError, IndexError):
+                if tt == "person" and 0 <= ti < len(self.people[opp]):
+                    self.people[opp][ti]["hp"] -= 2
+                    self.log.append(f"{person['name']} deals 2 damage to "
+                                  f"{self.people[opp][ti]['name']}!")
+                    if self.people[opp][ti]["hp"] <= 0:
+                        self.discard_pile.append(self.people[opp].pop(ti))
+                        self.log.append("  Target destroyed!")
+                elif tt == "camp" and 0 <= ti < len(self.camps[opp]):
+                    self.camps[opp][ti]["hp"] -= 2
+                    self.log.append(f"{person['name']} deals 2 damage to "
+                                  f"{self.camps[opp][ti]['name']}!")
+                    if self.camps[opp][ti]["hp"] <= 0:
+                        self.camps[opp][ti]["destroyed"] = True
+                        self.camps[opp][ti]["hp"] = 0
+                        self.log.append(f"  {self.camps[opp][ti]['name']} DESTROYED!")
+                else:
                     self.water[p] += 1
                     return False
 
@@ -504,23 +520,30 @@ class RadlandsGame(BaseGame):
 
             elif ability == "protect":
                 # Protect a camp - heal 1 HP
-                print("  Protect which camp?")
-                for i, camp in enumerate(self.camps[p]):
-                    if not camp["destroyed"]:
-                        print(f"    {i+1}. {camp['name']} ({camp['hp']}/{camp['max_hp']})")
-                target = input_with_quit("  Camp #: ").strip()
-                try:
-                    ti = int(target) - 1
-                    if 0 <= ti < len(self.camps[p]) and not self.camps[p][ti]["destroyed"]:
-                        self.camps[p][ti]["hp"] = min(self.camps[p][ti]["hp"] + 1,
-                                                      self.camps[p][ti]["max_hp"])
-                        self.log.append(f"{person['name']} protects {self.camps[p][ti]['name']}.")
-                    else:
-                        self.water[p] += 1
-                        return False
-                except ValueError:
+                valid_camps = [i for i, c in enumerate(self.camps[p]) if not c["destroyed"]]
+                if not valid_camps:
                     self.water[p] += 1
                     return False
+                if self.ai_player == self.current_player:
+                    # AI picks camp with lowest HP ratio
+                    ti = min(valid_camps, key=lambda i: self.camps[p][i]["hp"] / max(self.camps[p][i]["max_hp"], 1))
+                else:
+                    print("  Protect which camp?")
+                    for i in valid_camps:
+                        camp = self.camps[p][i]
+                        print(f"    {i+1}. {camp['name']} ({camp['hp']}/{camp['max_hp']})")
+                    target = input_with_quit("  Camp #: ").strip()
+                    try:
+                        ti = int(target) - 1
+                        if ti not in valid_camps:
+                            self.water[p] += 1
+                            return False
+                    except ValueError:
+                        self.water[p] += 1
+                        return False
+                self.camps[p][ti]["hp"] = min(self.camps[p][ti]["hp"] + 1,
+                                              self.camps[p][ti]["max_hp"])
+                self.log.append(f"{person['name']} protects {self.camps[p][ti]['name']}.")
 
             elif ability == "steal":
                 if self.hands[opp]:
@@ -534,27 +557,29 @@ class RadlandsGame(BaseGame):
                     return False
 
             elif ability == "destroy":
-                if self.people[opp]:
+                if not self.people[opp]:
+                    self.log.append("No enemy people to destroy!")
+                    self.water[p] += 1
+                    return False
+                if self.ai_player == self.current_player:
+                    # AI picks enemy with highest HP
+                    ti = max(range(len(self.people[opp])), key=lambda i: self.people[opp][i]["hp"])
+                else:
                     print("  Destroy which enemy person?")
                     for i, per in enumerate(self.people[opp]):
                         print(f"    {i+1}. {per['name']} (HP:{per['hp']})")
                     target = input_with_quit("  Target #: ").strip()
                     try:
                         ti = int(target) - 1
-                        if 0 <= ti < len(self.people[opp]):
-                            destroyed = self.people[opp].pop(ti)
-                            self.discard_pile.append(destroyed)
-                            self.log.append(f"{person['name']} sabotages {destroyed['name']}!")
-                        else:
+                        if not (0 <= ti < len(self.people[opp])):
                             self.water[p] += 1
                             return False
                     except ValueError:
                         self.water[p] += 1
                         return False
-                else:
-                    self.log.append("No enemy people to destroy!")
-                    self.water[p] += 1
-                    return False
+                destroyed = self.people[opp].pop(ti)
+                self.discard_pile.append(destroyed)
+                self.log.append(f"{person['name']} sabotages {destroyed['name']}!")
 
             return True
 

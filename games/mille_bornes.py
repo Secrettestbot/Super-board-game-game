@@ -561,12 +561,15 @@ class MilleBornesGame(BaseGame):
 
         # Ask if they want to play coup fourre
         target_player_num = 1 if target_ps is self.player_states[0] else 2
-        print(f"\n  {self.players[target_player_num - 1]}: "
-              f"You have {matching_safety}! Play as Coup Fourre? (coupe/no): ")
-        try:
-            response = input_with_quit("  > ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            return
+        if self.ai_player == target_player_num:
+            response = "coupe"
+        else:
+            print(f"\n  {self.players[target_player_num - 1]}: "
+                  f"You have {matching_safety}! Play as Coup Fourre? (coupe/no): ")
+            try:
+                response = input_with_quit("  > ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                return
 
         if response in ("coupe", "coup", "yes", "y"):
             # Play the coup fourre

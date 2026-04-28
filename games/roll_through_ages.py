@@ -197,7 +197,7 @@ class RollThroughAgesGame(BaseGame):
             penalty = t['skulls'] - 1
             self._d(other)['disaster'] += penalty
             print(f"  Disaster! {t['skulls']} skulls - {self.players[other - 1]} loses {penalty} VP!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
         d['food'] += t['food']
         d['workers'] = t['workers']
         d['goods'] = min(d['goods'] + t['goods'], self._gcap())
@@ -357,10 +357,90 @@ class RollThroughAgesGame(BaseGame):
         return ('turn',)
 
     def make_move(self, move):
-        self._run_roll_phase()
-        self._run_feed_phase()
-        self._run_build_phase()
+        if self.ai_player == self.current_player:
+            self._run_ai_turn()
+        else:
+            self._run_roll_phase()
+            self._run_feed_phase()
+            self._run_build_phase()
         return True
+
+    def _run_ai_turn(self):
+        d = self._d()
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        # Roll phase: roll all dice, keep food/workers, reroll rest
+        self._do_roll()
+        if difficulty != 'easy' and self.rolls_left > 0:
+            food_need = d['cities'] - d['food']
+            have_food = sum(1 for fi in (self.kept + self.dice) if DICE_FACES[fi]['food'] > 0)
+            if have_food * 3 < food_need and self.dice:
+                keep_idxs = []
+                kc = len(self.kept)
+                for i, fi in enumerate(self.dice):
+                    if DICE_FACES[fi]['food'] > 0 or DICE_FACES[fi]['workers'] > 0:
+                        keep_idxs.append(kc + i + 1)
+                if keep_idxs:
+                    self._do_keep(keep_idxs)
+                if self.dice:
+                    self._do_roll()
+
+        self._process_end_roll()
+
+        # Feed phase
+        needed = d['cities']
+        if d['food'] >= needed:
+            d['food'] -= needed
+        else:
+            short = needed - d['food']
+            d['food'] = 0
+            d['disaster'] += short
+
+        # Build phase: spend workers and coins/goods
+        if difficulty == 'easy':
+            pass
+        else:
+            # Try to build a city if affordable
+            if d['cities'] < 7:
+                cost = 3 + d['cities']
+                if d['workers'] >= cost:
+                    d['workers'] -= cost
+                    d['cities'] += 1
+
+            # Try to buy a development
+            affordable = [(dv, info) for dv, info in self.devs.items()
+                          if dv not in d['devs'] and d['coins'] + d['goods'] >= info['cost']]
+            if affordable:
+                if difficulty == 'hard':
+                    affordable.sort(key=lambda x: x[1]['vp'] / max(x[1]['cost'], 1), reverse=True)
+                dv, info = affordable[0]
+                cost = info['cost']
+                g_spent = min(d['goods'], cost)
+                d['goods'] -= g_spent
+                d['coins'] -= (cost - g_spent)
+                d['devs'].append(dv)
+
+            # Spend remaining workers on monuments
+            if d['workers'] > 0:
+                available = [(m, info) for m, info in self.mons.items()
+                             if m not in d['mon_done']]
+                if available:
+                    available.sort(key=lambda x: x[1]['w'] - d['mon_prog'][x[0]])
+                    m, info = available[0]
+                    total_w = info['w'] - (2 if self._has('masonry') else 0)
+                    total_w = max(1, total_w)
+                    remain = total_w - d['mon_prog'][m]
+                    actual = min(d['workers'], remain)
+                    d['workers'] -= actual
+                    d['mon_prog'][m] += actual
+                    if d['mon_prog'][m] >= total_w:
+                        d['mon_done'].append(m)
+                        if m not in self.mon_first:
+                            self.mon_first[m] = self.current_player
+
+        d['workers'] = 0
+        self.phase = 'roll'
+        self.dice, self.kept, self.rolls_left = [], [], 3
 
     # -- Game over ------------------------------------------------------- #
 

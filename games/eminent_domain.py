@@ -395,8 +395,7 @@ class EminentDomainGame(BaseGame):
             self.hands[p].pop(idx)
             self.discard_piles[p].append(card)
             if self.ai_player != self.current_player:
-                if self.ai_player != self.current_player:
-                    input("  Press Enter...")
+                input("  Press Enter...")
             return True
 
         if action == "choose_role":
