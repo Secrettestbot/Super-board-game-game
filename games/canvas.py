@@ -487,7 +487,7 @@ class CanvasGame(BaseGame):
                     self.winner = 2
                 else:
                     self.winner = None
-            input("\n  Press Enter to continue...")
+            self._pause("\n  Press Enter to continue...")
 
     def get_state(self):
         return {

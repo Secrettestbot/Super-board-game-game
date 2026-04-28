@@ -277,6 +277,10 @@ class PatchworkGame(BaseGame):
         """Display the full game state."""
         var_label = "Standard" if self.variation != "simple" else "Simple"
         active = self._get_active_player()
+        # Sync current_player so the base play-loop AI check works correctly.
+        # In Patchwork, switch_player() is a no-op because the "behind" player
+        # always goes, so current_player must be kept in sync here.
+        self.current_player = active + 1
         print(f"\n  === Patchwork ({var_label}) ===")
         print(f"  {self.players[0]} (P1): {self.buttons[0]} buttons, pos {self.positions[0]}/{self.track_length}   |   "
               f"{self.players[1]} (P2): {self.buttons[1]} buttons, pos {self.positions[1]}/{self.track_length}")
@@ -366,6 +370,9 @@ class PatchworkGame(BaseGame):
     def make_move(self, move):
         """Apply move. Returns True if valid."""
         active = self._get_active_player()
+        # Keep current_player in sync with the actual active player so that
+        # _pause() and _get_placement() AI checks work correctly.
+        self.current_player = active + 1
         move_upper = move.upper().strip()
 
         if move_upper == 'A':

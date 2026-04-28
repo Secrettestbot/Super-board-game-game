@@ -459,7 +459,10 @@ class TraxGame(BaseGame):
         for (r, c) in candidates:
             valid_types = self._valid_tiles_for_position(r, c)
             for tt in valid_types:
-                valid_moves.append((r, c, tt))
+                import copy
+                test = copy.deepcopy(self)
+                if test.make_move((r, c, tt)):
+                    valid_moves.append((r, c, tt))
 
         if not valid_moves:
             for (r, c) in candidates:

@@ -88,10 +88,18 @@ class QuacksGame(BaseGame):
         self.stopped = {1: False, 2: False}
         self.rat_tails = {1: 0, 2: 0}
         self.bonus_draws = {1: 0, 2: 0}
+        self._stay_on_player = False
         for p in (1, 2):
             self.bags[p] = self._starting_bag()
             random.shuffle(self.bags[p])
         self.round_done_players = set()
+
+    def switch_player(self):
+        """Override to suppress player switch after non-turn-ending moves."""
+        if self._stay_on_player:
+            self._stay_on_player = False
+            return
+        super().switch_player()
 
     def _starting_bag(self):
         bag = []
@@ -228,7 +236,8 @@ class QuacksGame(BaseGame):
             if chip is None:
                 print("  Bag is empty! You must stop.")
                 self.stopped[cp] = True
-                return False
+                self._stay_on_player = True
+                return True
             self.cauldrons[cp].append(chip)
             ct, cv = chip
             if ct == 'green' and cv >= 2:
@@ -242,11 +251,13 @@ class QuacksGame(BaseGame):
                 self.busted[cp] = True
                 print(f"  {RED}BUST! White total {white_s} > {BUST_LIMIT}!{RESET}")
                 self._pause("  Press Enter...")
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'stop':
             self.stopped[cp] = True
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'ruby_return':
             whites_in_cauldron = [(i, c) for i, c in enumerate(self.cauldrons[cp]) if c[0] == 'white']
@@ -259,7 +270,8 @@ class QuacksGame(BaseGame):
                 print(f"  Returned a white chip to bag. Rubies: {self.rubies[cp]}")
             else:
                 print("  No white chips in cauldron to return.")
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'next_player':
             if cp == 1 and not (self.busted[2] or self.stopped[2]):
@@ -284,10 +296,12 @@ class QuacksGame(BaseGame):
                     self.scores[cp] += 1
                 if item['type'] == 'yellow' and item['value'] >= 2:
                     self.rubies[cp] += 1
-                return False
+                self._stay_on_player = True
+                return True
             else:
                 print("  Not enough coins!")
-                return False
+                self._stay_on_player = True
+                return True
 
         elif move[0] == 'done_buying':
             if cp in self.round_done_players:
@@ -441,6 +455,7 @@ class QuacksGame(BaseGame):
         self.stopped = {int(k): v for k, v in state['stopped'].items()}
         self.rat_tails = {int(k): v for k, v in state['rat_tails'].items()}
         self.round_done_players = set(state['round_done_players'])
+        self._stay_on_player = False
 
     def get_tutorial(self):
         return """

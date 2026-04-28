@@ -592,7 +592,7 @@ class WingspanCardGame(BaseGame):
             print(f"  Goal: {goal_name}")
             for i in range(2):
                 print(f"  {self.players[i]}: {scores[i]} -> earns {self.round_scores[i][-1]} points")
-            input("\n  Press Enter to continue...")
+            self._pause("\n  Press Enter to continue...")
 
     def get_ai_move(self):
         import random as rand

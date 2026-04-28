@@ -495,7 +495,7 @@ class SprawlopolisGame(BaseGame):
                 print(f"  City failed to meet the target. Better luck next time!")
                 self.winner = None
 
-            input("\n  Press Enter...")
+            self._pause("\n  Press Enter...")
 
     def get_state(self):
         return {

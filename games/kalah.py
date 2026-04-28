@@ -332,7 +332,7 @@ class KalahGame(BaseGame):
                 return min_eval, best_move
 
         is_maximizing = True
-        _, best = minimax(copy.deepcopy(self), 8, float('-inf'), float('inf'), is_maximizing)
+        _, best = minimax(copy.deepcopy(self), 5, float('-inf'), float('inf'), is_maximizing)
         return str(best) if best else str(valid_pits[0])
 
     def get_state(self):

@@ -563,7 +563,7 @@ class ShogiGame(BaseGame):
                     if (r, c) in self.board:
                         continue
                     if piece == 'P':
-                        has_col = any(pc == 'P' and pl2 == player and c2 == c
+                        has_col = any(pc2 == 'P' and pl2 == player and c2 == c
                                       for (r2, c2), (pl2, pc2) in self.board.items())
                         if has_col:
                             continue

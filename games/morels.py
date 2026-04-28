@@ -347,9 +347,9 @@ class MorelGame(BaseGame):
             return True
 
         elif action == "sell" and len(parts) >= 3:
-            species_name = parts[1]
             try:
-                count = int(parts[2])
+                count = int(parts[-1])
+                species_name = " ".join(parts[1:-1])
             except ValueError:
                 return False
             # Find matching species

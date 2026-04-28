@@ -383,29 +383,37 @@ class BlockadeGame(BaseGame):
                     old_pos = self.pawns[p][pi]
                     self.pawns[p][pi] = (cr, cc)
 
-                    for wr in range(self.rows):
-                        for wc in range(self.cols):
-                            for wo in ['h', 'v']:
-                                wall_ok = False
-                                if wo == 'h' and self._can_place_h_wall(wr, wc):
-                                    self.h_walls.add((wr, wc))
-                                    if self._wall_leaves_paths_open():
-                                        wall_ok = True
-                                    self.h_walls.discard((wr, wc))
-                                elif wo == 'v' and self._can_place_v_wall(wr, wc):
-                                    self.v_walls.add((wr, wc))
-                                    if self._wall_leaves_paths_open():
-                                        wall_ok = True
-                                    self.v_walls.discard((wr, wc))
+                    opp = 2 if p == 1 else 1
+                    opp_positions = self.pawns[opp]
+                    wall_candidates = set()
+                    radius = 2
+                    for opr, opc in opp_positions:
+                        for wr in range(max(0, opr - radius), min(self.rows, opr + radius + 1)):
+                            for wc in range(max(0, opc - radius), min(self.cols, opc + radius + 1)):
+                                wall_candidates.add((wr, wc))
 
-                                if wall_ok:
-                                    wall_str = f"{self._col_to_letter(wc)}{wr + 1}"
-                                    if num_pawns == 1:
-                                        move_str = f"{direction} {dist} {wall_str} {wo}"
-                                    else:
-                                        move_str = f"{pi + 1} {direction} {dist} {wall_str} {wo}"
-                                    new_dist = abs(cr - goal_row)
-                                    moves.append((move_str, new_dist))
+                    for wr, wc in wall_candidates:
+                        for wo in ['h', 'v']:
+                            wall_ok = False
+                            if wo == 'h' and self._can_place_h_wall(wr, wc):
+                                self.h_walls.add((wr, wc))
+                                if self._wall_leaves_paths_open():
+                                    wall_ok = True
+                                self.h_walls.discard((wr, wc))
+                            elif wo == 'v' and self._can_place_v_wall(wr, wc):
+                                self.v_walls.add((wr, wc))
+                                if self._wall_leaves_paths_open():
+                                    wall_ok = True
+                                self.v_walls.discard((wr, wc))
+
+                            if wall_ok:
+                                wall_str = f"{self._col_to_letter(wc)}{wr + 1}"
+                                if num_pawns == 1:
+                                    move_str = f"{direction} {dist} {wall_str} {wo}"
+                                else:
+                                    move_str = f"{pi + 1} {direction} {dist} {wall_str} {wo}"
+                                new_dist = abs(cr - goal_row)
+                                moves.append((move_str, new_dist))
 
                     self.pawns[p][pi] = old_pos
 
