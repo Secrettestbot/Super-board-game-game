@@ -232,15 +232,6 @@ class BohnanzaDuelGame(BaseGame):
         cp = self.current_player
         sp = str(cp)
 
-        if cp == 2:
-            if self.phase == "plant":
-                return self._ai_choose_plant()
-            elif self.phase == "gift":
-                return {"action": "draw_gifts"}
-            elif self.phase == "resolve_gift":
-                return self._ai_resolve_gift()
-            return {"action": "end_plant"}
-
         if self.phase == "plant":
             if self.plants_remaining <= 0:
                 return {"action": "end_plant"}

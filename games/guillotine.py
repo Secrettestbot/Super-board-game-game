@@ -253,21 +253,8 @@ class GuillotineGame(BaseGame):
         cp = self.current_player
         sp = str(cp)
 
-        if cp == 2:
-            # AI turn
-            if self.phase == "action":
-                choice = self._ai_choose_action()
-                if choice is not None:
-                    print(f"  {self.players[1]} plays: {self.hands[sp][choice]['name']}")
-                    input_with_quit("  Press Enter to continue...")
-                    return {"action": "play_card", "index": choice}
-                else:
-                    return {"action": "skip"}
-            else:
-                return {"action": "collect"}
-
         if self.phase == "action":
-            print(f"  {self.players[0]}, play an action card or skip.")
+            print(f"  {self.players[cp - 1]}, play an action card or skip.")
             choice = input_with_quit("  Card number (or 'skip'): ").strip()
             if choice.lower() in ('skip', 's', ''):
                 return {"action": "skip"}
@@ -279,7 +266,7 @@ class GuillotineGame(BaseGame):
                 pass
             return None
         else:
-            print(f"  {self.players[0]}, collect the first noble in line.")
+            print(f"  {self.players[cp - 1]}, collect the first noble in line.")
             input_with_quit("  Press Enter to collect...")
             return {"action": "collect"}
 

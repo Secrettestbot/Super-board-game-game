@@ -84,9 +84,7 @@ class JottoGame(BaseGame):
         self.log = []
 
     def setup(self):
-        # AI (player 2) picks a random word
-        ai_word = random.choice(self.word_pool)
-        self.secret_words = {"1": None, "2": ai_word}
+        self.secret_words = {"1": None, "2": None}
         self.guesses = {"1": [], "2": []}
         self.log = ["Game started! Player 1, choose your secret word."]
         self.current_player = 1
@@ -116,8 +114,9 @@ class JottoGame(BaseGame):
         print(f"  JOTTO - {self.word_length}-Letter Words")
         print(f"{'=' * 55}")
 
-        if self.secret_words["1"] is None:
-            print(f"\n  {self.players[0]}, choose your secret {self.word_length}-letter word.\n")
+        sp = str(self.current_player)
+        if self.secret_words[sp] is None:
+            print(f"\n  {self.players[self.current_player - 1]}, choose your secret {self.word_length}-letter word.\n")
             return
 
         for p in [1, 2]:
@@ -140,19 +139,10 @@ class JottoGame(BaseGame):
         cp = self.current_player
         sp = str(cp)
 
-        # Phase: player 1 picks secret word
-        if self.secret_words["1"] is None:
+        if self.secret_words[sp] is None:
             print(f"  Valid words are {self.word_length} letters long.")
             word = input_with_quit(f"  Enter your secret word: ").strip().lower()
             return {"action": "set_secret", "word": word}
-
-        # Guessing phase
-        if cp == 2:
-            # AI turn
-            guess = self._ai_pick_guess()
-            print(f"  {self.players[1]} guesses: {guess}")
-            input_with_quit("  Press Enter to continue...")
-            return {"action": "guess", "word": guess}
 
         print(f"  {self.players[cp-1]}, guess your opponent's word.")
         print(f"  (Must be {self.word_length} letters)")
@@ -172,8 +162,8 @@ class JottoGame(BaseGame):
                 return False
             if not word.isalpha():
                 return False
-            self.secret_words["1"] = word
-            self.log.append(f"{self.players[0]} has chosen a secret word.")
+            self.secret_words[sp] = word
+            self.log.append(f"{self.players[cp - 1]} has chosen a secret word.")
             return True
 
         if action == "guess":
