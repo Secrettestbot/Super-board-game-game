@@ -241,7 +241,9 @@ class ClaimGame(BaseGame):
 
             # Check suit following rule
             if self.trick_phase == "follow":
-                lead_card = self.trick_cards[self.lead_player]
+                lead_card = self.trick_cards.get(self.lead_player)
+                if lead_card is None:
+                    return False
                 lead_faction = lead_card["faction"]
                 # Doppelgangers copy lead suit - no restriction
                 if lead_faction != "Doppelgangers":
@@ -360,7 +362,9 @@ class ClaimGame(BaseGame):
         valid_indices = list(range(len(hand)))
 
         if self.trick_phase == "follow":
-            lead_card = self.trick_cards[self.lead_player]
+            lead_card = self.trick_cards.get(self.lead_player)
+            if lead_card is None:
+                return ("play", str(valid_indices[0] + 1))
             lead_faction = lead_card["faction"]
             if lead_faction != "Doppelgangers":
                 matching = [i for i in valid_indices if hand[i]["faction"] == lead_faction]
@@ -382,7 +386,9 @@ class ClaimGame(BaseGame):
                     if card["faction"] == "Dragons":
                         score += 5
             else:
-                lead_card = self.trick_cards[self.lead_player]
+                lead_card = self.trick_cards.get(self.lead_player)
+                if lead_card is None:
+                    return score
                 lead_f = lead_card["faction"]
                 eff_f = card["faction"]
                 if eff_f == "Doppelgangers":

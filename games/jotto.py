@@ -175,6 +175,8 @@ class JottoGame(BaseGame):
             # Determine which player's secret we're checking against
             target_player = "2" if sp == "1" else "1"
             secret = self.secret_words[target_player]
+            if secret is None:
+                return False
             matches = count_matching_letters(secret, word)
             self.guesses[sp].append((word, matches))
             if matches == self.word_length and word == secret:
