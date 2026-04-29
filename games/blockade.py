@@ -316,12 +316,12 @@ class BlockadeGame(BaseGame):
             return False
         if distance < 1 or distance > 2:
             return False
-        if wall_orient not in ('h', 'v'):
-            return False
-
-        wall_pos = self._algebraic_to_pos(wall_pos_str)
-        if wall_pos is None:
-            return False
+        if not no_wall:
+            if wall_orient not in ('h', 'v'):
+                return False
+            wall_pos = self._algebraic_to_pos(wall_pos_str)
+            if wall_pos is None:
+                return False
 
         # Direction deltas
         dir_map = {'up': (-1, 0), 'down': (1, 0), 'left': (0, -1), 'right': (0, 1)}
