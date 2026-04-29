@@ -388,11 +388,15 @@ class BlockadeGame(BaseGame):
                     opp = 2 if p == 1 else 1
                     opp_positions = self.pawns[opp]
                     wall_candidates = set()
-                    radius = 2
+                    radius = 1
                     for opr, opc in opp_positions:
                         for wr in range(max(0, opr - radius), min(self.rows, opr + radius + 1)):
                             for wc in range(max(0, opc - radius), min(self.cols, opc + radius + 1)):
                                 wall_candidates.add((wr, wc))
+
+                    wall_candidates = list(wall_candidates)
+                    random.shuffle(wall_candidates)
+                    wall_candidates = wall_candidates[:8]
 
                     for wr, wc in wall_candidates:
                         for wo in ['h', 'v']:
