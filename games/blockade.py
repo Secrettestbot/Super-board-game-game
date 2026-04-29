@@ -278,22 +278,35 @@ class BlockadeGame(BaseGame):
         num_pawns = len(self.pawns[self.current_player])
 
         try:
+            no_wall = False
             if num_pawns == 1:
-                if len(parts) != 4:
+                if len(parts) == 2:
+                    pawn_idx = 0
+                    direction = parts[0]
+                    distance = int(parts[1])
+                    no_wall = True
+                elif len(parts) == 4:
+                    pawn_idx = 0
+                    direction = parts[0]
+                    distance = int(parts[1])
+                    wall_pos_str = parts[2]
+                    wall_orient = parts[3]
+                else:
                     return False
-                pawn_idx = 0
-                direction = parts[0]
-                distance = int(parts[1])
-                wall_pos_str = parts[2]
-                wall_orient = parts[3]
             else:
-                if len(parts) != 5:
+                if len(parts) == 3:
+                    pawn_idx = int(parts[0]) - 1
+                    direction = parts[1]
+                    distance = int(parts[2])
+                    no_wall = True
+                elif len(parts) == 5:
+                    pawn_idx = int(parts[0]) - 1
+                    direction = parts[1]
+                    distance = int(parts[2])
+                    wall_pos_str = parts[3]
+                    wall_orient = parts[4]
+                else:
                     return False
-                pawn_idx = int(parts[0]) - 1
-                direction = parts[1]
-                distance = int(parts[2])
-                wall_pos_str = parts[3]
-                wall_orient = parts[4]
         except (ValueError, IndexError):
             return False
 
@@ -330,27 +343,47 @@ class BlockadeGame(BaseGame):
         self.pawns[self.current_player][pawn_idx] = (pr, pc)
 
         # Validate and place wall
-        wr, wc = wall_pos
-        valid_wall = False
-        if wall_orient == 'h':
-            if self._can_place_h_wall(wr, wc):
-                self.h_walls.add((wr, wc))
-                if self._wall_leaves_paths_open():
-                    valid_wall = True
-                else:
-                    self.h_walls.discard((wr, wc))
+        if no_wall:
+            has_any_valid = False
+            for wr2 in range(self.rows):
+                for wc2 in range(self.cols):
+                    for wo2, can_place, wall_set in [('h', self._can_place_h_wall, self.h_walls),
+                                                      ('v', self._can_place_v_wall, self.v_walls)]:
+                        if can_place(wr2, wc2):
+                            wall_set.add((wr2, wc2))
+                            if self._wall_leaves_paths_open():
+                                has_any_valid = True
+                            wall_set.discard((wr2, wc2))
+                            if has_any_valid:
+                                break
+                    if has_any_valid:
+                        break
+                if has_any_valid:
+                    break
+            if has_any_valid:
+                self.pawns[self.current_player][pawn_idx] = old_pos
+                return False
         else:
-            if self._can_place_v_wall(wr, wc):
-                self.v_walls.add((wr, wc))
-                if self._wall_leaves_paths_open():
-                    valid_wall = True
-                else:
-                    self.v_walls.discard((wr, wc))
+            wr, wc = wall_pos
+            valid_wall = False
+            if wall_orient == 'h':
+                if self._can_place_h_wall(wr, wc):
+                    self.h_walls.add((wr, wc))
+                    if self._wall_leaves_paths_open():
+                        valid_wall = True
+                    else:
+                        self.h_walls.discard((wr, wc))
+            else:
+                if self._can_place_v_wall(wr, wc):
+                    self.v_walls.add((wr, wc))
+                    if self._wall_leaves_paths_open():
+                        valid_wall = True
+                    else:
+                        self.v_walls.discard((wr, wc))
 
-        if not valid_wall:
-            # Revert pawn movement
-            self.pawns[self.current_player][pawn_idx] = old_pos
-            return False
+            if not valid_wall:
+                self.pawns[self.current_player][pawn_idx] = old_pos
+                return False
 
         return True
 
@@ -465,9 +498,10 @@ class BlockadeGame(BaseGame):
                                             return f"{direction} {dist} {wall_str} {wo}"
                                         return f"{pi + 1} {direction} {dist} {wall_str} {wo}"
                         self.pawns[p][pi] = old_pos
+            direction = 'down' if p == 1 else 'up'
             if num_pawns == 1:
-                return "down 1 a1 h"
-            return "1 down 1 a1 h"
+                return f"{direction} 1"
+            return f"1 {direction} 1"
 
         if difficulty == 'easy':
             return random.choice(moves)[0]
