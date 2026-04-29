@@ -164,6 +164,8 @@ class SamuraiSpiritGame(BaseGame):
         return None
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move == "draw":
             if self._draw_raider():
                 self._add_log(f"A {self.current_raider['name']} (str {self.current_raider['strength']}) appears!")

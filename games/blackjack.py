@@ -264,6 +264,8 @@ class BlackjackGame(BaseGame):
 
     def make_move(self, move):
         """Process the move. Returns True if valid."""
+        if move is None:
+            return False
         move_type, move_data = move
 
         if move_type == "bet":

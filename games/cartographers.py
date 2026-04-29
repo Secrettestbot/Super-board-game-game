@@ -340,6 +340,8 @@ class CartographersGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move to the game state."""
+        if move is None:
+            return False
         if move[0] == 'monster':
             try:
                 parts = move[1].replace(' ', '').split(',')

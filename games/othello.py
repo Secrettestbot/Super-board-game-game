@@ -321,6 +321,8 @@ class OthelloGame(BaseGame):
 
     def make_move(self, move):
         """Place a piece and flip captured opponents. Returns True if valid."""
+        if move is None:
+            return False
         if move == 'pass':
             return True
 

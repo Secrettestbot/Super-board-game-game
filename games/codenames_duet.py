@@ -204,6 +204,8 @@ class CodenamesDuetGame(BaseGame):
                 print(f"  Format: ROW COL (e.g. 'A 3') or 'pass'")
 
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
         opp = 3 - cp
 

@@ -255,6 +255,8 @@ class YoteGame(BaseGame):
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
         """Apply a move. Returns True if valid."""
+        if move is None:
+            return False
         if move[0] == "remove":
             return self._do_removal(move)
         elif move[0] == "place":

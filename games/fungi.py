@@ -294,6 +294,8 @@ class FungiGame(BaseGame):
             return {"action": "sell", "mushroom": options[ci]}
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player
         action = move["action"]
 

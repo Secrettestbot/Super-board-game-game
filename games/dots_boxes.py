@@ -104,6 +104,8 @@ class DotsBoxesGame(BaseGame):
 
     def make_move(self, move):
         """Apply move. Returns True if valid."""
+        if move is None:
+            return False
         move = move.strip().lower()
         if len(move) < 4:
             return False

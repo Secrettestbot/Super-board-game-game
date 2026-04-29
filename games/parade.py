@@ -180,6 +180,8 @@ class ParadeGame(BaseGame):
             return {"card_idx": idx}
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move == "pass":
             return True
 

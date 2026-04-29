@@ -254,6 +254,8 @@ class ParksGame(BaseGame):
         return move_str
 
     def make_move(self, move):
+        if move is None:
+            return False
         pi = self.current_player - 1
         p = self.current_player
         parts = move.lower().split()

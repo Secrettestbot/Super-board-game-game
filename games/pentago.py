@@ -186,6 +186,8 @@ class PentagoGame(BaseGame):
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
         """Place marble and rotate quadrant. Returns True if valid."""
+        if move is None:
+            return False
         row, col, quadrant, direction = move
 
         if not (0 <= row < self.SIZE and 0 <= col < self.SIZE):

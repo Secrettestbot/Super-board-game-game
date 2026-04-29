@@ -152,6 +152,8 @@ class ChessGame(BaseGame):
         return move_str.strip().replace('-', '').replace(' ', '')
 
     def make_move(self, move_str):
+        if move_str is None:
+            return False
         move_str = move_str.lower()
 
         # Handle castling notation

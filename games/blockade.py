@@ -272,6 +272,8 @@ class BlockadeGame(BaseGame):
 
     def make_move(self, move):
         """Apply move. Returns True if valid."""
+        if move is None:
+            return False
         parts = move.lower().split()
         num_pawns = len(self.pawns[self.current_player])
 

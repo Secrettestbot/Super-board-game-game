@@ -243,6 +243,8 @@ class JaipurGame(BaseGame):
 
     def make_move(self, move_str):
         """Apply a move. Returns True if valid."""
+        if move_str is None:
+            return False
         parts = move_str.split()
         if not parts:
             print("  Please enter a command.")

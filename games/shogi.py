@@ -217,6 +217,8 @@ class ShogiGame(BaseGame):
             print("  Invalid format. Use 'e2 e3' for move, 'e2 e3+' to promote, 'P*e3' for drop.")
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move[0] == 'drop':
             return self._do_drop(move[1], move[2])
         else:

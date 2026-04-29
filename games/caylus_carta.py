@@ -212,6 +212,8 @@ class CaylusCartaGame(BaseGame):
         return "pass"
 
     def make_move(self, move):
+        if move is None:
+            return False
         if self.phase == "place":
             return self._handle_place(move)
         elif self.phase == "provost":

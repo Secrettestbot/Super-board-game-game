@@ -185,6 +185,8 @@ class DaleOfMerchantsGame(BaseGame):
         return move_str.strip()
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player - 1
         hand = self.player_hands[p]
         parts = move.lower().split()

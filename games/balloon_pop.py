@@ -158,6 +158,8 @@ class BalloonPopGame(BaseGame):
                 print("  Enter 'd' to draw or 'b' to bank.")
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player
 
         if move == "bank":

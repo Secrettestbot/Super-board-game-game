@@ -193,6 +193,8 @@ class QuixoGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         r, c, d = move
         # Validate once more
         if not self._is_border(r, c):

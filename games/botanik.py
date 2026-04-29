@@ -299,6 +299,8 @@ class BotanikGame(BaseGame):
             return ("place", move)
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move == "no_tiles":
             self._calculate_scores()
             return True

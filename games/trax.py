@@ -405,6 +405,8 @@ class TraxGame(BaseGame):
 
     def make_move(self, move):
         """Place a tile and process forced plays. Returns True if valid."""
+        if move is None:
+            return False
         row, col, tile_type = move
 
         # For non-first moves, verify adjacency and edge matching

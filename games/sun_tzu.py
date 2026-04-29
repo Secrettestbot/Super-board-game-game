@@ -184,6 +184,8 @@ class SunTzuGame(BaseGame):
         return {"player": player, "assignments": assignments, "used_cards": [c for cards in assignments.values() for c in cards]}
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move == "resolve":
             self._resolve_round()
             return True

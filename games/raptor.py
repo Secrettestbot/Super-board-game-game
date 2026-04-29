@@ -230,6 +230,8 @@ class RaptorGame(BaseGame):
         return ("done", "")
 
     def make_move(self, move):
+        if move is None:
+            return False
         mtype, mdata = move
 
         if mtype == "select":

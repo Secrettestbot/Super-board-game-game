@@ -432,6 +432,8 @@ class IngeniousGame(BaseGame):
 
         Returns True if the move was valid.
         """
+        if move is None:
+            return False
         tile_idx, r1, c1, r2, c2 = move
         player = self.current_player
         hand = self.hands[player]

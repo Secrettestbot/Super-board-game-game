@@ -248,6 +248,8 @@ class DominoesGame(BaseGame):
     # ------------------------------------------------------------- make_move
     def make_move(self, move):
         """Apply a move to the game state. Returns True if valid."""
+        if move is None:
+            return False
         action = move["action"]
         player_idx = self.current_player - 1
         self._last_action = action

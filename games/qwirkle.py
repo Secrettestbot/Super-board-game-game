@@ -158,6 +158,8 @@ class QwirkleGame(BaseGame):
 
     def make_move(self, move):
         """Apply move. Returns True if valid."""
+        if move is None:
+            return False
         parts = move.strip().split()
         if not parts:
             return False

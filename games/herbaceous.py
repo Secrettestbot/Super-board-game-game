@@ -411,6 +411,8 @@ class HerbaceousGame(BaseGame):
         return True
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player
         action = move["action"]
 

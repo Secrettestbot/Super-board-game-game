@@ -200,6 +200,8 @@ class PickominoGame(BaseGame):
 
     def make_move(self, move):
         """Execute a full turn for the current player."""
+        if move is None:
+            return False
         if self.ai_player == self.current_player:
             self._play_ai_turn()
         else:

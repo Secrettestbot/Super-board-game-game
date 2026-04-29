@@ -307,6 +307,8 @@ class BangDiceGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move. Handles the full turn internally before returning."""
+        if move is None:
+            return False
         action = move[0]
 
         if action == 'roll':

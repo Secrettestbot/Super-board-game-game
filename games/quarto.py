@@ -226,6 +226,8 @@ class QuartoGame(BaseGame):
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
         """Apply a move to the game state. Returns True if valid."""
+        if move is None:
+            return False
         row = move.get('row')
         col = move.get('col')
         chosen_piece = move.get('chosen_piece')

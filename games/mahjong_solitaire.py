@@ -257,6 +257,8 @@ class MahjongSolitaireGame(BaseGame):
 
     def make_move(self, move):
         """Remove a matching pair. Returns True if valid."""
+        if move is None:
+            return False
         parts = move.upper().split()
         if len(parts) != 2:
             print("  Please enter exactly two tile codes.")

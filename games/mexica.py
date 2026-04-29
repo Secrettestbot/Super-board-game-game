@@ -162,6 +162,8 @@ class MexicaGame(BaseGame):
         return move
 
     def make_move(self, move):
+        if move is None:
+            return False
         parts = move.split()
         if not parts:
             return False

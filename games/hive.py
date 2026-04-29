@@ -567,6 +567,8 @@ class HiveGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move. Returns True if valid."""
+        if move is None:
+            return False
         player = self.current_player
 
         if move[0] == "place":

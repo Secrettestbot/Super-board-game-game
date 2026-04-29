@@ -246,6 +246,8 @@ class CathedralGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move. Returns True if valid."""
+        if move is None:
+            return False
         if move[0] == "pass":
             self.consecutive_passes += 1
             return True

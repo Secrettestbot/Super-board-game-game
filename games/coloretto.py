@@ -420,6 +420,8 @@ class ColorettoGame(BaseGame):
     # -------------------------------------------------------------- make_move
 
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
 
         if move[0] == "skip":

@@ -324,6 +324,8 @@ class SagradaGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move. Returns True if valid."""
+        if move is None:
+            return False
         p = self._current_drafter()
 
         if move.lower() == "pass":

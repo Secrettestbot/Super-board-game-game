@@ -228,6 +228,8 @@ class RaceForTheGalaxyGame(BaseGame):
 
     # ------------------------------------------------------------ make_move
     def make_move(self, move):
+        if move is None:
+            return False
         if move[0] != "turn":
             return False
 

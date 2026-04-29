@@ -335,6 +335,8 @@ class SprawlopolisGame(BaseGame):
         return ("place", pos)
 
     def make_move(self, move):
+        if move is None:
+            return False
         action, data = move
 
         if action == "done":

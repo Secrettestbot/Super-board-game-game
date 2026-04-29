@@ -369,6 +369,8 @@ class PatchworkGame(BaseGame):
 
     def make_move(self, move):
         """Apply move. Returns True if valid."""
+        if move is None:
+            return False
         active = self._get_active_player()
         # Keep current_player in sync with the actual active player so that
         # _pause() and _get_placement() AI checks work correctly.

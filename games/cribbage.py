@@ -296,6 +296,8 @@ class CribbageGame(BaseGame):
 
     def make_move(self, move):
         """Process the move based on current phase. Returns True if valid."""
+        if move is None:
+            return False
         if self.phase == "discard":
             return self._do_discard(move)
         elif self.phase == "pegging":

@@ -213,6 +213,8 @@ class XiangqiGame(BaseGame):
         return move_str.strip()
 
     def make_move(self, move_str):
+        if move_str is None:
+            return False
         # Parse "a1 a2" or "a1a2" or "a1-a2"
         move_str = move_str.strip().lower().replace('-', ' ')
         parts = move_str.split()

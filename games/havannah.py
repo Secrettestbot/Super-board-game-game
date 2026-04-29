@@ -243,6 +243,8 @@ class HavannahGame(BaseGame):
 
     def make_move(self, move):
         """Place a stone at the given position. Returns True if valid."""
+        if move is None:
+            return False
         r, c = move
 
         if (r, c) not in self.cells:

@@ -246,6 +246,8 @@ class HeartsGame(BaseGame):
 
     def make_move(self, move):
         """Process the move based on current phase."""
+        if move is None:
+            return False
         if self.phase == "pass":
             return self._do_pass(move)
         elif self.phase == "play":

@@ -291,6 +291,8 @@ class TakGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move to the game state. Returns True if valid."""
+        if move is None:
+            return False
         if move[0] == 'place':
             return self._make_placement(move)
         elif move[0] == 'move':

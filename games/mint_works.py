@@ -315,6 +315,8 @@ class MintWorksGame(BaseGame):
 
     def make_move(self, move):
         """Process a move."""
+        if move is None:
+            return False
         p = self.current_player
 
         if move[0] == "invalid":

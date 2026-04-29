@@ -453,7 +453,17 @@ class ArchaeologyGame(BaseGame):
                 choices.append("bank")
             if self.marketplace and hand_treasures:
                 choices.append("trade")
-            return random.choice(choices) if "dig" in choices and self.deck else "bank"
+            pick = random.choice(choices) if "dig" in choices and self.deck else "bank"
+            if pick == "bank":
+                indices = [i for i, c in enumerate(self.hands[p]) if c in TREASURE_ICONS]
+                return ("bank", indices)
+            elif pick == "trade":
+                # Trade a random hand treasure for a random marketplace card
+                hand_indices = [i for i, c in enumerate(self.hands[p]) if c in TREASURE_ICONS]
+                if hand_indices and self.marketplace:
+                    return ("trade", random.choice(hand_indices), random.randint(0, len(self.marketplace) - 1))
+                return "dig"
+            return pick
 
         # Medium/Hard strategy
         # Bank if we have good sets or lots of cards at risk

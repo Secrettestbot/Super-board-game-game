@@ -548,6 +548,8 @@ class BackgammonGame(BaseGame):
     def make_move(self, move):
         """Apply the move(s). The actual moves were already applied in get_move.
         Returns True if valid."""
+        if move is None:
+            return False
         if move == 'no_moves':
             return True
         # Moves were already applied during get_move for interactive feedback

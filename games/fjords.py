@@ -252,6 +252,8 @@ class FjordsGame(BaseGame):
             return ("claim", move)
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move == "end_phase":
             self.phase = 2
             self.consecutive_passes = 0

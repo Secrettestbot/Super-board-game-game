@@ -209,6 +209,8 @@ class FleetGame(BaseGame):
         return input_with_quit(f"  {self.players[p]}> ").strip()
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player - 1
         parts = move.lower().split()
         if not parts:

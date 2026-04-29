@@ -179,6 +179,8 @@ class IngeniousDuelGame(BaseGame):
         return move_str
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move == "pass":
             return True
 

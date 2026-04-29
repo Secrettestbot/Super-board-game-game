@@ -249,6 +249,8 @@ class SushiGoGame(BaseGame):
 
     def make_move(self, move):
         """Apply a card pick. Returns True if valid."""
+        if move is None:
+            return False
         p = self.current_player - 1
         hand = self.hands[p]
 

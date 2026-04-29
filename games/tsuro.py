@@ -316,6 +316,8 @@ class TsuroGame(BaseGame):
 
     def make_move(self, move):
         """Place a tile and follow paths. Returns True if valid."""
+        if move is None:
+            return False
         # Parse move
         parts = move.split()
         if len(parts) != 2:

@@ -209,6 +209,8 @@ class LostCitiesGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move. Returns True if valid."""
+        if move is None:
+            return False
         phase, move_str = move
         if phase == 'play_phase':
             return self._handle_play_phase(move_str)
@@ -464,7 +466,7 @@ class LostCitiesGame(BaseGame):
 
         if self.round_number < self.total_rounds:
             self.round_number += 1
-            input_with_quit("\n  Press Enter to start the next round...")
+            self._pause("\n  Press Enter to start the next round...")
             self._setup_round()
         else:
             # Game over
@@ -477,7 +479,7 @@ class LostCitiesGame(BaseGame):
                 self.winner = 2
             else:
                 self.winner = None
-            input_with_quit("\n  Press Enter to see final results...")
+            self._pause("\n  Press Enter to see final results...")
 
     def get_state(self):
         """Return serializable game state."""

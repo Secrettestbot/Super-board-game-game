@@ -224,6 +224,8 @@ class WordGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         if move[0] == "challenge":
             return self._do_challenge()
         elif move[0] == "pass":

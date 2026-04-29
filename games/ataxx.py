@@ -129,6 +129,8 @@ class AtaxxGame(BaseGame):
 
     def make_move(self, move):
         """Apply move. Returns True if valid."""
+        if move is None:
+            return False
         char = self._get_player_char(self.current_player)
         opp = self._get_opponent_char(self.current_player)
         n = self.size

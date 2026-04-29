@@ -239,6 +239,7 @@ class KingdominoDuelGame(BaseGame):
             placements = move["placements"]
             # Validate all placements first
             temp_placements = []
+            already_placed = set()
             for pl in placements:
                 if pl.get("skip"):
                     temp_placements.append(None)
@@ -248,17 +249,18 @@ class KingdominoDuelGame(BaseGame):
                 terrain, crown = self.dice_results[die_idx]
                 if row < 0 or row >= self.grid_size or col < 0 or col >= self.grid_size:
                     return False
-                if self.grids[cp][row][col] != "Empty":
+                if self.grids[cp][row][col] != "Empty" or (row, col) in already_placed:
                     return False
-                # Adjacency check - must be next to something non-empty
+                # Adjacency check - must be next to something non-empty or a tile placed in this move
                 has_adj = False
                 for nr, nc in self._get_adjacent(row, col):
-                    if self.grids[cp][nr][nc] != "Empty":
+                    if self.grids[cp][nr][nc] != "Empty" or (nr, nc) in already_placed:
                         has_adj = True
                         break
                 if not has_adj:
                     return False
                 temp_placements.append((row, col, terrain, crown))
+                already_placed.add((row, col))
 
             # Apply placements
             placed_desc = []

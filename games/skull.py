@@ -250,6 +250,8 @@ class SkullGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
 
         if move == "place rose":

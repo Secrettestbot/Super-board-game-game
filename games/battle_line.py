@@ -257,6 +257,8 @@ class BattleLineGame(BaseGame):
             print("  Usage: <card#> <flag#>  (e.g. '2 5')")
 
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
 
         if move[0] == 'claim':

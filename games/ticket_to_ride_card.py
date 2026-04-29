@@ -468,6 +468,8 @@ class TicketToRideCardGame(BaseGame):
                 print("  Enter: draw, claim, or tickets")
 
     def make_move(self, move):
+        if move is None:
+            return False
         action = move[0]
         cp = self.current_player
 

@@ -181,6 +181,8 @@ class ZertzGame(BaseGame):
         return move_str
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move is None or not move.strip():
             return False
 

@@ -221,6 +221,8 @@ class NoThanksGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move (take or pass)."""
+        if move is None:
+            return False
         player_name = self.players[self.current_player - 1]
 
         if move == 'take':

@@ -359,6 +359,8 @@ class UndauntedGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move to the game state."""
+        if move is None:
+            return False
         pd = self.player_data[str(self.current_player)]
         opp = 2 if self.current_player == 1 else 1
 
@@ -638,7 +640,22 @@ class UndauntedGame(BaseGame):
                 pd['discard'].append(card)
                 pos = self._find_unit_cell(self.current_player, card['symbol'])
                 if pos:
-                    target = input_with_quit("  Mortar target cell (row,col): ").strip()
+                    if self.ai_player == self.current_player:
+                        # Auto-select the first enemy cell within mortar range
+                        ar, ac = map(int, pos.split(','))
+                        target = None
+                        for key, cell in self.grid.items():
+                            enemies = cell['units'].get(str(opp), [])
+                            if enemies:
+                                kr, kc = map(int, key.split(','))
+                                if abs(ar - kr) + abs(ac - kc) <= card['range']:
+                                    target = key
+                                    break
+                        if target is None:
+                            self.message = "Mortar: no enemies in range."
+                            return True  # Card already used
+                    else:
+                        target = input_with_quit("  Mortar target cell (row,col): ").strip()
                     try:
                         parts = target.replace(' ', '').split(',')
                         tr, tc = int(parts[0]), int(parts[1])

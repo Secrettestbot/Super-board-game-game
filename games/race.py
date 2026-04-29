@@ -186,6 +186,8 @@ class RaceGame(BaseGame):
             print(f"  Invalid. Enter 1-{len(hand)}.")
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move[0] == "bet":
             _, horse_idx, wager = move
             self.player_bets[self.current_player].append([horse_idx, wager])

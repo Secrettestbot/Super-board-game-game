@@ -279,6 +279,8 @@ class ShutTheBoxGame(BaseGame):
 
     def make_move(self, move):
         """Process the result of a turn."""
+        if move is None:
+            return False
         _, score, shut = move
         player = self.current_player
 

@@ -135,6 +135,8 @@ class FugitiveGame(BaseGame):
         return ("unknown", "")
 
     def make_move(self, move):
+        if move is None:
+            return False
         action, value = move
 
         if action == "fugitive_play":

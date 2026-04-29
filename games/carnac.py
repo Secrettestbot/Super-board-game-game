@@ -124,6 +124,8 @@ class CarnacGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         r, c, dr, dc, sym1, sym2 = move
         r2, c2 = r + dr, c + dc
 

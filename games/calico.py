@@ -227,6 +227,8 @@ class CalicoGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move. Returns True if valid."""
+        if move is None:
+            return False
         p = self.current_player - 1
 
         try:

@@ -248,23 +248,41 @@ class CaboGame(BaseGame):
                 return False
             card = self.discard.pop()
             self._drawn_card = card
-            print(f"\n  You took [{card}] from discard.")
-            idx = input_with_quit(
-                f"  Replace which card? (1-{len(self.hands[sp])}): ").strip()
-            try:
-                i = int(idx) - 1
-                if 0 <= i < len(self.hands[sp]):
-                    old = self.hands[sp][i]
-                    self.hands[sp][i] = card
-                    self.known[sp][i] = True
-                    self.discard.append(old)
-                    self.log.append(
-                        f"{self.players[cp-1]} took [{card}] from discard, "
-                        f"replaced card {i+1}.")
-                    self.phase = "turn"
-                    return True
-            except ValueError:
-                pass
+            if self.ai_player == self.current_player:
+                # AI auto-selects which card to replace
+                if "index" in move:
+                    i = move["index"]
+                else:
+                    # Pick the highest-valued known card, else random
+                    worst_idx = None
+                    worst_val = -1
+                    for idx in range(len(self.hands[sp])):
+                        if self.known[sp][idx] and self.hands[sp][idx] > worst_val:
+                            worst_val = self.hands[sp][idx]
+                            worst_idx = idx
+                    if worst_idx is not None:
+                        i = worst_idx
+                    else:
+                        i = random.randint(0, len(self.hands[sp]) - 1)
+            else:
+                print(f"\n  You took [{card}] from discard.")
+                idx = input_with_quit(
+                    f"  Replace which card? (1-{len(self.hands[sp])}): ").strip()
+                try:
+                    i = int(idx) - 1
+                except ValueError:
+                    self.discard.append(card)
+                    return False
+            if 0 <= i < len(self.hands[sp]):
+                old = self.hands[sp][i]
+                self.hands[sp][i] = card
+                self.known[sp][i] = True
+                self.discard.append(old)
+                self.log.append(
+                    f"{self.players[cp-1]} took [{card}] from discard, "
+                    f"replaced card {i+1}.")
+                self.phase = "turn"
+                return True
             # Put it back if invalid
             self.discard.append(card)
             return False

@@ -350,6 +350,8 @@ class KeyforgeDuelGame(BaseGame):
         return ("invalid", "")
 
     def make_move(self, move):
+        if move is None:
+            return False
         action, data = move
         p = self.current_player - 1
         opp = 1 - p

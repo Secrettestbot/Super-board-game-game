@@ -232,6 +232,8 @@ class ClankGame(BaseGame):
 
     def make_move(self, move):
         """Process a player action."""
+        if move is None:
+            return False
         pi = self.current_player - 1
         if move == "pass":
             return True

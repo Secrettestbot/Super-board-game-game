@@ -182,6 +182,8 @@ class BibliosGame(BaseGame):
         return f"bid:{bid}"
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move == "end_draft":
             self._start_auction()
             return True

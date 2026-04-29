@@ -230,6 +230,8 @@ class AlhambraGame(BaseGame):
 
     def make_move(self, move):
         """Process player action."""
+        if move is None:
+            return False
         pi = self.current_player - 1
         parts = move.split()
         if not parts:

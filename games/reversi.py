@@ -155,6 +155,8 @@ class ReversiGame(BaseGame):
 
     def make_move(self, move):
         """Place a piece and flip captured opponents. Returns True if valid."""
+        if move is None:
+            return False
         if move == 'pass':
             # Pass is valid only when no moves available (already checked in get_move)
             return True

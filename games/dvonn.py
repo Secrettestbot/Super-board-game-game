@@ -438,6 +438,8 @@ class DvonnGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move to the game state. Returns True if valid."""
+        if move is None:
+            return False
         if move[0] == 'pass':
             self.passed[self.current_player] = True
             return True

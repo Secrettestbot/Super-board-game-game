@@ -122,6 +122,8 @@ class KalahGame(BaseGame):
 
     def make_move(self, move):
         """Sow seeds from the chosen pit. Returns True if valid."""
+        if move is None:
+            return False
         try:
             pit_num = int(move)
         except (ValueError, TypeError):

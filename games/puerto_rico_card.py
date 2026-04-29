@@ -74,6 +74,7 @@ class PuertoRicoCardGame(BaseGame):
         self.role_chooser = None
         self.roles_used = []
         self.phase_step = 0
+        self._stay_on_player = False
 
         # Deal 4 cards each
         for _ in range(4):
@@ -229,7 +230,15 @@ class PuertoRicoCardGame(BaseGame):
 
         return ('pass',)
 
+    def switch_player(self):
+        if self._stay_on_player:
+            self._stay_on_player = False
+            return
+        super().switch_player()
+
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
 
         if move[0] == 'choose_role':
@@ -239,7 +248,8 @@ class PuertoRicoCardGame(BaseGame):
             self.roles_used.append(role)
             self.role_phase = False
             self.phase_step = 0
-            return False  # Don't switch player - execute role
+            self._stay_on_player = True
+            return True
 
         if move[0] == 'build':
             idx = move[1]
@@ -482,6 +492,7 @@ class PuertoRicoCardGame(BaseGame):
         self.role_chooser = state['role_chooser']
         self.roles_used = state['roles_used']
         self.phase_step = state['phase_step']
+        self._stay_on_player = False
 
     def get_tutorial(self):
         return """

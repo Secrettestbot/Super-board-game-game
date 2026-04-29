@@ -199,6 +199,8 @@ class BurgundyCardGame(BaseGame):
         return move
 
     def make_move(self, move):
+        if move is None:
+            return False
         if not move:
             self.message = "Enter an action."
             return False

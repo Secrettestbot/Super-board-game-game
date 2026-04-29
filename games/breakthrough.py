@@ -126,6 +126,8 @@ class BreakthroughGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move. Returns True if valid."""
+        if move is None:
+            return False
         (sr, sc), (dr, dc) = move
         player = self.current_player
         opponent = 3 - player

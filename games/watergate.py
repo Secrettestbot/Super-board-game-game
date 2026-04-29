@@ -219,6 +219,8 @@ class WatergateGame(BaseGame):
         return move
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player
         cards = EDITOR_CARDS if p == 1 else NIXON_CARDS
 

@@ -350,6 +350,8 @@ class MilleBornesGame(BaseGame):
 
     def make_move(self, move):
         """Apply the player's move. Returns True if valid."""
+        if move is None:
+            return False
         action, card_idx = move
         me = self._current_state()
         opp = self._opponent_state()

@@ -370,6 +370,8 @@ class MorrisGame(BaseGame):
     # ----------------------------------------------------------- make_move
     def make_move(self, move):
         """Apply a move tuple. Returns True if valid."""
+        if move is None:
+            return False
         action = move[0]
         if action == "place":
             return self._do_place(move[1])

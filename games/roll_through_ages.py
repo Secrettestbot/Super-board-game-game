@@ -357,6 +357,8 @@ class RollThroughAgesGame(BaseGame):
         return ('turn',)
 
     def make_move(self, move):
+        if move is None:
+            return False
         if self.ai_player == self.current_player:
             self._run_ai_turn()
         else:

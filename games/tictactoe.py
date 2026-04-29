@@ -169,6 +169,8 @@ class TicTacToeGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         if self.variation == "ultimate":
             return self._make_move_ultimate(move)
         else:

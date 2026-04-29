@@ -299,6 +299,8 @@ class DeepSeaAdventureGame(BaseGame):
 
     # ---------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         if move == "next_round":
             return self._do_next_round()
         if move in ("skip", "returned"):

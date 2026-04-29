@@ -111,6 +111,8 @@ class ConnectFourGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         action, col = move
         if action == "drop":
             return self._drop(col)

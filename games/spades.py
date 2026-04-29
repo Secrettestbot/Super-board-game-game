@@ -195,6 +195,8 @@ class SpadesGame(BaseGame):
 
     def make_move(self, move):
         """Process the move based on current phase."""
+        if move is None:
+            return False
         if self.phase == "bid":
             return self._do_bid(move)
         elif self.phase == "play":

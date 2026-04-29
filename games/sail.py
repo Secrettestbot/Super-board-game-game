@@ -209,6 +209,8 @@ class SailGame(BaseGame):
             print(f"  Invalid. Enter 1-{len(hand)}.")
 
     def make_move(self, move):
+        if move is None:
+            return False
         if isinstance(move, list) and move[0] == "play":
             _, player, idx = move
             card = self.player_hands[player].pop(idx)

@@ -180,6 +180,8 @@ class GoGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move. Returns True if the move is valid."""
+        if move is None:
+            return False
         if move == "pass":
             self.consecutive_passes += 1
             return True

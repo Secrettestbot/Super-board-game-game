@@ -323,6 +323,8 @@ class InnovationGame(BaseGame):
         return ("action", input_with_quit("  Enter action: "))
 
     def make_move(self, move):
+        if move is None:
+            return False
         action, value = move
         val = value.strip().lower()
         cp = self.current_player

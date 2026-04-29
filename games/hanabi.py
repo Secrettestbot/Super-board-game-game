@@ -233,6 +233,8 @@ class HanabiGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move. Returns True if valid."""
+        if move is None:
+            return False
         player = self.current_player
         other = 2 if player == 1 else 1
 

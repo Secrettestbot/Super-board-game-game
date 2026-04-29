@@ -291,6 +291,8 @@ class SplendorGame(BaseGame):
 
     def make_move(self, move):
         """Apply move. Returns True if valid."""
+        if move is None:
+            return False
         pi = self.current_player - 1
         parts = move.lower().split()
         if not parts:

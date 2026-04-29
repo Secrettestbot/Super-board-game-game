@@ -212,6 +212,8 @@ class SchottenTottenGame(BaseGame):
             return {"card_idx": ci, "stone_idx": si}
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move == "pass":
             return True
         p = self.current_player

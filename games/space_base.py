@@ -94,6 +94,13 @@ class SpaceBaseGame(BaseGame):
         self.shop = []
         self._refresh_shop()
         self.round_num = 1
+        self._stay_on_player = False
+
+    def switch_player(self):
+        if self._stay_on_player:
+            self._stay_on_player = False
+            return
+        super().switch_player()
 
     def _refresh_shop(self):
         base_cards = list(SHIP_CARDS)
@@ -230,13 +237,16 @@ class SpaceBaseGame(BaseGame):
                 print("  Format: '<shop#> <sector>' or just '<shop#>' for default sector.")
 
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
         opp = 2 if cp == 1 else 1
 
         if move[0] == 'roll':
             self.dice_result = self._roll_dice()
             self.phase = 'activate'
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] in ('activate_split', 'activate_combined', 'activate_doubles'):
             total_vp = 0
@@ -281,7 +291,8 @@ class SpaceBaseGame(BaseGame):
             if total_vp > 0 or total_inc > 0:
                 print(f"  Gained: {total_vp} VP, {total_inc} income")
             self.phase = 'buy'
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'buy_ship':
             shop_idx, sector = move[1], move[2]
@@ -308,7 +319,8 @@ class SpaceBaseGame(BaseGame):
             random.shuffle(base_cards)
             self.shop.append(base_cards[0])
             print(f"  Deployed {card['name']} to sector {sector}!")
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'done_buying':
             self.dice_result = []
@@ -357,6 +369,7 @@ class SpaceBaseGame(BaseGame):
         self.dice_result = state['dice_result']
         self.shop = state['shop']
         self.round_num = state['round_num']
+        self._stay_on_player = False
 
     def get_ai_move(self):
         """Return a valid AI move based on difficulty."""

@@ -98,6 +98,8 @@ class MijnlieffGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         piece_type, row, col = move
         player = self.current_player
 

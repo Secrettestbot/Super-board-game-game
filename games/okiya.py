@@ -351,6 +351,8 @@ class OkiyaGame(BaseGame):
         return {"row": r, "col": c}
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player
 
         if move == "no_move":

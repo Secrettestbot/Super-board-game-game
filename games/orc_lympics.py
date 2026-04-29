@@ -313,6 +313,8 @@ class OrcLympicsGame(BaseGame):
         return 0
 
     def make_move(self, move):
+        if move is None:
+            return False
         action, data = move
         event = self.events[self.current_event_idx]
         p = self.current_event_player

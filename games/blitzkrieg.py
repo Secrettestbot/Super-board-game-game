@@ -228,6 +228,8 @@ class BlitzkriegGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move to the game state."""
+        if move is None:
+            return False
         pd = self.player_data[str(self.current_player)]
 
         if move[0] == 'pass':

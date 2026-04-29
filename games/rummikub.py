@@ -412,6 +412,8 @@ class RummikubGame(BaseGame):
     # ------------------------------------------------------------- make_move
     def make_move(self, move):
         """Apply the completed turn. Always returns True since validation is in get_move."""
+        if move is None:
+            return False
         return True
 
     # --------------------------------------------------------- check_game_over

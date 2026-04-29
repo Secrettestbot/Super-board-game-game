@@ -269,6 +269,8 @@ class MarcoPoloGame(BaseGame):
             return ('next_round',)
 
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
         opp = 2 if cp == 1 else 1
 

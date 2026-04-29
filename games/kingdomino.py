@@ -511,6 +511,8 @@ class KingdominoGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move to the game state."""
+        if move is None:
+            return False
         if move.get('action') == 'auto_advance':
             self._advance_after_picks()
             return True

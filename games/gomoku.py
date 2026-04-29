@@ -97,6 +97,8 @@ class GomokuGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         row, col = move
         if self.board[row][col] != 0:
             return False

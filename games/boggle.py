@@ -211,6 +211,8 @@ class BoggleGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move to the game state."""
+        if move is None:
+            return False
         if move == "next_round":
             # Start a new round
             self.round_number += 1

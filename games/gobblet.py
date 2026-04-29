@@ -271,6 +271,8 @@ class GobbletGame(BaseGame):
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
         """Apply a move to the game state. Returns True if valid."""
+        if move is None:
+            return False
         player = self.current_player
         n = self.board_size
 

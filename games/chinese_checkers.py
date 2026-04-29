@@ -319,6 +319,8 @@ class ChineseCheckersGame(BaseGame):
 
     def make_move(self, move):
         """Validate and execute a move. Returns True if valid."""
+        if move is None:
+            return False
         if move is None or len(move) < 2:
             return False
 

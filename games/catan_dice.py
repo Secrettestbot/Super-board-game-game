@@ -49,6 +49,13 @@ class CatanDiceGame(BaseGame):
         self.roads = {1: 0, 2: 0}
         self.longest_road_holder = None
         self.largest_army_holder = None
+        self._stay_on_player = False
+
+    def switch_player(self):
+        if self._stay_on_player:
+            self._stay_on_player = False
+            return
+        super().switch_player()
 
     def _roll_dice(self, count):
         return [random.choice(RESOURCES) for _ in range(count)]
@@ -199,28 +206,34 @@ class CatanDiceGame(BaseGame):
                 print("  Choose: road, settlement, city, knight, or done")
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move[0] == 'roll_all':
             self.dice = self._roll_dice(6)
             self.rolls_left -= 1
-            return False  # stay on same player
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'keep':
             indices = sorted(move[1], reverse=True)
             for i in indices:
                 self.kept.append(self.dice.pop(i))
             if self.rolls_left > 0 and self.dice:
-                return False
+                self._stay_on_player = True
+                return True
             else:
                 self._count_resources()
                 self.phase = 'build'
-                return False
+                self._stay_on_player = True
+                return True
 
         elif move[0] == 'keep_all':
             self.kept.extend(self.dice)
             self.dice = []
             self._count_resources()
             self.phase = 'build'
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'reroll':
             if self.rolls_left > 0:
@@ -231,14 +244,16 @@ class CatanDiceGame(BaseGame):
                     self.dice = []
                     self._count_resources()
                     self.phase = 'build'
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'done_rolling':
             self.kept.extend(self.dice)
             self.dice = []
             self._count_resources()
             self.phase = 'build'
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'build':
             building = move[1]
@@ -247,7 +262,8 @@ class CatanDiceGame(BaseGame):
                 return False
             self._build(building)
             self._check_bonuses()
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'end_build':
             # End this player's turn
@@ -348,6 +364,7 @@ class CatanDiceGame(BaseGame):
         self.roads = {int(k): v for k, v in state['roads'].items()}
         self.longest_road_holder = state['longest_road_holder']
         self.largest_army_holder = state['largest_army_holder']
+        self._stay_on_player = False
 
     def get_tutorial(self):
         return """

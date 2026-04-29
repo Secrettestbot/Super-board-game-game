@@ -446,6 +446,8 @@ class PalmIslandGame(BaseGame):
 
     def make_move(self, move):
         """Process a move."""
+        if move is None:
+            return False
         card = self.cards[self.current_card_idx]
         info = self._get_card_info(card)
         choice = move[0]

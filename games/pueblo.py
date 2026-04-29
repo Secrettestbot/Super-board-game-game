@@ -361,6 +361,8 @@ class PuebloGame(BaseGame):
                 print("  Enter as row,col (e.g., 1,2)")
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move == "pass":
             # Advance chief and score
             p1_vis, p2_vis = self._score_chief_view()

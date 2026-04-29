@@ -350,6 +350,8 @@ class KahunaGame(BaseGame):
         return {"action": "remove", "cards": cards_to_play, "bridge": [target_a, target_b]}
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player
         opponent = 2 if p == 1 else 1
 

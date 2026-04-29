@@ -171,6 +171,8 @@ class NusfjordGame(BaseGame):
         return move.strip()
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.player_data[str(self.current_player)]
         self.message = ""
 

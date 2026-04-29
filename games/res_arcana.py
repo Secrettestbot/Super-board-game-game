@@ -287,6 +287,8 @@ class ResArcanaGame(BaseGame):
         return None
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player - 1
         parts = move.strip().split()
         if not parts:

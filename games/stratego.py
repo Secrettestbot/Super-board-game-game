@@ -192,6 +192,8 @@ class StrategoGame(BaseGame):
 
     def make_move(self, move):
         """Apply move. Returns True if valid."""
+        if move is None:
+            return False
         try:
             parts = move.split()
             if len(parts) != 4:

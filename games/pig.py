@@ -133,6 +133,8 @@ class PigGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move. Handles the full turn loop internally."""
+        if move is None:
+            return False
         if move == 'roll':
             return self._do_roll()
         elif move == 'hold':

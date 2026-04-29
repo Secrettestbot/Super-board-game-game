@@ -203,6 +203,8 @@ class ViticultureGame(BaseGame):
         return move.strip()
 
     def make_move(self, move):
+        if move is None:
+            return False
         if isinstance(move, tuple) and move[0] == "ai_done":
             return True
         actions = SUMMER_ACTIONS if self.season == "summer" else WINTER_ACTIONS

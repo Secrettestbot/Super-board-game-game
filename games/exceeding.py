@@ -231,6 +231,8 @@ class ExceedingGame(BaseGame):
 
     def make_move(self, move):
         """Process a move."""
+        if move is None:
+            return False
         p = self.current_player
         opp = 2 if p == 1 else 1
 

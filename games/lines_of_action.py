@@ -244,6 +244,8 @@ class LinesOfActionGame(BaseGame):
 
     def make_move(self, move):
         """Parse and apply a move. Returns True if valid."""
+        if move is None:
+            return False
         parts = move.split()
         if len(parts) != 2:
             print("  Invalid format. Use 'from to', e.g. 'a2 a5'.")

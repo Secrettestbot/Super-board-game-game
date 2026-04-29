@@ -261,6 +261,8 @@ class FoxInTheForestGame(BaseGame):
 
     def make_move(self, move):
         """Process the move based on current phase."""
+        if move is None:
+            return False
         if self.phase == "play":
             return self._do_play(move)
         elif self.phase == "trick_done":

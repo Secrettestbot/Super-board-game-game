@@ -223,6 +223,8 @@ class MinesweeperGame(BaseGame):
     # --------------------------------------------------------------- make_move
     def make_move(self, move):
         """Parse and apply a move. Returns True if valid."""
+        if move is None:
+            return False
         parts = move.lower().split()
         if len(parts) != 3:
             print("  Invalid format. Use 'r ROW COL' or 'f ROW COL'.")

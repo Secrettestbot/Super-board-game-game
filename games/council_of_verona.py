@@ -243,6 +243,8 @@ class CouncilOfVeronaGame(BaseGame):
             print(f"  Invalid. Choose from {sorted(tokens)}.")
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move[0] == "place":
             _, idx, area_name = move
             cp = self.current_player

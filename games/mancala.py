@@ -115,6 +115,8 @@ class MancalaGame(BaseGame):
     # ----------------------------------------------------------- make_move
     def make_move(self, move):
         """Apply the chosen move. Returns True if valid."""
+        if move is None:
+            return False
         self.extra_turn = False
 
         if self.variation == "oware":

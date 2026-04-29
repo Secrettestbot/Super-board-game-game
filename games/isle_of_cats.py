@@ -323,6 +323,8 @@ class IsleOfCatsGame(BaseGame):
         return [(r, max_c - c) for r, c in cells]
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player - 1
         parts = move.strip().split()
         if not parts:

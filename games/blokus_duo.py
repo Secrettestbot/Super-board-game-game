@@ -249,6 +249,8 @@ class BlokusDuoGame(BaseGame):
             print("  Example: 'L4 E 5 2' or 'show L4'")
 
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
 
         if move[0] == 'pass':

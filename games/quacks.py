@@ -230,6 +230,8 @@ class QuacksGame(BaseGame):
                 print("  Enter item number or 'done'.")
 
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
         if move[0] == 'draw':
             chip = self._draw_chip(cp)

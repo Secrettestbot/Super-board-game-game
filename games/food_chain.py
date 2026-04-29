@@ -196,6 +196,8 @@ class FoodChainGame(BaseGame):
         return move_str.strip()
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player - 1
         parts = move.lower().split()
         if not parts:

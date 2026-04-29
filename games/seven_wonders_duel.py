@@ -302,6 +302,8 @@ class SevenWondersDuelGame(BaseGame):
                 print("  Enter a card number or 'discard <#>'")
 
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
         action, (r, c) = move
         slot = self.pyramid[r][c]

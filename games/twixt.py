@@ -244,6 +244,8 @@ class TwixTGame(BaseGame):
     # ------------------------------------------------------------------
     def make_move(self, move):
         """Apply a move. Returns True if valid."""
+        if move is None:
+            return False
         if move == "swap":
             if not self.swap_available:
                 return False

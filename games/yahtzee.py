@@ -356,6 +356,8 @@ class YahtzeeGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move. Returns True if valid (turn may continue internally)."""
+        if move is None:
+            return False
         if isinstance(move, tuple) and move[0] == "ai_done":
             return True
         action = move[0]

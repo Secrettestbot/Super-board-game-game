@@ -157,6 +157,8 @@ class MastermindGame(BaseGame):
     # --------------------------------------------------------------- make_move
     def make_move(self, move):
         """Validate guess and compute feedback. Returns True if valid."""
+        if move is None:
+            return False
         if move == "__SETUP_DONE__":
             return True
         guess = list(move)

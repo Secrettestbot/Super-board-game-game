@@ -270,6 +270,8 @@ class RevolverGame(BaseGame):
             print(f"  Invalid. Enter 1-{len(hand)} or P.")
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move[0] == "deploy":
             _, idx = move
 

@@ -252,6 +252,8 @@ class MorelGame(BaseGame):
         return move
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player
         parts = move.split()
         if not parts:
