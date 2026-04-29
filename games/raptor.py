@@ -625,6 +625,9 @@ class RaptorGame(BaseGame):
         self.current_player = 1
         self._deal_cards()
 
+    def switch_player(self):
+        pass
+
     def get_ai_move(self):
         import random as rand
         difficulty = getattr(self, 'ai_difficulty', 'medium')
@@ -633,7 +636,11 @@ class RaptorGame(BaseGame):
         if self.phase == "select":
             hand = self.raptor_hand if p == 1 else self.scientist_hand
             if not hand:
-                return ("done", "")
+                self._deal_cards()
+                hand = self.raptor_hand if p == 1 else self.scientist_hand
+            if not hand:
+                self._end_turn()
+                return ("action", "done")
 
             if difficulty == "easy":
                 return ("select", str(rand.choice(hand)))

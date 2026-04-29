@@ -273,6 +273,15 @@ class IsleOfSkyeGame(BaseGame):
                     print("  That tile is discarded!")
                     return False
                 self.prices[pi][tidx] = amount
+                priced = sum(1 for p in self.prices[pi] if p >= 0)
+                discards = sum(1 for d in self.discarded[pi] if d)
+                if priced == 2 and discards == 1:
+                    opp = 1 - pi
+                    opp_priced = sum(1 for p in self.prices[opp] if p >= 0)
+                    opp_disc = sum(1 for d in self.discarded[opp] if d)
+                    if opp_priced == 2 and opp_disc == 1:
+                        self.phase = "buy"
+                        self.bought_this_round = [None, None]
                 return True
             elif cmd == "discard" and len(parts) == 2:
                 try:
@@ -300,6 +309,12 @@ class IsleOfSkyeGame(BaseGame):
                         self.phase = "buy"
                         self.bought_this_round = [None, None]
                 return True
+            elif cmd == "pass":
+                priced = sum(1 for p in self.prices[pi] if p >= 0)
+                discards = sum(1 for d in self.discarded[pi] if d)
+                if priced == 2 and discards == 1:
+                    return True
+                return False
 
         elif self.phase == "buy":
             if cmd == "buy" and len(parts) == 3:

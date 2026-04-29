@@ -304,6 +304,21 @@ class Nmbr9Game(BaseGame):
         cp = self.current_player
         action = move["action"]
 
+        if action == "pass":
+            self.log.append(
+                f"{self.players[cp-1]} passes (no valid placement)")
+            if cp == 1:
+                self.current_player = 2
+                return True
+            else:
+                self.tiles_played += 1
+                if self.deck:
+                    self.current_tile = self.deck.pop()
+                else:
+                    self.current_tile = None
+                self.current_player = 1
+                return True
+
         if action == "place":
             layer = move["layer"]
             row, col = move["row"], move["col"]
@@ -384,10 +399,14 @@ class Nmbr9Game(BaseGame):
             return {"action": "place", "layer": 0, "row": center, "col": center,
                     "rotation": 0, "flip": False}
 
-        sr = max(0, min_r - 4)
-        er = min(GRID_SIZE - 1, max_r + 4)
-        sc = max(0, min_c - 4)
-        ec = min(GRID_SIZE - 1, max_c + 4)
+        max_shape_dim = max(
+            max((dr for dr, dc in s), default=0)
+            for _, _, s in orientations
+        )
+        sr = max(0, min_r - max_shape_dim - 1)
+        er = min(GRID_SIZE - 1, max_r + max_shape_dim + 1)
+        sc = max(0, min_c - max_shape_dim - 1)
+        ec = min(GRID_SIZE - 1, max_c + max_shape_dim + 1)
 
         valid = []
         for layer in range(MAX_LAYERS):
@@ -402,8 +421,7 @@ class Nmbr9Game(BaseGame):
                                            "col": c, "rotation": rot, "flip": do_flip}, score))
 
         if not valid:
-            return {"action": "place", "layer": 0, "row": GRID_SIZE // 2,
-                    "col": GRID_SIZE // 2, "rotation": 0, "flip": False}
+            return {"action": "pass"}
 
         if difficulty == 'easy':
             return random.choice(valid)[0]
