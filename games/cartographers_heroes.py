@@ -362,6 +362,25 @@ class CartographersHeroesGame(BaseGame):
         sp = str(cp)
         action = move["action"]
 
+        if action == "pass":
+            card = self.current_card
+            if self.phase == "place":
+                self.time_spent += card["time"]
+                self.log.append(f"{self.players[cp-1]} could not place, passed.")
+                limit = SEASON_TIME_LIMITS[min(self.season, 3)]
+                if self.time_spent >= limit:
+                    self._score_season()
+                    return True
+            elif self.phase == "monster":
+                self.log.append(f"Monster could not be placed on {self.players[cp-1]}'s map.")
+            if cp == 1:
+                self.current_player = 2
+                return True
+            else:
+                self._draw_card()
+                self.current_player = 1
+                return True
+
         if action == "place":
             row, col = move["row"], move["col"]
             terrain = move["terrain"]
@@ -376,16 +395,13 @@ class CartographersHeroesGame(BaseGame):
             self.time_spent += card["time"]
             self.log.append(f"{self.players[cp-1]} placed {terrain} at ({row},{col}).")
 
-            # Check if season ends
             limit = SEASON_TIME_LIMITS[min(self.season, 3)]
             if self.time_spent >= limit:
                 self._score_season()
                 return True
 
-            # Next card, same player (both players place simultaneously - alternate)
             if cp == 1:
                 self.current_player = 2
-                # Player 2 places same card
                 return True
             else:
                 self._draw_card()
@@ -396,7 +412,6 @@ class CartographersHeroesGame(BaseGame):
             row, col = move["row"], move["col"]
             card = self.current_card
             shape = card["shapes"][0]
-            # Monster goes on current player's grid
             grid = self.grids[sp]
             if not self._can_place_shape(grid, shape, row, col, "Monster"):
                 return False
@@ -473,8 +488,7 @@ class CartographersHeroesGame(BaseGame):
                         options.append((r, c, score))
 
             if not options:
-                return {"action": "place_monster", "row": 0, "col": 0,
-                        "placer": 2 if cp == 1 else 1}
+                return {"action": "pass"}
 
             if difficulty == 'easy':
                 r, c, _ = random.choice(options)
@@ -508,7 +522,7 @@ class CartographersHeroesGame(BaseGame):
                             options.append((r, c, terrain, score))
 
             if not options:
-                return None
+                return {"action": "pass"}
 
             if difficulty == 'easy':
                 r, c, terrain, _ = random.choice(options)
