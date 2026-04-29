@@ -224,7 +224,12 @@ class ConnectFourGame(BaseGame):
                         break
                 return best
 
-        search_depth = 3 if difficulty == 'medium' else 5
+        if difficulty == 'medium':
+            search_depth = 3
+        elif self.cols > 7:
+            search_depth = 3
+        else:
+            search_depth = 5
         scores = []
         for col in valid_cols:
             nb = sim_drop(self.board, col, cp)

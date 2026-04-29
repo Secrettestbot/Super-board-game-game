@@ -58,6 +58,10 @@ class LudoGame(BaseGame):
     # ------------------------------------------------------------------ setup
     def setup(self):
         """Initialize all pieces in base."""
+        comp_num = 1
+        while len(self.players) < self.num_players:
+            self.players.append(f"Computer {comp_num}")
+            comp_num += 1
         for p in range(1, self.num_players + 1):
             self.pieces[p] = ["base"] * self.pieces_per_player
         self.current_player = 1
@@ -458,6 +462,10 @@ class LudoGame(BaseGame):
         self.pieces = {}
         for k, v in state["pieces"].items():
             self.pieces[int(k)] = [deserialize_piece(p) for p in v]
+        comp_num = 1
+        while len(self.players) < self.num_players:
+            self.players.append(f"Computer {comp_num}")
+            comp_num += 1
 
     # ----------------------------------------------------------- play override
     def play(self):
