@@ -746,9 +746,15 @@ class RaptorGame(BaseGame):
                             br, bc = nearest_baby["pos"]
                             dr = 0 if br == mr else (1 if br > mr else -1)
                             dc = 0 if bc == mc else (1 if bc > mc else -1)
+                            if dr != 0 and dc != 0:
+                                if abs(br - mr) >= abs(bc - mc):
+                                    dc = 0
+                                else:
+                                    dr = 0
                             nr = max(0, min(self.rows - 1, mr + dr))
                             nc = max(0, min(self.cols - 1, mc + dc))
-                            best_actions.append((5, f"move {mr} {mc} {nr} {nc}"))
+                            if nr != mr or nc != mc:
+                                best_actions.append((5, f"move {mr} {mc} {nr} {nc}"))
 
                 if not best_actions:
                     return ("action", "done")
@@ -781,9 +787,15 @@ class RaptorGame(BaseGame):
                         target = self.babies[0]["pos"] if self.babies else [self.rows // 2, self.cols // 2]
                         dr = 0 if target[0] == sr else (1 if target[0] > sr else -1)
                         dc = 0 if target[1] == sc else (1 if target[1] > sc else -1)
+                        if dr != 0 and dc != 0:
+                            if abs(target[0] - sr) >= abs(target[1] - sc):
+                                dc = 0
+                            else:
+                                dr = 0
                         nr = max(0, min(self.rows - 1, sr + dr))
                         nc = max(0, min(self.cols - 1, sc + dc))
-                        best_actions.append((5, f"move {sr} {sc} {nr} {nc}"))
+                        if nr != sr or nc != sc:
+                            best_actions.append((5, f"move {sr} {sc} {nr} {nc}"))
 
                 if not best_actions:
                     return ("action", "done")
