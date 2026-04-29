@@ -421,9 +421,12 @@ class QwixxGame(BaseGame):
         }
 
     def load_state(self, state):
-        self.marks = state["marks"]
+        self.marks = {
+            k: {int(rk): rv for rk, rv in v.items()}
+            for k, v in state["marks"].items()
+        }
         self.penalties = state["penalties"]
-        self.locked_rows = state["locked_rows"]
+        self.locked_rows = [int(x) for x in state["locked_rows"]]
         self.dice = state["dice"]
         self.phase = state["phase"]
         self.active_player = state["active_player"]

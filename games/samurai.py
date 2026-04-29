@@ -413,7 +413,10 @@ class SamuraiGame(BaseGame):
         self.rows = state["rows"]
         self.cols = state["cols"]
         self.figures = state["figures"]
-        self.influence = state["influence"]
+        self.influence = {
+            k: {fig: {int(pk): pv for pk, pv in pdict.items()} for fig, pdict in v.items()}
+            for k, v in state["influence"].items()
+        }
         self.hands = {int(k): v for k, v in state["hands"].items()}
         self.tile_pools = {int(k): v for k, v in state["tile_pools"].items()}
         self.played_tiles = state["played_tiles"]

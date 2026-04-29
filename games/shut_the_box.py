@@ -430,6 +430,9 @@ class ShutTheBoxGame(BaseGame):
             "round_number": self.round_number,
             "max_rounds": self.max_rounds,
             "instant_win": self.instant_win,
+            "dice": self.dice,
+            "dice_total": self.dice_total,
+            "available_combos": self.available_combos,
         }
 
     def load_state(self, state):
@@ -443,9 +446,9 @@ class ShutTheBoxGame(BaseGame):
         self.round_number = state["round_number"]
         self.max_rounds = state["max_rounds"]
         self.instant_win = state.get("instant_win")
-        self.dice = []
-        self.dice_total = 0
-        self.available_combos = []
+        self.dice = state.get("dice", [])
+        self.dice_total = state.get("dice_total", 0)
+        self.available_combos = state.get("available_combos", [])
 
     # ------------------------------------------------------------------ #
     #  Tutorial
