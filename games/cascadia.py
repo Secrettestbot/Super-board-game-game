@@ -218,6 +218,18 @@ class CascadiaGame(BaseGame):
         p = self.current_player - 1
         parts = move.lower().split()
 
+        # Support pass/skip when no valid moves are possible
+        if parts and parts[0] in ("pass", "skip"):
+            # Passing is valid when there are no adjacent open positions or no
+            # display pairs with tiles remaining.
+            adj = self._board_adjacent_positions(self.boards[p])
+            has_tiles = any(t is not None for t, w in self.display_pairs) if self.display_pairs else False
+            if not adj or not has_tiles:
+                self.turns_taken += 1
+                return True
+            # If there ARE valid moves, don't allow passing
+            return False
+
         use_token = False
         if parts and parts[0] == "token":
             if self.nature_tokens[p] <= 0:
@@ -489,9 +501,12 @@ class CascadiaGame(BaseGame):
         board = self.boards[p]
         adj = self._board_adjacent_positions(board)
 
-        if not adj or not self.display_pairs:
-            adj_list = sorted(adj) if adj else [(2, 4)]
-            return f"1 {adj_list[0][0]} {adj_list[0][1]} n"
+        # Check if any display pairs have actual tiles
+        has_tiles = any(t is not None for t, w in self.display_pairs) if self.display_pairs else False
+
+        # If no valid adjacent positions or no tiles available, pass
+        if not adj or not has_tiles:
+            return "pass"
 
         options = []
         for pair_idx, (tile, wildlife) in enumerate(self.display_pairs):
@@ -527,9 +542,9 @@ class CascadiaGame(BaseGame):
 
                 options.append((pair_idx, r, c, can_place_w, score))
 
+        # If no valid options were found (all tiles are None or adj is empty), pass
         if not options:
-            adj_list = sorted(adj)
-            return f"1 {adj_list[0][0]} {adj_list[0][1]} n"
+            return "pass"
 
         if difficulty == 'easy':
             choice = random.choice(options)

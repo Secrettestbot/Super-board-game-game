@@ -445,11 +445,16 @@ class CenturySpiceGame(BaseGame):
         return False
 
     def get_ai_move(self):
-        """Return an AI-generated move."""
+        """Return an AI-generated move.
+
+        The AI tries actions in priority order: claim, play, acquire, rest.
+        A valid fallback is always guaranteed so the AI never gets stuck.
+        """
         import random
         difficulty = getattr(self, 'ai_difficulty', 'medium')
         pi = self.current_player - 1
 
+        # --- 1. Try to claim a point card ---
         claimable = []
         for i, card in enumerate(self.point_row):
             can_claim = all(
@@ -472,6 +477,7 @@ class CenturySpiceGame(BaseGame):
                 idx, _ = claimable[0]
             return f"claim {idx + 1}"
 
+        # --- 2. Try to play a merchant card from hand ---
         if self.player_hand[pi]:
             playable = []
             for i, card in enumerate(self.player_hand[pi]):
@@ -492,16 +498,24 @@ class CenturySpiceGame(BaseGame):
                         continue
                     score = card.get("upgrades", 0) * 2
                 elif card["action"] == "trade":
+                    give = card.get("give", {})
+                    receive = card.get("receive", {})
                     can_trade = all(
                         self.player_spices[pi].get(s, 0) >= v
-                        for s, v in card.get("give", {}).items()
+                        for s, v in give.items()
                     )
                     if not can_trade:
                         continue
+                    # Also check caravan limit after trade
+                    new_total = (_total_spices(self.player_spices[pi])
+                                 - sum(give.values())
+                                 + sum(receive.values()))
+                    if new_total > self.CARAVAN_LIMIT:
+                        continue
                     give_val = sum(SPICE_VALUES.get(s, 1) * v
-                                   for s, v in card.get("give", {}).items())
+                                   for s, v in give.items())
                     recv_val = sum(SPICE_VALUES.get(s, 1) * v
-                                   for s, v in card.get("receive", {}).items())
+                                   for s, v in receive.items())
                     score = recv_val - give_val
                 playable.append((i, score))
 
@@ -513,18 +527,47 @@ class CenturySpiceGame(BaseGame):
                     idx, _ = playable[0]
                 return f"play {idx + 1}"
 
-        if len(self.player_hand[pi]) < 3 and self.merchant_row:
+        # --- 3. Try to acquire a merchant card from the row ---
+        if self.merchant_row:
             affordable = [i for i in range(len(self.merchant_row))
                           if self.player_spices[pi].get("Y", 0) >= i]
             if affordable:
-                return f"acquire {affordable[0] + 1}"
+                if difficulty == 'hard':
+                    # Pick the best affordable card
+                    best_idx = affordable[-1] if len(affordable) > 1 else affordable[0]
+                else:
+                    best_idx = affordable[0]
+                return f"acquire {best_idx + 1}"
 
+        # --- 4. Rest: pick up discarded merchant cards ---
         if self.player_discard[pi]:
             return "rest"
 
+        # --- 5. Fallback: acquire the free (position 1) card if available ---
         if self.merchant_row:
             return "acquire 1"
 
+        # --- 6. Last resort: if we truly have no valid move, play any card
+        #     from hand even if suboptimal (e.g. upgrade with nothing to
+        #     upgrade just plays the card for no effect, produce that's
+        #     capped will be truncated). This should rarely happen. ---
+        if self.player_hand[pi]:
+            # Prefer upgrade cards (they succeed even with nothing to upgrade)
+            for i, card in enumerate(self.player_hand[pi]):
+                if card["action"] == "upgrade":
+                    return f"play {i + 1}"
+            # Then produce cards (truncation still allows the move if caravan
+            # is not completely full -- but if it IS full, make_move rejects).
+            # Try produce only if there's any room at all.
+            total = _total_spices(self.player_spices[pi])
+            if total < self.CARAVAN_LIMIT:
+                for i, card in enumerate(self.player_hand[pi]):
+                    if card["action"] == "produce":
+                        return f"play {i + 1}"
+
+        # Absolute last fallback: this state means hand is empty, discard is
+        # empty, and merchant row is empty. This shouldn't happen in a normal
+        # game, but return rest to avoid returning None.
         return "rest"
 
     def check_game_over(self):

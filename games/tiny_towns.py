@@ -398,6 +398,14 @@ class TinyTownsGame(BaseGame):
             self.log.append(f"{self.players[self.current_player-1]} chose {self.current_resource}")
             return True
 
+        if action == "skip_place":
+            # Board is full, skip placement and end the turn
+            if self._empty_cells(cp) == 0:
+                self._end_turn()
+                self.log.append(f"Board full, skipped placement.")
+                return True
+            return False
+
         if action == "place_resource":
             row, col = move["row"], move["col"]
             if row < 0 or row >= self.GRID_SIZE or col < 0 or col >= self.GRID_SIZE:
@@ -482,7 +490,7 @@ class TinyTownsGame(BaseGame):
                     if self.boards[cp][r][c] is None:
                         empties.append((r, c))
             if not empties:
-                return {"action": "place_resource", "row": 0, "col": 0}
+                return {"action": "skip_place"}
             if difficulty == 'easy':
                 r, c = rand.choice(empties)
                 return {"action": "place_resource", "row": r, "col": c}
