@@ -345,6 +345,23 @@ class ExceedingGame(BaseGame):
 
         return False
 
+    def _ai_move_valid(self, p, card):
+        opp = 2 if p == 1 else 1
+        direction = 1 if card["direction"] == "forward" else -1
+        if p == 1:
+            actual_dir = direction
+        else:
+            actual_dir = -direction
+        new_pos = self.position[p] + (card["move"] * actual_dir)
+        new_pos = max(0, min(self.track_size - 1, new_pos))
+        if new_pos == self.position[opp]:
+            if actual_dir > 0:
+                new_pos = self.position[opp] - 1
+            else:
+                new_pos = self.position[opp] + 1
+            new_pos = max(0, min(self.track_size - 1, new_pos))
+        return new_pos != self.position[p]
+
     def get_ai_move(self):
         import random
         difficulty = getattr(self, 'ai_difficulty', 'medium')
@@ -360,7 +377,8 @@ class ExceedingGame(BaseGame):
         attacks_in_range = [(i, c) for i, c in enumerate(hand)
                             if c["type"] == "attack"
                             and c["range_min"] <= dist <= c["range_max"]]
-        move_cards = [(i, c) for i, c in enumerate(hand) if c["type"] == "move"]
+        move_cards = [(i, c) for i, c in enumerate(hand)
+                      if c["type"] == "move" and self._ai_move_valid(p, c)]
 
         if difficulty == 'easy':
             if attacks_in_range and random.random() < 0.5:

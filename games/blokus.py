@@ -350,19 +350,24 @@ class BlokusDuoGame(BaseGame):
             random.shuffle(pieces)
 
         for piece in pieces:
-            orientations = _all_orientations(piece["coords"])
-            for rot, orient in enumerate(orientations):
-                for r in range(self.board_size):
-                    for c in range(self.board_size):
-                        placed = [(r + dr, c + dc) for dr, dc in orient]
-                        if self._is_valid_placement(placed, player):
-                            flip = 'f' if rot >= 4 else ''
-                            move_str = f"{piece['id']} {r} {c} {rot % 4}"
-                            if flip:
-                                move_str += " f"
-                            valid_moves.append((move_str, piece["size"]))
-                            if difficulty == 'easy' and len(valid_moves) >= 3:
-                                return random.choice(valid_moves)[0]
+            seen_orientations = set()
+            for rotation in range(4):
+                for flip in [False, True]:
+                    orient = _transform(piece["coords"], rotation, flip)
+                    orient_key = tuple(orient)
+                    if orient_key in seen_orientations:
+                        continue
+                    seen_orientations.add(orient_key)
+                    for r in range(self.board_size):
+                        for c in range(self.board_size):
+                            placed = [(r + dr, c + dc) for dr, dc in orient]
+                            if self._is_valid_placement(placed, player):
+                                move_str = f"{piece['id']} {r} {c} {rotation}"
+                                if flip:
+                                    move_str += " f"
+                                valid_moves.append((move_str, piece["size"]))
+                                if difficulty == 'easy' and len(valid_moves) >= 3:
+                                    return random.choice(valid_moves)[0]
 
         if not valid_moves:
             return "pass"

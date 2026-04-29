@@ -431,6 +431,9 @@ class IsleOfSkyeGame(BaseGame):
             discarded_count = sum(1 for d in self.discarded[pi] if d)
             priced_count = sum(1 for p in self.prices[pi] if p >= 0)
 
+            if discarded_count == 1 and priced_count == 2:
+                return "pass"
+
             if discarded_count == 0:
                 if difficulty == 'easy':
                     idx = random.randint(0, 2)
@@ -450,9 +453,15 @@ class IsleOfSkyeGame(BaseGame):
             if priced_count < 2:
                 for i in range(3):
                     if not self.discarded[pi][i] and self.prices[pi][i] < 0:
-                        price = random.randint(1, max(1, self.gold[pi] // 3)) if difficulty == 'easy' else max(1, self.gold[pi] // 4)
+                        max_price = self.gold[pi]
+                        if max_price <= 0:
+                            price = 0
+                        elif difficulty == 'easy':
+                            price = random.randint(0, max(1, max_price // 3))
+                        else:
+                            price = max(0, max_price // 4)
                         return f"price {i + 1} {price}"
-            return f"price 1 1"
+            return "pass"
 
         if self.phase == "buy":
             opp = 1 - pi
@@ -492,6 +501,7 @@ class IsleOfSkyeGame(BaseGame):
             if tile is None:
                 return "keep"
             grid = self.landscape_grid[pi]
+            best_spot = None
             for r in range(9):
                 for c in range(9):
                     if grid[r][c] is None:
@@ -502,16 +512,19 @@ class IsleOfSkyeGame(BaseGame):
                                 adj = True
                                 break
                         if adj:
+                            if best_spot is None:
+                                best_spot = (r, c)
                             if difficulty == 'hard':
                                 for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
                                     nr, nc = r + dr, c + dc
                                     if 0 <= nr < 9 and 0 <= nc < 9 and grid[nr][nc] is not None:
                                         if grid[nr][nc]["terrain"] == tile["terrain"]:
                                             return f"place {r} {c}"
-                            return f"place {r} {c}"
+            if best_spot is not None:
+                return f"place {best_spot[0]} {best_spot[1]}"
             return "keep"
 
-        return "draw"
+        return "pass"
 
     def check_game_over(self):
         """Game ends after max rounds."""

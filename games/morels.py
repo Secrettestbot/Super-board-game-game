@@ -383,6 +383,7 @@ class MorelGame(BaseGame):
         import random
         difficulty = getattr(self, 'ai_difficulty', 'medium')
         p = self.current_player
+        hand_full = len(self.hands[p]) >= self.hand_limit[p]
 
         candidates = []
 
@@ -402,7 +403,7 @@ class MorelGame(BaseGame):
         for i, card in enumerate(self.forest):
             cost = i
             if cost <= self.sticks[p]:
-                if card["type"] == "mushroom" and len(self.hands[p]) < self.hand_limit[p]:
+                if card["type"] == "mushroom" and not hand_full:
                     score = card["value"] * 3 - cost * 2
                     candidates.append((f"take {i}", max(5, score)))
                 elif card["type"] == "pan":
@@ -411,26 +412,35 @@ class MorelGame(BaseGame):
                     candidates.append((f"take {i}", 20 - cost * 2))
 
         if self.decay_pile:
-            mushrooms_val = sum(c["value"] for c in self.decay_pile if c["type"] == "mushroom")
-            pans_count = sum(1 for c in self.decay_pile if c["type"] == "pan")
             space = self.hand_limit[p] - len(self.hands[p])
+            pans_count = sum(1 for c in self.decay_pile if c["type"] == "pan")
             if space > 0 or pans_count > 0:
-                score = mushrooms_val + pans_count * 10
-                if score > 0:
-                    candidates.append(("decay", score))
+                mushrooms_val = sum(c["value"] for c in self.decay_pile if c["type"] == "mushroom")
+                score = max(1, mushrooms_val + pans_count * 10)
+                candidates.append(("decay", score))
 
-        if self.sticks[p] < 2:
-            for sp, info in species_count.items():
-                if info["count"] < 3 and info["value"] <= 2:
+        for sp, info in species_count.items():
+            if info["count"] >= 1:
+                if hand_full:
+                    sell_score = 15 - info["value"]
+                    if info["count"] >= 3 and self.pans[p] > 0:
+                        sell_score = 1
+                    candidates.append((f"sell {sp} 1", max(1, sell_score)))
+                elif self.sticks[p] < 2 and info["count"] < 3 and info["value"] <= 2:
                     candidates.append((f"sell {sp} 1", 8))
 
         if not candidates:
-            if self.forest:
-                return "take 0"
             if self.decay_pile:
                 return "decay"
-            for sp, info in species_count.items():
+            if species_count:
+                sp = min(species_count, key=lambda s: species_count[s]["value"])
                 return f"sell {sp} 1"
+            if self.forest:
+                for i, card in enumerate(self.forest):
+                    if i <= self.sticks[p]:
+                        if card["type"] != "mushroom" or not hand_full:
+                            return f"take {i}"
+                return "take 0"
             return "take 0"
 
         if difficulty == 'easy':
