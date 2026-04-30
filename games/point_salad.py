@@ -152,6 +152,7 @@ class PointSalad(BaseGame):
         "standard": "Standard game - full 36-card market, play to exhaustion",
         "quick": "Quick game - smaller 24-card market for faster play",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def setup(self):
         # Build 3 scoring piles
@@ -277,6 +278,8 @@ class PointSalad(BaseGame):
         return move
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player
         parts = move.split()
         if not parts:
@@ -355,7 +358,7 @@ class PointSalad(BaseGame):
             veggie = card["veggie_back"]
             self.player_veggies[p][veggie] += 1
             print(f"  Flipped scoring card to {veggie}!")
-            input("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
             # Flipping doesn't count as main action; player still takes a turn
             # Actually in Point Salad, flipping is a free action - let them continue
             # But for simplicity in our game loop, treat it as a turn action
@@ -363,6 +366,88 @@ class PointSalad(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        veggies = dict(self.player_veggies[p])
+
+        if difficulty == "easy":
+            available_veggies = [i for i in range(6) if self.veggie_market[i] is not None]
+            available_piles = [i for i in range(3) if self.scoring_piles[i]]
+            if available_veggies and rand.random() < 0.6:
+                picks = rand.sample(available_veggies, min(2, len(available_veggies)))
+                return "veggie " + " ".join(str(i + 1) for i in picks)
+            elif available_piles:
+                return f"score {rand.choice(available_piles) + 1}"
+            elif available_veggies:
+                picks = rand.sample(available_veggies, min(2, len(available_veggies)))
+                return "veggie " + " ".join(str(i + 1) for i in picks)
+            return "veggie 1"
+
+        best_action = None
+        best_score = -9999
+
+        for pile_idx in range(3):
+            if not self.scoring_piles[pile_idx]:
+                continue
+            card = self.scoring_piles[pile_idx][-1]
+            potential = card["score_func"](veggies)
+            test_veggies = dict(veggies)
+            test_veggies[card["veggie_back"]] = test_veggies.get(card["veggie_back"], 0) + 2
+            future_potential = card["score_func"](test_veggies)
+            score = max(potential, future_potential) * 1.5
+            if difficulty == "hard":
+                for existing in self.player_scoring[p]:
+                    if existing["rule"] == card["rule"]:
+                        score -= 5
+            if difficulty == "medium":
+                score += rand.uniform(-2, 2)
+            if score > best_score:
+                best_score = score
+                best_action = f"score {pile_idx + 1}"
+
+        available_veggies = [(i, self.veggie_market[i]) for i in range(6)
+                            if self.veggie_market[i] is not None]
+        if available_veggies:
+            veggie_scores = []
+            for idx, card in available_veggies:
+                test_veggies = dict(veggies)
+                test_veggies[card["veggie"]] = test_veggies.get(card["veggie"], 0) + 1
+                gain = 0
+                for sc in self.player_scoring[p]:
+                    gain += sc["score_func"](test_veggies) - sc["score_func"](veggies)
+                veggie_scores.append((gain, idx))
+            veggie_scores.sort(reverse=True)
+
+            if len(veggie_scores) >= 2:
+                v1_gain, v1_idx = veggie_scores[0]
+                v2_gain, v2_idx = veggie_scores[1]
+                combo_score = v1_gain + v2_gain
+                if difficulty == "medium":
+                    combo_score += rand.uniform(-1, 1)
+                if combo_score > best_score:
+                    best_score = combo_score
+                    best_action = f"veggie {v1_idx + 1} {v2_idx + 1}"
+            if veggie_scores:
+                v_gain, v_idx = veggie_scores[0]
+                single_score = v_gain * 1.2
+                if difficulty == "medium":
+                    single_score += rand.uniform(-1, 1)
+                if single_score > best_score:
+                    best_score = single_score
+                    best_action = f"veggie {v_idx + 1}"
+
+        if best_action is None:
+            for i in range(6):
+                if self.veggie_market[i] is not None:
+                    return f"veggie {i + 1}"
+            for i in range(3):
+                if self.scoring_piles[i]:
+                    return f"score {i + 1}"
+
+        return best_action
 
     def check_game_over(self):
         if self._market_empty():

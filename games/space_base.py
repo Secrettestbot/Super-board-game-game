@@ -71,6 +71,7 @@ class SpaceBaseGame(BaseGame):
         'standard': 'Standard game (40 VP to win)',
         'saga': 'Saga variant with upgraded ships and 50 VP goal',
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -93,6 +94,13 @@ class SpaceBaseGame(BaseGame):
         self.shop = []
         self._refresh_shop()
         self.round_num = 1
+        self._stay_on_player = False
+
+    def switch_player(self):
+        if self._stay_on_player:
+            self._stay_on_player = False
+            return
+        super().switch_player()
 
     def _refresh_shop(self):
         base_cards = list(SHIP_CARDS)
@@ -229,13 +237,16 @@ class SpaceBaseGame(BaseGame):
                 print("  Format: '<shop#> <sector>' or just '<shop#>' for default sector.")
 
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
         opp = 2 if cp == 1 else 1
 
         if move[0] == 'roll':
             self.dice_result = self._roll_dice()
             self.phase = 'activate'
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] in ('activate_split', 'activate_combined', 'activate_doubles'):
             total_vp = 0
@@ -280,7 +291,8 @@ class SpaceBaseGame(BaseGame):
             if total_vp > 0 or total_inc > 0:
                 print(f"  Gained: {total_vp} VP, {total_inc} income")
             self.phase = 'buy'
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'buy_ship':
             shop_idx, sector = move[1], move[2]
@@ -307,7 +319,8 @@ class SpaceBaseGame(BaseGame):
             random.shuffle(base_cards)
             self.shop.append(base_cards[0])
             print(f"  Deployed {card['name']} to sector {sector}!")
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'done_buying':
             self.dice_result = []
@@ -356,6 +369,88 @@ class SpaceBaseGame(BaseGame):
         self.dice_result = state['dice_result']
         self.shop = state['shop']
         self.round_num = state['round_num']
+        self._stay_on_player = False
+
+    def get_ai_move(self):
+        """Return a valid AI move based on difficulty."""
+        cp = self.current_player
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.phase == 'roll':
+            return ('roll',)
+
+        elif self.phase == 'activate':
+            d1, d2 = self.dice_result
+            total = d1 + d2
+
+            if d1 == d2:
+                return ('activate_doubles', d1, total)
+
+            if difficulty == 'easy':
+                if total <= 12 and random.random() < 0.5:
+                    return ('activate_combined', total)
+                return ('activate_split', d1, d2)
+
+            # Medium/Hard: evaluate which gives more reward
+            split_vp, split_inc = 0, 0
+            for s in (d1, d2):
+                ship = self.active_ships[cp].get(s)
+                if ship:
+                    split_vp += ship.get('active', {}).get('vp', 0)
+                    split_inc += ship.get('active', {}).get('income', 0)
+
+            comb_vp, comb_inc = 0, 0
+            if total <= 12:
+                ship = self.active_ships[cp].get(total)
+                if ship:
+                    comb_vp += ship.get('active', {}).get('vp', 0)
+                    comb_inc += ship.get('active', {}).get('income', 0)
+
+            split_score = split_vp * 2 + split_inc
+            comb_score = comb_vp * 2 + comb_inc
+
+            if total <= 12 and comb_score > split_score:
+                return ('activate_combined', total)
+            return ('activate_split', d1, d2)
+
+        elif self.phase == 'buy':
+            # Try to buy best affordable ship
+            affordable = []
+            for i, card in enumerate(self.shop):
+                if self.income[cp] >= card['cost']:
+                    affordable.append((i, card))
+
+            if not affordable:
+                return ('done_buying',)
+
+            if difficulty == 'easy':
+                if random.random() < 0.4 and affordable:
+                    idx, card = random.choice(affordable)
+                    return ('buy_ship', idx, card['sector'])
+                return ('done_buying',)
+
+            # Medium/Hard: buy best VP ship we can afford
+            if difficulty == 'hard':
+                # Prefer ships with high VP, weighted toward common sectors (6-8)
+                def ship_value(item):
+                    i, card = item
+                    vp = card['active'].get('vp', 0) + card['deployed'].get('vp', 0)
+                    inc = card['active'].get('income', 0)
+                    sector = card['sector']
+                    # Weight common sectors higher
+                    sector_weight = 1.0
+                    if 5 <= sector <= 9:
+                        sector_weight = 1.3
+                    return (vp * 2 + inc) * sector_weight
+
+                best = max(affordable, key=ship_value)
+            else:
+                best = max(affordable, key=lambda x: x[1]['active'].get('vp', 0) + x[1]['active'].get('income', 0))
+
+            idx, card = best
+            return ('buy_ship', idx, card['sector'])
+
+        return ('done_buying',)
 
     def get_tutorial(self):
         return """

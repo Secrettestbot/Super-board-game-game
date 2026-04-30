@@ -17,6 +17,7 @@ class RevolverGame(BaseGame):
         "quick": "Quick draw (3 locations)",
         "epic": "Epic chase (5 locations, larger hands)",
     }
+    side_labels = ("Outlaw", "Colonel")
 
     ALL_LOCATIONS = [
         {"name": "Bank", "symbol": "$", "outlaw_slots": 3, "desc": "The heist begins here"},
@@ -269,6 +270,8 @@ class RevolverGame(BaseGame):
             print(f"  Invalid. Enter 1-{len(hand)} or P.")
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move[0] == "deploy":
             _, idx = move
 
@@ -436,6 +439,100 @@ class RevolverGame(BaseGame):
         # Draw new cards
         self._draw_hands()
         self._add_log(f"The chase moves to {loc['name']}!")
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.phase == "resolve":
+            return "resolve"
+        if self.phase == "location_end":
+            return "advance"
+        if self.phase == "game_end":
+            return "end"
+
+        if self.phase == "outlaw_play":
+            hand = self.outlaw_hand
+            loc_idx = self.current_location_idx
+            loc = self.locations[loc_idx]
+            deployed = self.outlaw_deployed.get(loc_idx, [])
+            max_slots = loc["outlaw_slots"]
+            can_deploy = len(deployed) < max_slots and len(hand) > 0
+
+            if not hand or not can_deploy:
+                return ["pass"]
+
+            if difficulty == "easy":
+                if rand.random() < 0.4:
+                    return ["pass"]
+                return ["deploy", rand.randint(0, len(hand) - 1)]
+
+            scored = []
+            for i, card in enumerate(hand):
+                if card["type"] == "gang":
+                    score = card["strength"] * 3
+                elif card["type"] == "special_destroy":
+                    lawmen = self.colonel_deployed.get(loc_idx, [])
+                    score = 12 if lawmen else -5
+                elif card["type"] == "special_ambush":
+                    score = len(deployed) * 4
+                else:
+                    score = 5
+                if difficulty == "medium":
+                    score += rand.uniform(-3, 3)
+                scored.append((score, i))
+            scored.sort(key=lambda x: x[0], reverse=True)
+
+            lawmen = self.colonel_deployed.get(loc_idx, [])
+            outlaw_str = sum(o["strength"] for o in deployed)
+            lawman_str = sum(l["strength"] for l in lawmen)
+            if outlaw_str > lawman_str + 5 and difficulty != "easy":
+                return ["pass"]
+
+            if difficulty == "hard":
+                return ["deploy", scored[0][1]]
+            return ["deploy", rand.choice(scored[:2])[1]]
+
+        elif self.phase == "colonel_play":
+            hand = self.colonel_hand
+            loc_idx = self.current_location_idx
+            deployed = self.colonel_deployed.get(loc_idx, [])
+
+            if not hand:
+                return ["pass"]
+
+            if difficulty == "easy":
+                if rand.random() < 0.4:
+                    return ["pass"]
+                return ["deploy", rand.randint(0, len(hand) - 1)]
+
+            scored = []
+            for i, card in enumerate(hand):
+                if card["type"] == "lawman":
+                    score = card["strength"] * 3
+                elif card["type"] == "special_reinforce":
+                    score = len(deployed) * 4
+                elif card["type"] == "special_warrant":
+                    outlaws = self.outlaw_deployed.get(loc_idx, [])
+                    score = 12 if outlaws else -5
+                else:
+                    score = 5
+                if difficulty == "medium":
+                    score += rand.uniform(-3, 3)
+                scored.append((score, i))
+            scored.sort(key=lambda x: x[0], reverse=True)
+
+            outlaws = self.outlaw_deployed.get(loc_idx, [])
+            outlaw_str = sum(o["strength"] for o in outlaws)
+            lawman_str = sum(l["strength"] for l in deployed)
+            if lawman_str > outlaw_str + 3 and difficulty != "easy":
+                return ["pass"]
+
+            if difficulty == "hard":
+                return ["deploy", scored[0][1]]
+            return ["deploy", rand.choice(scored[:2])[1]]
+
+        return ["pass"]
 
     def check_game_over(self):
         if self.phase == "game_end":

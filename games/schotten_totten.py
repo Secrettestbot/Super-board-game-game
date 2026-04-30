@@ -71,6 +71,7 @@ class SchottenTottenGame(BaseGame):
         "standard": "Standard game with 9 boundary stones",
         "quick": "Quick game with 7 boundary stones",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -211,6 +212,8 @@ class SchottenTottenGame(BaseGame):
             return {"card_idx": ci, "stone_idx": si}
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move == "pass":
             return True
         p = self.current_player
@@ -254,6 +257,71 @@ class SchottenTottenGame(BaseGame):
                 else:
                     # Tie goes to the player who completed their side first (player 1 advantage)
                     stone["claimed"] = 1
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        hand = self.hands[p]
+        if not hand:
+            return "pass"
+
+        if difficulty == "easy":
+            ci = rand.randint(0, len(hand) - 1)
+            valid_stones = [i for i in range(self.num_stones)
+                            if self.stones[i]["claimed"] == 0 and len(self.stones[i][str(p)]) < 3]
+            if not valid_stones:
+                return "pass"
+            return {"card_idx": ci, "stone_idx": rand.choice(valid_stones)}
+
+        scored = []
+        for ci, card in enumerate(hand):
+            for si in range(self.num_stones):
+                stone = self.stones[si]
+                if stone["claimed"] != 0 or len(stone[str(p)]) >= 3:
+                    continue
+                existing = stone[str(p)]
+                new_cards = existing + [card]
+                score = 0
+
+                if len(new_cards) == 3:
+                    rank, total = formation_rank(new_cards)
+                    score += rank * 15 + total
+                elif len(new_cards) == 2:
+                    colors = [c[0] for c in new_cards]
+                    values = sorted([c[1] for c in new_cards])
+                    if len(set(colors)) == 1:
+                        score += 6
+                    if abs(values[1] - values[0]) <= 2:
+                        score += 5
+                    if values[0] == values[1]:
+                        score += 8
+                    score += sum(values) * 0.5
+                else:
+                    score += card[1] * 0.5
+
+                opp = 2 if p == 1 else 1
+                opp_cards = stone[str(opp)]
+                if len(opp_cards) == 3:
+                    opp_rank = formation_rank(opp_cards)
+                    if len(new_cards) == 3:
+                        my_rank = formation_rank(new_cards)
+                        if my_rank > opp_rank:
+                            score += 20
+                        elif my_rank < opp_rank:
+                            score -= 10
+
+                if difficulty == "medium":
+                    score += rand.uniform(-3, 3)
+                scored.append((score, {"card_idx": ci, "stone_idx": si}))
+
+        if not scored:
+            return "pass"
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        if difficulty == "hard":
+            return scored[0][1]
+        return rand.choice(scored[:3])[1] if len(scored) >= 3 else scored[0][1]
 
     def check_game_over(self):
         claims = {1: 0, 2: 0}

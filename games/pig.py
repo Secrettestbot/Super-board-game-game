@@ -46,6 +46,7 @@ class PigGame(BaseGame):
         "two_dice": "Two-Dice Pig",
         "big_pig": "Big Pig (100 points)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -132,6 +133,8 @@ class PigGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move. Handles the full turn loop internally."""
+        if move is None:
+            return False
         if move == 'roll':
             return self._do_roll()
         elif move == 'hold':
@@ -148,10 +151,14 @@ class PigGame(BaseGame):
         while True:
             clear_screen()
             self.display()
-            try:
-                move = self.get_move()
-            except Exception:
-                raise  # propagate QuitGame, SuspendGame, etc.
+
+            if self.ai_player == self.current_player:
+                move = self.get_ai_move()
+            else:
+                try:
+                    move = self.get_move()
+                except Exception:
+                    raise  # propagate QuitGame, SuspendGame, etc.
 
             if move == 'hold':
                 return self._do_hold()
@@ -247,6 +254,9 @@ class PigGame(BaseGame):
     # ------------------------------------------------------------------ #
     #  Game over
     # ------------------------------------------------------------------ #
+
+    def get_ai_move(self):
+        return 'roll'
 
     def check_game_over(self):
         """Check if a player has reached the target score."""

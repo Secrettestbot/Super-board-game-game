@@ -16,6 +16,7 @@ class SkullRosesGame(BaseGame):
         "standard": "Standard Skull & Roses (4 coasters each)",
         "team": "Team variant (shared coaster pool, 6 each)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -233,6 +234,8 @@ class SkullRosesGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
 
         if move == "place rose":
@@ -319,7 +322,7 @@ class SkullRosesGame(BaseGame):
                 print(f"\n  You hit your own skull!")
                 self._penalty(bidder, own_skull=True)
                 self.phase = "round_over"
-                input_with_quit("\n  Press Enter to continue... ")
+                self._pause("\n  Press Enter to continue... ")
                 return True
 
         # Then flip opponent's stack (top to bottom)
@@ -333,7 +336,7 @@ class SkullRosesGame(BaseGame):
                 print(f"\n  You hit a skull!")
                 self._penalty(bidder, own_skull=False)
                 self.phase = "round_over"
-                input_with_quit("\n  Press Enter to continue... ")
+                self._pause("\n  Press Enter to continue... ")
                 return True
 
         # All flipped successfully
@@ -345,7 +348,7 @@ class SkullRosesGame(BaseGame):
         print(f"\n  Success! Flipped {to_flip} coaster(s) without a skull!")
         print(f"  Wins: {self.wins[bidder]}/{self.wins_needed}")
         self.phase = "round_over"
-        input_with_quit("\n  Press Enter to continue... ")
+        self._pause("\n  Press Enter to continue... ")
         return True
 
     def _penalty(self, loser, own_skull):
@@ -365,6 +368,14 @@ class SkullRosesGame(BaseGame):
                 self._add_log(f"{self.players[player - 1]} lost their last coaster ({lost}).")
                 print(f"  Lost your last coaster ({lost}).")
             return
+
+        if self.ai_player == player:
+            flower_indices = [i for i, c in enumerate(self.coasters[player]) if c != "skull"]
+            idx = flower_indices[0] if flower_indices else 0
+            lost = self.coasters[player].pop(idx)
+            self._add_log(f"{self.players[player - 1]} lost a {lost}.")
+            return
+
         print(f"  Your coasters:")
         for i, c in enumerate(self.coasters[player], 1):
             print(f"    {i}. {c}")
@@ -404,6 +415,72 @@ class SkullRosesGame(BaseGame):
             super().switch_player()
 
     # -------------------------------------------------------- check_game_over
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        opp = self._opponent(cp)
+
+        if self.phase == "round_over":
+            return "next_round"
+
+        if self.phase == "flipping":
+            return "flip"
+
+        if self.phase == "placing":
+            hand = self._hand(cp)
+            if not hand:
+                return "start_bid"
+
+            if not self.has_placed[cp]:
+                if "skull" in hand and difficulty != "easy" and rand.random() < 0.3:
+                    return "place skull"
+                if "rose" in hand:
+                    return "place rose"
+                return "place skull"
+
+            if self.has_placed[opp] and len(self.stacks[cp]) >= 1:
+                own_roses = self.stacks[cp].count("rose")
+                total = self._total_on_stacks()
+                if own_roses == len(self.stacks[cp]) and own_roses >= 1:
+                    if difficulty == "hard" and rand.random() < 0.5:
+                        return f"bid {min(own_roses, total)}"
+                    elif rand.random() < 0.3:
+                        return f"bid {min(own_roses, total)}"
+
+            if "rose" in hand and rand.random() < 0.7:
+                return "place rose"
+            if "skull" in hand and rand.random() < 0.4:
+                return "place skull"
+            if "rose" in hand:
+                return "place rose"
+            return "place skull"
+
+        if self.phase == "bidding":
+            total = self._total_on_stacks()
+            own_roses = self.stacks[cp].count("rose")
+
+            if difficulty == "easy":
+                if rand.random() < 0.5:
+                    return "pass"
+                new_bid = self.current_bid + 1
+                if new_bid <= total:
+                    return f"bid {new_bid}"
+                return "pass"
+
+            safe_bid = own_roses
+            if self.current_bid >= safe_bid:
+                if difficulty == "hard" and self.current_bid < total and rand.random() < 0.2:
+                    return f"bid {self.current_bid + 1}"
+                return "pass"
+
+            new_bid = self.current_bid + 1
+            if new_bid <= min(safe_bid, total):
+                return f"bid {new_bid}"
+            return "pass"
+
+        return "pass"
+
     def check_game_over(self):
         for p in (1, 2):
             if self.wins[p] >= self.wins_needed:

@@ -323,6 +323,8 @@ class IsleOfCatsGame(BaseGame):
         return [(r, max_c - c) for r, c in cells]
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player - 1
         parts = move.strip().split()
         if not parts:
@@ -619,6 +621,72 @@ class IsleOfCatsGame(BaseGame):
                 self.winner = 2
             else:
                 self.winner = None
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player - 1
+
+        if self.phase == "drafting":
+            draft = self.draft_hands[p]
+            if not draft:
+                return "draft 1"
+            if difficulty == 'easy':
+                return f"draft {random.randint(1, len(draft))}"
+            best_idx = 0
+            best_val = -1
+            for i, card in enumerate(draft):
+                val = 0
+                ctype = card.get("card_type", "")
+                if ctype == "lesson":
+                    val = 5
+                elif ctype == "fish":
+                    val = card.get("fish", 0)
+                elif ctype == "speed":
+                    val = 4
+                if difficulty == 'hard' and ctype == "lesson":
+                    val = 8
+                if val > best_val:
+                    best_val = val
+                    best_idx = i
+            if difficulty == 'medium':
+                top = [i for i, c in enumerate(draft)]
+                return f"draft {random.choice(top) + 1}"
+            return f"draft {best_idx + 1}"
+
+        if self.phase == "rescue":
+            if not self.available_cats or self.fish[p] < 3:
+                return "pass"
+
+            if difficulty == 'easy':
+                cat = self.available_cats[0]
+                for r in range(BOAT_ROWS):
+                    for c in range(BOAT_COLS):
+                        if self._can_place_cat(p, cat, r, c):
+                            return f"rescue 1 {r} {c}"
+                return "pass"
+
+            best_move = None
+            best_score = -1
+            for ci, cat in enumerate(self.available_cats):
+                cat_val = cat["size"] * 2
+                if difficulty == 'hard':
+                    sym = CAT_SYMBOLS[cat["color"]]
+                    for r in range(BOAT_ROWS):
+                        for c in range(BOAT_COLS):
+                            if self.boats[p][r][c] == sym:
+                                cat_val += 1
+                for r in range(BOAT_ROWS):
+                    for c in range(BOAT_COLS):
+                        if self._can_place_cat(p, cat, r, c):
+                            if cat_val > best_score:
+                                best_score = cat_val
+                                best_move = f"rescue {ci + 1} {r} {c}"
+            if best_move:
+                return best_move
+            return "pass"
+
+        return "pass"
 
     def check_game_over(self):
         # Game over is handled in make_move when rounds complete

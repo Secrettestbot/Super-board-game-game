@@ -48,6 +48,7 @@ class RiftforceGame(BaseGame):
         "standard": "Standard (4 guilds each)",
         "advanced": "Advanced (5 guilds each)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -380,6 +381,82 @@ class RiftforceGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        opp = 2 if p == 1 else 1
+
+        if self.draft_phase:
+            if difficulty == "easy":
+                return ("draft", str(rand.randint(0, len(self.available_guilds) - 1)))
+            power_rank = {"deal_extra": 9, "aoe": 8, "score": 7, "freeze": 7,
+                          "weaken": 6, "draw": 6, "shield": 5, "grow": 5,
+                          "heal": 4, "move": 4}
+            scored = []
+            for i, guild in enumerate(self.available_guilds):
+                score = power_rank.get(ALL_GUILDS[guild]["power"], 5)
+                if difficulty == "medium":
+                    score += rand.uniform(-2, 2)
+                scored.append((score, i))
+            scored.sort(key=lambda x: x[0], reverse=True)
+            pick = scored[0][1] if difficulty == "hard" else rand.choice(scored[:2])[1]
+            return ("draft", str(pick))
+
+        hand = self.hands[p]
+        if not hand:
+            return ("draw",)
+
+        scored_actions = []
+
+        # Evaluate play actions
+        for card_idx, card in enumerate(hand):
+            for loc_idx in range(NUM_LOCATIONS):
+                enemies = self.locations[loc_idx]["units"][opp]
+                allies = self.locations[loc_idx]["units"][p]
+                score = 5
+                if enemies:
+                    score += 8
+                    weak_enemy = min(e["hp"] for e in enemies)
+                    if card["value"] >= weak_enemy:
+                        score += 10
+                if not allies and not enemies:
+                    score += 3
+                power = ALL_GUILDS[card["guild"]]["power"]
+                if power == "deal_extra":
+                    score += 2
+                elif power == "aoe" and len(enemies) > 1:
+                    score += len(enemies) * 3
+                elif power == "shield":
+                    score += 1
+                if difficulty == "medium":
+                    score += rand.uniform(-3, 3)
+                scored_actions.append((score, ("play", str(card_idx), str(loc_idx + 1))))
+
+        # Evaluate activate actions
+        for loc_idx in range(NUM_LOCATIONS):
+            my_units = self.locations[loc_idx]["units"][p]
+            enemy_units = self.locations[loc_idx]["units"][opp]
+            if my_units and enemy_units:
+                total_dmg = sum(u["value"] + u.get("grow_bonus", 0) for u in my_units if not u["frozen"])
+                score = total_dmg * 2
+                killable = sum(1 for e in enemy_units if e["hp"] <= total_dmg)
+                score += killable * 8
+                if difficulty == "medium":
+                    score += rand.uniform(-3, 3)
+                scored_actions.append((score, ("activate", str(loc_idx + 1))))
+
+        # Draw
+        scored_actions.append((3, ("draw",)))
+
+        if difficulty == "easy":
+            return rand.choice(scored_actions)[1]
+
+        scored_actions.sort(key=lambda x: x[0], reverse=True)
+        if difficulty == "hard":
+            return scored_actions[0][1]
+        return rand.choice(scored_actions[:3])[1]
 
     def check_game_over(self):
         # Win by destroying 12 enemy units

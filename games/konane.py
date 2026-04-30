@@ -354,6 +354,78 @@ class KonaneGame(BaseGame):
 
         return False
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+        opp = 2 if player == 1 else 1
+
+        if self.phase == "remove":
+            valid = self._get_valid_removal_positions()
+            if not valid:
+                return None
+            if difficulty == 'easy':
+                return ("remove", random.choice(valid))
+            mid = self.size // 2
+            scored = []
+            for r, c in valid:
+                score = -(abs(r - mid) + abs(c - mid))
+                scored.append((score, (r, c)))
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'medium':
+                top = scored[:max(1, len(scored) // 2)]
+                _, pos = random.choice(top)
+            else:
+                _, pos = scored[0]
+            return ("remove", pos)
+
+        all_jumps = self._get_all_jumps(player)
+        if not all_jumps:
+            return None
+        moves = []
+        for (fr, fc), destinations in all_jumps.items():
+            for (tr, tc) in destinations:
+                moves.append(((fr, fc), (tr, tc)))
+        if difficulty == 'easy':
+            frm, to = random.choice(moves)
+            return ("jump", frm, to)
+
+        scored = []
+        for frm, to in moves:
+            fr, fc = frm
+            tr, tc = to
+            captures = (abs(tr - fr) + abs(tc - fc)) // 2
+            score = captures * 10
+            if difficulty == 'hard':
+                piece = self.board[fr][fc]
+                captured = self._validate_jump(fr, fc, tr, tc, player)
+                if captured:
+                    self.board[fr][fc] = self.EMPTY
+                    self.board[tr][tc] = piece
+                    saved = []
+                    for cr, cc in captured:
+                        saved.append(self.board[cr][cc])
+                        self.board[cr][cc] = self.EMPTY
+                    opp_jumps = self._get_all_jumps(opp)
+                    opp_count = sum(len(d) for d in opp_jumps.values())
+                    our_jumps = self._get_all_jumps(player)
+                    our_count = sum(len(d) for d in our_jumps.values())
+                    score += (our_count - opp_count) * 3
+                    if opp_count == 0:
+                        score += 1000
+                    self.board[fr][fc] = piece
+                    self.board[tr][tc] = self.EMPTY
+                    for i, (cr, cc) in enumerate(captured):
+                        self.board[cr][cc] = saved[i]
+            scored.append((score, frm, to))
+        scored.sort(key=lambda x: -x[0])
+        if difficulty == 'medium':
+            top = scored[:max(1, len(scored) // 3)]
+            _, frm, to = random.choice(top)
+        else:
+            _, frm, to = scored[0]
+        return ("jump", frm, to)
+
     def check_game_over(self):
         """Check if the game is over. A player loses if they cannot jump."""
         if self.phase == "remove":

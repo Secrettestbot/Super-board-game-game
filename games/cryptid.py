@@ -299,7 +299,7 @@ class CryptidGame(BaseGame):
         action, row, col = move
         if row < 0 or row >= self.rows or col < 0 or col >= self.cols:
             print(f"  Position ({row},{col}) is out of bounds!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         p = self.current_player  # 1 or 2
@@ -317,7 +317,7 @@ class CryptidGame(BaseGame):
                 print(f"  >>> {self.players[opp - 1]} says: YES, my clue matches ({row},{col})!")
             else:
                 print(f"  >>> {self.players[opp - 1]} says: NO, my clue does NOT match ({row},{col}).")
-            input("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
             return True
 
         elif action == "guess":
@@ -328,7 +328,7 @@ class CryptidGame(BaseGame):
                 print(f"  Your own clue doesn't match ({row},{col})! Bad guess.")
                 print(f"  You must place a NO token there for yourself.")
                 self.player_tokens[p - 1][(row, col)] = False
-                input("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
                 return True
 
             # Check opponent's clue
@@ -341,7 +341,7 @@ class CryptidGame(BaseGame):
                 self.winner = p
                 print(f"\n  >>> CORRECT! The creature was at ({row},{col})!")
                 print(f"  >>> {self.players[p - 1]} WINS!")
-                input("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
             else:
                 clear_screen()
                 self.display()
@@ -351,10 +351,49 @@ class CryptidGame(BaseGame):
                 else:
                     print(f"  >>> {self.players[opp - 1]}'s clue DID match, but something else is wrong.")
                 self.player_tokens[p - 1][(row, col)] = False
-                input("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        own_clue_fn = self.clues[cp - 1][1]
+        opp = 2 if cp == 1 else 1
+
+        all_pos = [(r, c) for r in range(self.rows) for c in range(self.cols)]
+        unknown = [(r, c) for r, c in all_pos if (r, c) not in self.player_tokens[opp - 1]]
+        own_yes = [(r, c) for r, c in all_pos if own_clue_fn(r, c)]
+        opp_yes = set((r, c) for (r, c), v in self.player_tokens[opp - 1].items() if v)
+        opp_no = set((r, c) for (r, c), v in self.player_tokens[opp - 1].items() if not v)
+
+        candidates = [pos for pos in own_yes if pos not in opp_no]
+
+        if difficulty == 'easy':
+            if unknown:
+                return ("search", *random.choice(unknown))
+            return ("search", *random.choice(all_pos))
+
+        if difficulty == 'hard' and len(candidates) == 1:
+            pos = candidates[0]
+            if pos in opp_yes:
+                return ("guess", pos[0], pos[1])
+
+        both_yes = [pos for pos in candidates if pos in opp_yes]
+        if difficulty == 'hard' and len(both_yes) == 1:
+            return ("guess", both_yes[0][0], both_yes[0][1])
+
+        search_targets = [pos for pos in candidates if pos not in opp_yes and pos not in opp_no]
+        if search_targets:
+            if difficulty == 'hard':
+                return ("search", *random.choice(search_targets))
+            return ("search", *random.choice(search_targets))
+
+        if unknown:
+            return ("search", *random.choice(unknown))
+        return ("search", *random.choice(all_pos))
 
     def check_game_over(self):
         # Already handled in make_move for guesses

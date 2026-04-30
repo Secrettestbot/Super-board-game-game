@@ -59,6 +59,7 @@ class AirLandSeaGame(BaseGame):
         "standard": "Standard (with card powers)",
         "simple": "Simple (no card powers)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -374,6 +375,8 @@ class AirLandSeaGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
         opp = self._opponent()
 
@@ -435,6 +438,21 @@ class AirLandSeaGame(BaseGame):
             if len(adj) == 1:
                 target = adj[0]
                 print(f"  {name} power: +3 strength in {target}.")
+            elif self.ai_player == player:
+                # AI auto-selects adjacent theater
+                difficulty = getattr(self, 'ai_difficulty', 'medium')
+                if difficulty == 'easy':
+                    target = random.choice(adj)
+                else:
+                    # Medium/Hard: reinforce the adjacent theater where we're weakest relative to opponent
+                    best_target = adj[0]
+                    best_deficit = -999
+                    for t in adj:
+                        deficit = self._theater_strength(t, self._opponent(player)) - self._theater_strength(t, player)
+                        if deficit > best_deficit:
+                            best_deficit = deficit
+                            best_target = t
+                    target = best_target
             else:
                 print(f"  {name} power: Choose adjacent theater to reinforce (+3):")
                 for i, t in enumerate(adj, 1):
@@ -471,38 +489,65 @@ class AirLandSeaGame(BaseGame):
             if not my_cards:
                 self._add_log(f"  {name} power: no cards to move.")
                 return
-            print(f"  {name} power: Move one of your cards to another theater.")
-            print(f"  Your cards on the board:")
-            for j, (t, i, cidx, fu) in enumerate(my_cards, 1):
-                cname = self._card(cidx)[0] if fu else "[face-down]"
-                print(f"    {j}. {cname} in {t}")
-            print(f"    [S] Skip")
-            while True:
-                choice = input_with_quit("  Card to move: ").strip().lower()
-                if choice in ("s", "skip"):
-                    return
-                if choice.isdigit() and 1 <= int(choice) <= len(my_cards):
-                    src_theater, src_idx, cidx, fu = my_cards[int(choice) - 1]
-                    break
-                print("  Invalid choice.")
-            # Choose destination
-            other_theaters = [t for t in THEATERS if t != src_theater]
-            print(f"  Move to which theater?")
-            for j, t in enumerate(other_theaters, 1):
-                print(f"    {j}. {t}")
-            while True:
-                choice = input_with_quit("  Theater: ").strip()
-                if choice.isdigit() and 1 <= int(choice) <= len(other_theaters):
-                    dest = other_theaters[int(choice) - 1]
-                    break
-                for t in other_theaters:
-                    if choice.lower() == t.lower():
-                        dest = t
-                        break
+            if self.ai_player == player:
+                # AI auto-selects card to move and destination
+                difficulty = getattr(self, 'ai_difficulty', 'medium')
+                opp = self._opponent(player)
+                if difficulty == 'easy':
+                    src_theater, src_idx, cidx, fu = random.choice(my_cards)
+                    other_theaters = [t for t in THEATERS if t != src_theater]
+                    dest = random.choice(other_theaters)
                 else:
+                    # Medium/Hard: move strongest card to theater where we're most behind
+                    best_move = None
+                    best_score = -999
+                    for t, i, cidx, fu in my_cards:
+                        card_str = self._effective_strength(cidx, fu)
+                        other_theaters = [ot for ot in THEATERS if ot != t]
+                        for ot in other_theaters:
+                            # Score: how much this move helps (move to theater where we trail most)
+                            deficit = self._theater_strength(ot, opp) - self._theater_strength(ot, player)
+                            score = deficit + card_str
+                            if score > best_score:
+                                best_score = score
+                                best_move = (t, i, cidx, fu, ot)
+                    if best_move:
+                        src_theater, src_idx, cidx, fu, dest = best_move
+                    else:
+                        return
+            else:
+                print(f"  {name} power: Move one of your cards to another theater.")
+                print(f"  Your cards on the board:")
+                for j, (t, i, cidx, fu) in enumerate(my_cards, 1):
+                    cname = self._card(cidx)[0] if fu else "[face-down]"
+                    print(f"    {j}. {cname} in {t}")
+                print(f"    [S] Skip")
+                while True:
+                    choice = input_with_quit("  Card to move: ").strip().lower()
+                    if choice in ("s", "skip"):
+                        return
+                    if choice.isdigit() and 1 <= int(choice) <= len(my_cards):
+                        src_theater, src_idx, cidx, fu = my_cards[int(choice) - 1]
+                        break
                     print("  Invalid choice.")
-                    continue
-                break
+                # Choose destination
+                other_theaters = [t for t in THEATERS if t != src_theater]
+                print(f"  Move to which theater?")
+                for j, t in enumerate(other_theaters, 1):
+                    print(f"    {j}. {t}")
+                while True:
+                    choice = input_with_quit("  Theater: ").strip()
+                    if choice.isdigit() and 1 <= int(choice) <= len(other_theaters):
+                        dest = other_theaters[int(choice) - 1]
+                        break
+                    for t in other_theaters:
+                        if choice.lower() == t.lower():
+                            dest = t
+                            break
+                    else:
+                        print("  Invalid choice.")
+                        continue
+                    break
             # Move the card
             self.theaters[src_theater][player].remove((cidx, fu))
             self.theaters[dest][player].append((cidx, fu))
@@ -518,28 +563,44 @@ class AirLandSeaGame(BaseGame):
             if not down_cards:
                 self._add_log(f"  {name} power: no face-down cards to flip.")
                 return
-            print(f"  {name} power: Flip one of your face-down cards face-up.")
-            for j, (t, i, cidx) in enumerate(down_cards, 1):
-                cname, _, s, _ = self._card(cidx)
-                print(f"    {j}. {cname} (str {s}) in {t}")
-            print(f"    [S] Skip")
-            while True:
-                choice = input_with_quit("  Card to flip: ").strip().lower()
-                if choice in ("s", "skip"):
-                    return
-                if choice.isdigit() and 1 <= int(choice) <= len(down_cards):
-                    t, i, cidx = down_cards[int(choice) - 1]
-                    # Find and replace in theater
-                    idx_in_list = self.theaters[t][player].index((cidx, False))
-                    self.theaters[t][player][idx_in_list] = (cidx, True)
-                    cname = self._card(cidx)[0]
-                    self._add_log(f"  {name} power: flipped {cname} face-up in {t}.")
-                    # Trigger the flipped card's power if applicable
-                    flipped_power = self._card(cidx)[3]
-                    if flipped_power and t not in self.suppressed.get(player, set()):
-                        self._activate_power(player, cidx, t, flipped_power)
-                    break
-                print("  Invalid choice.")
+            if self.ai_player == player:
+                # AI auto-selects card to flip
+                difficulty = getattr(self, 'ai_difficulty', 'medium')
+                if difficulty == 'easy':
+                    t, i, cidx = random.choice(down_cards)
+                else:
+                    # Medium/Hard: flip the card with the highest strength gain
+                    best_pick = down_cards[0]
+                    best_gain = -999
+                    for t, i, cidx in down_cards:
+                        gain = self._card(cidx)[2] - 2  # face-up strength minus face-down strength (2)
+                        if gain > best_gain:
+                            best_gain = gain
+                            best_pick = (t, i, cidx)
+                    t, i, cidx = best_pick
+            else:
+                print(f"  {name} power: Flip one of your face-down cards face-up.")
+                for j, (t, i, cidx) in enumerate(down_cards, 1):
+                    cname, _, s, _ = self._card(cidx)
+                    print(f"    {j}. {cname} (str {s}) in {t}")
+                print(f"    [S] Skip")
+                while True:
+                    choice = input_with_quit("  Card to flip: ").strip().lower()
+                    if choice in ("s", "skip"):
+                        return
+                    if choice.isdigit() and 1 <= int(choice) <= len(down_cards):
+                        t, i, cidx = down_cards[int(choice) - 1]
+                        break
+                    print("  Invalid choice.")
+            # Find and replace in theater
+            idx_in_list = self.theaters[t][player].index((cidx, False))
+            self.theaters[t][player][idx_in_list] = (cidx, True)
+            cname = self._card(cidx)[0]
+            self._add_log(f"  {name} power: flipped {cname} face-up in {t}.")
+            # Trigger the flipped card's power if applicable
+            flipped_power = self._card(cidx)[3]
+            if flipped_power and t not in self.suppressed.get(player, set()):
+                self._activate_power(player, cidx, t, flipped_power)
 
         elif power == "flip_opponent":
             # Flip one of opponent's face-up cards face-down
@@ -551,23 +612,39 @@ class AirLandSeaGame(BaseGame):
             if not up_cards:
                 self._add_log(f"  {name} power: no opponent face-up cards to flip.")
                 return
-            print(f"  {name} power: Flip one of opponent's face-up cards face-down.")
-            for j, (t, i, cidx) in enumerate(up_cards, 1):
-                cname, _, s, _ = self._card(cidx)
-                print(f"    {j}. {cname} (str {s}) in {t}")
-            print(f"    [S] Skip")
-            while True:
-                choice = input_with_quit("  Card to flip: ").strip().lower()
-                if choice in ("s", "skip"):
-                    return
-                if choice.isdigit() and 1 <= int(choice) <= len(up_cards):
-                    t, i, cidx = up_cards[int(choice) - 1]
-                    idx_in_list = self.theaters[t][opp].index((cidx, True))
-                    self.theaters[t][opp][idx_in_list] = (cidx, False)
-                    cname = self._card(cidx)[0]
-                    self._add_log(f"  {name} power: flipped {cname} face-down in {t}.")
-                    break
-                print("  Invalid choice.")
+            if self.ai_player == player:
+                # AI auto-selects opponent card to flip
+                difficulty = getattr(self, 'ai_difficulty', 'medium')
+                if difficulty == 'easy':
+                    t, i, cidx = random.choice(up_cards)
+                else:
+                    # Medium/Hard: flip opponent's strongest face-up card (biggest strength loss)
+                    best_pick = up_cards[0]
+                    best_loss = -999
+                    for t, i, cidx in up_cards:
+                        loss = self._card(cidx)[2] - 2  # strength they lose (goes from full to 2)
+                        if loss > best_loss:
+                            best_loss = loss
+                            best_pick = (t, i, cidx)
+                    t, i, cidx = best_pick
+            else:
+                print(f"  {name} power: Flip one of opponent's face-up cards face-down.")
+                for j, (t, i, cidx) in enumerate(up_cards, 1):
+                    cname, _, s, _ = self._card(cidx)
+                    print(f"    {j}. {cname} (str {s}) in {t}")
+                print(f"    [S] Skip")
+                while True:
+                    choice = input_with_quit("  Card to flip: ").strip().lower()
+                    if choice in ("s", "skip"):
+                        return
+                    if choice.isdigit() and 1 <= int(choice) <= len(up_cards):
+                        t, i, cidx = up_cards[int(choice) - 1]
+                        break
+                    print("  Invalid choice.")
+            idx_in_list = self.theaters[t][opp].index((cidx, True))
+            self.theaters[t][opp][idx_in_list] = (cidx, False)
+            cname = self._card(cidx)[0]
+            self._add_log(f"  {name} power: flipped {cname} face-down in {t}.")
 
         elif power == "suppress":
             # Disable opponent's powers in this theater
@@ -640,7 +717,7 @@ class AirLandSeaGame(BaseGame):
             self.winner = 2
             return
 
-        input_with_quit("  Press Enter to start next round...")
+        self._pause("  Press Enter to start next round...")
         self._start_new_round()
 
     def _effective_strength_for_token(self, card_idx, face_up):
@@ -681,6 +758,81 @@ class AirLandSeaGame(BaseGame):
         self.withdrew = state.get("withdrew")
         self.log = list(state.get("log", []))
         self.suppressed = {int(k): set(v) for k, v in state.get("suppressed", {}).items()}
+
+    def get_ai_move(self):
+        """Return a valid move for the AI player."""
+        cp = self.current_player
+
+        if not self.hands[cp]:
+            return ("pass",)
+
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        hand = self.hands[cp]
+
+        if difficulty == 'easy':
+            # Random play or withdraw
+            if random.random() < 0.1 and len(hand) >= 4:
+                return ("withdraw",)
+            card_idx_in_hand = random.randint(0, len(hand) - 1)
+            card_idx = hand[card_idx_in_hand]
+            face_up = random.choice([True, False])
+            name, theater, strength, power = self._card(card_idx)
+            if face_up and power != "play_to_any" and self.variation != "simple":
+                target_theater = theater
+            elif face_up and self.variation == "simple":
+                target_theater = theater
+            else:
+                target_theater = random.choice(THEATERS)
+            return ("play", card_idx_in_hand, face_up, target_theater)
+
+        # Medium/Hard: evaluate options
+        # Consider withdrawing if losing badly
+        my_theaters = self._theaters_won(cp)
+        opp_theaters = self._theaters_won(self._opponent())
+        cards_left = len(hand)
+
+        if opp_theaters >= 2 and cards_left >= 3 and difficulty == 'hard':
+            return ("withdraw",)
+        if opp_theaters >= 2 and cards_left >= 4:
+            return ("withdraw",)
+
+        best_move = None
+        best_score = -999
+
+        for idx_in_hand, card_idx in enumerate(hand):
+            name, theater, strength, power = self._card(card_idx)
+            for face_up in [True, False]:
+                if face_up:
+                    if power == "play_to_any" and self.variation != "simple":
+                        theaters_to_try = list(THEATERS)
+                    elif self.variation == "simple":
+                        theaters_to_try = [theater]
+                    else:
+                        theaters_to_try = [theater]
+                else:
+                    theaters_to_try = list(THEATERS)
+
+                for target in theaters_to_try:
+                    score = 0
+                    eff_str = strength if face_up else 2
+                    score += eff_str * 3
+
+                    # Prefer playing to theaters we're losing
+                    my_str = self._theater_strength(target, cp)
+                    opp_str = self._theater_strength(target, self._opponent())
+                    if my_str <= opp_str:
+                        score += 10  # help where we're behind
+
+                    if face_up:
+                        score += 5  # prefer face-up for power
+                    if difficulty == 'medium':
+                        score += random.randint(0, 8)
+
+                    if score > best_score:
+                        best_score = score
+                        best_move = ("play", idx_in_hand, face_up, target)
+
+        return best_move if best_move else ("play", 0, True, self._card(hand[0])[1])
 
     # ------------------------------------------------------------ tutorial
     def get_tutorial(self):

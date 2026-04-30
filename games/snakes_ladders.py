@@ -45,6 +45,7 @@ class SnakesLaddersGame(BaseGame):
         "standard": "Standard (10x10, 100 squares)",
         "mini": "Mini (5x5, 25 squares)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -183,6 +184,11 @@ class SnakesLaddersGame(BaseGame):
         return True
 
     # --------------------------------------------------------- check_game_over
+    def get_ai_move(self):
+        roll = random.randint(1, 6)
+        self.last_roll = roll
+        return roll
+
     def check_game_over(self):
         for p in (1, 2):
             if self.positions[p] == self.board_size:

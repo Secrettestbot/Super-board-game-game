@@ -177,6 +177,76 @@ class FoxHoundsGame(BaseGame):
 
         return True
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.current_player == 1:
+            moves = self._get_fox_moves()
+        else:
+            moves = self._get_hound_moves()
+
+        if not moves:
+            return None
+
+        if difficulty == 'easy':
+            return random.choice(moves)
+
+        if self.current_player == 1:
+            scored = []
+            for frm, to in moves:
+                score = 0
+                tr, tc = to
+                score -= tr * 10
+                min_hound_col_dist = min(abs(tc - hc) for _, hc in self.hounds)
+                max_hound_row = max(hr for hr, _ in self.hounds)
+                if tr < min(hr for hr, _ in self.hounds):
+                    score += 50
+                score += min_hound_col_dist
+                if difficulty == 'hard':
+                    for hr, hc in self.hounds:
+                        if hr > tr:
+                            gap = abs(tc - hc)
+                            if gap <= 1:
+                                score -= 5
+                scored.append((score, (frm, to)))
+        else:
+            scored = []
+            fr_fox, fc_fox = self.fox
+            for frm, to in moves:
+                score = 0
+                fr, fc = frm
+                tr, tc = to
+                dist_to_fox = abs(tc - fc_fox) + abs(tr - fr_fox)
+                score -= dist_to_fox
+
+                test_hounds = list(self.hounds)
+                idx = test_hounds.index(frm)
+                test_hounds[idx] = to
+                min_row = min(hr for hr, _ in test_hounds)
+                max_row = max(hr for hr, _ in test_hounds)
+                score -= (max_row - min_row)
+
+                cols = sorted(hc for _, hc in test_hounds)
+                for i in range(len(cols) - 1):
+                    gap = cols[i + 1] - cols[i]
+                    if gap > 2:
+                        score -= gap * 3
+
+                if difficulty == 'hard':
+                    if tr > fr_fox:
+                        score += 3
+                    if abs(tc - fc_fox) <= 1:
+                        score += 2
+
+                scored.append((score, (frm, to)))
+
+        scored.sort(key=lambda x: -x[0])
+        if difficulty == 'medium':
+            top = scored[:max(1, len(scored) // 2)]
+            return random.choice(top)[1]
+        return scored[0][1]
+
     def check_game_over(self):
         """Check if the game is over.
 

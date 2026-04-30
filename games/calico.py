@@ -227,6 +227,8 @@ class CalicoGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move. Returns True if valid."""
+        if move is None:
+            return False
         p = self.current_player - 1
 
         try:
@@ -273,6 +275,51 @@ class CalicoGame(BaseGame):
         self.turns_taken += 1
         return True
 
+    def get_ai_move(self):
+        """Return an AI-generated move string."""
+        import random
+        p = self.current_player - 1
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if not self.hands[p]:
+            return "1 1 1"
+
+        empty_cells = []
+        for r in range(self.rows):
+            for c in range(self.cols):
+                if self.boards[p][r][c] is None:
+                    goal_key = f"{r},{c}"
+                    if goal_key not in self.design_goals[p]:
+                        empty_cells.append((r, c))
+
+        if not empty_cells:
+            return "1 1 1"
+
+        if difficulty == 'easy':
+            hi = random.randint(0, len(self.hands[p]) - 1)
+            r, c = random.choice(empty_cells)
+            return f"{hi + 1} {r + 1} {c + 1}"
+
+        best_move = None
+        best_score = -1
+        for hi, tile in enumerate(self.hands[p]):
+            for r, c in empty_cells:
+                score = 0
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < self.rows and 0 <= nc < self.cols:
+                        neighbor = self.boards[p][nr][nc]
+                        if neighbor:
+                            if neighbor["color"] == tile["color"]:
+                                score += 3
+                            if neighbor["pattern"] == tile["pattern"]:
+                                score += 2
+                if score > best_score or best_move is None:
+                    best_score = score
+                    best_move = f"{hi + 1} {r + 1} {c + 1}"
+
+        return best_move or "1 1 1"
+
     def _pick_from_market(self, p):
         """Let the player pick a tile from the market."""
         if not self.market:
@@ -281,6 +328,10 @@ class CalicoGame(BaseGame):
         if len(self.market) == 1:
             # Auto-pick the only tile
             self.hands[p].append(self.market.pop(0))
+        elif self.ai_player == self.current_player:
+            import random
+            idx = random.randint(0, len(self.market) - 1)
+            self.hands[p].append(self.market.pop(idx))
         else:
             print(f"\n  Pick a tile from the market:")
             for i, tile in enumerate(self.market):

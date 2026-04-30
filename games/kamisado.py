@@ -345,6 +345,110 @@ class KamisadoGame(BaseGame):
 
         return True
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+        home_row = 7 if player == 1 else 0
+        opp = 2 if player == 1 else 1
+
+        free_choice = False
+        if self.first_move:
+            free_choice = True
+        elif self.must_move_color is not None:
+            if not self._tower_can_move(player, self.must_move_color):
+                free_choice = True
+        else:
+            free_choice = True
+
+        if free_choice:
+            all_moves = []
+            for color in self.COLORS:
+                pos = self._find_tower(player, color)
+                if pos is None:
+                    continue
+                legal = self._get_legal_moves_for_tower(player, color)
+                for m in legal:
+                    all_moves.append((color, pos, m))
+            if not all_moves:
+                return None
+            if difficulty == 'easy':
+                color, pos, dest = random.choice(all_moves)
+                return ('free', pos[0], pos[1], dest[0], dest[1])
+            scored = []
+            for color, pos, dest in all_moves:
+                score = 0
+                dst_row = dest[0]
+                if player == 1:
+                    score += dst_row * 10
+                else:
+                    score += (7 - dst_row) * 10
+                if dst_row == home_row:
+                    score += 1000
+                landed_color = self.BOARD_COLORS[dst_row][dest[1]]
+                opp_pos = self._find_tower(opp, landed_color)
+                if opp_pos is not None:
+                    opp_legal = self._get_legal_moves_for_tower(opp, landed_color)
+                    if not opp_legal:
+                        score += 20
+                    elif difficulty == 'hard':
+                        best_adv = 0
+                        for om in opp_legal:
+                            adv = om[0] if opp == 1 else (7 - om[0])
+                            best_adv = max(best_adv, adv)
+                        score -= best_adv * 3
+                if len(dest) == 3:
+                    score += 15
+                scored.append((score, color, pos, dest))
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'medium':
+                top = scored[:max(1, len(scored) // 3)]
+                choice = random.choice(top)
+            else:
+                choice = scored[0]
+            _, color, pos, dest = choice
+            return ('free', pos[0], pos[1], dest[0], dest[1])
+        else:
+            color = self.must_move_color
+            legal = self._get_legal_moves_for_tower(player, color)
+            if not legal:
+                return None
+            if difficulty == 'easy':
+                dest = random.choice(legal)
+                return ('constrained', dest[0], dest[1])
+            scored = []
+            for dest in legal:
+                score = 0
+                dst_row = dest[0]
+                if player == 1:
+                    score += dst_row * 10
+                else:
+                    score += (7 - dst_row) * 10
+                if dst_row == home_row:
+                    score += 1000
+                landed_color = self.BOARD_COLORS[dst_row][dest[1]]
+                opp_pos = self._find_tower(opp, landed_color)
+                if opp_pos is not None:
+                    opp_legal = self._get_legal_moves_for_tower(opp, landed_color)
+                    if not opp_legal:
+                        score += 20
+                    elif difficulty == 'hard':
+                        best_adv = 0
+                        for om in opp_legal:
+                            adv = om[0] if opp == 1 else (7 - om[0])
+                            best_adv = max(best_adv, adv)
+                        score -= best_adv * 3
+                if len(dest) == 3:
+                    score += 15
+                scored.append((score, dest))
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'medium':
+                top = scored[:max(1, len(scored) // 3)]
+                choice = random.choice(top)
+            else:
+                choice = scored[0]
+            return ('constrained', choice[1][0], choice[1][1])
+
     def check_game_over(self):
         """Check if a player has reached the opponent's home row."""
         # Player 1 wins by reaching row 7 (Player 2's home row)

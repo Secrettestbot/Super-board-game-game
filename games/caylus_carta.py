@@ -212,6 +212,8 @@ class CaylusCartaGame(BaseGame):
         return "pass"
 
     def make_move(self, move):
+        if move is None:
+            return False
         if self.phase == "place":
             return self._handle_place(move)
         elif self.phase == "provost":
@@ -421,6 +423,105 @@ class CaylusCartaGame(BaseGame):
         # Clear road workers
         for b in self.road:
             b["worker"] = 0
+
+    def get_ai_move(self):
+        """Return an AI-generated move."""
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        if self.phase == "place":
+            if self.workers[cp] <= 0 or self.passed[cp]:
+                return "pass"
+
+            options = []
+            for i, b in enumerate(self.road):
+                if b["worker"] != 0:
+                    continue
+                if i > self.provost and difficulty == 'hard':
+                    continue
+                score = 0
+                if b["type"] == "production":
+                    score = b.get("amount", 1) * 3
+                elif b["type"] == "prestige":
+                    score = b.get("vp", 0) * 2
+                elif b["type"] == "craft":
+                    score = 5
+                elif b["type"] == "trade":
+                    score = 4
+                elif b["type"] == "special":
+                    score = 3
+                options.append((i, score))
+
+            if not options:
+                return "pass"
+
+            if difficulty == 'easy':
+                idx, _ = random.choice(options)
+            else:
+                options.sort(key=lambda x: -x[1])
+                if difficulty == 'medium':
+                    top = options[:max(2, len(options) // 3)]
+                    idx, _ = random.choice(top)
+                else:
+                    idx, _ = options[0]
+
+            return f"r{idx + 1}"
+
+        elif self.phase == "provost":
+            return "provost:keep"
+
+        elif self.phase == "activate":
+            return "activate"
+
+        elif self.phase == "build":
+            options = []
+            for i, b in enumerate(self.building_market[:5]):
+                if len(self.road) >= self.max_road:
+                    break
+                can_afford = all(
+                    self.resources[cp].get(res, 0) >= amt
+                    for res, amt in b["build_cost"].items()
+                )
+                if can_afford:
+                    score = 0
+                    if b["type"] == "production":
+                        score = b.get("amount", 1) * 2
+                    elif b["type"] == "prestige":
+                        score = b.get("vp", 0) * 2
+                    else:
+                        score = 3
+                    options.append((i, score))
+
+            if not options:
+                return "build:skip"
+
+            if difficulty == 'easy':
+                idx, _ = random.choice(options)
+            else:
+                options.sort(key=lambda x: -x[1])
+                idx, _ = options[0]
+
+            return f"build:m{idx + 1}"
+
+        elif self.phase == "castle":
+            options = []
+            for i, s in enumerate(self.castle_sections):
+                can_afford = all(
+                    self.resources[cp].get(res, 0) >= amt
+                    for res, amt in s["cost"].items()
+                )
+                if can_afford:
+                    options.append((i, s["vp"]))
+
+            if not options:
+                return "castle:skip"
+
+            options.sort(key=lambda x: -x[1])
+            idx, _ = options[0]
+            return f"castle:k{idx + 1}"
+
+        return "pass"
 
     def check_game_over(self):
         if self.round_num > self.max_rounds:

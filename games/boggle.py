@@ -211,6 +211,8 @@ class BoggleGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move to the game state."""
+        if move is None:
+            return False
         if move == "next_round":
             # Start a new round
             self.round_number += 1
@@ -278,6 +280,53 @@ class BoggleGame(BaseGame):
 
         self.round_summary = "\n".join(lines)
         self.round_scored = True
+
+    def get_ai_move(self):
+        """Return an AI-generated move."""
+        if self.phase == "score":
+            return "next_round"
+
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        min_len = self.min_word_len
+
+        if difficulty == 'easy':
+            max_words = 3
+        elif difficulty == 'medium':
+            max_words = 8
+        else:
+            max_words = 15
+
+        words = set()
+        size = self.size
+
+        cell_strings = []
+        for r in range(size):
+            row = []
+            for c in range(size):
+                ch = self.grid[r][c]
+                row.append("QU" if ch == "Q" else ch)
+            cell_strings.append(row)
+
+        def dfs(r, c, visited, current_word):
+            if len(current_word) >= min_len:
+                words.add(current_word)
+            if len(current_word) >= 8 or len(words) >= max_words * 3:
+                return
+            for nr, nc in _get_neighbors(r, c, size):
+                if (nr, nc) not in visited:
+                    visited.add((nr, nc))
+                    dfs(nr, nc, visited, current_word + cell_strings[nr][nc])
+                    visited.remove((nr, nc))
+
+        for r in range(size):
+            for c in range(size):
+                if len(words) >= max_words * 3:
+                    break
+                dfs(r, c, {(r, c)}, cell_strings[r][c])
+
+        word_list = sorted(words, key=lambda w: -len(w))[:max_words]
+        self.round_words[self.collecting_player] = word_list
+        return "done"
 
     def check_game_over(self):
         """Check if any player has reached the target score."""

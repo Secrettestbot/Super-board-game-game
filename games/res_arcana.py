@@ -101,6 +101,7 @@ class ResArcanaGame(BaseGame):
         "standard": "Standard game (first to 10 points)",
         "quick": "Quick game (first to 7 points, 6-card decks)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -286,6 +287,8 @@ class ResArcanaGame(BaseGame):
         return None
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player - 1
         parts = move.strip().split()
         if not parts:
@@ -454,6 +457,118 @@ class ResArcanaGame(BaseGame):
             self.current_player = 2
         else:
             self.current_player = 1
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player - 1
+
+        if self.passed[p]:
+            return "pass"
+
+        hand = self.hands[p]
+        tableau = self.tableaus[p]
+        essences = self.essences[p]
+
+        if difficulty == "easy":
+            actions = ["pass"]
+            untapped = [i for i in range(len(tableau)) if i not in self.tapped[p]]
+            if untapped:
+                actions.append("tap")
+            untapped_places = [i for i in range(len(self.places[p])) if i not in self.tapped_places[p]]
+            if untapped_places:
+                actions.append("tapplace")
+            playable = [i for i, c in enumerate(hand) if self._can_pay(p, c["cost"])]
+            if playable:
+                actions.append("play")
+            if self.decks[p]:
+                actions.append("draw")
+            choice = rand.choice(actions)
+            if choice == "tap":
+                return f"tap {rand.choice(untapped) + 1}"
+            elif choice == "tapplace":
+                return f"tapplace {rand.choice(untapped_places) + 1}"
+            elif choice == "play":
+                return f"play {rand.choice(playable) + 1}"
+            elif choice == "draw":
+                return "draw"
+            return "pass"
+
+        scored_actions = []
+
+        # Tap untapped artifacts for essences
+        for i in range(len(tableau)):
+            if i not in self.tapped[p]:
+                card = tableau[i]
+                gain = card.get("tap_gain", {})
+                total_gain = sum(gain.values())
+                score = total_gain * 5
+                if difficulty == "medium":
+                    score += rand.uniform(-2, 2)
+                scored_actions.append((score, f"tap {i + 1}"))
+
+        # Tap untapped places
+        for i in range(len(self.places[p])):
+            if i not in self.tapped_places[p]:
+                place = self.places[p][i]
+                gain = place.get("tap_gain", {})
+                total_gain = sum(gain.values())
+                score = total_gain * 5 + 2
+                if difficulty == "medium":
+                    score += rand.uniform(-2, 2)
+                scored_actions.append((score, f"tapplace {i + 1}"))
+
+        # Play artifacts from hand
+        for i, card in enumerate(hand):
+            if self._can_pay(p, card["cost"]):
+                score = card.get("points", 0) * 8
+                tap_value = sum(card.get("tap_gain", {}).values())
+                score += tap_value * 3
+                if difficulty == "medium":
+                    score += rand.uniform(-2, 2)
+                scored_actions.append((score, f"play {i + 1}"))
+
+        # Claim places of power
+        for i, place in enumerate(self.available_places):
+            if self._can_pay(p, place["claim_cost"]):
+                score = place.get("points", 0) * 10
+                if difficulty == "medium":
+                    score += rand.uniform(-2, 2)
+                scored_actions.append((score, f"claim place {i + 1}"))
+
+        # Claim monuments
+        for i, mon in enumerate(self.available_monuments):
+            if self._can_pay(p, mon["claim_cost"]):
+                score = mon.get("points", 0) * 9
+                if difficulty == "medium":
+                    score += rand.uniform(-2, 2)
+                scored_actions.append((score, f"claim mon {i + 1}"))
+
+        # Draw
+        if self.decks[p] and len(hand) < 2:
+            score = 6
+            if difficulty == "medium":
+                score += rand.uniform(-2, 2)
+            scored_actions.append((score, "draw"))
+
+        # Convert essences if we have excess and need specific types
+        for e_from in ESSENCES:
+            if essences.get(e_from, 0) >= 4:
+                for e_to in ESSENCES:
+                    if e_to != e_from and essences.get(e_to, 0) == 0:
+                        scored_actions.append((4, f"convert {ESSENCE_SYMBOLS[e_from]} {ESSENCE_SYMBOLS[e_to]}"))
+
+        if not scored_actions:
+            return "pass"
+
+        scored_actions.sort(key=lambda x: x[0], reverse=True)
+        if scored_actions[0][0] <= 0:
+            return "pass"
+
+        if difficulty == "hard":
+            return scored_actions[0][1]
+        top = scored_actions[:3]
+        return rand.choice(top)[1]
 
     def check_game_over(self):
         self._calc_scores()

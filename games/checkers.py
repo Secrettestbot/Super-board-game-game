@@ -617,6 +617,92 @@ class CheckersGame(BaseGame):
         return False
 
     # ------------------------------------------------------------------
+    # AI
+    # ------------------------------------------------------------------
+
+    def get_ai_move(self):
+        """Return an AI-generated move."""
+        import random
+        player = self.current_player
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        captures = self._mandatory_captures(player)
+        if self.must_continue_from:
+            fr, fc = self.must_continue_from
+            seqs = self._all_capture_sequences(fr, fc, player)
+            if seqs:
+                if self.variation in ("international", "brazilian"):
+                    max_len = max(len(s) for s in seqs)
+                    seqs = [s for s in seqs if len(s) == max_len]
+                seq = random.choice(seqs)
+                return ('capture', fr, fc, seq)
+            self.must_continue_from = None
+            return None
+
+        if captures:
+            all_options = []
+            for (r, c), seqs in captures.items():
+                for seq in seqs:
+                    score = len(seq) * 10
+                    for step in seq:
+                        cap_r, cap_c = step[2], step[3]
+                        if _is_king(self.board[cap_r][cap_c]):
+                            score += 5
+                    lr, lc = seq[-1][0], seq[-1][1]
+                    if player == 1:
+                        score += (self.size - 1 - lr)
+                    else:
+                        score += lr
+                    all_options.append(((r, c), seq, score))
+
+            if difficulty == 'easy':
+                choice = random.choice(all_options)
+            else:
+                all_options.sort(key=lambda x: -x[2])
+                if difficulty == 'medium':
+                    top = all_options[:max(2, len(all_options) // 3)]
+                    choice = random.choice(top)
+                else:
+                    choice = all_options[0]
+
+            (fr, fc), seq, _ = choice
+            return ('capture', fr, fc, seq)
+
+        simple = self._all_simple_moves(player)
+        if not simple:
+            return None
+
+        all_moves = []
+        for (r, c), dests in simple.items():
+            piece = self.board[r][c]
+            for dr, dc in dests:
+                score = 0
+                if not _is_king(piece):
+                    if player == 1:
+                        score += (self.size - 1 - dr)
+                    else:
+                        score += dr
+                    if dr == self._promotion_row(player):
+                        score += 20
+                else:
+                    center = self.size // 2
+                    score += 5 - abs(dr - center) - abs(dc - center)
+                all_moves.append(((r, c), (dr, dc), score))
+
+        if difficulty == 'easy':
+            choice = random.choice(all_moves)
+        else:
+            all_moves.sort(key=lambda x: -x[2])
+            if difficulty == 'medium':
+                top = all_moves[:max(3, len(all_moves) // 4)]
+                choice = random.choice(top)
+            else:
+                choice = all_moves[0]
+
+        (fr, fc), (tr, tc), _ = choice
+        return ('simple', fr, fc, tr, tc)
+
+    # ------------------------------------------------------------------
     # Game over
     # ------------------------------------------------------------------
 

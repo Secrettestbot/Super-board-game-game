@@ -20,6 +20,7 @@ class TheMindGame(BaseGame):
         "standard": "Standard Game",
         "extreme": "Extreme Mode (with directions)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -211,6 +212,27 @@ class TheMindGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = str(self.current_player)
+
+        if self.phase == "use_star":
+            return {"action": "star_decision", "use": False}
+
+        hand = sorted(self.hands[cp])
+        if not hand:
+            return {"action": "pass_turn"}
+
+        if difficulty == 'easy':
+            card = rand.choice(hand)
+        else:
+            if self.extreme_direction == "ascending":
+                card = hand[0]
+            else:
+                card = hand[-1]
+        return {"action": "play", "card": card}
 
     def check_game_over(self):
         if self.lives <= 0:

@@ -116,6 +116,7 @@ class SeasonsGame(BaseGame):
         "quick": "Quick game (6 rounds, 5 starting cards)",
         "epic": "Epic game (12 rounds, 12 starting cards)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -291,6 +292,8 @@ class SeasonsGame(BaseGame):
         return move.strip()
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player - 1
         parts = move.lower().split()
         if not parts:
@@ -319,7 +322,7 @@ class SeasonsGame(BaseGame):
     def _do_draft(self, p, parts):
         if len(parts) < 2:
             print("  Usage: pick <die#>")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
         try:
             di = int(parts[1]) - 1
@@ -328,13 +331,13 @@ class SeasonsGame(BaseGame):
 
         if di < 0 or di >= len(self.rolled_dice):
             print("  Invalid die.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         die = self.rolled_dice[di]
         if die.get("drafted"):
             print("  Die already taken!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         # Apply die effects
@@ -382,7 +385,7 @@ class SeasonsGame(BaseGame):
     def _do_play_card(self, p, parts):
         if len(parts) < 2:
             print("  Usage: play <hand card#>")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
         try:
             ci = int(parts[1]) - 1
@@ -392,7 +395,7 @@ class SeasonsGame(BaseGame):
         hand = self.player_hand[p]
         if ci < 0 or ci >= len(hand):
             print("  Invalid card index.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         card = hand[ci]
@@ -401,7 +404,7 @@ class SeasonsGame(BaseGame):
         for res, needed in card["cost"].items():
             if self.player_resources[p].get(res, 0) < needed:
                 print(f"  Not enough {res}! Need {needed}, have {self.player_resources[p].get(res, 0)}.")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
 
         # Pay cost
@@ -430,13 +433,13 @@ class SeasonsGame(BaseGame):
             self.player_tableau[p].append(played_card)
 
         print(f"  Played {played_card['name']}!")
-        input("  Press Enter...")
+        self._pause("  Press Enter...")
         return True
 
     def _do_activate(self, p, parts):
         if len(parts) < 2:
             print("  Usage: activate <tableau card#>")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
         try:
             ti = int(parts[1]) - 1
@@ -445,13 +448,13 @@ class SeasonsGame(BaseGame):
 
         if ti < 0 or ti >= len(self.player_tableau[p]):
             print("  Invalid card.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         card = self.player_tableau[p][ti]
         if card["type"] != "activated":
             print("  This card can't be activated!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         eff = card["effect"]
@@ -460,7 +463,7 @@ class SeasonsGame(BaseGame):
             total = sum(self.player_resources[p].values())
             if total < 2:
                 print("  Need at least 2 resources to transmute!")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             # Spend 2 resources (lowest type first)
             spent = 0
@@ -470,7 +473,7 @@ class SeasonsGame(BaseGame):
                     spent += 1
             self.player_crystals[p] += 3
             print("  Transmuted 2 resources into 3 crystals!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
         elif eff == "draw_power":
             drawn = 0
             for _ in range(2):
@@ -478,7 +481,7 @@ class SeasonsGame(BaseGame):
                     self.player_hand[p].append(self.draw_deck.pop())
                     drawn += 1
             print(f"  Drew {drawn} cards!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
 
         return True
 
@@ -491,7 +494,7 @@ class SeasonsGame(BaseGame):
         total = sum(self.player_resources[p].values())
         if total == 0:
             print("  No resources to transmute!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         print(f"  Current season ({season}) rate: 1 resource = {rate} crystals")
@@ -501,18 +504,18 @@ class SeasonsGame(BaseGame):
 
         if res_input not in RESOURCES:
             print("  Invalid resource.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         if self.player_resources[p][res_input] <= 0:
             print(f"  No {res_input} to transmute!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         self.player_resources[p][res_input] -= 1
         self.player_crystals[p] += rate
         print(f"  Transmuted 1 {res_input} into {rate} crystals!")
-        input("  Press Enter...")
+        self._pause("  Press Enter...")
         return True
 
     def _do_end_play(self, p):
@@ -545,6 +548,90 @@ class SeasonsGame(BaseGame):
         self.phase = "draft"
         self._roll_dice()
         return True
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player - 1
+
+        if self.phase == "draft":
+            available = [(i, die) for i, die in enumerate(self.rolled_dice) if not die.get("drafted")]
+            if not available:
+                return "pick 1"
+            if difficulty == "easy":
+                idx, _ = rand.choice(available)
+                return f"pick {idx + 1}"
+            scored = []
+            for i, die in available:
+                score = 0
+                score += die.get("crystals", 0) * 3
+                score += die.get("draw", 0) * 4
+                for res, amt in die.get("resources", {}).items():
+                    score += amt * 2
+                for card in self.player_hand[p]:
+                    for res, needed in card["cost"].items():
+                        if die.get("resources", {}).get(res, 0) > 0:
+                            score += 2
+                if difficulty == "medium":
+                    score += rand.uniform(-2, 2)
+                scored.append((score, i))
+            scored.sort(reverse=True)
+            best_idx = scored[0][1]
+            return f"pick {best_idx + 1}"
+
+        if self.phase == "play":
+            hand = self.player_hand[p]
+            tableau = self.player_tableau[p]
+            res = self.player_resources[p]
+
+            playable = []
+            for ci, card in enumerate(hand):
+                can_afford = all(res.get(r, 0) >= n for r, n in card["cost"].items())
+                if can_afford:
+                    score = card.get("points", 0) * 3 + card.get("crystals", 0) * 2
+                    if card["type"] == "ongoing":
+                        score += 5
+                    elif card["type"] == "endgame":
+                        score += 4
+                    elif card["type"] == "activated":
+                        score += 3
+                    if difficulty == "medium":
+                        score += rand.uniform(-2, 2)
+                    playable.append((score, ci))
+
+            activatable = []
+            for ti, card in enumerate(tableau):
+                if card["type"] == "activated":
+                    eff = card["effect"]
+                    if eff == "transmute" and sum(res.values()) >= 2:
+                        activatable.append((5, ti))
+                    elif eff == "draw_power" and self.draw_deck:
+                        activatable.append((4, ti))
+
+            season = self._current_season()
+            rates = {"Winter": 3, "Spring": 2, "Summer": 1, "Autumn": 2}
+            rate = rates[season]
+            can_transmute = sum(res.values()) > 0 and rate >= 2
+
+            if playable:
+                playable.sort(reverse=True)
+                if difficulty == "hard":
+                    best = playable[0]
+                else:
+                    best = rand.choice(playable[:2]) if len(playable) >= 2 else playable[0]
+                return f"play {best[1] + 1}"
+
+            if activatable:
+                activatable.sort(reverse=True)
+                best = activatable[0]
+                return f"activate {best[1] + 1}"
+
+            if can_transmute and difficulty != "easy":
+                best_res = max(RESOURCES, key=lambda r: res.get(r, 0))
+                if res.get(best_res, 0) > 0:
+                    return "done"
+
+            return "done"
 
     def check_game_over(self):
         if self.current_round > self.max_rounds:

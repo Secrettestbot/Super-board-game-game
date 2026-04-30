@@ -62,6 +62,7 @@ class SkullKingGame(BaseGame):
         "standard": "Standard Game",
         "legendary": "Legendary Expansion (mermaids/kraken)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -351,6 +352,96 @@ class SkullKingGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        sp = str(cp)
+
+        if self.phase == "round_end":
+            return {"action": "next_round"}
+
+        if self.phase == "bidding":
+            hand = self.hands[sp]
+            strong = 0
+            for c in hand:
+                if c.get("special") in ("Pirate", "Skull King", "Mermaid"):
+                    strong += 1
+                elif c["type"] == "suited" and c["suit"] == "Jolly Roger" and c["value"] >= 10:
+                    strong += 1
+                elif c["type"] == "suited" and c["value"] >= 12:
+                    strong += 0.5
+            bid = int(strong)
+            if difficulty == "easy":
+                bid = rand.randint(0, self.round_number)
+            elif difficulty == "medium":
+                bid = max(0, min(self.round_number, bid + rand.randint(-1, 1)))
+            else:
+                bid = max(0, min(self.round_number, bid))
+            return {"action": "bid", "bid": bid}
+
+        if self.phase == "playing":
+            hand = self.hands[sp]
+            if not hand:
+                return {"action": "play", "index": 0}
+
+            if difficulty == "easy":
+                valid = list(range(len(hand)))
+                if self.trick_cards and self.lead_suit:
+                    followers = [i for i, c in enumerate(hand)
+                                 if c["type"] == "suited" and c["suit"] == self.lead_suit]
+                    if followers:
+                        valid = followers
+                    else:
+                        valid = list(range(len(hand)))
+                return {"action": "play", "index": rand.choice(valid)}
+
+            scored = []
+            want_win = self.tricks_won[sp] < (self.bids[sp] or 0)
+            for i, card in enumerate(hand):
+                if self.trick_cards and self.lead_suit:
+                    if card["type"] == "suited" and card["suit"] != self.lead_suit:
+                        has_lead = any(c["type"] == "suited" and c["suit"] == self.lead_suit for c in hand)
+                        if has_lead:
+                            continue
+
+                score = 0
+                if want_win:
+                    if card.get("special") == "Skull King":
+                        score += 20
+                    elif card.get("special") == "Pirate":
+                        score += 15
+                    elif card.get("special") == "Mermaid":
+                        score += 12
+                    elif card["type"] == "suited" and card["suit"] == "Jolly Roger":
+                        score += 8 + card["value"]
+                    elif card["type"] == "suited":
+                        score += card["value"]
+                    elif card.get("special") == "Escape":
+                        score -= 5
+                else:
+                    if card.get("special") == "Escape":
+                        score += 15
+                    elif card["type"] == "suited":
+                        score -= card["value"]
+                    elif card.get("special") in ("Pirate", "Skull King"):
+                        score -= 10
+
+                if difficulty == "medium":
+                    score += rand.uniform(-3, 3)
+                scored.append((score, i))
+
+            if not scored:
+                return {"action": "play", "index": 0}
+
+            scored.sort(reverse=True)
+            if difficulty == "hard":
+                return {"action": "play", "index": scored[0][1]}
+            top = scored[:2] if len(scored) >= 2 else scored
+            return {"action": "play", "index": rand.choice(top)[1]}
+
+        return None
 
     def check_game_over(self):
         if self.round_number >= self.max_rounds and self.phase == "round_end":

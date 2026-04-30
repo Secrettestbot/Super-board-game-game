@@ -52,6 +52,7 @@ class MorelGame(BaseGame):
         "quick": "Quick game (6 species, smaller deck)",
         "expert": "Expert game (10 species, Night cards active)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -251,6 +252,8 @@ class MorelGame(BaseGame):
         return move
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player
         parts = move.split()
         if not parts:
@@ -269,12 +272,12 @@ class MorelGame(BaseGame):
             cost = idx
             if cost > self.sticks[p]:
                 print(f"  Need {cost} sticks, have {self.sticks[p]}!")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             # Check hand limit
             if len(self.hands[p]) >= self.hand_limit[p] and self.forest[idx]["type"] == "mushroom":
                 print(f"  Hand full ({self.hand_limit[p]} cards)! Cook or sell first.")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
 
             self.sticks[p] -= cost
@@ -290,7 +293,7 @@ class MorelGame(BaseGame):
         elif action == "decay":
             if not self.decay_pile:
                 print("  Decay pile is empty!")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             mushrooms_in_decay = [c for c in self.decay_pile if c["type"] == "mushroom"]
             space = self.hand_limit[p] - len(self.hands[p])
@@ -318,17 +321,17 @@ class MorelGame(BaseGame):
                     break
             if not matching_species:
                 print(f"  Unknown species: {species_name}")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             # Count matching cards in hand
             matching = [c for c in self.hands[p] if c["species"] == matching_species]
             if len(matching) < 3:
                 print(f"  Need at least 3 {matching_species} to cook (have {len(matching)})!")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             if self.pans[p] < 1:
                 print("  Need a pan to cook! Find one in the forest.")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
 
             # Cook all matching
@@ -346,9 +349,9 @@ class MorelGame(BaseGame):
             return True
 
         elif action == "sell" and len(parts) >= 3:
-            species_name = parts[1]
             try:
-                count = int(parts[2])
+                count = int(parts[-1])
+                species_name = " ".join(parts[1:-1])
             except ValueError:
                 return False
             # Find matching species
@@ -359,12 +362,12 @@ class MorelGame(BaseGame):
                     break
             if not matching_species:
                 print(f"  Unknown species: {species_name}")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             matching = [c for c in self.hands[p] if c["species"] == matching_species]
             if len(matching) < count or count < 1:
                 print(f"  Can't sell {count} {matching_species} (have {len(matching)})!")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             # Sell: remove cards, gain 2 sticks per card
             for c in matching[:count]:
@@ -375,6 +378,79 @@ class MorelGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        hand_full = len(self.hands[p]) >= self.hand_limit[p]
+
+        candidates = []
+
+        species_count = {}
+        for card in self.hands[p]:
+            sp = card["species"]
+            if sp not in species_count:
+                species_count[sp] = {"count": 0, "value": card["value"]}
+            species_count[sp]["count"] += 1
+
+        if self.pans[p] > 0:
+            for sp, info in species_count.items():
+                if info["count"] >= 3:
+                    points = info["value"] * info["count"] * 2
+                    candidates.append((f"cook {sp}", 50 + points))
+
+        for i, card in enumerate(self.forest):
+            cost = i
+            if cost <= self.sticks[p]:
+                if card["type"] == "mushroom" and not hand_full:
+                    score = card["value"] * 3 - cost * 2
+                    candidates.append((f"take {i}", max(5, score)))
+                elif card["type"] == "pan":
+                    candidates.append((f"take {i}", 25 - cost * 2))
+                elif card["type"] == "night":
+                    candidates.append((f"take {i}", 20 - cost * 2))
+
+        if self.decay_pile:
+            space = self.hand_limit[p] - len(self.hands[p])
+            pans_count = sum(1 for c in self.decay_pile if c["type"] == "pan")
+            if space > 0 or pans_count > 0:
+                mushrooms_val = sum(c["value"] for c in self.decay_pile if c["type"] == "mushroom")
+                score = max(1, mushrooms_val + pans_count * 10)
+                candidates.append(("decay", score))
+
+        for sp, info in species_count.items():
+            if info["count"] >= 1:
+                if hand_full:
+                    sell_score = 15 - info["value"]
+                    if info["count"] >= 3 and self.pans[p] > 0:
+                        sell_score = 1
+                    candidates.append((f"sell {sp} 1", max(1, sell_score)))
+                elif self.sticks[p] < 2 and info["count"] < 3 and info["value"] <= 2:
+                    candidates.append((f"sell {sp} 1", 8))
+
+        if not candidates:
+            if self.decay_pile:
+                return "decay"
+            if species_count:
+                sp = min(species_count, key=lambda s: species_count[s]["value"])
+                return f"sell {sp} 1"
+            if self.forest:
+                for i, card in enumerate(self.forest):
+                    if i <= self.sticks[p]:
+                        if card["type"] != "mushroom" or not hand_full:
+                            return f"take {i}"
+                return "take 0"
+            return "take 0"
+
+        if difficulty == 'easy':
+            return random.choice(candidates)[0]
+
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        if difficulty == 'medium':
+            top = candidates[:max(2, len(candidates) // 3)]
+            return random.choice(top)[0]
+        return candidates[0][0]
 
     def check_game_over(self):
         if not self.deck and not self.forest:

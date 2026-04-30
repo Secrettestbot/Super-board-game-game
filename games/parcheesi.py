@@ -36,6 +36,7 @@ class ParcheesiGame(BaseGame):
         "standard": "Standard Parcheesi",
         "quick": "Quick Game (2 pawns each)",
     }
+    side_labels = ("Blue", "Red")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -538,6 +539,90 @@ class ParcheesiGame(BaseGame):
         self.current_player = 2 if self.current_player == 1 else 1
 
     # --------------------------------------------------------- check_game_over
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        d1 = rand.randint(1, 6)
+        d2 = rand.randint(1, 6)
+        self.dice = [d1, d2]
+        self.dice_available = [d1, d2]
+        is_doubles = d1 == d2
+
+        if is_doubles:
+            self.doubles_count += 1
+            if self.doubles_count >= 3:
+                return ("triple_doubles",)
+            self.extra_turn = True
+        else:
+            self.doubles_count = 0
+            self.extra_turn = False
+
+        moves = []
+        while self.dice_available:
+            if not self._any_moves_available(p):
+                break
+
+            best_move = None
+            best_score = -999
+
+            nest_pawns = [i for i, st in enumerate(self.pawns[p]) if st == "nest"]
+            if nest_pawns and self._can_enter(p) and not self._start_sq_blocked(p):
+                cost = self._get_enter_cost()
+                if cost:
+                    score = 30
+                    if difficulty == "easy":
+                        score += rand.randint(-10, 10)
+                    best_move = ("enter", nest_pawns[0], cost)
+                    best_score = score
+
+            opp = 2 if p == 1 else 1
+            for dv in set(self.dice_available):
+                for i, st in enumerate(self.pawns[p]):
+                    if st in ("nest", "finished"):
+                        continue
+                    if not self._pawn_can_move(p, i, dv):
+                        continue
+                    new_state = self._calc_new_position(p, st, dv)
+                    score = 10
+                    if new_state == "finished":
+                        score = 100
+                    elif new_state[0] == "home":
+                        score = 50 + new_state[1]
+                    elif new_state[0] == "main":
+                        for oi, ost in enumerate(self.pawns[opp]):
+                            if ost == ("main", new_state[1]) and new_state[1] not in SAFE_SPACES:
+                                score = 70
+                        if new_state[1] in SAFE_SPACES:
+                            score += 5
+                        score += self._rel_pos(p, new_state[1]) / 10
+                    if difficulty == "easy":
+                        score += rand.randint(-15, 15)
+                    if score > best_score:
+                        best_score = score
+                        best_move = ("move", i, dv)
+
+            if best_move is None:
+                break
+
+            if best_move[0] == "enter":
+                pidx = best_move[1]
+                cost = best_move[2]
+                moves.append(("enter", pidx, cost))
+                for c in cost:
+                    self.dice_available.remove(c)
+                self.pawns[p][pidx] = ("main", START_POSITIONS[p])
+            elif best_move[0] == "move":
+                pidx = best_move[1]
+                die_val = best_move[2]
+                moves.append(("move", pidx, die_val))
+                self.dice_available.remove(die_val)
+                new_state = self._calc_new_position(p, self.pawns[p][pidx], die_val)
+                self.pawns[p][pidx] = new_state if new_state != "finished" else "finished"
+
+        return ("turn", moves, is_doubles)
+
     def check_game_over(self):
         for p in (1, 2):
             if all(st == "finished" for st in self.pawns[p]):
@@ -585,28 +670,33 @@ class ParcheesiGame(BaseGame):
         while not self.game_over:
             clear_screen()
             self.display()
-            try:
-                move = self.get_move()
-            except Exception as e:
-                from engine.base import QuitGame, SuspendGame, ShowHelp, ShowTutorial
-                if isinstance(e, QuitGame):
-                    print("\nGame ended.")
-                    input_with_quit("Press Enter to return to menu...")
-                    return None
-                elif isinstance(e, SuspendGame):
-                    slot = self.save_game()
-                    print(f"\nGame saved as '{slot}'")
-                    input_with_quit("Press Enter to return to menu...")
-                    return 'suspended'
-                elif isinstance(e, ShowHelp):
-                    self.show_help()
-                    continue
-                elif isinstance(e, ShowTutorial):
-                    clear_screen()
-                    print(self.get_tutorial())
-                    input_with_quit("\nPress Enter to continue...")
-                    continue
-                raise
+            if self.ai_player == self.current_player:
+                import time as _time
+                move = self.get_ai_move()
+                _time.sleep(0.5)
+            else:
+                try:
+                    move = self.get_move()
+                except Exception as e:
+                    from engine.base import QuitGame, SuspendGame, ShowHelp, ShowTutorial
+                    if isinstance(e, QuitGame):
+                        print("\nGame ended.")
+                        input_with_quit("Press Enter to return to menu...")
+                        return None
+                    elif isinstance(e, SuspendGame):
+                        slot = self.save_game()
+                        print(f"\nGame saved as '{slot}'")
+                        input_with_quit("Press Enter to return to menu...")
+                        return 'suspended'
+                    elif isinstance(e, ShowHelp):
+                        self.show_help()
+                        continue
+                    elif isinstance(e, ShowTutorial):
+                        clear_screen()
+                        print(self.get_tutorial())
+                        input_with_quit("\nPress Enter to continue...")
+                        continue
+                    raise
 
             if self.make_move(move):
                 self.move_history.append(str(move))

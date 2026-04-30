@@ -243,6 +243,8 @@ class CouncilOfVeronaGame(BaseGame):
             print(f"  Invalid. Choose from {sorted(tokens)}.")
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move[0] == "place":
             _, idx, area_name = move
             cp = self.current_player
@@ -306,9 +308,48 @@ class CouncilOfVeronaGame(BaseGame):
 
         return False
 
+    def _ai_execute_power(self, power, player):
+        import random
+        if power == "move_one":
+            chars = [(cid, "council") for cid in self.council if "council" not in self.locked_areas]
+            chars += [(cid, "exile") for cid in self.exile if "exile" not in self.locked_areas]
+            if chars:
+                cid, area = random.choice(chars)
+                if area == "council":
+                    self.council.remove(cid)
+                    self.exile.append(cid)
+                else:
+                    self.exile.remove(cid)
+                    self.council.append(cid)
+        elif power == "swap":
+            if self.council and self.exile and "council" not in self.locked_areas and "exile" not in self.locked_areas:
+                cid1 = random.choice(self.council)
+                cid2 = random.choice(self.exile)
+                self.council.remove(cid1)
+                self.exile.remove(cid2)
+                self.council.append(cid2)
+                self.exile.append(cid1)
+        elif power == "exile":
+            if self.council and "council" not in self.locked_areas:
+                cid = random.choice(self.council)
+                self.council.remove(cid)
+                self.exile.append(cid)
+        elif power == "council":
+            if self.exile and "exile" not in self.locked_areas:
+                cid = random.choice(self.exile)
+                self.exile.remove(cid)
+                self.council.append(cid)
+        elif power == "lock":
+            options = [a for a in ["council", "exile"] if a not in self.locked_areas]
+            if options:
+                self.locked_areas.append(random.choice(options))
+
     def _execute_power(self, character, player):
         power = character["power"]
         if power == "none":
+            return
+        if self.ai_player == player:
+            self._ai_execute_power(power, player)
             return
         elif power == "move_one":
             self._power_move_one(player)
@@ -535,6 +576,85 @@ class CouncilOfVeronaGame(BaseGame):
             self.winner = 2
         else:
             self.winner = None
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        if self.phase == "placement":
+            hand = self.player_hands[cp]
+            if not hand:
+                return ["auto_pass"]
+
+            if difficulty == 'easy':
+                idx = random.randint(0, len(hand) - 1)
+                return ["place", idx, random.choice(["council", "exile"])]
+
+            best_score = -999
+            best_move = None
+            for idx, cid in enumerate(hand):
+                c = self._char_by_id(cid)
+                for area in ["council", "exile"]:
+                    score = 0
+                    if c["house"] in ("Montague", "Capulet"):
+                        score += 2 if area == "council" else -1
+                    elif c["house"] == "Neutral":
+                        score += 1 if area == "exile" else 0
+                    if c["power"] != "none":
+                        score += 1
+                    if score > best_score:
+                        best_score = score
+                        best_move = ["place", idx, area]
+            return best_move if best_move else ["place", 0, "council"]
+
+        elif self.phase == "influence":
+            tokens = self.influence_tokens[cp]
+            if not tokens:
+                return ["skip_influence"]
+
+            if difficulty == 'easy':
+                return ["influence", random.randint(0, len(self.agendas) - 1), random.choice(tokens)]
+
+            council_chars = [self._char_by_id(cid) for cid in self.council]
+            exile_chars = [self._char_by_id(cid) for cid in self.exile]
+            mont_c = sum(1 for c in council_chars if c["house"] == "Montague")
+            cap_c = sum(1 for c in council_chars if c["house"] == "Capulet")
+
+            romeo_area = juliet_area = None
+            for c in council_chars + exile_chars:
+                loc = "council" if c["id"] in self.council else "exile"
+                if c["name"] == "Romeo":
+                    romeo_area = loc
+                if c["name"] == "Juliet":
+                    juliet_area = loc
+
+            neutrals_exiled = all(c["house"] != "Neutral" for c in council_chars)
+
+            agenda_scores = []
+            for i, a in enumerate(self.agendas):
+                lk = 0
+                if a["type"] == "montague_council":
+                    lk = mont_c - cap_c
+                elif a["type"] == "capulet_council":
+                    lk = cap_c - mont_c
+                elif a["type"] == "together":
+                    lk = 3 if romeo_area and juliet_area and romeo_area == juliet_area else -2
+                elif a["type"] == "apart":
+                    lk = 3 if romeo_area and juliet_area and romeo_area != juliet_area else -2
+                elif a["type"] == "neutrals_exiled":
+                    lk = 2 if neutrals_exiled else -1
+                agenda_scores.append((lk, i))
+
+            agenda_scores.sort(key=lambda x: -x[0])
+            best_agenda = agenda_scores[0][1]
+            best_token = max(tokens)
+            return ["influence", best_agenda, best_token]
+
+        elif self.phase == "scoring":
+            return "score"
+
+        return ["auto_pass"]
 
     def check_game_over(self):
         if self.phase == "scoring" and self.winner is not None or \

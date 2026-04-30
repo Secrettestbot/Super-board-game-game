@@ -83,6 +83,7 @@ class SobekGame(BaseGame):
         "standard": "Standard game (45-tile deck)",
         "quick": "Quick game (30-tile deck)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -213,6 +214,8 @@ class SobekGame(BaseGame):
         return move
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player
         parts = move.split()
         if not parts:
@@ -264,7 +267,7 @@ class SobekGame(BaseGame):
                         if t["type"] == "good" and t["good"] == good_type]
             if len(matching) < 2:
                 print(f"  Need at least 2 {good_type} to sell (have {len(matching)})")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             # Sell: remove 2 matching, gain points equal to their values
             sold = matching[:2]
@@ -283,7 +286,7 @@ class SobekGame(BaseGame):
                         if t["type"] == "good" and t["good"] == good_type]
             if len(matching) < 3:
                 print(f"  Need at least 3 {good_type} to score (have {len(matching)})")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
             # Score set: remove all matching, big bonus
             for t in matching:
@@ -412,6 +415,93 @@ class SobekGame(BaseGame):
         self.scored_sets = {int(k): v for k, v in state["scored_sets"].items()}
         self.scores = {int(k): v for k, v in state["scores"].items()}
         self.log = state.get("log", [])
+
+    def get_ai_move(self):
+        """Return a valid AI move based on difficulty."""
+        p = self.current_player
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        # Gather valid take positions
+        available_positions = self._get_available_positions()
+        valid_takes = []
+        for (r, c) in available_positions:
+            if self.market[r][c] is not None:
+                valid_takes.append((r, c))
+
+        # Gather valid sell/score options
+        goods_count = {}
+        for t in self.collections[p]:
+            if t["type"] == "good":
+                g = t["good"]
+                goods_count[g] = goods_count.get(g, 0) + 1
+
+        scoreable = [g for g, cnt in goods_count.items() if cnt >= 3]
+        sellable = [g for g, cnt in goods_count.items() if cnt >= 2]
+
+        if difficulty == "easy":
+            # Random valid action
+            actions = []
+            for (r, c) in valid_takes:
+                actions.append(f"take {r+1} {c+1}")
+            for g in sellable:
+                actions.append(f"sell {g}")
+            for g in scoreable:
+                actions.append(f"score {g}")
+            if actions:
+                return random.choice(actions)
+            if valid_takes:
+                r, c = random.choice(valid_takes)
+                return f"take {r+1} {c+1}"
+            return "take 1 1"
+
+        # Medium/Hard: prefer scoring > selling > taking high-value tiles
+        if difficulty == "hard" and scoreable:
+            # Score the most valuable set
+            best_g = max(scoreable, key=lambda g: goods_count[g] * GOODS_VALUES[g])
+            return f"score {best_g}"
+
+        if scoreable:
+            return f"score {scoreable[0]}"
+
+        if difficulty == "hard" and sellable:
+            # Sell low-value goods to bank points
+            best_sell = min(sellable, key=lambda g: GOODS_VALUES[g])
+            return f"sell {best_sell}"
+
+        # Take the best tile from the market
+        if valid_takes:
+            if difficulty == "hard":
+                # Prefer high-value goods, avoid corruption
+                def tile_score(pos):
+                    r, c = pos
+                    tile = self.market[r][c]
+                    if tile is None:
+                        return -100
+                    corruption_cost = len(self._calc_corruption(r, c))
+                    val = tile["value"] if tile["type"] == "good" else 2
+                    # Prefer tiles matching existing collection
+                    if tile["type"] == "good" and tile["good"] in goods_count:
+                        val += goods_count[tile["good"]] * 2
+                    if tile.get("scarab"):
+                        val += 3
+                    return val - corruption_cost * 2
+
+                best_pos = max(valid_takes, key=tile_score)
+            else:
+                # Medium: take highest value with low corruption
+                def tile_score_med(pos):
+                    r, c = pos
+                    tile = self.market[r][c]
+                    if tile is None:
+                        return -100
+                    corruption_cost = len(self._calc_corruption(r, c))
+                    val = tile["value"] if tile["type"] == "good" else 1
+                    return val - corruption_cost
+                best_pos = max(valid_takes, key=tile_score_med)
+
+            return f"take {best_pos[0]+1} {best_pos[1]+1}"
+
+        return "take 1 1"
 
     def get_tutorial(self):
         return """

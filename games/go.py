@@ -180,6 +180,8 @@ class GoGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move. Returns True if the move is valid."""
+        if move is None:
+            return False
         if move == "pass":
             self.consecutive_passes += 1
             return True
@@ -229,6 +231,113 @@ class GoGame(BaseGame):
     # ------------------------------------------------------------------ #
     #  Game-over and scoring
     # ------------------------------------------------------------------ #
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+        opponent = 3 - player
+
+        legal = []
+        for r in range(self.size):
+            for c in range(self.size):
+                if self.board[r][c] == 0 and self._ai_is_legal(r, c, player):
+                    legal.append((r, c))
+
+        if not legal:
+            return "pass"
+
+        if difficulty == 'easy':
+            if self.turn_number > self.size * self.size * 0.6 and random.random() < 0.1:
+                return "pass"
+            return random.choice(legal)
+
+        scored = []
+        for r, c in legal:
+            score = self._ai_score_pos(r, c, player, opponent, difficulty)
+            scored.append((score, (r, c)))
+
+        scored.sort(key=lambda x: -x[0])
+        if scored[0][0] <= -50:
+            return "pass"
+
+        if difficulty == 'medium':
+            top = scored[:max(1, len(scored) // 4)]
+            return random.choice(top)[1]
+        return scored[0][1]
+
+    def _ai_is_legal(self, row, col, player):
+        opponent = 3 - player
+        old_board = self._copy_board()
+        self.board[row][col] = player
+        for nr, nc in self._neighbors(row, col):
+            if self.board[nr][nc] == opponent:
+                group = self._get_group(nr, nc)
+                if self._count_liberties(group) == 0:
+                    self._remove_group(group)
+        own_group = self._get_group(row, col)
+        if self._count_liberties(own_group) == 0:
+            self.board = old_board
+            return False
+        if self.previous_board is not None and self.board == self.previous_board:
+            self.board = old_board
+            return False
+        self.board = old_board
+        return True
+
+    def _ai_score_pos(self, row, col, player, opponent, difficulty):
+        score = 0
+        own_nearby = 0
+        opp_nearby = 0
+        for dr in range(-2, 3):
+            for dc in range(-2, 3):
+                if dr == 0 and dc == 0:
+                    continue
+                nr, nc = row + dr, col + dc
+                if self._on_board(nr, nc):
+                    if self.board[nr][nc] == player:
+                        own_nearby += 1
+                    elif self.board[nr][nc] == opponent:
+                        opp_nearby += 1
+
+        if own_nearby > 0:
+            score += own_nearby * 3
+        elif opp_nearby > 0:
+            score += opp_nearby * 2
+        else:
+            score -= 2
+
+        old_board = self._copy_board()
+        self.board[row][col] = player
+        captures = 0
+        for nr, nc in self._neighbors(row, col):
+            if self.board[nr][nc] == opponent:
+                group = self._get_group(nr, nc)
+                if self._count_liberties(group) == 0:
+                    captures += len(group)
+                    self._remove_group(group)
+        score += captures * 15
+
+        if difficulty == 'hard':
+            for nr, nc in self._neighbors(row, col):
+                if self.board[nr][nc] == opponent:
+                    group = self._get_group(nr, nc)
+                    libs = self._count_liberties(group)
+                    if libs == 1:
+                        score += len(group) * 5
+            own_group = self._get_group(row, col)
+            score += self._count_liberties(own_group) * 2
+
+        self.board = old_board
+
+        if self.turn_number < 20:
+            if self._is_star_point(row, col):
+                score += 5
+            edge_dist = min(row, col, self.size - 1 - row, self.size - 1 - col)
+            if edge_dist in (2, 3):
+                score += 3
+
+        return score
 
     def check_game_over(self):
         """Game ends when both players pass consecutively."""

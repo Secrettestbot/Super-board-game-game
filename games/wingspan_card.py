@@ -126,6 +126,7 @@ class WingspanCardGame(BaseGame):
         "standard": "Standard game - 4 rounds, 8 turns per round",
         "quick": "Quick game - 3 rounds, 5 turns per round",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -591,7 +592,63 @@ class WingspanCardGame(BaseGame):
             print(f"  Goal: {goal_name}")
             for i in range(2):
                 print(f"  {self.players[i]}: {scores[i]} -> earns {self.round_scores[i][-1]} points")
-            input("\n  Press Enter to continue...")
+            self._pause("\n  Press Enter to continue...")
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        pi = self.current_player - 1
+
+        if difficulty == 'easy':
+            actions = []
+            if self.hands[pi]:
+                for i, bird in enumerate(self.hands[pi]):
+                    if bird.habitat in HABITATS and len(self.habitats[pi][bird.habitat]) < 5:
+                        has_food = all(self.food[pi].get(f, 0) >= 1 for f in bird.food_cost)
+                        col = len(self.habitats[pi][bird.habitat])
+                        egg_cost = 1 if col >= 2 else (2 if col >= 4 else 0)
+                        total_eggs = sum(b.eggs for h in HABITATS for b in self.habitats[pi][h])
+                        if has_food and total_eggs >= egg_cost:
+                            actions.append(("play", i, bird.habitat))
+            actions.extend([("food",), ("egg",), ("draw", "deck")])
+            return rand.choice(actions)
+
+        scored = []
+
+        for i, bird in enumerate(self.hands[pi]):
+            if len(self.habitats[pi][bird.habitat]) >= 5:
+                continue
+            has_food = all(self.food[pi].get(f, 0) >= 1 for f in bird.food_cost)
+            col = len(self.habitats[pi][bird.habitat])
+            egg_cost = 1 if col >= 2 else (2 if col >= 4 else 0)
+            total_eggs = sum(b.eggs for h in HABITATS for b in self.habitats[pi][h])
+            if has_food and total_eggs >= egg_cost:
+                score = bird.points + bird.egg_capacity * 0.5
+                if "when activated" in bird.power.lower():
+                    score += 2
+                scored.append((score, ("play", i, bird.habitat)))
+
+        food_score = 3 + len(self.habitats[pi]["Forest"]) * 0.5
+        scored.append((food_score, ("food",)))
+
+        egg_birds = [b for h in HABITATS for b in self.habitats[pi][h] if b.eggs < b.egg_capacity]
+        egg_score = 2 + len(egg_birds) * 0.5 + len(self.habitats[pi]["Grassland"]) * 0.5
+        scored.append((egg_score, ("egg",)))
+
+        draw_score = 2.5 + len(self.habitats[pi]["Wetland"]) * 0.5
+        if self.tray:
+            best_tray = max(self.tray, key=lambda b: b.points)
+            draw_score += best_tray.points * 0.3
+            scored.append((draw_score + 0.5, ("draw", self.tray.index(best_tray))))
+        scored.append((draw_score, ("draw", "deck")))
+
+        scored.sort(key=lambda x: -x[0])
+
+        if difficulty == 'hard':
+            return scored[0][1]
+
+        top = scored[:max(1, len(scored) // 2 + 1)]
+        return rand.choice(top)[1]
 
     def check_game_over(self):
         # Check if both players used all turns this round
@@ -623,30 +680,25 @@ class WingspanCardGame(BaseGame):
                     self.winner = 2
                 else:
                     self.winner = None
-                input("\n  Press Enter...")
+                self._pause("\n  Press Enter...")
             else:
                 # Next round
                 self.round_number += 1
-                # Each round players get 1 fewer turn (like wingspan)
                 turns = self.turns_per_round - (self.round_number - 1)
                 if turns < 3:
                     turns = 3
                 self.turns_left = [turns, turns]
-                self.current_player = 1
-        else:
-            # Switch to player who still has turns, or alternate
-            if self.turns_left[self.current_player - 1] <= 0:
-                # Current player done, don't switch back to them
-                other = 2 if self.current_player == 1 else 1
-                if self.turns_left[other - 1] > 0:
-                    self.current_player = other
+                self._new_round_pending = True
 
     def switch_player(self):
-        """Override to handle asymmetric turn counts."""
+        """Override to handle asymmetric turn counts and round transitions."""
+        if getattr(self, '_new_round_pending', False):
+            self._new_round_pending = False
+            self.current_player = 1
+            return
         other = 2 if self.current_player == 1 else 1
         if self.turns_left[other - 1] > 0:
             self.current_player = other
-        # If other player has no turns, stay on current player
 
     def get_state(self):
         return {

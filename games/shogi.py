@@ -14,6 +14,7 @@ class ShogiGame(BaseGame):
         "standard": "Standard Shogi (9x9)",
         "mini": "Mini Shogi (5x5)",
     }
+    side_labels = ("Sente (first)", "Gote (second)")
 
     # Piece types
     KING = 'K'
@@ -216,6 +217,8 @@ class ShogiGame(BaseGame):
             print("  Invalid format. Use 'e2 e3' for move, 'e2 e3+' to promote, 'P*e3' for drop.")
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move[0] == 'drop':
             return self._do_drop(move[1], move[2])
         else:
@@ -512,6 +515,119 @@ class ShogiGame(BaseGame):
                         if not in_check:
                             return True
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+        opponent = 3 - player
+
+        PIECE_VALUES = {'K': 0, 'R': 10, 'B': 8, 'G': 6, 'S': 5, 'N': 4, 'L': 3, 'P': 1,
+                        '+R': 12, '+B': 10, '+S': 6, '+N': 6, '+L': 6, '+P': 6}
+
+        legal_moves = []
+        pieces = [(sq, pl, piece) for sq, (pl, piece) in self.board.items() if pl == player]
+        for sq, pl, piece in pieces:
+            for r in range(self.rows):
+                for c in range(self.cols):
+                    to = (r, c)
+                    if to == sq:
+                        continue
+                    if to in self.board and self.board[to][0] == player:
+                        continue
+                    if not self._is_valid_piece_move(player, piece, sq, to):
+                        continue
+                    captured = self.board.get(to)
+                    del self.board[sq]
+                    self.board[to] = (player, piece)
+                    in_check = self._is_in_check(player)
+                    self.board[sq] = (player, piece)
+                    if captured:
+                        self.board[to] = captured
+                    else:
+                        del self.board[to]
+                    if not in_check:
+                        base = self.UNPROMOTION_MAP.get(piece, piece)
+                        in_zone = self._in_promotion_zone(player, sq) or self._in_promotion_zone(player, to)
+                        can_promote = in_zone and base in self.PROMOTABLE
+                        must = self._must_promote(player, base, to) if can_promote else False
+                        if can_promote and not must:
+                            legal_moves.append(('move', sq, to, True))
+                            legal_moves.append(('move', sq, to, False))
+                        elif must:
+                            legal_moves.append(('move', sq, to, True))
+                        else:
+                            legal_moves.append(('move', sq, to, False))
+
+        for piece in set(self.hands[player]):
+            for r in range(self.rows):
+                for c in range(self.cols):
+                    if (r, c) in self.board:
+                        continue
+                    if piece == 'P':
+                        has_col = any(pc2 == 'P' and pl2 == player and c2 == c
+                                      for (r2, c2), (pl2, pc2) in self.board.items())
+                        if has_col:
+                            continue
+                        if player == 1 and r == 0:
+                            continue
+                        if player == 2 and r == self.rows - 1:
+                            continue
+                    if piece == 'L':
+                        if player == 1 and r == 0:
+                            continue
+                        if player == 2 and r == self.rows - 1:
+                            continue
+                    if piece == 'N':
+                        if player == 1 and r <= 1:
+                            continue
+                        if player == 2 and r >= self.rows - 2:
+                            continue
+                    self.board[(r, c)] = (player, piece)
+                    in_check = self._is_in_check(player)
+                    del self.board[(r, c)]
+                    if not in_check:
+                        legal_moves.append(('drop', piece, (r, c)))
+
+        if not legal_moves:
+            return ('move', (0, 0), (0, 1), False)
+
+        if difficulty == "easy":
+            return rand.choice(legal_moves)
+
+        scored = []
+        for move in legal_moves:
+            score = 0
+            if move[0] == 'move':
+                _, fr, to, promote = move
+                captured = self.board.get(to)
+                if captured:
+                    cap_piece = captured[1]
+                    base_cap = self.UNPROMOTION_MAP.get(cap_piece, cap_piece)
+                    score += PIECE_VALUES.get(cap_piece, 1) * 5
+                if promote:
+                    score += 3
+                fwd = -1 if player == 1 else 1
+                score += (to[0] - fr[0]) * fwd * 0.5
+                center_r = self.rows / 2
+                center_c = self.cols / 2
+                score += (3 - abs(to[0] - center_r) - abs(to[1] - center_c)) * 0.3
+            else:
+                _, piece, sq = move
+                score += PIECE_VALUES.get(piece, 1) * 0.5
+                fwd = -1 if player == 1 else 1
+                advance = sq[0] * fwd if player == 2 else (self.rows - 1 - sq[0]) * fwd
+                score += 1
+
+            if difficulty == "medium":
+                score += rand.uniform(-3, 3)
+            scored.append((score, move))
+
+        scored.sort(reverse=True)
+        if difficulty == "hard":
+            return scored[0][1]
+        top = scored[:5] if len(scored) >= 5 else scored
+        return rand.choice(top)[1]
 
     def check_game_over(self):
         opp = 3 - self.current_player

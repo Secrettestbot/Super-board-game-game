@@ -81,6 +81,7 @@ class NangaParbatGame(BaseGame):
         "standard": "Standard (5-level mountain)",
         "quick": "Quick (3-level mountain)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -356,6 +357,49 @@ class NangaParbatGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        candidates = []
+
+        if self.climbers_placed[p] < self.climbers_per_player:
+            valid_placements = self._get_valid_placements(p)
+            for camp_key in valid_placements:
+                camp = self.camps[camp_key]
+                score = 10
+                if camp["resource"] and p not in camp["collected_by"]:
+                    score += 15
+                candidates.append((("place", camp_key), score))
+
+        valid_moves = self._get_valid_moves(p)
+        for i, (src, dst, cost) in enumerate(valid_moves):
+            dst_level = int(dst.split("-")[0])
+            altitude_pts = self.levels - dst_level
+            score = altitude_pts * 5
+            camp = self.camps[dst]
+            if camp["resource"] and p not in camp["collected_by"]:
+                score += 10
+            if camp["flag"] and not self.summit_claimed[p]:
+                score += 100
+            if difficulty == 'hard':
+                src_level = int(src.split("-")[0])
+                if dst_level < src_level:
+                    score += 15
+            candidates.append((("move", str(i), valid_moves), score))
+
+        candidates.append((("pass",), 3))
+
+        if difficulty == 'easy':
+            return random.choice(candidates)[0]
+
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        if difficulty == 'medium':
+            top = candidates[:max(2, len(candidates) // 3)]
+            return random.choice(top)[0]
+        return candidates[0][0]
 
     def check_game_over(self):
         if self.turns_taken >= self.max_turns:

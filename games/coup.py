@@ -118,6 +118,11 @@ class CoupGame(BaseGame):
             self.revealed[player].append(lost)
             self._add_log(f"  {self.players[player - 1]} lost their {lost}.")
             return
+        if self.ai_player == player:
+            lost = self.cards[player].pop(0)
+            self.revealed[player].append(lost)
+            self._add_log(f"  {self.players[player - 1]} lost their {lost}.")
+            return
         # Player chooses which card to lose
         print(f"\n  {self.players[player - 1]}, you must lose a card.")
         for i, c in enumerate(self.cards[player], 1):
@@ -140,6 +145,20 @@ class CoupGame(BaseGame):
         challenged (actor lost a card and action is cancelled).
         """
         opp = self._opponent(acting_player)
+        if self.ai_player == opp:
+            # AI decides whether to challenge based on difficulty
+            difficulty = getattr(self, 'ai_difficulty', 'medium')
+            do_challenge = False
+            if difficulty == 'hard':
+                do_challenge = True
+            elif difficulty == 'medium':
+                do_challenge = random.random() < 0.5
+            # easy: never challenge
+            if do_challenge:
+                self._add_log(f"  {self.players[opp - 1]} challenges the {action_desc}!")
+                return self._resolve_challenge(acting_player, claimed_role, opp)
+            self._add_log(f"  {self.players[opp - 1]} allowed the {action_desc}.")
+            return True
         print(f"\n  {self.players[acting_player - 1]} claims {claimed_role} to {action_desc}.")
         print(f"  {self.players[opp - 1]}, do you challenge? (challenge / allow): ", end="")
         while True:
@@ -184,6 +203,36 @@ class CoupGame(BaseGame):
         if not self._alive(opp):
             return True
 
+        if self.ai_player == opp:
+            difficulty = getattr(self, 'ai_difficulty', 'medium')
+            # Determine if AI will block (truthfully or by bluffing)
+            block_role = None
+            for role in blockers:
+                if role in self.cards[opp]:
+                    block_role = role
+                    break
+            if block_role is None and difficulty in ('medium', 'hard'):
+                # AI may bluff-block: hard always, medium 50%
+                if difficulty == 'hard' or random.random() < 0.5:
+                    block_role = blockers[0]
+            if block_role:
+                self._add_log(f"  {self.players[opp - 1]} blocks with {block_role}.")
+                if self.ai_player != acting_player:
+                    print(f"\n  {self.players[opp - 1]} claims {block_role} to block.")
+                    print(f"  {self.players[acting_player - 1]}, challenge the block? (challenge / allow): ", end="")
+                    while True:
+                        r2 = input_with_quit("").strip().lower()
+                        if r2 in ("challenge", "c"):
+                            if self._resolve_challenge(opp, block_role, acting_player):
+                                return False
+                            else:
+                                return True
+                        elif r2 in ("allow", "a"):
+                            return False
+                        print("  Enter 'challenge' or 'allow': ", end="")
+                return False
+            return True
+
         blocker_str = " or ".join(blockers)
         print(f"\n  {self.players[opp - 1]}, do you want to block? (block <role> / allow)")
         print(f"  Blockable with: {blocker_str}")
@@ -208,6 +257,24 @@ class CoupGame(BaseGame):
                 self._add_log(f"  {self.players[opp - 1]} blocks with {claimed}.")
                 print(f"\n  {self.players[opp - 1]} claims {claimed} to block.")
                 # Acting player may challenge the block
+                if self.ai_player == acting_player:
+                    # AI decides whether to challenge the human's block
+                    difficulty = getattr(self, 'ai_difficulty', 'medium')
+                    do_challenge = False
+                    if difficulty == 'hard':
+                        do_challenge = True
+                    elif difficulty == 'medium':
+                        do_challenge = random.random() < 0.5
+                    # easy: never challenge
+                    if do_challenge:
+                        self._add_log(f"  {self.players[acting_player - 1]} challenges the block!")
+                        if self._resolve_challenge(opp, claimed, acting_player):
+                            return False  # blocker had the role, block stands
+                        else:
+                            return True   # blocker was bluffing, action proceeds
+                    else:
+                        self._add_log(f"  {self.players[acting_player - 1]} allows the block.")
+                        return False
                 print(f"  {self.players[acting_player - 1]}, challenge the block? (challenge / allow): ", end="")
                 while True:
                     r2 = input_with_quit("").strip().lower()
@@ -280,7 +347,7 @@ class CoupGame(BaseGame):
 
         if must_coup:
             print("  You have 10+ coins -- you MUST coup.")
-            input_with_quit("  Press Enter to coup... ")
+            self._pause("  Press Enter to coup... ")
             return "coup"
 
         actions = ["income", "foreign_aid", "coup", "tax", "assassinate", "steal", "exchange"]
@@ -307,6 +374,8 @@ class CoupGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
         opp = self._opponent()
 
@@ -390,6 +459,12 @@ class CoupGame(BaseGame):
         # Draw 2 cards
         drawn = self._draw(2)
         hand = self.cards[cp] + drawn
+        if self.ai_player == cp:
+            keep_count = len(self.cards[cp])
+            self.cards[cp] = hand[:keep_count]
+            self._return_to_deck(hand[keep_count:])
+            self._add_log(f"{self.players[cp - 1]} exchanged cards ({role}).")
+            return
         print(f"\n  You drew: {', '.join(drawn)}")
         print(f"  Your combined hand: {', '.join(hand)}")
         # Choose cards to keep (same number as currently held)
@@ -418,6 +493,9 @@ class CoupGame(BaseGame):
         if not self._ask_challenge(cp, "Inquisitor", "Inquisite (examine opponent's card)"):
             return
         if not self._alive(opp):
+            return
+        if self.ai_player == cp:
+            self._add_log(f"  {self.players[cp - 1]} examined a card but did not force exchange.")
             return
         # Choose which card to look at if opponent has >1
         if len(self.cards[opp]) == 1:
@@ -449,6 +527,36 @@ class CoupGame(BaseGame):
                 print("  Card left as is.")
                 break
             print("  Enter 'yes' or 'no': ", end="")
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        opp = self._opponent()
+
+        if self.coins[cp] >= 10:
+            return "coup"
+
+        if difficulty == 'easy':
+            choices = ["income", "foreign_aid"]
+            if self.coins[cp] >= 7:
+                choices.append("coup")
+            if self.coins[cp] >= 3:
+                choices.append("assassinate")
+            return random.choice(choices)
+
+        if self.coins[cp] >= 7:
+            return "coup"
+        if self.coins[cp] >= 3 and self._alive(opp):
+            if difficulty == 'hard' or random.random() < 0.4:
+                return "assassinate"
+        if "Duke" in self.cards[cp] or (difficulty == 'hard' and random.random() < 0.5):
+            return "tax"
+        if "Captain" in self.cards[cp] and self.coins[opp] > 0:
+            return "steal"
+        if random.random() < 0.3:
+            return "foreign_aid"
+        return "income"
 
     # -------------------------------------------------------- check_game_over
     def check_game_over(self):

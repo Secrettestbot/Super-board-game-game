@@ -299,6 +299,8 @@ class DeepSeaAdventureGame(BaseGame):
 
     # ---------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         if move == "next_round":
             return self._do_next_round()
         if move in ("skip", "returned"):
@@ -343,6 +345,91 @@ class DeepSeaAdventureGame(BaseGame):
             self.phase = "round_over"
         else:
             self.current_player = next_p
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        if self.phase == "round_over":
+            return "next_round"
+        if self.returned[cp]:
+            return "skip"
+
+        carried = len(self.carried_treasure[cp])
+        self.oxygen = max(0, self.oxygen - carried)
+        if carried > 0:
+            self._add_log(f"{self.players[cp - 1]} consumes {carried} oxygen (carrying {carried} treasure)")
+
+        if self.oxygen <= 0:
+            self._add_log("OXYGEN DEPLETED! All remaining divers lose their treasure!")
+            for p in self._active_divers():
+                self.carried_treasure[p] = []
+                self.returned[p] = True
+            self.phase = "round_over"
+            return "next_round"
+
+        d1, d2, total = self._roll_dice()
+        movement = max(1, total - carried)
+        self._add_log(f"{self.players[cp - 1]} rolled [{d1}]+[{d2}]={total}, moves {movement}")
+
+        if self.direction[cp] == 1:
+            should_turn = False
+            if difficulty == 'easy':
+                should_turn = self.positions[cp] >= 12 or self.oxygen < 10
+            elif difficulty == 'medium':
+                should_turn = (self.positions[cp] >= 8 and carried >= 1) or self.oxygen < 12 or self.positions[cp] >= 15
+            else:
+                risk = self.positions[cp] + carried * 2 - self.oxygen
+                should_turn = risk > 0 or (carried >= 2 and self.positions[cp] >= 6)
+            if should_turn:
+                self.direction[cp] = -1
+                self._add_log(f"{self.players[cp - 1]} turns back toward the sub!")
+
+        new_pos = self.positions[cp] + (movement * self.direction[cp])
+        occupied = {
+            self.positions[p]
+            for p in range(1, self.num_players + 1)
+            if p != cp and not self.returned[p] and self.positions[p] > 0
+        }
+        if self.direction[cp] == 1:
+            while new_pos in occupied and new_pos <= 24:
+                new_pos += 1
+        else:
+            while new_pos in occupied and new_pos > 0:
+                new_pos -= 1
+
+        if new_pos <= 0:
+            self.positions[cp] = 0
+            self.returned[cp] = True
+            for val in self.carried_treasure[cp]:
+                self.scored_treasure[cp].append(val)
+                self.round_scores[cp] = sum(self.scored_treasure[cp])
+            scored = sum(self.carried_treasure[cp])
+            self._add_log(f"{self.players[cp - 1]} returns to sub! Scored {scored} points.")
+            self.carried_treasure[cp] = []
+            return "returned"
+
+        new_pos = min(new_pos, 24)
+        self.positions[cp] = new_pos
+        self._add_log(f"{self.players[cp - 1]} moves to position {new_pos} (tier {self._tier_for_pos(new_pos)})")
+
+        token = self.treasure_track[new_pos - 1]
+        if not token["picked"]:
+            should_pick = False
+            if difficulty == 'easy':
+                should_pick = random.random() < 0.5
+            elif difficulty == 'medium':
+                should_pick = carried < 2 or self._tier_for_pos(new_pos) >= 3
+            else:
+                should_pick = (carried < 3 and self.direction[cp] == -1) or self._tier_for_pos(new_pos) >= 3
+            if should_pick:
+                token["picked"] = True
+                self.carried_treasure[cp].append(token["value"])
+                self._add_log(f"{self.players[cp - 1]} picks up treasure!")
+                return f"move {new_pos} pick"
+
+        return f"move {new_pos} pass"
 
     def check_game_over(self):
         if self._all_done() and self.current_round >= self.max_rounds:

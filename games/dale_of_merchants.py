@@ -185,6 +185,8 @@ class DaleOfMerchantsGame(BaseGame):
         return move_str.strip()
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player - 1
         hand = self.player_hands[p]
         parts = move.lower().split()
@@ -208,25 +210,25 @@ class DaleOfMerchantsGame(BaseGame):
         """Buy a card from market using hand cards as payment."""
         if len(parts) < 3:
             print("  Usage: buy <market#> <hand card indices to pay, e.g. 1 3 4>")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
         try:
             market_idx = int(parts[1]) - 1
             pay_indices = sorted([int(x) - 1 for x in parts[2:]], reverse=True)
         except ValueError:
             print("  Invalid numbers.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         hand = self.player_hands[p]
         if market_idx < 0 or market_idx >= len(self.market_display):
             print("  Invalid market card.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
         for idx in pay_indices:
             if idx < 0 or idx >= len(hand):
                 print("  Invalid hand card index.")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
 
         target_card = self.market_display[market_idx]
@@ -234,7 +236,7 @@ class DaleOfMerchantsGame(BaseGame):
 
         if payment < target_card["value"]:
             print(f"  Not enough value! Need {target_card['value']}, paying {payment}.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         # Remove payment cards from hand (descending order to preserve indices)
@@ -265,20 +267,20 @@ class DaleOfMerchantsGame(BaseGame):
         """Build a stall from hand cards."""
         if len(parts) < 2:
             print("  Usage: stall <hand card indices, e.g. 1 3 4>")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
         try:
             indices = sorted([int(x) - 1 for x in parts[1:]], reverse=True)
         except ValueError:
             print("  Invalid numbers.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         hand = self.player_hands[p]
         for idx in indices:
             if idx < 0 or idx >= len(hand):
                 print("  Invalid hand card index.")
-                input("  Press Enter...")
+                self._pause("  Press Enter...")
                 return False
 
         # All cards in a stall must be the same folk type (or Platypus versatile)
@@ -293,11 +295,11 @@ class DaleOfMerchantsGame(BaseGame):
 
         if not has_versatile and len(folk_types) > 1:
             print("  All stall cards must be the same folk type!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
         if has_versatile and len(folk_types) > 1:
             print("  Non-versatile cards must all be the same folk type!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         total_value = sum(c["value"] for c in chosen_cards)
@@ -305,7 +307,7 @@ class DaleOfMerchantsGame(BaseGame):
 
         if total_value < next_level:
             print(f"  Need total value >= {next_level}, got {total_value}.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         # Build the stall
@@ -328,7 +330,7 @@ class DaleOfMerchantsGame(BaseGame):
         """Discard a card from hand (technique action)."""
         if len(parts) < 2:
             print("  Usage: discard <hand card#>")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
         try:
             idx = int(parts[1]) - 1
@@ -338,7 +340,7 @@ class DaleOfMerchantsGame(BaseGame):
         hand = self.player_hands[p]
         if idx < 0 or idx >= len(hand):
             print("  Invalid card index.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         card = hand.pop(idx)
@@ -359,6 +361,85 @@ class DaleOfMerchantsGame(BaseGame):
         self.player_discards[p].extend(self.player_hands[p])
         self.player_hands[p] = []
         self._draw_cards(p, 5)
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player - 1
+        hand = self.player_hands[p]
+
+        if not hand:
+            return "pass"
+
+        next_level = self.player_stall_count[p] + 1
+        hand_value = sum(c["value"] for c in hand)
+
+        if difficulty == 'easy':
+            choices = ["pass"]
+            if self.market_display and hand_value >= self.market_display[0]["value"]:
+                choices.append("buy")
+            if hand_value >= next_level:
+                choices.append("stall")
+            action = random.choice(choices)
+            if action == "buy" and self.market_display:
+                for mi, mc in enumerate(self.market_display):
+                    pay = [i for i in range(len(hand)) if hand[i]["value"] >= mc["value"]]
+                    if pay:
+                        return f"buy {mi+1} {pay[0]+1}"
+                return "pass"
+            if action == "stall":
+                by_folk = {}
+                for i, c in enumerate(hand):
+                    by_folk.setdefault(c["folk"], []).append(i)
+                for folk, idxs in by_folk.items():
+                    total = sum(hand[i]["value"] for i in idxs)
+                    if total >= next_level:
+                        idx_str = " ".join(str(i+1) for i in idxs)
+                        return f"stall {idx_str}"
+                return "pass"
+            return "pass"
+
+        by_folk = {}
+        for i, c in enumerate(hand):
+            by_folk.setdefault(c["folk"], []).append(i)
+
+        can_stall = False
+        stall_move = None
+        for folk, idxs in by_folk.items():
+            total = sum(hand[i]["value"] for i in idxs)
+            if total >= next_level:
+                can_stall = True
+                stall_move = "stall " + " ".join(str(i+1) for i in idxs)
+                break
+
+        if can_stall and (difficulty == 'hard' or random.random() < 0.6):
+            return stall_move
+
+        best_buy = None
+        best_buy_value = 0
+        for mi, mc in enumerate(self.market_display):
+            if mc["value"] > best_buy_value:
+                sorted_hand = sorted(range(len(hand)), key=lambda i: hand[i]["value"])
+                pay_total = 0
+                pay_indices = []
+                for i in sorted_hand:
+                    pay_total += hand[i]["value"]
+                    pay_indices.append(i)
+                    if pay_total >= mc["value"]:
+                        break
+                if pay_total >= mc["value"]:
+                    best_buy_value = mc["value"]
+                    idx_str = " ".join(str(i+1) for i in pay_indices)
+                    best_buy = f"buy {mi+1} {idx_str}"
+
+        if best_buy and (difficulty == 'hard' or random.random() < 0.5):
+            return best_buy
+
+        if len(hand) > 1:
+            worst = min(range(len(hand)), key=lambda i: hand[i]["value"])
+            return f"discard {worst+1}"
+
+        return "pass"
 
     def check_game_over(self):
         for i in range(2):

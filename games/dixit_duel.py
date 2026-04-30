@@ -181,12 +181,15 @@ class DixitDuelGame(BaseGame):
             print()
             print(f"  {self.players[guesser]}, which card matches the clue?")
 
+    def switch_player(self):
+        """Override: Dixit Duel manages current_player internally per phase."""
+        pass
+
     def get_move(self):
         st = self.storyteller
         guesser = 1 - st
 
         if self.round_phase == "clue":
-            self.current_player = st + 1
             print()
             card_input = input_with_quit(f"  Choose card number (1-{len(self.hands[st])}): ").strip()
             try:
@@ -201,7 +204,6 @@ class DixitDuelGame(BaseGame):
             return ("clue", card_idx, clue)
 
         elif self.round_phase == "lineup":
-            self.current_player = guesser + 1
             print()
             card_input = input_with_quit(f"  Choose card number (1-{len(self.hands[guesser])}): ").strip()
             try:
@@ -213,7 +215,6 @@ class DixitDuelGame(BaseGame):
             return ("lineup", card_idx)
 
         elif self.round_phase == "guess":
-            self.current_player = guesser + 1
             print()
             guess_input = input_with_quit(f"  Choose card number (1-{len(self.lineup)}): ").strip()
             try:
@@ -238,6 +239,7 @@ class DixitDuelGame(BaseGame):
             self.storyteller_card = self.hands[st].pop(card_idx)
             self.current_clue = clue
             self.round_phase = "lineup"
+            self.current_player = guesser + 1
             return True
 
         elif move[0] == "lineup":
@@ -263,6 +265,7 @@ class DixitDuelGame(BaseGame):
             self.lineup_sources = list(self.lineup_sources)
 
             self.round_phase = "guess"
+            self.current_player = guesser + 1
             return True
 
         elif move[0] == "guess":
@@ -319,10 +322,68 @@ class DixitDuelGame(BaseGame):
             # Show the results before continuing
             clear_screen()
             print("\n".join(summary_lines))
-            input("\n  Press Enter to continue...")
+            if self.ai_player is None:
+                input("\n  Press Enter to continue...")
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        st = self.storyteller
+        guesser = 1 - st
+
+        if self.round_phase == "clue":
+            hand = self.hands[st]
+            if not hand:
+                return None
+            card_idx = random.randint(0, len(hand) - 1)
+            card = hand[card_idx]
+            words = card.split()
+            if difficulty == 'easy':
+                clue = random.choice(words) if words else "thing"
+            elif difficulty == 'hard':
+                key_words = [w for w in words if len(w) > 3 and w.lower() not in ('that', 'with', 'from', 'into', 'made')]
+                clue = random.choice(key_words) if key_words else random.choice(words)
+            else:
+                clue = random.choice(words) if words else "mystery"
+            return ("clue", card_idx, clue)
+
+        if self.round_phase == "lineup":
+            hand = self.hands[guesser]
+            if not hand:
+                return None
+            if difficulty == 'easy':
+                return ("lineup", random.randint(0, len(hand) - 1))
+            clue_lower = self.current_clue.lower()
+            best_idx = 0
+            best_score = -1
+            for i, card in enumerate(hand):
+                sc = sum(1 for w in clue_lower.split() if w in card.lower())
+                if sc > best_score:
+                    best_score = sc
+                    best_idx = i
+            return ("lineup", best_idx)
+
+        if self.round_phase == "guess":
+            if not self.lineup:
+                return None
+            if difficulty == 'easy':
+                return ("guess", random.randint(0, len(self.lineup) - 1))
+            clue_lower = self.current_clue.lower()
+            best_idx = 0
+            best_score = -1
+            for i, card in enumerate(self.lineup):
+                sc = sum(1 for w in clue_lower.split() if w in card.lower())
+                if sc > best_score:
+                    best_score = sc
+                    best_idx = i
+            if difficulty == 'medium' and random.random() < 0.2:
+                return ("guess", random.randint(0, len(self.lineup) - 1))
+            return ("guess", best_idx)
+
+        return None
 
     def check_game_over(self):
         for i in range(2):

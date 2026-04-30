@@ -15,6 +15,7 @@ class QuoridorGame(BaseGame):
         "standard": "Standard (9x9, 10 walls)",
         "small": "Small (5x5, 5 walls)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation or "standard")
@@ -363,6 +364,8 @@ class QuoridorGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move. Returns True if valid."""
+        if move is None:
+            return False
         player = self.current_player
 
         if move[0] == 'move':
@@ -386,6 +389,95 @@ class QuoridorGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        opp = 3 - p
+        goal_row = 0 if p == 1 else self.size - 1
+
+        pawn_moves = self._get_pawn_moves(p)
+
+        if difficulty == "easy":
+            if pawn_moves and rand.random() < 0.7:
+                best = min(pawn_moves, key=lambda m: abs(m[0] - goal_row))
+                return ('move', best)
+            if self.walls_remaining[p] > 0:
+                for _ in range(20):
+                    o = rand.choice(['H', 'V'])
+                    wr = rand.randint(0, self.size - 2)
+                    wc = rand.randint(0, self.size - 2)
+                    if self._is_valid_wall(o, wr, wc):
+                        return ('wall', o, wr, wc)
+            if pawn_moves:
+                return ('move', min(pawn_moves, key=lambda m: abs(m[0] - goal_row)))
+            return ('move', self.pawns[p])
+
+        def _bfs_dist(start, target_row, walls):
+            visited = set()
+            queue = deque()
+            queue.append((start[0], start[1], 0))
+            visited.add(start)
+            while queue:
+                cr, cc, d = queue.popleft()
+                if cr == target_row:
+                    return d
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if 0 <= nr < self.size and 0 <= nc < self.size and (nr, nc) not in visited:
+                        blocked = False
+                        for orient, wr, wc in walls:
+                            if self._wall_blocks_edge(orient, wr, wc, cr, cc, dr, dc):
+                                blocked = True
+                                break
+                        if not blocked:
+                            visited.add((nr, nc))
+                            queue.append((nr, nc, d + 1))
+            return 999
+
+        my_dist = _bfs_dist(self.pawns[p], goal_row, self.walls)
+        opp_goal = self.size - 1 if opp == 2 else 0
+        opp_dist = _bfs_dist(self.pawns[opp], opp_goal, self.walls)
+
+        best_move_score = -999
+        best_move = None
+        for target in pawn_moves:
+            new_dist = _bfs_dist(target, goal_row, self.walls)
+            score = (my_dist - new_dist) * 10
+            if difficulty == "medium":
+                score += rand.uniform(-2, 2)
+            if score > best_move_score:
+                best_move_score = score
+                best_move = ('move', target)
+
+        if self.walls_remaining[p] > 0 and opp_dist < my_dist:
+            wall_candidates = []
+            attempts = 30 if difficulty == "hard" else 15
+            for _ in range(attempts):
+                o = rand.choice(['H', 'V'])
+                wr = rand.randint(0, self.size - 2)
+                wc = rand.randint(0, self.size - 2)
+                if not self._is_valid_wall(o, wr, wc):
+                    continue
+                test_walls = self.walls + [(o, wr, wc)]
+                new_opp_dist = _bfs_dist(self.pawns[opp], opp_goal, test_walls)
+                gain = new_opp_dist - opp_dist
+                if gain > 0:
+                    score = gain * 8
+                    new_my_dist = _bfs_dist(self.pawns[p], goal_row, test_walls)
+                    score -= (new_my_dist - my_dist) * 5
+                    if difficulty == "medium":
+                        score += rand.uniform(-3, 3)
+                    wall_candidates.append((score, o, wr, wc))
+
+            if wall_candidates:
+                wall_candidates.sort(reverse=True)
+                if wall_candidates[0][0] > best_move_score:
+                    _, o, wr, wc = wall_candidates[0]
+                    return ('wall', o, wr, wc)
+
+        return best_move if best_move else ('move', pawn_moves[0] if pawn_moves else self.pawns[p])
 
     def check_game_over(self):
         """Check if a player has reached the opposite edge."""

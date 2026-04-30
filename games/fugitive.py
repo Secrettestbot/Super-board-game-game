@@ -135,6 +135,8 @@ class FugitiveGame(BaseGame):
         return ("unknown", "")
 
     def make_move(self, move):
+        if move is None:
+            return False
         action, value = move
 
         if action == "fugitive_play":
@@ -257,6 +259,126 @@ class FugitiveGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.phase == "fugitive_draw":
+            return ("fugitive_draw", "")
+        if self.phase == "marshal_draw":
+            return ("marshal_draw", "")
+        if self.phase == "fugitive_play":
+            return self._ai_fugitive_play(difficulty)
+        if self.phase == "marshal_guess":
+            return self._ai_marshal_guess(difficulty)
+        return ("unknown", "")
+
+    def _ai_fugitive_play(self, difficulty):
+        import random
+        hand = list(self.fugitive_hand)
+        last_val = self._last_hideout_value()
+
+        valid_plays = []
+        for card in hand:
+            if card <= last_val:
+                continue
+            other = [c for c in hand if c != card]
+            for num_sprint in range(len(other) + 1):
+                max_reach = last_val + self._max_sprint(num_sprint)
+                if card <= max_reach:
+                    if num_sprint == 0:
+                        valid_plays.append((card, []))
+                    else:
+                        sorted_other = sorted(other)
+                        if num_sprint <= len(sorted_other):
+                            sprints = sorted_other[:num_sprint]
+                            valid_plays.append((card, sprints))
+                    break
+
+        if not valid_plays:
+            return ("fugitive_play", str(hand[0]) if hand else "0")
+
+        if difficulty == 'easy':
+            card, sprints = random.choice(valid_plays)
+        else:
+            scored = []
+            for card, sprints in valid_plays:
+                score = 0
+                gap = card - last_val
+                score += gap * 2
+                score -= len(sprints) * 5
+                if card == self.max_card:
+                    score += 100
+                if difficulty == 'hard':
+                    if gap % 2 == 1:
+                        score += 3
+                    if card > 20:
+                        score += 2
+                scored.append((score, (card, sprints)))
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'medium':
+                top = scored[:max(1, len(scored) // 2)]
+                card, sprints = random.choice(top)[1]
+            else:
+                card, sprints = scored[0][1]
+
+        parts = [str(card)] + [str(s) for s in sprints]
+        return ("fugitive_play", " ".join(parts))
+
+    def _ai_marshal_guess(self, difficulty):
+        import random
+        unrevealed = [h for h in self.hideouts if not h["revealed"]]
+        if not unrevealed:
+            return ("marshal_guess", "pass")
+
+        known_not = set(self.marshal_hand)
+        revealed_vals = sorted(h["value"] for h in self.hideouts if h["revealed"])
+        revealed_set = set(revealed_vals)
+
+        possible_guesses = set()
+        for n in range(1, self.max_card + 1):
+            if n not in known_not and n not in revealed_set:
+                possible_guesses.add(n)
+
+        if not possible_guesses:
+            return ("marshal_guess", "pass")
+
+        if difficulty == 'easy':
+            if random.random() < 0.4:
+                return ("marshal_guess", "pass")
+            return ("marshal_guess", str(random.choice(list(possible_guesses))))
+
+        scored = []
+        for n in possible_guesses:
+            score = 0
+            for i in range(len(revealed_vals) - 1):
+                lo, hi = revealed_vals[i], revealed_vals[i + 1]
+                if lo < n < hi:
+                    gap = hi - lo
+                    if gap <= 6:
+                        score += 10
+                    elif gap <= 10:
+                        score += 5
+                    break
+            if revealed_vals:
+                last_rev = revealed_vals[-1]
+                if last_rev < n <= last_rev + 5:
+                    score += 8
+            if difficulty == 'hard':
+                if revealed_vals:
+                    last_rev = revealed_vals[-1]
+                    if last_rev < n <= last_rev + 3:
+                        score += 5
+            scored.append((score, n))
+
+        scored.sort(key=lambda x: -x[0])
+        if difficulty == 'medium':
+            top = scored[:max(1, len(scored) // 3)]
+            return ("marshal_guess", str(random.choice(top)[1]))
+        if scored[0][0] > 0:
+            return ("marshal_guess", str(scored[0][1]))
+        return ("marshal_guess", "pass")
 
     def check_game_over(self):
         # Fugitive wins if card max_card is played and not all hideouts are revealed

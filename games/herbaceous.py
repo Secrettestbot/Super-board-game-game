@@ -411,6 +411,8 @@ class HerbaceousGame(BaseGame):
         return True
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player
         action = move["action"]
 
@@ -472,6 +474,155 @@ class HerbaceousGame(BaseGame):
         """Only switch when the full turn cycle is done."""
         if self.phase == "draw":
             self.current_player = 2 if self.current_player == 1 else 1
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        if self.phase == "draw":
+            return self._ai_draw(p, difficulty)
+        elif self.phase == "place":
+            return self._ai_place(p, difficulty)
+        elif self.phase == "plant_option":
+            return self._ai_plant(p, difficulty)
+        return {"action": "skip_plant"}
+
+    def _ai_draw(self, p, difficulty):
+        if not self.deck:
+            return {"action": "skip_draw"}
+        card = self.deck.pop()
+        dest = self._ai_choose_dest(p, card, difficulty)
+        return {"action": "draw_place", "card": card, "destination": dest}
+
+    def _ai_place(self, p, difficulty):
+        if not self.deck:
+            return {"action": "skip_draw"}
+        card = self.deck.pop()
+        self.drawn_cards = [card]
+        dest = self._ai_choose_dest(p, card, difficulty)
+        return {"action": "draw_place", "card": card, "destination": dest}
+
+    def _ai_choose_dest(self, p, card, difficulty):
+        if difficulty == 'easy':
+            import random
+            return random.choice(["garden", "community"])
+
+        garden = self.gardens[p]
+        garden_names = [h["name"] for h in garden]
+        has_match = card["name"] in garden_names
+
+        if difficulty == 'hard':
+            opp = 3 - p
+            opp_garden = self.gardens[opp]
+            opp_names = [h["name"] for h in opp_garden]
+            if card["name"] in opp_names:
+                return "garden"
+            if has_match:
+                return "garden"
+            if card.get("special"):
+                return "garden"
+            if len(garden) >= 6:
+                return "community"
+            return "garden"
+
+        if has_match or card.get("special"):
+            return "garden"
+        import random
+        return random.choice(["garden", "community"])
+
+    def _ai_plant(self, p, difficulty):
+        available_containers = [c for c, v in self.containers[p].items() if v is None]
+        if not available_containers:
+            return {"action": "skip_plant"}
+
+        garden = self.gardens[p]
+        community = self.community
+        all_herbs = []
+        for i, h in enumerate(garden):
+            all_herbs.append(("garden", i, h))
+        for i, h in enumerate(community):
+            all_herbs.append(("community", i, h))
+
+        if not all_herbs:
+            return {"action": "skip_plant"}
+
+        if difficulty == 'easy':
+            import random
+            if random.random() < 0.6:
+                return {"action": "skip_plant"}
+
+        best_score = 0
+        best_move = None
+
+        for cname in available_containers:
+            rule = CONTAINERS[cname]["rule"]
+            min_count = CONTAINERS[cname]["min"]
+
+            if rule == "any":
+                herbs_sel = [h for _, _, h in all_herbs]
+                indices_sel = [(src, idx) for src, idx, _ in all_herbs]
+                if len(herbs_sel) >= min_count:
+                    sc = self._score_container(herbs_sel, cname)
+                    if sc > best_score:
+                        best_score = sc
+                        best_move = {"action": "plant", "container": cname,
+                                     "herbs": herbs_sel, "indices": indices_sel}
+
+            elif rule == "pairs":
+                from collections import Counter
+                counts = Counter(h["name"] for _, _, h in all_herbs)
+                pair_herbs = []
+                pair_indices = []
+                for src, idx, h in all_herbs:
+                    if counts[h["name"]] >= 2:
+                        pair_herbs.append(h)
+                        pair_indices.append((src, idx))
+                if len(pair_herbs) >= min_count:
+                    sc = self._score_container(pair_herbs, cname)
+                    if sc > best_score:
+                        best_score = sc
+                        best_move = {"action": "plant", "container": cname,
+                                     "herbs": pair_herbs, "indices": pair_indices}
+
+            elif rule == "all_different":
+                seen = set()
+                diff_herbs = []
+                diff_indices = []
+                sorted_herbs = sorted(all_herbs, key=lambda x: -1 if x[2].get("special") else 0)
+                for src, idx, h in sorted_herbs:
+                    if h["name"] not in seen:
+                        seen.add(h["name"])
+                        diff_herbs.append(h)
+                        diff_indices.append((src, idx))
+                if len(diff_herbs) >= min_count:
+                    sc = self._score_container(diff_herbs, cname)
+                    if sc > best_score:
+                        best_score = sc
+                        best_move = {"action": "plant", "container": cname,
+                                     "herbs": diff_herbs, "indices": diff_indices}
+
+            elif rule == "at_least_3":
+                if len(all_herbs) >= 3:
+                    herbs_sel = [h for _, _, h in all_herbs]
+                    indices_sel = [(src, idx) for src, idx, _ in all_herbs]
+                    sc = self._score_container(herbs_sel, cname)
+                    if sc > best_score:
+                        best_score = sc
+                        best_move = {"action": "plant", "container": cname,
+                                     "herbs": herbs_sel, "indices": indices_sel}
+
+        if difficulty == 'hard' and best_move:
+            return best_move
+
+        if difficulty == 'medium':
+            if best_move and best_score >= 4:
+                return best_move
+            return {"action": "skip_plant"}
+
+        if best_move and best_score >= 2:
+            return best_move
+        return {"action": "skip_plant"}
 
     def check_game_over(self):
         # Game ends when deck is empty and current turn cycle completes

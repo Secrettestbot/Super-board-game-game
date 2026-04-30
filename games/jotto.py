@@ -84,9 +84,7 @@ class JottoGame(BaseGame):
         self.log = []
 
     def setup(self):
-        # AI (player 2) picks a random word
-        ai_word = random.choice(self.word_pool)
-        self.secret_words = {"1": None, "2": ai_word}
+        self.secret_words = {"1": None, "2": None}
         self.guesses = {"1": [], "2": []}
         self.log = ["Game started! Player 1, choose your secret word."]
         self.current_player = 1
@@ -116,8 +114,9 @@ class JottoGame(BaseGame):
         print(f"  JOTTO - {self.word_length}-Letter Words")
         print(f"{'=' * 55}")
 
-        if self.secret_words["1"] is None:
-            print(f"\n  {self.players[0]}, choose your secret {self.word_length}-letter word.\n")
+        sp = str(self.current_player)
+        if self.secret_words[sp] is None:
+            print(f"\n  {self.players[self.current_player - 1]}, choose your secret {self.word_length}-letter word.\n")
             return
 
         for p in [1, 2]:
@@ -140,19 +139,10 @@ class JottoGame(BaseGame):
         cp = self.current_player
         sp = str(cp)
 
-        # Phase: player 1 picks secret word
-        if self.secret_words["1"] is None:
+        if self.secret_words[sp] is None:
             print(f"  Valid words are {self.word_length} letters long.")
             word = input_with_quit(f"  Enter your secret word: ").strip().lower()
             return {"action": "set_secret", "word": word}
-
-        # Guessing phase
-        if cp == 2:
-            # AI turn
-            guess = self._ai_pick_guess()
-            print(f"  {self.players[1]} guesses: {guess}")
-            input_with_quit("  Press Enter to continue...")
-            return {"action": "guess", "word": guess}
 
         print(f"  {self.players[cp-1]}, guess your opponent's word.")
         print(f"  (Must be {self.word_length} letters)")
@@ -172,8 +162,8 @@ class JottoGame(BaseGame):
                 return False
             if not word.isalpha():
                 return False
-            self.secret_words["1"] = word
-            self.log.append(f"{self.players[0]} has chosen a secret word.")
+            self.secret_words[sp] = word
+            self.log.append(f"{self.players[cp - 1]} has chosen a secret word.")
             return True
 
         if action == "guess":
@@ -185,6 +175,8 @@ class JottoGame(BaseGame):
             # Determine which player's secret we're checking against
             target_player = "2" if sp == "1" else "1"
             secret = self.secret_words[target_player]
+            if secret is None:
+                return False
             matches = count_matching_letters(secret, word)
             self.guesses[sp].append((word, matches))
             if matches == self.word_length and word == secret:
@@ -194,6 +186,48 @@ class JottoGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        sp = str(cp)
+
+        if self.secret_words[sp] is None:
+            word = random.choice(self.word_pool)
+            return {"action": "set_secret", "word": word}
+
+        prev = self.guesses[sp]
+        candidates = list(self.word_pool)
+        for guess, match_count in prev:
+            candidates = [w for w in candidates if count_matching_letters(w, guess) == match_count]
+        if not candidates:
+            candidates = list(self.word_pool)
+        already_guessed = {g for g, _ in prev}
+        remaining = [w for w in candidates if w not in already_guessed]
+        if not remaining:
+            remaining = [w for w in self.word_pool if w not in already_guessed]
+        if not remaining:
+            remaining = list(self.word_pool)
+
+        if difficulty == 'easy':
+            return {"action": "guess", "word": random.choice(remaining)}
+
+        if difficulty == 'hard' and len(remaining) > 1:
+            best_word = remaining[0]
+            best_info = -1
+            for w in remaining[:20]:
+                buckets = {}
+                for c in remaining:
+                    m = count_matching_letters(c, w)
+                    buckets[m] = buckets.get(m, 0) + 1
+                info = len(buckets)
+                if info > best_info:
+                    best_info = info
+                    best_word = w
+            return {"action": "guess", "word": best_word}
+
+        return {"action": "guess", "word": random.choice(remaining)}
 
     def check_game_over(self):
         for p in [1, 2]:

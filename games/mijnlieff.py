@@ -98,6 +98,8 @@ class MijnlieffGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         piece_type, row, col = move
         player = self.current_player
 
@@ -170,6 +172,55 @@ class MijnlieffGame(BaseGame):
                         nc += dc
 
         return cells
+
+    side_labels = ("Uppercase", "Lowercase")
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        valid_positions = self._get_valid_positions()
+        if not valid_positions:
+            valid_positions = [(r, c) for r in range(4) for c in range(4) if self.board[r][c] is None]
+
+        avail_types = [pt for pt in self.PIECE_TYPES if self.pieces[p][pt] > 0]
+        if not avail_types or not valid_positions:
+            return (avail_types[0] if avail_types else "P", 0, 0)
+
+        if difficulty == 'easy':
+            return (random.choice(avail_types), *random.choice(valid_positions))
+
+        is_mine = (lambda r, c: self.board[r][c] is not None and self.board[r][c].isupper()) if p == 1 else (
+            lambda r, c: self.board[r][c] is not None and self.board[r][c].islower())
+
+        best_move = None
+        best_score = -999
+        for pt in avail_types:
+            for r, c in valid_positions:
+                score = 0
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < 4 and 0 <= nc < 4 and is_mine(nr, nc):
+                        score += 10
+
+                if difficulty == 'hard':
+                    constrained = self._get_constrained_cells(pt, r, c)
+                    empty_constrained = [(cr, cc) for cr, cc in constrained if self.board[cr][cc] is None]
+                    if len(empty_constrained) <= 2:
+                        score += 8
+                    elif len(empty_constrained) <= 4:
+                        score += 4
+
+                    center_dist = abs(r - 1.5) + abs(c - 1.5)
+                    score -= center_dist
+
+                scored_val = score + random.random() * (3 if difficulty == 'medium' else 0.5)
+                if scored_val > best_score:
+                    best_score = scored_val
+                    best_move = (pt, r, c)
+
+        return best_move if best_move else (avail_types[0], *valid_positions[0])
 
     # -------------------------------------------------------- check_game_over
     def check_game_over(self):

@@ -16,6 +16,7 @@ class OkiyaGame(BaseGame):
         "standard": "Standard (4x4 grid, 4 seasons, 4 elements)",
         "extended": "Extended (5x5 grid, 5 seasons, 5 elements)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     SEASONS_4 = ["Spring", "Summer", "Autumn", "Winter"]
     ELEMENTS_4 = ["Bird", "Rain", "Sun", "Maple"]
@@ -241,7 +242,117 @@ class OkiyaGame(BaseGame):
             except (ValueError, IndexError):
                 print("  Enter as row,col (e.g., 1,2)")
 
+    def get_ai_move(self):
+        """Return an AI move as dict {'row': r, 'col': c} or 'no_move'."""
+        import copy
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        valid = self._get_valid_moves()
+
+        if not valid:
+            return "no_move"
+
+        if difficulty == "easy":
+            r, c = random.choice(valid)
+            return {"row": r, "col": c}
+
+        player = self.current_player
+        opponent = 2 if player == 1 else 1
+
+        if difficulty == "medium":
+            # Check for immediate winning moves
+            for r, c in valid:
+                test = copy.deepcopy(self)
+                test.grid[r][c]["owner"] = player
+                if test._check_win(player):
+                    return {"row": r, "col": c}
+
+            # Check for blocking opponent wins
+            for r, c in valid:
+                test = copy.deepcopy(self)
+                card = test.grid[r][c]
+                test_last = {"season": card["season"], "element": card["element"]}
+                # See what opponent could do after our move
+                # Block moves that would give opponent a win
+                pass
+
+            # Prefer center positions
+            center = self.grid_size // 2
+            best_move = None
+            best_dist = float('inf')
+            for r, c in valid:
+                dist = abs(r - center) + abs(c - center)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_move = (r, c)
+            r, c = best_move
+            return {"row": r, "col": c}
+
+        # Hard: minimax with alpha-beta
+        def evaluate(state):
+            # Check wins
+            if state._check_win(player):
+                return 1000
+            if state._check_win(opponent):
+                return -1000
+            # Heuristic: count how close each player is to winning patterns
+            return 0
+
+        def minimax(state, depth, alpha, beta, is_max, cur_player):
+            if depth == 0 or state._check_win(1) or state._check_win(2):
+                return evaluate(state), None
+
+            moves = state._get_valid_moves()
+            if not moves:
+                # Current player can't move - they lose
+                if cur_player == player:
+                    return -1000, None
+                else:
+                    return 1000, None
+
+            best_move = moves[0]
+            if is_max:
+                max_eval = float('-inf')
+                for r, c in moves:
+                    child = copy.deepcopy(state)
+                    card = child.grid[r][c]
+                    card["owner"] = cur_player
+                    child.last_move = {"season": card["season"], "element": card["element"]}
+                    child.current_player = 3 - cur_player
+                    val, _ = minimax(child, depth - 1, alpha, beta, False, 3 - cur_player)
+                    if val > max_eval:
+                        max_eval = val
+                        best_move = (r, c)
+                    alpha = max(alpha, val)
+                    if beta <= alpha:
+                        break
+                return max_eval, best_move
+            else:
+                min_eval = float('inf')
+                for r, c in moves:
+                    child = copy.deepcopy(state)
+                    card = child.grid[r][c]
+                    card["owner"] = cur_player
+                    child.last_move = {"season": card["season"], "element": card["element"]}
+                    child.current_player = 3 - cur_player
+                    val, _ = minimax(child, depth - 1, alpha, beta, True, 3 - cur_player)
+                    if val < min_eval:
+                        min_eval = val
+                        best_move = (r, c)
+                    beta = min(beta, val)
+                    if beta <= alpha:
+                        break
+                return min_eval, best_move
+
+        depth = 6 if self.grid_size <= 4 else 4
+        _, best = minimax(copy.deepcopy(self), depth, float('-inf'), float('inf'), True, player)
+        if best:
+            return {"row": best[0], "col": best[1]}
+        r, c = valid[0]
+        return {"row": r, "col": c}
+
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player
 
         if move == "no_move":

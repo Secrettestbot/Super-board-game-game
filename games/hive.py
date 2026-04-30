@@ -567,6 +567,8 @@ class HiveGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move. Returns True if valid."""
+        if move is None:
+            return False
         player = self.current_player
 
         if move[0] == "place":
@@ -646,6 +648,112 @@ class HiveGame(BaseGame):
     # ------------------------------------------------------------------ #
     #  Game over check
     # ------------------------------------------------------------------ #
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        me = self.current_player
+        opp = 3 - me
+
+        placement_positions = self._valid_placement_positions(me)
+        hand = self.hands[me]
+        pieces_placed = self.pieces_placed[me]
+        queen_placed = self.queen_placed[me]
+
+        place_moves = []
+        move_moves = []
+
+        must_place_queen = (pieces_placed == 3 and not queen_placed)
+
+        if hand and placement_positions:
+            available_types = set()
+            for pt, count in hand.items():
+                if count > 0:
+                    if must_place_queen and pt != "Queen":
+                        continue
+                    available_types.add(pt)
+            for pt in available_types:
+                for pos in placement_positions:
+                    place_moves.append(("place", pt, pos))
+
+        if queen_placed:
+            for pos, p, pt in list(self._all_pieces_on_board(me)):
+                dests = self._get_valid_moves_for_piece(pos)
+                for d in dests:
+                    move_moves.append(("move", pos, d))
+
+        all_moves = place_moves + move_moves
+        if not all_moves:
+            if place_moves:
+                return random.choice(place_moves)
+            if hand:
+                for pt, count in hand.items():
+                    if count > 0 and placement_positions:
+                        return ("place", pt, next(iter(placement_positions)))
+            return ("place", "Queen", (0, 0))
+
+        if difficulty == 'easy':
+            return random.choice(all_moves)
+
+        opp_queen = self.queen_pos.get(opp)
+        my_queen = self.queen_pos.get(me)
+
+        def score_move(m):
+            s = 0.0
+            if m[0] == "place":
+                _, pt, dest = m
+                if pt == "Queen" and pieces_placed <= 2:
+                    s += 5
+                elif pt == "Queen":
+                    s += 10
+
+                if opp_queen:
+                    dist = hex_distance(dest, opp_queen)
+                    s += max(0, 6 - dist) * 3
+
+                if pt == "Ant":
+                    s += 3
+                elif pt == "Beetle":
+                    s += 2
+                elif pt == "Grasshopper":
+                    s += 1
+
+            else:
+                _, src, dst = m
+                if opp_queen:
+                    old_dist = hex_distance(src, opp_queen)
+                    new_dist = hex_distance(dst, opp_queen)
+                    if new_dist < old_dist:
+                        s += (old_dist - new_dist) * 5
+
+                    if dst in hex_neighbors(opp_queen):
+                        s += 15
+                        opp_surround = sum(1 for n in hex_neighbors(opp_queen) if n in self.board)
+                        s += opp_surround * 3
+
+                if my_queen and src in hex_neighbors(my_queen):
+                    my_surround = sum(1 for n in hex_neighbors(my_queen) if n in self.board and n != src)
+                    if my_surround >= 4:
+                        s -= 10
+
+                if difficulty == 'hard':
+                    if my_queen:
+                        if dst in hex_neighbors(my_queen):
+                            my_surround = sum(1 for n in hex_neighbors(my_queen) if n in self.board)
+                            if my_surround >= 4:
+                                s -= 20
+            return s
+
+        scored = [(score_move(m), m) for m in all_moves]
+        scored.sort(key=lambda x: -x[0])
+
+        if difficulty == 'medium':
+            top = scored[:max(3, len(scored) // 5)]
+            _, pick = random.choice(top)
+        else:
+            _, pick = scored[0]
+
+        return pick
 
     def check_game_over(self):
         """Check if either queen is surrounded."""

@@ -78,6 +78,7 @@ class SequenceGame(BaseGame):
         "standard": "Standard Sequence",
         "small": "Quick Sequence (7x7)",
     }
+    side_labels = ("X", "O")
 
     CHIP_SYMBOLS = {0: ".", 1: "X", 2: "O"}
 
@@ -337,6 +338,90 @@ class SequenceGame(BaseGame):
         return False
 
     # -------------------------------------------------------- check_game_over
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        opp = 2 if p == 1 else 1
+        hand = self.hands[p]
+
+        if not hand:
+            return None
+
+        def _count_inline(r, c, player):
+            directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
+            best = 0
+            for dr, dc in directions:
+                count = 1
+                for sign in [1, -1]:
+                    nr, nc = r + sign * dr, c + sign * dc
+                    while 0 <= nr < self.rows and 0 <= nc < self.cols:
+                        if self.chips[nr][nc] == player or self.chips[nr][nc] == -1:
+                            count += 1
+                            nr += sign * dr
+                            nc += sign * dc
+                        else:
+                            break
+                best = max(best, count)
+            return best
+
+        # Replace dead cards (no open board positions) before building options
+        replaced = True
+        while replaced:
+            replaced = False
+            for ci, card in enumerate(hand):
+                if _is_two_eyed_jack(card) or _is_one_eyed_jack(card):
+                    continue
+                positions = self._find_board_positions(card)
+                if not any(self.chips[r][c] == 0 for r, c in positions):
+                    hand.pop(ci)
+                    if self.deck:
+                        hand.append(self.deck.pop())
+                    replaced = True
+                    break
+
+        if not hand:
+            return None
+
+        options = []
+        for ci, card in enumerate(hand):
+            if _is_two_eyed_jack(card):
+                for r in range(self.rows):
+                    for c in range(self.cols):
+                        if self.chips[r][c] == 0:
+                            score = _count_inline(r, c, p) * 10
+                            if difficulty == "medium":
+                                score += rand.uniform(-3, 3)
+                            options.append((score, ("wild", ci, (r, c))))
+            elif _is_one_eyed_jack(card):
+                for r in range(self.rows):
+                    for c in range(self.cols):
+                        if self.chips[r][c] == opp and not self._cell_in_completed_sequence(r, c, opp):
+                            score = _count_inline(r, c, opp) * 8
+                            if difficulty == "medium":
+                                score += rand.uniform(-3, 3)
+                            options.append((score, ("remove", ci, (r, c))))
+            else:
+                positions = self._find_board_positions(card)
+                open_positions = [(r, c) for r, c in positions if self.chips[r][c] == 0]
+                for r, c in open_positions:
+                    score = _count_inline(r, c, p) * 10
+                    if difficulty == "medium":
+                        score += rand.uniform(-3, 3)
+                    options.append((score, ("place", ci, (r, c))))
+
+        if not options:
+            return None
+
+        if difficulty == "easy":
+            return rand.choice(options)[1]
+
+        options.sort(key=lambda x: x[0], reverse=True)
+        if difficulty == "hard":
+            return options[0][1]
+        top = options[:3] if len(options) >= 3 else options
+        return rand.choice(top)[1]
+
     def check_game_over(self):
         for player in [1, 2]:
             seqs = self._find_all_sequences(player)

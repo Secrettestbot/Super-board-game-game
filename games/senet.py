@@ -73,6 +73,7 @@ class SenetGame(BaseGame):
         "standard": "Standard Senet (Kendall rules)",
         "simple": "Simplified (no special squares)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -442,6 +443,58 @@ class SenetGame(BaseGame):
         return True
 
     # ----------------------------------------------------- check_game_over
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+        opponent = 3 - player
+
+        throw = self._throw_sticks()
+        self.last_throw = throw
+        legal = self._get_legal_moves(player, throw)
+
+        if not legal:
+            return ("pass", throw)
+
+        if difficulty == "easy":
+            return ("move", throw, rand.choice(legal))
+
+        scored = []
+        for sq in legal:
+            dest = sq + throw
+            score = 0
+            if dest >= BOARD_SIZE:
+                score += 100
+            else:
+                score += dest * 2
+                if self.board[dest] == opponent:
+                    score += 15 + (BOARD_SIZE - dest)
+                if self.variation != "simple":
+                    if dest == HOUSE_OF_WATER:
+                        score -= 50
+                    if dest == HOUSE_OF_HAPPINESS:
+                        score += 5
+                    if dest == HOUSE_OF_THREE_TRUTHS:
+                        score += 8
+                    if dest == HOUSE_OF_RE_ATOUM:
+                        score += 8
+                if self._is_protected(sq):
+                    score -= 3
+                if dest < BOARD_SIZE:
+                    if (dest > 0 and self.board[dest - 1] == player) or \
+                       (dest < BOARD_SIZE - 1 and self.board[dest + 1] == player):
+                        score += 5
+
+            if difficulty == "medium":
+                score += rand.uniform(-5, 5)
+            scored.append((score, sq))
+
+        scored.sort(reverse=True)
+        if difficulty == "hard":
+            return ("move", throw, scored[0][1])
+        top = scored[:3] if len(scored) >= 3 else scored
+        return ("move", throw, rand.choice(top)[1])
+
     def check_game_over(self):
         """Game ends when a player has borne off all 5 pieces."""
         for player in [1, 2]:

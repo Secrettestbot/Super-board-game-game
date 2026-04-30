@@ -250,6 +250,8 @@ class EminentDomainGame(BaseGame):
         return ("invalid", "")
 
     def make_move(self, move):
+        if move is None:
+            return False
         action, data = move
         p = self.current_player - 1
         opp = 1 - p
@@ -281,14 +283,17 @@ class EminentDomainGame(BaseGame):
 
             elif role == "Colonize":
                 if self.surveyed_planets[p]:
-                    print(f"  Add colonize token to which surveyed planet? (1-{len(self.surveyed_planets[p])}):")
-                    target = input_with_quit("  > ").strip()
-                    try:
-                        tidx = int(target) - 1
-                        if tidx < 0 or tidx >= len(self.surveyed_planets[p]):
+                    if self.ai_player == self.current_player:
+                        tidx = 0
+                    else:
+                        print(f"  Add colonize token to which surveyed planet? (1-{len(self.surveyed_planets[p])}):")
+                        target = input_with_quit("  > ").strip()
+                        try:
+                            tidx = int(target) - 1
+                            if tidx < 0 or tidx >= len(self.surveyed_planets[p]):
+                                return False
+                        except (ValueError, TypeError):
                             return False
-                    except (ValueError, TypeError):
-                        return False
                     key = str(tidx)
                     self.colonize_progress[p][key] = self.colonize_progress[p].get(key, 0) + card["symbols"]
                     planet = self.surveyed_planets[p][tidx]
@@ -326,11 +331,14 @@ class EminentDomainGame(BaseGame):
                     if pl["cost_warfare"] <= self.warfare_tokens[p]
                 ]
                 if conquerable:
-                    print(f"  You can conquer:")
-                    for i, pl in conquerable:
-                        print(f"    [{i + 1}] {pl['name']} (cost: {pl['cost_warfare']})")
-                    print(f"  Conquer a planet? (number or 'n'):")
-                    target = input_with_quit("  > ").strip().lower()
+                    if self.ai_player == self.current_player:
+                        target = str(conquerable[0][0] + 1)
+                    else:
+                        print(f"  You can conquer:")
+                        for i, pl in conquerable:
+                            print(f"    [{i + 1}] {pl['name']} (cost: {pl['cost_warfare']})")
+                        print(f"  Conquer a planet? (number or 'n'):")
+                        target = input_with_quit("  > ").strip().lower()
                     if target not in ("n", "no", ""):
                         try:
                             tidx = int(target) - 1
@@ -388,7 +396,8 @@ class EminentDomainGame(BaseGame):
             # Discard the played card
             self.hands[p].pop(idx)
             self.discard_piles[p].append(card)
-            input("  Press Enter...")
+            if self.ai_player != self.current_player:
+                input("  Press Enter...")
             return True
 
         if action == "choose_role":
@@ -402,7 +411,8 @@ class EminentDomainGame(BaseGame):
             role = ROLE_TYPES[idx]
             if self.role_supply[role] <= 0:
                 print(f"  No {role} cards left in supply!")
-                input("  Press Enter...")
+                if self.ai_player != self.current_player:
+                    input("  Press Enter...")
                 return False
 
             self.current_role = role
@@ -420,7 +430,8 @@ class EminentDomainGame(BaseGame):
             self.phase = "follow"
             self.follow_player = opp
             self.current_player = opp + 1
-            input("  Press Enter...")
+            if self.ai_player != p + 1:
+                input("  Press Enter...")
             return True
 
         if action == "follow":
@@ -433,14 +444,16 @@ class EminentDomainGame(BaseGame):
                 print(f"  No {role} cards to follow with! Drawing instead.")
                 self._draw_card(p)
             self._end_turn()
-            input("  Press Enter...")
+            if self.ai_player != p + 1:
+                input("  Press Enter...")
             return True
 
         if action == "dissent":
             self._draw_card(p)
             print(f"  Drew 1 card.")
             self._end_turn()
-            input("  Press Enter...")
+            if self.ai_player != p + 1:
+                input("  Press Enter...")
             return True
 
         return False
@@ -549,15 +562,83 @@ class EminentDomainGame(BaseGame):
         while len(self.hands[follower]) < self.hand_size:
             self._draw_card(follower)
 
-        # Next turn: the leader's opponent becomes active
-        self.current_player = leader + 1  # switch_player will be called by game loop
+        # Next turn: the follower becomes the new active player
+        self.current_player = follower + 1
         self.phase = "action"
         self.current_role = None
 
     def switch_player(self):
-        """Override to handle follow phase player switching."""
-        if self.phase != "follow":
-            self.current_player = 2 if self.current_player == 1 else 1
+        """Phase transitions handle their own player switching."""
+        if self.phase in ("action", "role", "follow"):
+            return
+        super().switch_player()
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player - 1
+
+        if self.phase == "action":
+            if difficulty == 'easy':
+                return ("skip_action", "")
+            hand = self.hands[p]
+            if hand:
+                for i, card in enumerate(hand):
+                    if card["role"] == "Trade" and self.resources[p]:
+                        return ("play_action", str(i + 1))
+                    if card["role"] == "Produce" and self.settled_planets[p]:
+                        has_slot = False
+                        for pi, planet in enumerate(self.settled_planets[p]):
+                            cur = len([r for r in self.resources[p] if r.get("planet_idx") == pi])
+                            if cur < planet["slots"]:
+                                has_slot = True
+                                break
+                        if has_slot:
+                            return ("play_action", str(i + 1))
+            return ("skip_action", "")
+
+        if self.phase == "role":
+            hand = self.hands[p]
+            if difficulty == 'easy':
+                available = [i for i, r in enumerate(ROLE_TYPES) if self.role_supply[r] > 0]
+                if available:
+                    return ("choose_role", str(random.choice(available) + 1))
+                return ("choose_role", "1")
+
+            best_role = None
+            best_score = -1
+            for i, role in enumerate(ROLE_TYPES):
+                if self.role_supply[role] <= 0:
+                    continue
+                syms = self._count_symbols(p, role)
+                sc = syms
+                if role == "Survey" and not self.surveyed_planets[p]:
+                    sc += 3
+                if role == "Trade" and self.resources[p]:
+                    sc += 5
+                if role == "Produce" and self.settled_planets[p]:
+                    sc += 3
+                if role == "Warfare" and self.surveyed_planets[p]:
+                    for pl in self.surveyed_planets[p]:
+                        if pl["cost_warfare"] <= self.warfare_tokens[p] + syms + 1:
+                            sc += 5
+                if role == "Colonize" and self.surveyed_planets[p]:
+                    sc += 2
+                if sc > best_score:
+                    best_score = sc
+                    best_role = i
+            if best_role is not None:
+                return ("choose_role", str(best_role + 1))
+            return ("choose_role", "1")
+
+        if self.phase == "follow":
+            role = self.current_role
+            syms = self._count_symbols(p, role)
+            if syms > 0 and (difficulty == 'hard' or random.random() < 0.6):
+                return ("follow", "")
+            return ("dissent", "")
+
+        return ("skip_action", "")
 
     def check_game_over(self):
         for pi in range(2):

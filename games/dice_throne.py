@@ -237,6 +237,8 @@ class DiceThroneGame(BaseGame):
         return ("unknown", "")
 
     def make_move(self, move):
+        if move is None:
+            return False
         action, value = move
 
         if action == "choose_char":
@@ -372,6 +374,59 @@ class DiceThroneGame(BaseGame):
         if char_name == "Rogue" and ability["pattern"] == "three_kind":
             self.poison[opp] += 3
             self._add_log(f"{self.players[opp - 1]} is poisoned! (3 per turn)")
+
+    def switch_player(self):
+        if self.phase in ("choose_keep", "activate"):
+            return
+        super().switch_player()
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        if self.phase == "choose_character":
+            available = self._available_characters()
+            if difficulty == 'easy':
+                return ("choose_char", str(random.randint(1, len(available))))
+            if difficulty == 'hard':
+                prefs = ["Rogue", "Mage", "Ranger", "Warrior"]
+                for pref in prefs:
+                    if pref in available:
+                        return ("choose_char", str(available.index(pref) + 1))
+            return ("choose_char", str(random.randint(1, len(available))))
+
+        if self.phase == "roll":
+            return ("roll", "")
+
+        if self.phase == "choose_keep":
+            if self.rerolls_left <= 0:
+                return ("keep", "done")
+            ability = get_best_ability(self.dice, self.characters[cp])
+            if ability and ability["damage"] >= 14:
+                return ("keep", "done")
+            if difficulty == 'easy':
+                return ("keep", "")
+            counts = {}
+            for i, d in enumerate(self.dice):
+                counts.setdefault(d, []).append(i)
+            best_val = max(counts, key=lambda v: len(counts[v]))
+            if len(counts[best_val]) >= 3:
+                if ability and ability["damage"] >= 10:
+                    return ("keep", "done")
+                indices_to_toggle = []
+                for i in range(5):
+                    want_kept = (self.dice[i] == best_val)
+                    if want_kept != self.kept[i]:
+                        indices_to_toggle.append(str(i + 1))
+                if indices_to_toggle:
+                    return ("keep", " ".join(indices_to_toggle))
+            return ("keep", "")
+
+        if self.phase == "activate":
+            return ("activate", "")
+
+        return ("roll", "")
 
     def check_game_over(self):
         for p in (1, 2):

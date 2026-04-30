@@ -399,6 +399,13 @@ class KingdominoGame(BaseGame):
         print(f"\n  Tiles remaining in deck: {self.tiles_remaining}")
         print(f"{'='*60}")
 
+    def switch_player(self):
+        if self.phase == 'pick':
+            if self.picks_done < len(self.pick_order):
+                self.current_player = self.pick_order[self.picks_done]
+        elif self.phase == 'place' and self.current_placement:
+            self.current_player = self.current_placement[0] + 1
+
     def get_move(self):
         """Get a move from the current player."""
         if self.phase == 'pick':
@@ -504,6 +511,8 @@ class KingdominoGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move to the game state."""
+        if move is None:
+            return False
         if move.get('action') == 'auto_advance':
             self._advance_after_picks()
             return True
@@ -611,6 +620,117 @@ class KingdominoGame(BaseGame):
         self.phase = 'pick'
 
         self._draw_offer()
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        p_idx = cp - 1
+
+        if self.phase == 'pick':
+            unclaimed = [t for t in self.current_offer if t['claimed_by'] is None]
+            if not unclaimed:
+                return {'action': 'auto_advance'}
+
+            if difficulty == 'easy':
+                tile = random.choice(unclaimed)
+                return {'action': 'pick', 'tile_number': tile['number'], 'player': cp}
+
+            scored = []
+            for tile in unclaimed:
+                score = 0
+                crowns = tile['half1'][1] + tile['half2'][1]
+                score += crowns * 10
+                if self._has_any_valid_placement(p_idx, tile['half1'], tile['half2']):
+                    score += 5
+                if difficulty == 'hard':
+                    kingdom = self.kingdoms[p_idx]
+                    for half in [tile['half1'], tile['half2']]:
+                        terrain = half[0]
+                        for r in range(9):
+                            found = False
+                            for c in range(9):
+                                if kingdom[r][c] and kingdom[r][c][0] == terrain:
+                                    score += 1
+                                    found = True
+                                    break
+                            if found:
+                                break
+                scored.append((score, tile))
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'medium':
+                top = scored[:max(1, len(scored) // 2)]
+                _, tile = random.choice(top)
+            else:
+                _, tile = scored[0]
+
+            move = {'action': 'pick', 'tile_number': tile['number'], 'player': cp}
+            if self.variation == 'queendomino' and self.buildings_available:
+                affordable = [(i, b) for i, b in enumerate(self.buildings_available)
+                              if self.coins[p_idx] >= b['cost']]
+                if affordable and difficulty != 'easy':
+                    best_bld = max(affordable, key=lambda x: x[1]['points'] / max(1, x[1]['cost']))
+                    move['buy_building'] = best_bld[0]
+            return move
+
+        elif self.phase == 'place':
+            if not self.current_placement:
+                return {'action': 'auto_advance'}
+            player_idx, tile = self.current_placement
+
+            if not self._has_any_valid_placement(player_idx, tile['half1'], tile['half2']):
+                return {'action': 'discard', 'player': cp}
+
+            valid = []
+            for r in range(9):
+                for c in range(9):
+                    for orient, (dr, dc) in ORIENTATIONS.items():
+                        r2, c2 = r + dr, c + dc
+                        if self._can_place_tile(player_idx, r, c, r2, c2,
+                                                tile['half1'], tile['half2']):
+                            valid.append((r, c, orient))
+
+            if not valid:
+                return {'action': 'discard', 'player': cp}
+
+            if difficulty == 'easy':
+                r, c, orient = random.choice(valid)
+                return {'action': 'place', 'row': r, 'col': c,
+                        'orientation': orient, 'player': cp}
+
+            scored = []
+            kingdom = self.kingdoms[player_idx]
+            for r, c, orient in valid:
+                dr, dc = ORIENTATIONS[orient]
+                r2, c2 = r + dr, c + dc
+                score = 0
+                for pr, pc, half in [(r, c, tile['half1']), (r2, c2, tile['half2'])]:
+                    terrain = half[0]
+                    crowns = half[1]
+                    adj_same = 0
+                    adj_crowns = 0
+                    for ddr, ddc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = pr + ddr, pc + ddc
+                        if (nr, nc) != (r, c) and (nr, nc) != (r2, c2):
+                            if 0 <= nr < 9 and 0 <= nc < 9 and kingdom[nr][nc]:
+                                if kingdom[nr][nc][0] == terrain:
+                                    adj_same += 1
+                                    adj_crowns += kingdom[nr][nc][1]
+                    score += adj_same * 3 + adj_crowns * 5 + crowns * 8
+                if difficulty == 'hard':
+                    center_dist = abs(r - 4) + abs(c - 4) + abs(r2 - 4) + abs(c2 - 4)
+                    score -= center_dist
+                scored.append((score, r, c, orient))
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'medium':
+                top = scored[:max(1, len(scored) // 3)]
+                _, r, c, orient = random.choice(top)
+            else:
+                _, r, c, orient = scored[0]
+            return {'action': 'place', 'row': r, 'col': c,
+                    'orientation': orient, 'player': cp}
+
+        return {'action': 'auto_advance'}
 
     def check_game_over(self):
         """Check if the game is over."""

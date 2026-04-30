@@ -131,6 +131,7 @@ class OraEtLaboraGame(BaseGame):
         "standard": "Full game - 12 rounds with all buildings and settlements",
         "quick": "Quick game - 7 rounds, simpler buildings, extra starting resources",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def setup(self):
         is_quick = self.variation == "quick"
@@ -233,6 +234,8 @@ class OraEtLaboraGame(BaseGame):
         return move.strip()
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.player_data[str(self.current_player)]
         self.message = ""
         try:
@@ -272,14 +275,22 @@ class OraEtLaboraGame(BaseGame):
                 return False
             for idx, (i, slot, amt) in enumerate(available):
                 print(f"    {idx + 1}. {slot['resource']}: {amt}")
-            ri = input_with_quit("  Choose resource to collect: ").strip()
-            try:
-                ri = int(ri) - 1
-                if ri < 0 or ri >= len(available):
-                    self.message = "Invalid choice."
+            if self.ai_player == self.current_player:
+                difficulty = getattr(self, 'ai_difficulty', 'medium')
+                if difficulty == 'easy':
+                    ri = random.randint(0, len(available) - 1)
+                else:
+                    # Pick the slot with the most accumulated resources
+                    ri = max(range(len(available)), key=lambda x: available[x][2])
+            else:
+                ri = input_with_quit("  Choose resource to collect: ").strip()
+                try:
+                    ri = int(ri) - 1
+                    if ri < 0 or ri >= len(available):
+                        self.message = "Invalid choice."
+                        return False
+                except ValueError:
                     return False
-            except ValueError:
-                return False
             slot_idx, slot, amt = available[ri]
             p["resources"][slot["resource"]] += amt
             self.rondel[slot_idx] = 0
@@ -306,14 +317,26 @@ class OraEtLaboraGame(BaseGame):
                 mark = "" if can else " [can't afford]"
                 print(f"    {idx + 1}. {b['name']} (Cost: {cost_str}) "
                       f"{b['vp']} VP - {b['type']}{mark}")
-            bi_choice = input_with_quit("  Choose building to construct: ").strip()
-            try:
-                bi_idx = int(bi_choice) - 1
-                if bi_idx < 0 or bi_idx >= len(affordable):
-                    self.message = "Invalid choice."
+            if self.ai_player == self.current_player:
+                difficulty = getattr(self, 'ai_difficulty', 'medium')
+                can_afford_list = [i for i, (bi, b, can) in enumerate(affordable) if can]
+                if not can_afford_list:
+                    self.message = "Cannot afford any buildings!"
                     return False
-            except ValueError:
-                return False
+                if difficulty == 'easy':
+                    bi_idx = random.choice(can_afford_list)
+                else:
+                    # Pick affordable building with highest VP
+                    bi_idx = max(can_afford_list, key=lambda x: affordable[x][1]['vp'])
+            else:
+                bi_choice = input_with_quit("  Choose building to construct: ").strip()
+                try:
+                    bi_idx = int(bi_choice) - 1
+                    if bi_idx < 0 or bi_idx >= len(affordable):
+                        self.message = "Invalid choice."
+                        return False
+                except ValueError:
+                    return False
             bi, b, can = affordable[bi_idx]
             if not can:
                 self.message = "Cannot afford that building!"
@@ -344,14 +367,39 @@ class OraEtLaboraGame(BaseGame):
                     prod = " -> " + ", ".join(
                         f"{v} {k}" for k, v in b["produces"].items())
                 print(f"    {idx + 1}. {b['name']}{conv}{prod}")
-            ui = input_with_quit("  Choose building to use: ").strip()
-            try:
-                ui = int(ui) - 1
-                if ui < 0 or ui >= len(usable):
-                    self.message = "Invalid choice."
+            if self.ai_player == self.current_player:
+                difficulty = getattr(self, 'ai_difficulty', 'medium')
+                # Filter to buildings the AI can actually use (has conversion inputs)
+                usable_by_ai = []
+                for idx2, (bi2, b2) in enumerate(usable):
+                    if b2["converts"]:
+                        if all(p["resources"].get(r, 0) >= amt for r, amt in b2["converts"].items()):
+                            usable_by_ai.append(idx2)
+                    else:
+                        usable_by_ai.append(idx2)
+                if not usable_by_ai:
+                    self.message = "No buildings can be used right now!"
                     return False
-            except ValueError:
-                return False
+                if difficulty == 'easy':
+                    ui = random.choice(usable_by_ai)
+                else:
+                    # Prefer buildings that produce the most valuable output
+                    def _building_value(idx2):
+                        b2 = usable[idx2][1]
+                        if not b2["produces"]:
+                            return 0
+                        # Later resources in RESOURCES list are more valuable
+                        return sum(RESOURCES.index(r) * amt for r, amt in b2["produces"].items())
+                    ui = max(usable_by_ai, key=_building_value)
+            else:
+                ui = input_with_quit("  Choose building to use: ").strip()
+                try:
+                    ui = int(ui) - 1
+                    if ui < 0 or ui >= len(usable):
+                        self.message = "Invalid choice."
+                        return False
+                except ValueError:
+                    return False
             bi, b = usable[ui]
             # Check conversion cost
             if b["converts"]:
@@ -390,29 +438,51 @@ class OraEtLaboraGame(BaseGame):
                 can = p["resources"].get(fr, 0) >= fa
                 mark = "" if can else " [insufficient]"
                 print(f"    {idx + 1}. {desc} ({fa} {fr} -> {ta} {to}){mark}")
-            ci = input_with_quit("  Choose conversion: ").strip()
-            try:
-                ci = int(ci) - 1
-                if ci < 0 or ci >= len(conversions):
-                    self.message = "Invalid choice."
+            if self.ai_player == self.current_player:
+                difficulty = getattr(self, 'ai_difficulty', 'medium')
+                # Filter to conversions the AI can actually do
+                doable = [i for i, (fr, fa, to, ta, desc) in enumerate(conversions)
+                          if p["resources"].get(fr, 0) >= fa]
+                if not doable:
+                    self.message = "No conversions available!"
                     return False
-            except ValueError:
-                return False
+                if difficulty == 'easy':
+                    ci = random.choice(doable)
+                else:
+                    # Prefer conversions that produce later (more valuable) resources
+                    ci = max(doable, key=lambda x: RESOURCES.index(conversions[x][2]))
+            else:
+                ci = input_with_quit("  Choose conversion: ").strip()
+                try:
+                    ci = int(ci) - 1
+                    if ci < 0 or ci >= len(conversions):
+                        self.message = "Invalid choice."
+                        return False
+                except ValueError:
+                    return False
             fr, fa, to, ta, desc = conversions[ci]
             if p["resources"].get(fr, 0) < fa:
                 self.message = f"Need {fa} {fr}!"
                 return False
             # Ask how many times
             max_times = p["resources"][fr] // fa
-            times_str = input_with_quit(
-                f"  How many times? (1-{max_times}): ").strip()
-            try:
-                times = int(times_str)
-                if times < 1 or times > max_times:
-                    self.message = "Invalid amount."
-                    return False
-            except ValueError:
-                times = 1
+            if self.ai_player == self.current_player:
+                difficulty = getattr(self, 'ai_difficulty', 'medium')
+                if difficulty == 'easy':
+                    times = random.randint(1, max_times)
+                else:
+                    # Convert as much as possible
+                    times = max_times
+            else:
+                times_str = input_with_quit(
+                    f"  How many times? (1-{max_times}): ").strip()
+                try:
+                    times = int(times_str)
+                    if times < 1 or times > max_times:
+                        self.message = "Invalid amount."
+                        return False
+                except ValueError:
+                    times = 1
             p["resources"][fr] -= fa * times
             p["resources"][to] += ta * times
             self.message = f"Converted {fa * times} {fr} -> {ta * times} {to}."
@@ -432,14 +502,28 @@ class OraEtLaboraGame(BaseGame):
                 mark = "" if can else " [can't afford]"
                 print(f"    {idx + 1}. {b['name']} (Cost: {cost_str}) "
                       f"{b['vp']} VP{mark}")
-            si = input_with_quit("  Choose settlement: ").strip()
-            try:
-                si = int(si) - 1
-                if si < 0 or si >= len(settlements):
-                    self.message = "Invalid choice."
+            if self.ai_player == self.current_player:
+                difficulty = getattr(self, 'ai_difficulty', 'medium')
+                affordable_s = [i for i, (bi, b) in enumerate(settlements)
+                                if all(p["resources"].get(r, 0) >= amt
+                                       for r, amt in b["cost"].items())]
+                if not affordable_s:
+                    self.message = "Cannot afford any settlements!"
                     return False
-            except ValueError:
-                return False
+                if difficulty == 'easy':
+                    si = random.choice(affordable_s)
+                else:
+                    # Pick the settlement with the highest VP
+                    si = max(affordable_s, key=lambda x: settlements[x][1]['vp'])
+            else:
+                si = input_with_quit("  Choose settlement: ").strip()
+                try:
+                    si = int(si) - 1
+                    if si < 0 or si >= len(settlements):
+                        self.message = "Invalid choice."
+                        return False
+                except ValueError:
+                    return False
             bi, b = settlements[si]
             can = all(p["resources"].get(r, 0) >= amt
                       for r, amt in b["cost"].items())
@@ -472,6 +556,70 @@ class OraEtLaboraGame(BaseGame):
                 self.message = f"Round {self.current_round}/{self.max_rounds}. Rondel advances!"
                 for i in range(1, len(self.players) + 1):
                     self.player_data[str(i)]["workers_placed"] = 0
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.player_data[str(self.current_player)]
+
+        if self.actions_this_turn >= self.max_actions:
+            return "6"
+
+        moves = []
+        available_rondel = [(i, RONDEL_SLOTS[i], self.rondel[i])
+                            for i in range(len(RONDEL_SLOTS)) if self.rondel[i] > 0]
+        if available_rondel:
+            best_amt = max(r[2] for r in available_rondel)
+            moves.append(("1", 20 + best_amt * 5))
+
+        affordable_b = []
+        for bi in self.building_pool:
+            b = BUILDINGS[bi]
+            if bi in p["buildings"]:
+                continue
+            if all(p["resources"].get(r, 0) >= amt for r, amt in b["cost"].items()):
+                affordable_b.append(b)
+        if affordable_b:
+            best_vp = max(b["vp"] for b in affordable_b)
+            moves.append(("2", 30 + best_vp * 3))
+
+        usable = [(bi, BUILDINGS[bi]) for bi in p["buildings"]
+                  if BUILDINGS[bi]["produces"] or BUILDINGS[bi]["converts"]]
+        for bi, b in usable:
+            if b["converts"]:
+                if all(p["resources"].get(r, 0) >= amt for r, amt in b["converts"].items()):
+                    moves.append(("3", 25))
+                    break
+            else:
+                moves.append(("3", 22))
+                break
+
+        conversions = [
+            ("grain", 1), ("flour", 1), ("clay", 2), ("clay", 1),
+            ("wood", 2), ("peat", 2), ("livestock", 2),
+        ]
+        if any(p["resources"].get(fr, 0) >= fa for fr, fa in conversions):
+            moves.append(("4", 15))
+
+        settlements = [(bi, BUILDINGS[bi]) for bi in self.building_pool
+                       if BUILDINGS[bi]["type"] == "settlement"]
+        affordable_s = [b for bi, b in settlements
+                        if all(p["resources"].get(r, 0) >= amt for r, amt in b["cost"].items())]
+        if affordable_s:
+            best_svp = max(b["vp"] for b in affordable_s)
+            moves.append(("5", 35 + best_svp * 2))
+
+        moves.append(("6", 5))
+
+        if difficulty == "easy":
+            return rand.choice(moves)[0]
+        elif difficulty == "hard":
+            moves.sort(key=lambda x: x[1], reverse=True)
+            return moves[0][0]
+        else:
+            moves.sort(key=lambda x: x[1], reverse=True)
+            top = moves[:min(3, len(moves))]
+            return rand.choice(top)[0]
 
     def check_game_over(self):
         if self.current_round > self.max_rounds:

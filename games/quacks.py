@@ -68,6 +68,7 @@ class QuacksGame(BaseGame):
         'standard': 'Standard ingredient set',
         'herb_witches': 'Herb Witches variant with modified ingredients',
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -87,10 +88,18 @@ class QuacksGame(BaseGame):
         self.stopped = {1: False, 2: False}
         self.rat_tails = {1: 0, 2: 0}
         self.bonus_draws = {1: 0, 2: 0}
+        self._stay_on_player = False
         for p in (1, 2):
             self.bags[p] = self._starting_bag()
             random.shuffle(self.bags[p])
         self.round_done_players = set()
+
+    def switch_player(self):
+        """Override to suppress player switch after non-turn-ending moves."""
+        if self._stay_on_player:
+            self._stay_on_player = False
+            return
+        super().switch_player()
 
     def _starting_bag(self):
         bag = []
@@ -221,13 +230,16 @@ class QuacksGame(BaseGame):
                 print("  Enter item number or 'done'.")
 
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
         if move[0] == 'draw':
             chip = self._draw_chip(cp)
             if chip is None:
                 print("  Bag is empty! You must stop.")
                 self.stopped[cp] = True
-                return False
+                self._stay_on_player = True
+                return True
             self.cauldrons[cp].append(chip)
             ct, cv = chip
             if ct == 'green' and cv >= 2:
@@ -240,12 +252,14 @@ class QuacksGame(BaseGame):
             if white_s > BUST_LIMIT:
                 self.busted[cp] = True
                 print(f"  {RED}BUST! White total {white_s} > {BUST_LIMIT}!{RESET}")
-                input("  Press Enter...")
-            return False
+                self._pause("  Press Enter...")
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'stop':
             self.stopped[cp] = True
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'ruby_return':
             whites_in_cauldron = [(i, c) for i, c in enumerate(self.cauldrons[cp]) if c[0] == 'white']
@@ -258,7 +272,8 @@ class QuacksGame(BaseGame):
                 print(f"  Returned a white chip to bag. Rubies: {self.rubies[cp]}")
             else:
                 print("  No white chips in cauldron to return.")
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'next_player':
             if cp == 1 and not (self.busted[2] or self.stopped[2]):
@@ -283,10 +298,12 @@ class QuacksGame(BaseGame):
                     self.scores[cp] += 1
                 if item['type'] == 'yellow' and item['value'] >= 2:
                     self.rubies[cp] += 1
-                return False
+                self._stay_on_player = True
+                return True
             else:
                 print("  Not enough coins!")
-                return False
+                self._stay_on_player = True
+                return True
 
         elif move[0] == 'done_buying':
             if cp in self.round_done_players:
@@ -338,6 +355,69 @@ class QuacksGame(BaseGame):
         self.round_done_players = set()
         self.rat_tails = {1: 0, 2: 0}
 
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        if self.phase == 'draw':
+            if self.busted[p] or self.stopped[p]:
+                return ('next_player',)
+
+            white_s = self._white_sum(p)
+            if difficulty == "easy":
+                threshold = 5
+            elif difficulty == "hard":
+                threshold = 6
+            else:
+                threshold = 5
+
+            if white_s >= threshold:
+                return ('stop',)
+
+            if self.rubies[p] >= 2 and white_s >= 4:
+                whites_in_cauldron = [c for c in self.cauldrons[p] if c[0] == 'white']
+                if whites_in_cauldron:
+                    return ('ruby_return',)
+
+            if not self.bags[p]:
+                return ('stop',)
+
+            return ('draw',)
+
+        elif self.phase == 'buy':
+            shop = self._get_shop()
+            if difficulty == "easy":
+                affordable = [i for i, item in enumerate(shop) if self.coins[p] >= item['cost']]
+                if affordable and rand.random() < 0.7:
+                    return ('buy', rand.choice(affordable))
+                return ('done_buying',)
+
+            best_idx = None
+            best_val = -1
+            for i, item in enumerate(shop):
+                if self.coins[p] < item['cost']:
+                    continue
+                val = item['value'] * 3
+                if item['type'] == 'green':
+                    val += 5
+                elif item['type'] == 'blue':
+                    val += 3
+                elif item['type'] == 'red':
+                    val += 4
+                elif item['type'] == 'purple':
+                    val += 6
+                if difficulty == "medium":
+                    val += rand.uniform(-2, 2)
+                if val > best_val:
+                    best_val = val
+                    best_idx = i
+            if best_idx is not None:
+                return ('buy', best_idx)
+            return ('done_buying',)
+
+        return ('done_buying',)
+
     def check_game_over(self):
         if self.round_num > self.max_rounds:
             self.game_over = True
@@ -377,6 +457,7 @@ class QuacksGame(BaseGame):
         self.stopped = {int(k): v for k, v in state['stopped'].items()}
         self.rat_tails = {int(k): v for k, v in state['rat_tails'].items()}
         self.round_done_players = set(state['round_done_players'])
+        self._stay_on_player = False
 
     def get_tutorial(self):
         return """

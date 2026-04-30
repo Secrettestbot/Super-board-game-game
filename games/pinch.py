@@ -33,6 +33,7 @@ class PinchGame(BaseGame):
         "standard": "13 cards each, full bidding (values 1-13)",
         "quick": "7 cards each, simplified (values 1-7)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -364,6 +365,80 @@ class PinchGame(BaseGame):
                 self.current_player = self.lead_player
             else:
                 super().switch_player()
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        if self.phase == "bidding":
+            hand = self.hands[p]
+            trump_cards = sum(1 for c in hand if c[1] == self.trump_suit)
+            high_cards = sum(1 for c in hand if c[0] >= 10)
+            if difficulty == "easy":
+                bid = rand.randint(0, self.cards_per_hand // 2)
+            elif difficulty == "hard":
+                est = trump_cards * 0.8 + high_cards * 0.5
+                bid = max(0, min(self.cards_per_hand, round(est)))
+            else:
+                est = trump_cards * 0.7 + high_cards * 0.4 + rand.uniform(-1, 1)
+                bid = max(0, min(self.cards_per_hand, round(est)))
+            return ("bid", bid)
+
+        elif self.phase == "playing":
+            valid = self._get_valid_plays(p)
+            if not valid:
+                return None
+            hand = self.hands[p]
+
+            if difficulty == "easy":
+                return ("play", rand.choice(valid))
+
+            if not self.current_trick:
+                scored = []
+                for i in valid:
+                    card = hand[i]
+                    score = card[0]
+                    if card[1] == self.trump_suit:
+                        score += 15
+                    if difficulty == "hard":
+                        score += card[0] * 0.5
+                    scored.append((score, i))
+                scored.sort(reverse=True)
+                if difficulty == "medium":
+                    top = scored[:max(1, len(scored) // 2)]
+                    return ("play", rand.choice(top)[1])
+                return ("play", scored[0][1])
+            else:
+                lead_card = self.current_trick[0][1]
+                lead_suit = lead_card[1]
+                scored = []
+                for i in valid:
+                    card = hand[i]
+                    score = 0
+                    can_win = False
+                    if card[1] == self.trump_suit and lead_suit != self.trump_suit:
+                        can_win = True
+                        score = 20 + card[0]
+                    elif card[1] == lead_suit and card[0] > lead_card[0]:
+                        can_win = True
+                        score = 10 + card[0]
+                    if card[0] == lead_card[0]:
+                        tricks_needed = self.bids[p] - self.tricks_won[p]
+                        if tricks_needed <= 0:
+                            score = 30
+                        else:
+                            score = -5
+                    if not can_win and card[0] != lead_card[0]:
+                        score = -card[0]
+                    scored.append((score, i))
+                scored.sort(reverse=True)
+                if difficulty == "medium":
+                    top = scored[:max(1, len(scored) // 2)]
+                    return ("play", rand.choice(top)[1])
+                return ("play", scored[0][1])
+
+        return None
 
     def check_game_over(self):
         """Check if all rounds are complete."""

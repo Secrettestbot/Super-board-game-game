@@ -246,6 +246,8 @@ class CantStopGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
 
         if move == "roll":
@@ -356,6 +358,94 @@ class CantStopGame(BaseGame):
             pass  # Don't switch during a turn
         else:
             super().switch_player()
+
+    # -------------------------------------------------------- AI
+    def get_ai_move(self):
+        """Return an AI-generated move."""
+        import random as _rng
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        if self.phase == "roll":
+            return "roll"
+
+        if self.phase == "bust":
+            return "bust"
+
+        if self.phase == "turn_over":
+            return "end_turn"
+
+        if self.phase == "choose_pairs":
+            pairs = self._possible_pairs()
+            if not pairs:
+                return "no_pairs"
+
+            scored = []
+            for p1, p2, c1, c2 in pairs:
+                score = 0
+                if c1:
+                    pos = self._effective_pos(cp, p1)
+                    remaining = COLUMN_LENGTHS[p1] - pos
+                    if remaining <= 2:
+                        score += 20
+                    elif remaining <= 4:
+                        score += 10
+                    if p1 in self.runners or self.progress[cp].get(p1, 0) > 0:
+                        score += 5
+                    score += 7 - abs(p1 - 7)
+                if c2:
+                    pos2 = self._effective_pos(cp, p2)
+                    remaining2 = COLUMN_LENGTHS[p2] - pos2
+                    if remaining2 <= 2:
+                        score += 20
+                    elif remaining2 <= 4:
+                        score += 10
+                    if p2 in self.runners or self.progress[cp].get(p2, 0) > 0:
+                        score += 5
+                    score += 7 - abs(p2 - 7)
+                scored.append((p1, p2, c1, c2, score))
+
+            if difficulty == 'easy':
+                choice = _rng.choice(scored)
+            else:
+                scored.sort(key=lambda x: -x[4])
+                if difficulty == 'medium':
+                    top = scored[:max(1, len(scored) // 2)]
+                    choice = _rng.choice(top)
+                else:
+                    choice = scored[0]
+
+            return f"pair {choice[0]} {choice[1]} {int(choice[2])} {int(choice[3])}"
+
+        if self.phase == "stop_or_continue":
+            temp_value = sum(self.temp.values())
+            close_to_cap = any(
+                self._effective_pos(cp, col) >= COLUMN_LENGTHS[col] - 1
+                for col in self.temp
+            )
+            num_runners = len(self.runners)
+
+            if difficulty == 'easy':
+                return _rng.choice(["roll", "roll", "stop"])
+
+            if difficulty == 'hard':
+                if close_to_cap and temp_value >= 3:
+                    return "stop"
+                if temp_value >= 6:
+                    return "stop"
+                if num_runners >= 3 and temp_value >= 4:
+                    return "stop"
+                return "roll"
+
+            if close_to_cap and temp_value >= 2:
+                return "stop"
+            if temp_value >= 4:
+                return "stop"
+            if num_runners >= 3 and temp_value >= 3:
+                return "stop"
+            return "roll"
+
+        return "roll"
 
     # -------------------------------------------------------- check_game_over
     def check_game_over(self):

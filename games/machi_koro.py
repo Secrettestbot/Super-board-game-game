@@ -376,6 +376,8 @@ class MachiKoroGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
 
         if move.startswith("dice"):
@@ -428,13 +430,16 @@ class MachiKoroGame(BaseGame):
 
         # Radio Tower reroll
         if (self._has_landmark(cp, "Radio Tower") and not self.used_reroll):
-            clear_screen()
-            self.display()
-            print(f"  Radio Tower: Reroll? ('yes' or 'no')")
-            try:
-                choice = input_with_quit("  > ").strip().lower()
-            except Exception:
-                raise
+            if self.ai_player == cp:
+                choice = "yes"
+            else:
+                clear_screen()
+                self.display()
+                print(f"  Radio Tower: Reroll? ('yes' or 'no')")
+                try:
+                    choice = input_with_quit("  > ").strip().lower()
+                except Exception:
+                    raise
             if choice == "yes":
                 self.used_reroll = True
                 dice = [random.randint(1, 6) for _ in range(count)]
@@ -620,6 +625,137 @@ class MachiKoroGame(BaseGame):
             pass  # Don't switch mid-turn
         else:
             super().switch_player()
+
+    side_labels = ("Player 1", "Player 2")
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        if self.phase == "dice_choice":
+            if self._has_landmark(cp, "City Hall") and self.coins[cp] == 0:
+                self.coins[cp] += 1
+                self._add_log(f"City Hall: {self.players[cp - 1]} gets 1 coin (had 0)")
+
+            has_train = self._has_landmark(cp, "Train Station")
+            if has_train and difficulty != 'easy':
+                all_b = self._all_buildings()
+                for bname, count in self.buildings[cp].items():
+                    if count > 0 and bname in all_b:
+                        for a in all_b[bname]["activation"]:
+                            if a >= 7:
+                                return "dice 2"
+            return "dice 1"
+
+        elif self.phase == "roll":
+            return "roll"
+
+        elif self.phase == "activate":
+            return "activate"
+
+        elif self.phase == "build":
+            all_b = self._all_buildings()
+            ldefs = self._landmark_defs()
+
+            if difficulty == 'easy':
+                affordable = []
+                for bname, bdef in all_b.items():
+                    if bdef["cost"] <= self.coins[cp]:
+                        if bdef["color"] == "purple" and self._building_count(cp, bname) >= 1:
+                            continue
+                        if self.variation == "harbor":
+                            if bname not in self.marketplace and bname not in ("Wheat Field", "Bakery"):
+                                continue
+                        affordable.append(("building", bname))
+                for lname, built in self.landmarks[cp].items():
+                    if not built and ldefs[lname]["cost"] <= self.coins[cp]:
+                        affordable.append(("landmark", lname))
+                if affordable and random.random() > 0.3:
+                    kind, name = random.choice(affordable)
+                    if kind == "landmark":
+                        return f"build_landmark|{name}"
+                    return f"build_building|{name}"
+                return "pass_build"
+
+            best_purchase = None
+            best_score = 0
+
+            for bname, bdef in all_b.items():
+                if bdef["cost"] > self.coins[cp] or bdef["cost"] == 0:
+                    continue
+                if bdef["color"] == "purple" and self._building_count(cp, bname) >= 1:
+                    continue
+                if self.variation == "harbor":
+                    if bname not in self.marketplace and bname not in ("Wheat Field", "Bakery"):
+                        continue
+
+                score = 0
+                cost = bdef["cost"]
+                if bdef["color"] == "blue":
+                    score = bdef.get("coins", 0) * len(bdef["activation"]) * 2
+                elif bdef["color"] == "green":
+                    if bdef.get("coins_per"):
+                        target = bdef["coins_per"]
+                        tc = 0
+                        if target == "Forest":
+                            tc = self._building_count(cp, "Forest") + self._building_count(cp, "Mine")
+                        elif target == "Wheat Field":
+                            tc = self._building_count(cp, "Wheat Field") + self._building_count(cp, "Apple Orchard")
+                        elif target == "Cafe":
+                            tc = self._building_count(cp, "Cafe") + self._building_count(cp, "Family Restaurant")
+                        else:
+                            tc = self._building_count(cp, target)
+                        score = bdef["coins"] * tc * len(bdef["activation"])
+                    else:
+                        score = bdef.get("coins", 0) * len(bdef["activation"])
+                elif bdef["color"] == "red":
+                    score = bdef.get("steal", 0) * len(bdef["activation"])
+                elif bdef["color"] == "purple":
+                    score = bdef.get("tax", 0) * 3 + bdef.get("steal", 0) * 2
+
+                efficiency = score / cost
+                if difficulty == 'hard' and score > 3:
+                    efficiency *= 1.5
+                if efficiency > best_score:
+                    best_score = efficiency
+                    best_purchase = f"build_building|{bname}"
+
+            for lname, built in self.landmarks[cp].items():
+                if built or ldefs[lname]["cost"] > self.coins[cp]:
+                    continue
+                score = 0
+                effect = ldefs[lname].get("effect", "")
+                if effect == "two_dice":
+                    score = 8
+                elif effect == "mall_bonus":
+                    score = 6
+                elif effect == "doubles":
+                    score = 5
+                elif effect == "reroll":
+                    score = 7
+                elif effect == "harbor_bonus":
+                    score = 6
+                elif effect == "city_hall":
+                    score = 3
+                elif effect == "airport":
+                    score = 4
+                cost = ldefs[lname]["cost"]
+                efficiency = score / cost if cost > 0 else score
+                if difficulty == 'hard':
+                    efficiency *= 2
+                if efficiency > best_score:
+                    best_score = efficiency
+                    best_purchase = f"build_landmark|{lname}"
+
+            if best_purchase and best_score > 0:
+                return best_purchase
+            return "pass_build"
+
+        elif self.phase == "extra_turn":
+            return "extra_turn"
+
+        return "pass_build"
 
     # -------------------------------------------------------- check_game_over
     def check_game_over(self):

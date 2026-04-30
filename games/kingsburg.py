@@ -348,6 +348,8 @@ class KingsburgGame(BaseGame):
 
     # ---------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
 
         if move == "done":
@@ -461,6 +463,76 @@ class KingsburgGame(BaseGame):
         elif self.phase == "battle":
             # Battle resolves all at once, no switch needed
             pass
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        if self.phase == "place":
+            available = self._available_dice(cp)
+            if not available:
+                return "done"
+            claimable = [a for a in range(1, 19) if self._can_claim_advisor(cp, a)]
+            if not claimable:
+                return "done"
+            if difficulty == 'easy':
+                return f"claim {random.choice(claimable)}"
+            scored = []
+            for adv in claimable:
+                _, rewards = ADVISORS[adv]
+                score = 0
+                for resource, amount in rewards.items():
+                    if resource == "soldiers":
+                        score += amount * 2
+                    elif resource == "stone":
+                        score += amount * 3
+                    else:
+                        score += amount * 2
+                dice_needed = self._find_dice_for_sum(available, adv)
+                if dice_needed:
+                    score = score / len(dice_needed) * 2
+                scored.append((score, adv))
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'medium':
+                top = scored[:max(1, len(scored) // 2)]
+                _, adv = random.choice(top)
+            else:
+                _, adv = scored[0]
+            return f"claim {adv}"
+
+        elif self.phase == "build":
+            buildable = [b for b in BUILDINGS if self._can_build(cp, b)]
+            if not buildable:
+                return "pass"
+            if difficulty == 'easy':
+                return f"build {random.choice(buildable)}"
+            scored = []
+            for b in buildable:
+                cost, pts, ability = BUILDINGS[b]
+                score = pts * 3
+                if "defense" in ability:
+                    score += 3
+                if "soldier" in ability.lower():
+                    score += 2
+                if "gold" in ability.lower():
+                    score += 4
+                if difficulty == 'hard':
+                    total_cost = sum(cost.values())
+                    score = score / max(1, total_cost) * 3
+                scored.append((score, b))
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'medium':
+                top = scored[:max(1, len(scored) // 2)]
+                _, b = random.choice(top)
+            else:
+                _, b = scored[0]
+            return f"build {b}"
+
+        elif self.phase == "battle":
+            return "battle"
+
+        return "done"
 
     def check_game_over(self):
         if self.current_year > self.max_years:

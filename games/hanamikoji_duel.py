@@ -466,6 +466,188 @@ class HanamikojiDuelGame(BaseGame):
         # But deal new cards
         self._deal_round()
 
+    # ---------------------------------------------------------- get_ai_move
+    def get_ai_move(self):
+        import random as _rand
+
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+        opponent = 2 if player == 1 else 1
+
+        def _card_value(card):
+            """Score a card: higher charm = more valuable; geishas where
+            AI is behind are more urgent."""
+            charm = self.geisha[card]["charm"]
+            my_items = self.geisha_items[card][player]
+            opp_items = self.geisha_items[card][opponent]
+            urgency = 0
+            if self.geisha_favor[card] == opponent:
+                urgency = 2
+            elif self.geisha_favor[card] is None and opp_items > my_items:
+                urgency = 1
+            return charm + urgency
+
+        # ---- Pending action responses ----
+        if self.pending_action:
+
+            if self.pending_action == "offer_pick":
+                data = self.pending_data
+                val_a = sum(_card_value(c) for c in data["group_a"])
+                val_b = sum(_card_value(c) for c in data["group_b"])
+
+                if difficulty == 'easy':
+                    return ("offer_resolve", _rand.choice(["A", "B"]))
+                elif difficulty == 'medium':
+                    val_a += _rand.random() * 2
+                    val_b += _rand.random() * 2
+                    return ("offer_resolve", "A" if val_a >= val_b else "B")
+                else:  # hard
+                    return ("offer_resolve", "A" if val_a >= val_b else "B")
+
+            elif self.pending_action == "display_pick":
+                data = self.pending_data
+                cards = data["cards"]
+
+                if difficulty == 'easy':
+                    idx = _rand.randint(0, len(cards) - 1)
+                    return ("display_resolve", str(idx))
+                else:
+                    scores = [_card_value(c) for c in cards]
+                    if difficulty == 'medium':
+                        weighted = [(s + _rand.random(), i) for i, s in enumerate(scores)]
+                        idx = max(weighted, key=lambda x: x[0])[1]
+                    else:  # hard
+                        idx = max(range(len(scores)), key=lambda i: scores[i])
+                    return ("display_resolve", str(idx))
+
+        # ---- Normal action selection ----
+        hand = list(self.hands[player])
+        available = list(self.actions_available[player])
+
+        if not available or not hand:
+            return ("end_round",)
+
+        # Filter actions by hand size requirements
+        valid_actions = []
+        for act in available:
+            if act == "secret" and len(hand) >= 2:
+                valid_actions.append(act)
+            elif act == "reserve" and len(hand) >= 1:
+                valid_actions.append(act)
+            elif act == "offer" and len(hand) >= 2:
+                valid_actions.append(act)
+            elif act == "display" and len(hand) >= 3:
+                valid_actions.append(act)
+
+        if not valid_actions:
+            return ("end_round",)
+
+        if difficulty == 'easy':
+            action = _rand.choice(valid_actions)
+            return self._ai_build_move_easy(action, hand, _rand)
+
+        # Medium / Hard: score each action and pick best
+        best_move = None
+        best_score = -999
+
+        for action in valid_actions:
+            move, score = self._ai_evaluate_action(action, hand, _rand, _card_value)
+            if difficulty == 'medium':
+                score += _rand.random() * 3
+            if score > best_score:
+                best_score = score
+                best_move = move
+
+        return best_move
+
+    def _ai_build_move_easy(self, action, hand, _rand):
+        """Build a random move for easy difficulty."""
+        if action == "secret":
+            indices = _rand.sample(range(len(hand)), 2)
+            return ("secret", " ".join(str(i) for i in indices))
+
+        elif action == "reserve":
+            idx = _rand.randint(0, len(hand) - 1)
+            return ("reserve", str(idx))
+
+        elif action == "offer":
+            # Random split: pick random subset for group A
+            count_a = _rand.randint(1, len(hand) - 1)
+            indices = _rand.sample(range(len(hand)), count_a)
+            return ("offer_split", " ".join(str(i) for i in indices))
+
+        elif action == "display":
+            indices = _rand.sample(range(len(hand)), 3)
+            return ("display_choose", " ".join(str(i) for i in indices))
+
+        return ("end_round",)
+
+    def _ai_evaluate_action(self, action, hand, _rand, _card_value):
+        """Evaluate an action and return (move, score). Higher score = better."""
+        from itertools import combinations
+
+        indexed = [(i, hand[i], _card_value(hand[i])) for i in range(len(hand))]
+        indexed.sort(key=lambda x: x[2], reverse=True)
+
+        if action == "secret":
+            # Discard 2 least valuable cards (removed from round)
+            least = sorted(indexed, key=lambda x: x[2])[:2]
+            indices = [x[0] for x in least]
+            score = 10 - sum(x[2] for x in least)
+            return ("secret", " ".join(str(i) for i in indices)), score
+
+        elif action == "reserve":
+            # Reserve most valuable card (placed for AI at round end)
+            best = indexed[0]
+            score = best[2]
+            return ("reserve", str(best[0])), score
+
+        elif action == "offer":
+            # Split hand into 2 groups. Opponent picks one group.
+            # Maximize the minimum group value (opponent takes the better one,
+            # so AI wants to make both groups as equal as possible, or trick
+            # opponent by making both roughly equal).
+            best_split = None
+            best_split_score = -999
+            n = len(hand)
+            for size_a in range(1, n):
+                for combo in combinations(range(n), size_a):
+                    a_indices = list(combo)
+                    b_indices = [i for i in range(n) if i not in combo]
+                    val_a = sum(_card_value(hand[i]) for i in a_indices)
+                    val_b = sum(_card_value(hand[i]) for i in b_indices)
+                    # AI gets the group opponent doesn't pick (the lower value one)
+                    ai_gets = min(val_a, val_b)
+                    if ai_gets > best_split_score:
+                        best_split_score = ai_gets
+                        best_split = a_indices
+            if best_split:
+                return ("offer_split", " ".join(str(i) for i in best_split)), best_split_score
+            # Fallback
+            return ("offer_split", "0"), 0
+
+        elif action == "display":
+            # Show 3 cards; opponent picks 1, AI keeps 2.
+            # Pick 3 cards where opponent's best single pick is minimized.
+            best_trio = None
+            best_trio_score = -999
+            for trio in combinations(range(len(hand)), 3):
+                trio_vals = [_card_value(hand[i]) for i in trio]
+                trio_vals_sorted = sorted(trio_vals, reverse=True)
+                # Opponent picks best card; AI keeps other 2
+                opp_gets = trio_vals_sorted[0]
+                ai_gets = trio_vals_sorted[1] + trio_vals_sorted[2]
+                trio_score = ai_gets - opp_gets
+                if trio_score > best_trio_score:
+                    best_trio_score = trio_score
+                    best_trio = list(trio)
+            if best_trio:
+                return ("display_choose", " ".join(str(i) for i in best_trio)), best_trio_score
+            # Fallback
+            return ("display_choose", "0 1 2"), 0
+
+        return ("end_round",), -999
+
     def check_game_over(self):
         winner = self._check_win()
         if winner:

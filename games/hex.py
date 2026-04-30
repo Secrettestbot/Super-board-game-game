@@ -114,6 +114,8 @@ class HexGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move. Returns True if valid."""
+        if move is None:
+            return False
         if move == "swap":
             if not self.swap_available:
                 return False
@@ -139,6 +141,76 @@ class HexGame(BaseGame):
             self.swap_available = False
 
         return True
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        size = self.size
+        me = self.current_player
+
+        if self.swap_available and me == 2:
+            r, c = self.first_move
+            center = size // 2
+            if difficulty == 'hard' and abs(r - center) <= 1 and abs(c - center) <= 1:
+                return "swap"
+            elif difficulty == 'medium' and (r, c) == (center, center):
+                return "swap"
+
+        empty = [(r, c) for r in range(size) for c in range(size) if self.board[r][c] == 0]
+        if not empty:
+            return empty[0] if empty else (0, 0)
+
+        if difficulty == 'easy':
+            return random.choice(empty)
+
+        opp = 3 - me
+        neighbors = [(-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0)]
+
+        def score_pos(r, c):
+            s = 0.0
+            for dr, dc in neighbors:
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < size and 0 <= nc < size:
+                    if self.board[nr][nc] == me:
+                        s += 4
+                    elif self.board[nr][nc] == opp:
+                        s += 2
+
+            if me == 1:
+                dist_start = r
+                dist_end = size - 1 - r
+            else:
+                dist_start = c
+                dist_end = size - 1 - c
+
+            s += (size - min(dist_start, dist_end)) * 0.5
+
+            center = size // 2
+            center_dist = abs(r - center) + abs(c - center)
+            s += max(0, size - center_dist) * 0.3
+
+            if difficulty == 'hard':
+                for dr, dc in neighbors:
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < size and 0 <= nc < size and self.board[nr][nc] == me:
+                        for dr2, dc2 in neighbors:
+                            nnr, nnc = nr + dr2, nc + dc2
+                            if 0 <= nnr < size and 0 <= nnc < size:
+                                if self.board[nnr][nnc] == me and (nnr, nnc) != (r, c):
+                                    s += 2
+
+            return s
+
+        scored = [(score_pos(r, c), r, c) for r, c in empty]
+        scored.sort(key=lambda x: -x[0])
+
+        if difficulty == 'medium':
+            top = scored[:max(3, len(scored) // 5)]
+            pick = random.choice(top)
+        else:
+            pick = scored[0]
+
+        return (pick[1], pick[2])
 
     def check_game_over(self):
         """Check if either player has connected their sides using BFS."""

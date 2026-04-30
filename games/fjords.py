@@ -252,6 +252,8 @@ class FjordsGame(BaseGame):
             return ("claim", move)
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move == "end_phase":
             self.phase = 2
             self.consecutive_passes = 0
@@ -301,6 +303,81 @@ class FjordsGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        if self.phase == 1:
+            if self.current_tile is None:
+                return "end_phase"
+            valid = self._valid_tile_placements()
+            if not valid:
+                return "end_phase"
+
+            if difficulty == 'easy':
+                r, c = random.choice(valid)
+                return ("place_tile", f"{r},{c}")
+
+            scored = []
+            for r, c in valid:
+                score = 0
+                if self.current_tile["center"] == MEADOW:
+                    score += 3
+                neighbors = _hex_neighbors(r, c)
+                for nr, nc in neighbors:
+                    if 0 <= nr < self.rows and 0 <= nc < self.cols:
+                        cell = self.board[nr][nc]
+                        if cell and cell["claim"] == p:
+                            score += 2
+                        elif cell and cell["terrain"] == MEADOW and cell["claim"] is None:
+                            score += 1
+                scored.append((score, r, c))
+
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'medium':
+                top = scored[:max(1, len(scored) // 3)]
+                _, r, c = random.choice(top)
+            else:
+                _, r, c = scored[0]
+            return ("place_tile", f"{r},{c}")
+
+        else:
+            valid = self._valid_claim_placements(p)
+            if not valid:
+                return ("pass",)
+
+            if difficulty == 'easy':
+                r, c = random.choice(valid)
+                return ("claim", f"{r},{c}")
+
+            scored = []
+            for r, c in valid:
+                score = 0
+                neighbors = _hex_neighbors(r, c)
+                expansion = 0
+                for nr, nc in neighbors:
+                    if 0 <= nr < self.rows and 0 <= nc < self.cols:
+                        cell = self.board[nr][nc]
+                        if cell and cell["terrain"] == MEADOW and cell["claim"] is None:
+                            expansion += 1
+                score += expansion * 2
+                opp = 2 if p == 1 else 1
+                for nr, nc in neighbors:
+                    if 0 <= nr < self.rows and 0 <= nc < self.cols:
+                        cell = self.board[nr][nc]
+                        if cell and cell["claim"] == opp:
+                            score += 1
+                scored.append((score, r, c))
+
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'medium':
+                top = scored[:max(1, len(scored) // 3)]
+                _, r, c = random.choice(top)
+            else:
+                _, r, c = scored[0]
+            return ("claim", f"{r},{c}")
 
     def check_game_over(self):
         if self.phase == 1:

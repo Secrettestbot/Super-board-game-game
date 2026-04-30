@@ -13,6 +13,7 @@ class PentagoGame(BaseGame):
     variations = {
         "standard": "Standard Pentago",
     }
+    side_labels = ("X", "O")
 
     SIZE = 6
     HALF = 3
@@ -185,6 +186,8 @@ class PentagoGame(BaseGame):
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
         """Place marble and rotate quadrant. Returns True if valid."""
+        if move is None:
+            return False
         row, col, quadrant, direction = move
 
         if not (0 <= row < self.SIZE and 0 <= col < self.SIZE):
@@ -210,6 +213,89 @@ class PentagoGame(BaseGame):
         return True
 
     # -------------------------------------------------------- check_game_over
+    def _eval_lines(self, player):
+        score = 0
+        b = self.board
+        n = self.SIZE
+        for r in range(n):
+            for c in range(n - 4):
+                line = [b[r][c + i] for i in range(5)]
+                cnt = line.count(player)
+                emp = line.count(0)
+                if cnt > 0 and cnt + emp == 5:
+                    score += cnt ** 2
+        for r in range(n - 4):
+            for c in range(n):
+                line = [b[r + i][c] for i in range(5)]
+                cnt = line.count(player)
+                emp = line.count(0)
+                if cnt > 0 and cnt + emp == 5:
+                    score += cnt ** 2
+        for r in range(n - 4):
+            for c in range(n - 4):
+                line = [b[r + i][c + i] for i in range(5)]
+                cnt = line.count(player)
+                emp = line.count(0)
+                if cnt > 0 and cnt + emp == 5:
+                    score += cnt ** 2
+        for r in range(n - 4):
+            for c in range(4, n):
+                line = [b[r + i][c - i] for i in range(5)]
+                cnt = line.count(player)
+                emp = line.count(0)
+                if cnt > 0 and cnt + emp == 5:
+                    score += cnt ** 2
+        return score
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        opp = 2 if p == 1 else 1
+        quadrants = list(self.QUADRANT_MAP.keys())
+        directions = ["CW", "CCW"]
+
+        empty = [(r, c) for r in range(self.SIZE) for c in range(self.SIZE)
+                 if self.board[r][c] == 0]
+        if not empty:
+            return (0, 0, "TL", "CW")
+
+        if difficulty == "easy":
+            r, c = rand.choice(empty)
+            return (r, c, rand.choice(quadrants), rand.choice(directions))
+
+        best_move = None
+        best_score = -9999
+        candidates = empty if difficulty == "hard" else rand.sample(empty, min(12, len(empty)))
+
+        for r, c in candidates:
+            for q in quadrants:
+                for d in directions:
+                    self.board[r][c] = p
+                    quad = self._get_quadrant(q)
+                    rotated = self._rotate_cw(quad) if d == "CW" else self._rotate_ccw(quad)
+                    self._set_quadrant(q, rotated)
+
+                    score = 0
+                    if self._check_five(p):
+                        score = 10000
+                    elif self._check_five(opp):
+                        score = -5000
+                    else:
+                        score = self._eval_lines(p) - self._eval_lines(opp) * 1.2
+
+                    self._set_quadrant(q, quad)
+                    self.board[r][c] = 0
+
+                    if difficulty == "medium":
+                        score += rand.uniform(-2, 2)
+
+                    if score > best_score:
+                        best_score = score
+                        best_move = (r, c, q, d)
+
+        return best_move if best_move else (empty[0][0], empty[0][1], "TL", "CW")
+
     def check_game_over(self):
         """Check for 5 in a row after rotation. Both players can win (draw)."""
         p1_wins = self._check_five(1)

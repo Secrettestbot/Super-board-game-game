@@ -319,6 +319,8 @@ class ChineseCheckersGame(BaseGame):
 
     def make_move(self, move):
         """Validate and execute a move. Returns True if valid."""
+        if move is None:
+            return False
         if move is None or len(move) < 2:
             return False
 
@@ -427,6 +429,84 @@ class ChineseCheckersGame(BaseGame):
     # ------------------------------------------------------------------
     # Win check
     # ------------------------------------------------------------------
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        goal = self.p2_home if cp == 1 else self.p1_home
+        opp_start = self.p1_home if cp == 1 else self.p2_home
+
+        pieces = [(r, c) for (r, c), v in self.board.items() if v == cp]
+
+        goal_r = sum(r for r, c in goal) / len(goal)
+        goal_c = sum(c for r, c in goal) / len(goal)
+
+        def gdist(r, c):
+            return abs(r - goal_r) + abs(c - goal_c) * 0.3
+
+        def find_jump_paths(start, visited=None, path=None):
+            if visited is None:
+                visited = {start}
+                path = [start]
+            results = []
+            for nb in _hex_neighbors(*start):
+                if self.board.get(nb, EMPTY) == EMPTY:
+                    continue
+                land = _jump_dest(start[0], start[1], nb[0], nb[1])
+                if land not in self.positions or self.board.get(land, EMPTY) != EMPTY or land in visited:
+                    continue
+                visited.add(land)
+                new_path = path + [land]
+                results.append(new_path)
+                results.extend(find_jump_paths(land, visited, new_path))
+                visited.discard(land)
+            return results
+
+        all_moves = []
+        for pos in pieces:
+            r, c = pos
+            start_d = gdist(r, c)
+            for nr, nc in _hex_neighbors(r, c):
+                if (nr, nc) in self.positions and self.board.get((nr, nc), EMPTY) == EMPTY:
+                    if pos in goal and (nr, nc) not in goal:
+                        continue
+                    if (nr, nc) in opp_start and opp_start != goal:
+                        continue
+                    adv = start_d - gdist(nr, nc)
+                    all_moves.append(([pos, (nr, nc)], adv))
+            for jpath in find_jump_paths(pos):
+                dest = jpath[-1]
+                if pos in goal and dest not in goal:
+                    continue
+                if dest in opp_start and opp_start != goal:
+                    continue
+                adv = start_d - gdist(*dest)
+                all_moves.append((jpath, adv))
+
+        if not all_moves:
+            return None
+
+        if difficulty == 'easy':
+            path, _ = random.choice(all_moves)
+            return path
+
+        if difficulty == 'medium':
+            all_moves.sort(key=lambda x: -x[1])
+            top = all_moves[:max(3, len(all_moves) // 4)]
+            path, _ = random.choice(top)
+            return path
+
+        def full_score(m):
+            p, adv = m
+            bonus = adv
+            if p[-1] in goal:
+                bonus += 5
+            return bonus
+
+        all_moves.sort(key=lambda x: -full_score(x))
+        path, _ = all_moves[0]
+        return path
 
     def check_game_over(self):
         """Check if a player has filled the opposite triangle."""

@@ -284,6 +284,163 @@ class EntropyGame(BaseGame):
         self.chaos_player, self.order_player = self.order_player, self.chaos_player
         self.phase = "chaos"
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+
+        if self.phase == "chaos":
+            if self.drawn_piece is None:
+                if self.bag:
+                    self.drawn_piece = self.bag.pop()
+                else:
+                    return None
+
+            empty = [(r, c) for r in range(self.size) for c in range(self.size)
+                     if self.board[r][c] == '.']
+            if not empty:
+                return None
+
+            if difficulty == 'easy':
+                r, c = random.choice(empty)
+                return ("chaos", r, c)
+
+            piece = self.drawn_piece
+            scoring_axis = 1 if self.chaos_player == 1 else 2
+
+            def disruption_score(r, c):
+                score = 0
+                if scoring_axis == 2:
+                    col = [self.board[rr][c] for rr in range(self.size)]
+                    col[r] = piece
+                    run = self._longest_run(col)
+                    score -= run * 3
+                    row = [self.board[r][cc] for cc in range(self.size)]
+                    row[c] = piece
+                    run_r = self._longest_run(row)
+                    score -= run_r
+                else:
+                    row = [self.board[r][cc] for cc in range(self.size)]
+                    row[c] = piece
+                    run = self._longest_run(row)
+                    score -= run * 3
+                    col = [self.board[rr][c] for rr in range(self.size)]
+                    col[r] = piece
+                    run_c = self._longest_run(col)
+                    score -= run_c
+
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < self.size and 0 <= nc < self.size:
+                        if self.board[nr][nc] == piece:
+                            score -= 2
+                return score
+
+            scored = [(disruption_score(r, c), r, c) for r, c in empty]
+            scored.sort(key=lambda x: x[0])
+
+            if difficulty == 'medium':
+                top = scored[:max(1, len(scored) // 3)]
+                _, r, c = random.choice(top)
+            else:
+                _, r, c = scored[0]
+            return ("chaos", r, c)
+
+        else:
+            occupied = [(r, c) for r in range(self.size) for c in range(self.size)
+                        if self.board[r][c] != '.']
+            if not occupied:
+                return ("order_pass",)
+
+            if difficulty == 'easy':
+                if random.random() < 0.5:
+                    return ("order_pass",)
+                r, c = random.choice(occupied)
+                dirs = ['up', 'down', 'left', 'right']
+                random.shuffle(dirs)
+                for d in dirs:
+                    dr, dc = {'up': (-1, 0), 'down': (1, 0),
+                              'left': (0, -1), 'right': (0, 1)}[d]
+                    nr, nc = r + dr, c + dc
+                    if (0 <= nr < self.size and 0 <= nc < self.size
+                            and self.board[nr][nc] == '.'):
+                        return ("order", r, c, d)
+                return ("order_pass",)
+
+            scoring_axis = 1 if self.order_player == 1 else 2
+
+            def order_eval(r, c, direction):
+                dr, dc = {'up': (-1, 0), 'down': (1, 0),
+                           'left': (0, -1), 'right': (0, 1)}[direction]
+                nr, nc = r + dr, c + dc
+                if not (0 <= nr < self.size and 0 <= nc < self.size):
+                    return None
+                if self.board[nr][nc] != '.':
+                    return None
+
+                piece = self.board[r][c]
+                fr, fc = r + dr, c + dc
+                while (0 <= fr < self.size and 0 <= fc < self.size
+                       and self.board[fr][fc] == '.'):
+                    fr += dr
+                    fc += dc
+                fr -= dr
+                fc -= dc
+
+                old_score = 0
+                new_score = 0
+                if scoring_axis == 1:
+                    old_row = [self.board[r][cc] for cc in range(self.size)]
+                    old_score += self._longest_run(old_row)
+                    new_row = old_row[:]
+                    new_row[c] = '.'
+                    new_score_r = self._longest_run(new_row)
+                    dest_row = [self.board[fr][cc] for cc in range(self.size)]
+                    old_score += self._longest_run(dest_row)
+                    new_dest_row = dest_row[:]
+                    new_dest_row[fc] = piece
+                    new_score += self._longest_run(new_row)
+                    new_score += self._longest_run(new_dest_row)
+                else:
+                    old_col = [self.board[rr][c] for rr in range(self.size)]
+                    old_score += self._longest_run(old_col)
+                    new_col = old_col[:]
+                    new_col[r] = '.'
+                    dest_col = [self.board[rr][fc] for rr in range(self.size)]
+                    old_score += self._longest_run(dest_col)
+                    new_dest_col = dest_col[:]
+                    new_dest_col[fr] = piece
+                    new_score += self._longest_run(new_col)
+                    new_score += self._longest_run(new_dest_col)
+
+                return new_score - old_score
+
+            best_moves = []
+            for r, c in occupied:
+                for d in ['up', 'down', 'left', 'right']:
+                    val = order_eval(r, c, d)
+                    if val is not None:
+                        best_moves.append((val, r, c, d))
+
+            if not best_moves:
+                return ("order_pass",)
+
+            best_moves.sort(key=lambda x: -x[0])
+
+            if best_moves[0][0] <= 0:
+                if difficulty == 'hard' or random.random() < 0.5:
+                    return ("order_pass",)
+
+            if difficulty == 'medium':
+                top = best_moves[:max(1, len(best_moves) // 3)]
+                val, r, c, d = random.choice(top)
+            else:
+                val, r, c, d = best_moves[0]
+
+            if val <= 0 and difficulty == 'hard':
+                return ("order_pass",)
+            return ("order", r, c, d)
+
     def check_game_over(self):
         """Check if the board is full. If so, calculate scores."""
         total_squares = self.size * self.size

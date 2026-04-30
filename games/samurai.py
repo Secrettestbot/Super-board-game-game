@@ -37,6 +37,7 @@ class SamuraiGame(BaseGame):
         "standard": "Full board (13x13) with all figures and tiles",
         "quick": "Smaller board (9x9) with fewer figures for faster play",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -188,6 +189,8 @@ class SamuraiGame(BaseGame):
         return move
 
     def make_move(self, move):
+        if move is None:
+            return False
         parts = move.split()
         if not parts:
             return False
@@ -295,6 +298,62 @@ class SamuraiGame(BaseGame):
         for key in to_remove:
             self.figures[key] = []
 
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        hand = self.hands[p]
+
+        if not hand:
+            return "pass"
+
+        scored = []
+        for tile_name in hand:
+            tile_info = TILE_TYPES[tile_name]
+            tile_type, strength = tile_info
+            for r in range(self.rows):
+                for c in range(self.cols):
+                    if self.board[r][c] == SEA:
+                        continue
+                    key = f"{r},{c}"
+                    if key in self.played_tiles:
+                        continue
+                    if key in self.figures and self.figures[key]:
+                        continue
+                    neighbors = self._hex_neighbors(r, c)
+                    adj_figures = []
+                    for nr, nc in neighbors:
+                        nkey = f"{nr},{nc}"
+                        if nkey in self.figures and self.figures[nkey]:
+                            adj_figures.extend(self.figures[nkey])
+                    if not adj_figures:
+                        continue
+
+                    score = 0
+                    for fig in adj_figures:
+                        if tile_type == "SAMURAI" or tile_type == fig:
+                            score += strength * 3
+                            nkey_inf = self.influence.get(f"{nr},{nc}", {})
+                            fig_inf = nkey_inf.get(fig, {1: 0, 2: 0})
+                            opp = 2 if p == 1 else 1
+                            if fig_inf[p] <= fig_inf[opp]:
+                                score += 5
+                    if score == 0:
+                        continue
+                    if difficulty == "medium":
+                        score += rand.uniform(-3, 3)
+                    scored.append((score, f"{tile_name} {r} {c}"))
+
+        if not scored:
+            return "pass"
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        if difficulty == "easy":
+            return rand.choice(scored[:max(1, len(scored) // 3)])[1]
+        if difficulty == "hard":
+            return scored[0][1]
+        return rand.choice(scored[:3])[1] if len(scored) >= 3 else scored[0][1]
+
     def check_game_over(self):
         # Game ends when all figures of one type are captured, or board is exhausted
         for fig_type in FIGURE_TYPES:
@@ -356,7 +415,10 @@ class SamuraiGame(BaseGame):
         self.rows = state["rows"]
         self.cols = state["cols"]
         self.figures = state["figures"]
-        self.influence = state["influence"]
+        self.influence = {
+            k: {fig: {int(pk): pv for pk, pv in pdict.items()} for fig, pdict in v.items()}
+            for k, v in state["influence"].items()
+        }
         self.hands = {int(k): v for k, v in state["hands"].items()}
         self.tile_pools = {int(k): v for k, v in state["tile_pools"].items()}
         self.played_tiles = state["played_tiles"]

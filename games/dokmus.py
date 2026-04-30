@@ -261,6 +261,8 @@ class DokmusGame(BaseGame):
         return move.strip()
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player - 1
         parts = move.lower().split()
         if not parts:
@@ -295,7 +297,7 @@ class DokmusGame(BaseGame):
         """Shift a row or column of tiles."""
         if len(parts) < 4:
             print("  Usage: shift <tile_row> <tile_col> <up/down/left/right>")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
         try:
             tr = int(parts[1])
@@ -306,7 +308,7 @@ class DokmusGame(BaseGame):
 
         if tr < 0 or tr >= self.grid_rows or tc < 0 or tc >= self.grid_cols:
             print("  Invalid tile position.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         if direction == "up" and self.grid_rows > 1:
@@ -328,7 +330,7 @@ class DokmusGame(BaseGame):
             self.tile_layout[tr] = [row[-1]] + row[:-1]
         else:
             print("  Invalid direction or grid too small.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         self.phase = "place"
@@ -339,7 +341,7 @@ class DokmusGame(BaseGame):
         """Rotate a tile 90 degrees clockwise."""
         if len(parts) < 3:
             print("  Usage: rotate <tile_row> <tile_col>")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
         try:
             tr = int(parts[1])
@@ -349,7 +351,7 @@ class DokmusGame(BaseGame):
 
         if tr < 0 or tr >= self.grid_rows or tc < 0 or tc >= self.grid_cols:
             print("  Invalid tile position.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         tile_idx = self.tile_layout[tr][tc]
@@ -377,7 +379,7 @@ class DokmusGame(BaseGame):
     def _do_place(self, p, parts):
         if len(parts) < 3:
             print("  Usage: place <row> <col>")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
         try:
             r = int(parts[1])
@@ -389,12 +391,12 @@ class DokmusGame(BaseGame):
 
         if self.player_tokens_remaining[p] <= 0:
             print("  No tokens remaining!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         if self.tokens_placed_this_turn >= self.max_place_per_turn:
             print(f"  Already placed {self.max_place_per_turn} tokens this turn. Type 'done'.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         if not self._can_place_token(r, c, player):
@@ -407,7 +409,7 @@ class DokmusGame(BaseGame):
                 print("  Cell already occupied!")
             else:
                 print("  Must place adjacent to your existing tokens or on a map edge!")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             return False
 
         self._set_token_at(r, c, player)
@@ -417,7 +419,7 @@ class DokmusGame(BaseGame):
 
         if self.tokens_placed_this_turn >= self.max_place_per_turn:
             print(f"  Placed {self.max_place_per_turn} tokens. Turn ending.")
-            input("  Press Enter...")
+            self._pause("  Press Enter...")
             self.phase = "manipulate"
             self.tokens_placed_this_turn = 0
             self.round_number += 1
@@ -484,6 +486,72 @@ class DokmusGame(BaseGame):
                 if (nr, nc) not in visited:
                     stack.append((nr, nc))
         return count
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player - 1
+        player = p + 1
+        total_r = self.grid_rows * 5
+        total_c = self.grid_cols * 5
+
+        if self.phase == "manipulate":
+            if difficulty == 'easy' or random.random() < 0.3:
+                return "skip"
+            actions = []
+            for tc in range(self.grid_cols):
+                for d in ("up", "down"):
+                    actions.append(f"shift 0 {tc} {d}")
+            for tr in range(self.grid_rows):
+                for d in ("left", "right"):
+                    actions.append(f"shift {tr} 0 {d}")
+            for tr in range(self.grid_rows):
+                for tc in range(self.grid_cols):
+                    actions.append(f"rotate {tr} {tc}")
+            if difficulty == 'hard':
+                return random.choice(actions) if actions else "skip"
+            return random.choice(actions) if actions and random.random() < 0.5 else "skip"
+
+        if self.phase == "place":
+            if self.tokens_placed_this_turn >= self.max_place_per_turn or self.player_tokens_remaining[p] <= 0:
+                return "done"
+
+            placeable = []
+            for r in range(total_r):
+                for c in range(total_c):
+                    if self._can_place_token(r, c, player):
+                        placeable.append((r, c))
+
+            if not placeable:
+                return "done"
+
+            if difficulty == 'easy':
+                r, c = random.choice(placeable)
+                return f"place {r} {c}"
+
+            scored = []
+            for r, c in placeable:
+                sc = 0
+                terrain = self._get_cell(r, c)
+                if terrain == TEMPLE:
+                    sc += 10
+                elif terrain == RUINS:
+                    sc += 4
+                if self._is_adjacent_to_own_token(r, c, player):
+                    sc += 2
+                if difficulty == 'hard':
+                    tile_r, tile_c = r // 5, c // 5
+                    sc += 1
+                scored.append((sc, r, c))
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'medium' and len(scored) > 1:
+                top = scored[:max(2, len(scored) // 3)]
+                _, r, c = random.choice(top)
+            else:
+                _, r, c = scored[0]
+            return f"place {r} {c}"
+
+        return "skip"
 
     def check_game_over(self):
         if self.round_number > self.max_rounds:

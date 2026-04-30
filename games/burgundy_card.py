@@ -199,6 +199,8 @@ class BurgundyCardGame(BaseGame):
         return move
 
     def make_move(self, move):
+        if move is None:
+            return False
         if not move:
             self.message = "Enter an action."
             return False
@@ -359,11 +361,50 @@ class BurgundyCardGame(BaseGame):
         elif b == "build_vp":
             self.vp[p] += bv
 
+    def get_ai_move(self):
+        """Return an AI-generated move string."""
+        import random
+        cp = self.current_player
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        hand = self.player_hands[cp]
+        projects = self.player_projects[cp]
+
+        for i, proj in enumerate(projects):
+            matching = sum(1 for c in hand if c["type"] == proj["type"])
+            workers = sum(1 for c in hand if c["type"] == "Worker")
+            if matching + workers >= proj["cost"]:
+                return f"b C{i + 1}"
+
+        if len(projects) < 3 and self.project_display:
+            if difficulty == 'easy':
+                idx = random.randint(0, len(self.project_display) - 1)
+            else:
+                best_idx = 0
+                best_score = -1
+                for i, p in enumerate(self.project_display):
+                    score = p["vp"]
+                    matching = sum(1 for c in hand if c["type"] == p["type"])
+                    score += matching * 2
+                    if score > best_score:
+                        best_score = score
+                        best_idx = i
+                idx = best_idx
+            return f"c P{idx + 1}"
+
+        if self.supply_display:
+            if projects:
+                needed_types = set(p["type"] for p in projects)
+                for i, s in enumerate(self.supply_display):
+                    if s["type"] in needed_types or s["type"] == "Worker":
+                        return f"d S{i + 1}"
+            idx = random.randint(0, len(self.supply_display) - 1)
+            return f"d S{idx + 1}"
+
+        return "p"
+
     def check_game_over(self):
         if self.actions_left > 0:
             return
-
-        self.actions_left = self.actions_per_turn
 
         # Check if round is over (both players have gone)
         if self.current_player == 2:
@@ -415,7 +456,8 @@ class BurgundyCardGame(BaseGame):
 
     def switch_player(self):
         if self.actions_left > 0:
-            return  # Don't switch mid-actions
+            return
+        self.actions_left = self.actions_per_turn
         super().switch_player()
 
     def get_state(self):

@@ -232,6 +232,8 @@ class ClankGame(BaseGame):
 
     def make_move(self, move):
         """Process a player action."""
+        if move is None:
+            return False
         pi = self.current_player - 1
         if move == "pass":
             return True
@@ -343,6 +345,74 @@ class ClankGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        pi = self.current_player - 1
+
+        if self.knocked_out[pi] or self.escaped[pi]:
+            return "pass"
+
+        if self.hands[pi]:
+            return "play 1"
+
+        if self.turn_move > 0:
+            current_pos = self.positions[pi]
+            best_room = None
+            best_val = -999
+            for i, room in enumerate(self.rooms):
+                if i == current_pos:
+                    continue
+                dist = abs(room["depth"] - self.rooms[current_pos]["depth"])
+                if dist == 0:
+                    dist = 1
+                if dist > self.turn_move:
+                    continue
+                val = 0
+                if not self.rooms_looted[i]:
+                    if room["monster"]:
+                        if self.turn_attack >= room["m_atk"]:
+                            val = room["loot"] + room["m_loot"]
+                        else:
+                            val = -10
+                    else:
+                        val = room["loot"]
+                if i == 0 and self.loot[pi]:
+                    val += 15 if self.health[pi] <= 4 else 5
+                if difficulty != 'easy':
+                    if room["depth"] >= 2:
+                        val -= 1
+                    if self.health[pi] <= 3:
+                        val -= room["depth"] * 3
+                if difficulty == 'easy':
+                    val += random.randint(-3, 3)
+                if val > best_val:
+                    best_val = val
+                    best_room = i
+            if best_room is not None and best_val > -5:
+                return f"move {best_room}"
+
+        current_pos = self.positions[pi]
+        room = self.rooms[current_pos]
+        if room["monster"] and not self.rooms_looted[current_pos] and self.turn_attack >= room["m_atk"]:
+            return "fight"
+
+        if self.turn_skill > 0 and self.market:
+            best_buy = None
+            best_buy_val = -1
+            for i, card in enumerate(self.market):
+                if card["cost"] <= self.turn_skill:
+                    val = card["move"] * 3 + card["attack"] * 3 + card["skill"] * 2 + card["points"] * 2 - card["clank"] * 2
+                    if difficulty == 'easy':
+                        val += random.randint(-3, 3)
+                    if val > best_buy_val:
+                        best_buy_val = val
+                        best_buy = i
+            if best_buy is not None:
+                return f"buy {best_buy + 1}"
+
+        return "end"
 
     def check_game_over(self):
         """Game ends when both escaped/KO'd or all loot taken."""

@@ -100,6 +100,7 @@ class SplendorGame(BaseGame):
         "standard": "Standard Splendor (15 points)",
         "quick": "Quick Game (10 points)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -290,6 +291,8 @@ class SplendorGame(BaseGame):
 
     def make_move(self, move):
         """Apply move. Returns True if valid."""
+        if move is None:
+            return False
         pi = self.current_player - 1
         parts = move.lower().split()
         if not parts:
@@ -487,6 +490,132 @@ class SplendorGame(BaseGame):
         self.target_points = state["target_points"]
         self.final_round = state["final_round"]
         self.final_round_last_player = state["final_round_last_player"]
+
+    # ----------------------------------------------------------- ai
+    def get_ai_move(self):
+        """Return a valid AI move based on difficulty."""
+        pi = self.current_player - 1
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        # Check for affordable cards
+        affordable = []
+        for tier_idx in range(3):
+            for pos, card in enumerate(self.tier_face_up[tier_idx]):
+                if self._can_afford(pi, card["cost"]):
+                    affordable.append(("buy", tier_idx, pos, card))
+
+        # Check affordable reserved cards
+        for pos, card in enumerate(self.player_reserved[pi]):
+            if self._can_afford(pi, card["cost"]):
+                affordable.append(("buy_reserved", 0, pos, card))
+
+        if difficulty == "easy":
+            # Random: buy if can, else take random gems
+            if affordable and random.random() < 0.6:
+                choice = random.choice(affordable)
+                if choice[0] == "buy_reserved":
+                    return f"buy reserved {choice[2] + 1}"
+                return f"buy {choice[1] + 1} {choice[2] + 1}"
+            # Take random gems
+            available = [c for c in GEM_COLORS if self.gems.get(c, 0) > 0]
+            if len(available) >= 3 and self._total_tokens(pi) + 3 <= 10:
+                chosen = random.sample(available, 3)
+                return f"gems {chosen[0]} {chosen[1]} {chosen[2]}"
+            elif available and self._total_tokens(pi) + 2 <= 10:
+                c = random.choice(available)
+                if self.gems.get(c, 0) >= 4:
+                    return f"gems {c} {c}"
+                if len(available) >= 3:
+                    chosen = random.sample(available, 3)
+                    return f"gems {chosen[0]} {chosen[1]} {chosen[2]}"
+                elif len(available) >= 2 and self._total_tokens(pi) + 2 <= 10:
+                    # Take what we can
+                    pass
+            # Fallback: take any 3 different
+            available = [c for c in GEM_COLORS if self.gems.get(c, 0) > 0]
+            if len(available) >= 3 and self._total_tokens(pi) + 3 <= 10:
+                chosen = random.sample(available, min(3, len(available)))
+                return f"gems {' '.join(chosen)}"
+            if available and self.gems.get(available[0], 0) >= 4 and self._total_tokens(pi) + 2 <= 10:
+                return f"gems {available[0]} {available[0]}"
+            # Reserve a card
+            for tier_idx in range(3):
+                if self.tier_face_up[tier_idx] and len(self.player_reserved[pi]) < 3:
+                    return f"reserve {tier_idx + 1} 1"
+            return f"gems {GEM_COLORS[0]} {GEM_COLORS[1]} {GEM_COLORS[2]}"
+
+        # Medium/Hard: prioritize buying high-point cards
+        if affordable:
+            def card_value(item):
+                _, tier_idx, pos, card = item
+                pts = card["points"]
+                # Bonus value for noble progress
+                bonus_val = 0
+                bonuses = self._bonuses(pi)
+                new_bonus = card["bonus"]
+                for noble in self.nobles:
+                    req = noble["requires"].get(new_bonus, 0)
+                    current = bonuses.get(new_bonus, 0)
+                    if current < req:
+                        bonus_val += 1
+                return pts * 3 + bonus_val + (tier_idx if difficulty == "hard" else 0)
+
+            best = max(affordable, key=card_value)
+            if best[0] == "buy_reserved":
+                return f"buy reserved {best[2] + 1}"
+            return f"buy {best[1] + 1} {best[2] + 1}"
+
+        # Can't buy - get gems toward best card
+        if difficulty == "hard":
+            # Find cheapest affordable-soon card
+            bonuses = self._bonuses(pi)
+            gems = self.player_gems[pi]
+            best_needs = None
+            best_card = None
+            for tier_idx in range(3):
+                for pos, card in enumerate(self.tier_face_up[tier_idx]):
+                    needed = {}
+                    total_need = 0
+                    for c in GEM_COLORS:
+                        cost = card["cost"].get(c, 0)
+                        have = bonuses.get(c, 0) + gems.get(c, 0)
+                        if cost > have:
+                            needed[c] = cost - have
+                            total_need += cost - have
+                    if best_needs is None or total_need < best_needs:
+                        best_needs = total_need
+                        best_card = (card, needed)
+
+            if best_card and best_card[1]:
+                needed_colors = [c for c, n in best_card[1].items() if n > 0 and self.gems.get(c, 0) > 0]
+                available = [c for c in GEM_COLORS if self.gems.get(c, 0) > 0]
+                # Prioritize needed colors
+                take = []
+                for c in needed_colors:
+                    if len(take) < 3 and c not in take:
+                        take.append(c)
+                for c in available:
+                    if len(take) < 3 and c not in take:
+                        take.append(c)
+                if len(take) >= 3 and self._total_tokens(pi) + 3 <= 10:
+                    return f"gems {take[0]} {take[1]} {take[2]}"
+                if len(take) >= 1 and self.gems.get(take[0], 0) >= 4 and self._total_tokens(pi) + 2 <= 10:
+                    return f"gems {take[0]} {take[0]}"
+
+        # Default: take 3 different gems
+        available = [c for c in GEM_COLORS if self.gems.get(c, 0) > 0]
+        if len(available) >= 3 and self._total_tokens(pi) + 3 <= 10:
+            chosen = available[:3]
+            return f"gems {chosen[0]} {chosen[1]} {chosen[2]}"
+        if available and self.gems.get(available[0], 0) >= 4 and self._total_tokens(pi) + 2 <= 10:
+            return f"gems {available[0]} {available[0]}"
+        # Reserve
+        for tier_idx in [2, 1, 0]:
+            if self.tier_face_up[tier_idx] and len(self.player_reserved[pi]) < 3:
+                return f"reserve {tier_idx + 1} 1"
+        if len(available) >= 3:
+            return f"gems {available[0]} {available[1]} {available[2]}"
+        return f"gems W U G"
 
     # ----------------------------------------------------------- tutorial
     def get_tutorial(self):

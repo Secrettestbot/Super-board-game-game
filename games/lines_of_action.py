@@ -244,6 +244,8 @@ class LinesOfActionGame(BaseGame):
 
     def make_move(self, move):
         """Parse and apply a move. Returns True if valid."""
+        if move is None:
+            return False
         parts = move.split()
         if len(parts) != 2:
             print("  Invalid format. Use 'from to', e.g. 'a2 a5'.")
@@ -276,6 +278,83 @@ class LinesOfActionGame(BaseGame):
         self.board[dr][dc] = piece
 
         return True
+
+    side_labels = ("Black (X)", "White (O)")
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        piece = BLACK if self.current_player == 1 else WHITE
+
+        all_moves = []
+        for r in range(8):
+            for c in range(8):
+                if self.board[r][c] == piece:
+                    for dr, dc in self._get_valid_moves_for_piece(r, c):
+                        all_moves.append((r, c, dr, dc))
+
+        if not all_moves:
+            return "a1 a1"
+
+        if difficulty == 'easy':
+            sr, sc, dr, dc = random.choice(all_moves)
+            return f"{self._square_name(sr, sc)} {self._square_name(dr, dc)}"
+
+        def score_position(player):
+            pieces = [(r, c) for r in range(8) for c in range(8) if self.board[r][c] == player]
+            if len(pieces) <= 1:
+                return 1000
+            piece_set = set(pieces)
+            visited = set()
+            components = 0
+            largest = 0
+            for p in pieces:
+                if p in visited:
+                    continue
+                components += 1
+                queue = [p]
+                visited.add(p)
+                size = 0
+                while queue:
+                    pr, pc = queue.pop(0)
+                    size += 1
+                    for ddr in (-1, 0, 1):
+                        for ddc in (-1, 0, 1):
+                            if ddr == 0 and ddc == 0:
+                                continue
+                            nr, nc = pr + ddr, pc + ddc
+                            if (nr, nc) in piece_set and (nr, nc) not in visited:
+                                visited.add((nr, nc))
+                                queue.append((nr, nc))
+                largest = max(largest, size)
+            avg_r = sum(r for r, c in pieces) / len(pieces)
+            avg_c = sum(c for r, c in pieces) / len(pieces)
+            spread = sum(abs(r - avg_r) + abs(c - avg_c) for r, c in pieces)
+            return -components * 100 + largest * 10 - spread
+
+        opponent = WHITE if piece == BLACK else BLACK
+        scored = []
+        for sr, sc, dr, dc in all_moves:
+            captured = self.board[dr][dc]
+            self.board[sr][sc] = EMPTY
+            self.board[dr][dc] = piece
+            s = score_position(piece)
+            if difficulty == 'hard' and captured == opponent:
+                opp_score = score_position(opponent)
+                s -= opp_score * 0.5
+            self.board[sr][sc] = piece
+            self.board[dr][dc] = captured
+            scored.append((s, sr, sc, dr, dc))
+
+        scored.sort(key=lambda x: -x[0])
+
+        if difficulty == 'medium':
+            top = scored[:max(1, len(scored) // 3)]
+            _, sr, sc, dr, dc = random.choice(top)
+        else:
+            _, sr, sc, dr, dc = scored[0]
+
+        return f"{self._square_name(sr, sc)} {self._square_name(dr, dc)}"
 
     def check_game_over(self):
         """Check if the game is over."""

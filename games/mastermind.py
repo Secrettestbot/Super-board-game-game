@@ -71,6 +71,7 @@ class MastermindGame(BaseGame):
         self.feedback = []
         self.phase = "setup"
         self.current_player = 1  # Player 1 is codemaker
+        self._ai_possible = None
 
     def _setup_code_interactive(self):
         """Codemaker enters the secret code, then screen is cleared."""
@@ -156,6 +157,8 @@ class MastermindGame(BaseGame):
     # --------------------------------------------------------------- make_move
     def make_move(self, move):
         """Validate guess and compute feedback. Returns True if valid."""
+        if move is None:
+            return False
         if move == "__SETUP_DONE__":
             return True
         guess = list(move)
@@ -163,13 +166,13 @@ class MastermindGame(BaseGame):
         # Validate length
         if len(guess) != self.code_length:
             print(f"  Guess must be exactly {self.code_length} characters long.")
-            input_with_quit("  Press Enter to try again...")
+            self._pause("  Press Enter to try again...")
             return False
 
         # Validate colors
         if not all(c in self.colors for c in guess):
             print(f"  Invalid color(s). Use only: {' '.join(self.colors)}")
-            input_with_quit("  Press Enter to try again...")
+            self._pause("  Press Enter to try again...")
             return False
 
         # Compute feedback
@@ -202,6 +205,67 @@ class MastermindGame(BaseGame):
                 secret_pool.remove(g)
 
         return exact, misplaced
+
+    side_labels = ("Codemaker", "Codebreaker")
+
+    def switch_player(self):
+        if self.phase == "guessing":
+            self.current_player = 2
+        else:
+            super().switch_player()
+
+    def get_ai_move(self):
+        import random
+        import itertools
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.phase == "setup":
+            self.secret_code = [random.choice(self.colors) for _ in range(self.code_length)]
+            self.phase = "guessing"
+            self.current_player = 2
+            return "__SETUP_DONE__"
+
+        if difficulty == 'easy':
+            return ''.join(random.choice(self.colors) for _ in range(self.code_length))
+
+        if not hasattr(self, '_ai_possible') or self._ai_possible is None:
+            self._ai_possible = [
+                list(combo) for combo in itertools.product(self.colors, repeat=self.code_length)
+            ]
+
+        if self.guesses and self.feedback:
+            last_guess = self.guesses[-1]
+            last_exact, last_misplaced = self.feedback[-1]
+            filtered = []
+            for candidate in self._ai_possible:
+                exact = sum(1 for i in range(self.code_length) if last_guess[i] == candidate[i])
+                if exact != last_exact:
+                    continue
+                sec_rem = []
+                gue_rem = []
+                for i in range(self.code_length):
+                    if last_guess[i] != candidate[i]:
+                        sec_rem.append(candidate[i])
+                        gue_rem.append(last_guess[i])
+                misplaced = 0
+                pool = list(sec_rem)
+                for g in gue_rem:
+                    if g in pool:
+                        misplaced += 1
+                        pool.remove(g)
+                if misplaced == last_misplaced:
+                    filtered.append(candidate)
+            self._ai_possible = filtered
+
+        if not self._ai_possible:
+            return ''.join(random.choice(self.colors) for _ in range(self.code_length))
+
+        if difficulty == 'medium':
+            choice = random.choice(self._ai_possible)
+        else:
+            choice = self._ai_possible[0]
+
+        return ''.join(choice)
 
     # --------------------------------------------------------- check_game_over
     def check_game_over(self):

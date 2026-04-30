@@ -46,6 +46,7 @@ class ZombieDiceGame(BaseGame):
         "standard": "Standard Zombie Dice (13 dice cup)",
         "double_feature": "Double Feature (adds special dice)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -217,6 +218,8 @@ class ZombieDiceGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
 
         if move == "roll":
@@ -288,13 +291,12 @@ class ZombieDiceGame(BaseGame):
             f"Total: {self.scores[cp]}"
         )
 
-        # Check if this triggers final round
         if self.scores[cp] >= self.brains_to_win and not self.final_round:
             self.final_round = True
             self.final_round_player = cp
             self._add_log(f"*** {self.players[cp - 1]} hit {self.brains_to_win}! Final round! ***")
 
-        self._start_turn()
+        self.phase = "turn_over"
         return True
 
     def _do_bust(self, cp):
@@ -303,43 +305,82 @@ class ZombieDiceGame(BaseGame):
             f"{self.players[cp - 1]} BUSTED with {self.turn_shotguns} shotguns! "
             f"Lost {self.turn_brains} brains."
         )
-        self._start_turn()
+        self.phase = "turn_over"
         return True
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.phase == "bust":
+            return "bust"
+        if self.phase == "turn_over":
+            return "end_turn"
+        if self.phase == "draw_roll":
+            return "roll"
+
+        # decide phase: roll or stop
+        shotguns = self.turn_shotguns
+        brains = self.turn_brains
+
+        if difficulty == 'easy':
+            if shotguns >= 2:
+                return "stop" if rand.random() < 0.5 else "roll"
+            return "roll"
+
+        red_in_hand = sum(1 for c in self.runners_in_hand if c == "red")
+        green_in_hand = sum(1 for c in self.runners_in_hand if c == "green")
+        risk = shotguns * 3 + red_in_hand * 2 - green_in_hand
+
+        if difficulty == 'hard':
+            opp = self._opponent()
+            behind = self.scores[opp] - self.scores[self.current_player]
+            if self.final_round and brains + self.scores[self.current_player] <= self.scores[opp]:
+                return "roll"
+            if shotguns >= 2:
+                if brains >= 4 or (brains >= 2 and risk >= 6):
+                    return "stop"
+                if red_in_hand >= 2:
+                    return "stop"
+                return "roll" if rand.random() < 0.3 else "stop"
+            if brains >= 5:
+                return "stop"
+            if risk >= 7 and brains >= 3:
+                return "stop"
+            return "roll"
+
+        # medium
+        if shotguns >= 2:
+            if brains >= 3:
+                return "stop"
+            return "roll" if rand.random() < 0.35 else "stop"
+        if brains >= 4 and risk >= 5:
+            return "stop"
+        return "roll"
 
     # -------------------------------------------------------- switch_player
     def switch_player(self):
-        if self.phase in ("decide", "bust", "draw_roll"):
-            if self.phase == "decide" or self.phase == "draw_roll":
-                # Only switch when turn is actually done (stop/bust)
-                pass
-            else:
-                super().switch_player()
+        if self.phase in ("decide", "draw_roll"):
+            pass
         else:
             super().switch_player()
 
     # -------------------------------------------------------- check_game_over
     def check_game_over(self):
-        # Game ends when final round completes
-        if self.final_round:
-            # If we just switched to the player who triggered final round,
-            # then the other player has had their turn
-            opp = self._opponent()
-            if self.current_player == self.final_round_player:
-                # Other player just finished their turn
-                if self.scores[1] > self.scores[2]:
-                    self.winner = 1
-                elif self.scores[2] > self.scores[1]:
-                    self.winner = 2
-                else:
-                    self.winner = None
-                self.game_over = True
-                return
-
-        # Also check if both have had a chance and someone is at 13+
         for p in (1, 2):
             if self.scores[p] >= self.brains_to_win and not self.final_round:
                 self.final_round = True
                 self.final_round_player = p
+
+        if (self.final_round and self.phase == "turn_over"
+                and self.current_player != self.final_round_player):
+            if self.scores[1] > self.scores[2]:
+                self.winner = 1
+            elif self.scores[2] > self.scores[1]:
+                self.winner = 2
+            else:
+                self.winner = None
+            self.game_over = True
 
     # -------------------------------------------------------- save / load
     def get_state(self):

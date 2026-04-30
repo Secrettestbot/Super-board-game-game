@@ -45,6 +45,7 @@ class AlhambraGame(BaseGame):
         "standard": "Classic Alhambra with 3 scoring rounds",
         "thieves_turn": "Thieves can steal tiles from opponents",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -229,6 +230,8 @@ class AlhambraGame(BaseGame):
 
     def make_move(self, move):
         """Process player action."""
+        if move is None:
+            return False
         pi = self.current_player - 1
         parts = move.split()
         if not parts:
@@ -382,7 +385,7 @@ class AlhambraGame(BaseGame):
                 print(f"\n  *** SCORING ROUND {i+1}! ***")
                 for pi in range(2):
                     print(f"  P{pi+1} score: {self.scores[pi]}")
-                input("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
 
     def check_game_over(self):
         """Game ends after 3rd scoring round."""
@@ -434,6 +437,58 @@ class AlhambraGame(BaseGame):
             [[cell if cell else None for cell in row] for row in grid]
             for grid in state["palace_grid"]
         ]
+
+    def get_ai_move(self):
+        """Return a valid move for the AI player."""
+        pi = self.current_player - 1
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        # Try to place tiles from reserve first
+        if self.reserve[pi]:
+            for ridx, tile in enumerate(self.reserve[pi]):
+                for row in range(7):
+                    for col in range(7):
+                        if self.palace_grid[pi][row][col] is not None:
+                            continue
+                        adjacent = False
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = row + dr, col + dc
+                            if 0 <= nr < 7 and 0 <= nc < 7 and self.palace_grid[pi][nr][nc] is not None:
+                                adjacent = True
+                                break
+                        if adjacent:
+                            return f"place {ridx + 1} {row} {col}"
+
+        # Try to buy a tile from market
+        for j, tile in enumerate(self.market):
+            currency = tile["market_currency"]
+            cost = tile["cost"]
+            if self.money[pi][currency] >= cost:
+                if difficulty == 'easy':
+                    if random.random() < 0.5:
+                        return f"buy {j + 1}"
+                else:
+                    return f"buy {j + 1}"
+
+        # Take money cards
+        if self.money_display:
+            if difficulty == 'easy':
+                idx = random.randint(0, len(self.money_display) - 1)
+                return f"take {idx + 1}"
+            else:
+                # Take highest value card
+                best_idx = 0
+                best_val = 0
+                for j, card in enumerate(self.money_display):
+                    if card["value"] > best_val:
+                        best_val = card["value"]
+                        best_idx = j
+                return f"take {best_idx + 1}"
+
+        # Fallback: take first money card
+        if self.money_display:
+            return "take 1"
+        return "take 1"
 
     def get_tutorial(self):
         """Return tutorial text."""

@@ -17,6 +17,7 @@ class SunTzuGame(BaseGame):
         "standard": "Standard game - 9 rounds",
         "extended": "Extended game - 12 rounds",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -183,6 +184,8 @@ class SunTzuGame(BaseGame):
         return {"player": player, "assignments": assignments, "used_cards": [c for cards in assignments.values() for c in cards]}
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move == "resolve":
             self._resolve_round()
             return True
@@ -234,6 +237,50 @@ class SunTzuGame(BaseGame):
             self.current_player = 1
         else:
             self.phase = "done"
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        if self.phase == "resolve":
+            return "resolve"
+        player = self.current_player
+        hand = list(self.hands[player])
+        if not hand:
+            return "resolve"
+        assignments = {}
+        if difficulty == "easy":
+            rand.shuffle(hand)
+            cards_to_use = hand[:min(3, len(hand))]
+            for card in cards_to_use:
+                province = rand.randint(0, 4)
+                if province not in assignments:
+                    assignments[province] = []
+                assignments[province].append(card)
+        else:
+            priorities = []
+            for i in range(5):
+                ctrl = self.control[i]
+                if player == 1:
+                    priority = -ctrl
+                else:
+                    priority = ctrl
+                if abs(ctrl) == 2:
+                    priority += 3
+                if ctrl == 0:
+                    priority += 1
+                if difficulty == "medium":
+                    priority += rand.uniform(-1, 1)
+                priorities.append((priority, i))
+            priorities.sort(reverse=True)
+            hand_sorted = sorted(hand, reverse=True)
+            cards_to_use = hand_sorted[:min(3, len(hand_sorted))]
+            for idx, card in enumerate(cards_to_use):
+                _, prov = priorities[idx % len(priorities)]
+                if prov not in assignments:
+                    assignments[prov] = []
+                assignments[prov].append(card)
+        used_cards = [c for cards in assignments.values() for c in cards]
+        return {"player": player, "assignments": assignments, "used_cards": used_cards}
 
     def check_game_over(self):
         if self.phase == "done" or self.round_number > self.total_rounds:

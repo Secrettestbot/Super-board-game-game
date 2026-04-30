@@ -932,11 +932,86 @@ class MainMenu:
                 input("  Press Enter to continue...")
                 return self.launch_game(idx)
 
+        # Game mode selection
+        clear_screen()
+        print(f"{'='*60}")
+        print(f"  {name} - Game Mode")
+        print(f"{'='*60}\n")
+        print("    1. Two Players")
+        print("    2. vs Computer")
+        print("    [B] Back")
+        mode_choice = input("\n  Choice: ").strip().lower()
+        if mode_choice == 'b':
+            return self.launch_game(idx)
+        if mode_choice not in ('1', '2'):
+            print("\n  Invalid choice.")
+            input("  Press Enter to continue...")
+            return self.launch_game(idx)
+
+        ai_player = None
+        ai_difficulty = "medium"
+
+        if mode_choice == '2':
+            # Difficulty selection
+            clear_screen()
+            print(f"{'='*60}")
+            print(f"  {name} - Difficulty")
+            print(f"{'='*60}\n")
+            print("    1. Easy")
+            print("    2. Medium")
+            print("    3. Hard")
+            print("    [B] Back")
+            diff_choice = input("\n  Choice: ").strip().lower()
+            if diff_choice == 'b':
+                return self.launch_game(idx)
+            diff_map = {'1': 'easy', '2': 'medium', '3': 'hard'}
+            if diff_choice not in diff_map:
+                print("\n  Invalid choice.")
+                input("  Press Enter to continue...")
+                return self.launch_game(idx)
+            ai_difficulty = diff_map[diff_choice]
+
+            # Side selection
+            try:
+                mod_tmp = importlib.import_module(module_path)
+                gc_tmp = getattr(mod_tmp, class_name)
+                labels = gc_tmp.side_labels
+            except Exception:
+                labels = ("Player 1", "Player 2")
+            clear_screen()
+            print(f"{'='*60}")
+            print(f"  {name} - Choose Your Side")
+            print(f"{'='*60}\n")
+            print(f"    1. {labels[0]} (goes first)")
+            print(f"    2. {labels[1]} (goes second)")
+            print(f"    3. Random")
+            print(f"    [B] Back")
+            side_choice = input("\n  Choice: ").strip().lower()
+            if side_choice == 'b':
+                return self.launch_game(idx)
+            if side_choice == '1':
+                ai_player = 2
+            elif side_choice == '2':
+                ai_player = 1
+            elif side_choice == '3':
+                import random as _rnd
+                ai_player = _rnd.choice([1, 2])
+            else:
+                print("\n  Invalid choice.")
+                input("  Press Enter to continue...")
+                return self.launch_game(idx)
+
         # Load and start game
         try:
             mod = importlib.import_module(module_path)
             game_class = getattr(mod, class_name)
             game = game_class(variation=variation)
+            if ai_player is not None:
+                game.ai_player = ai_player
+                game.ai_difficulty = ai_difficulty
+                human_side = 2 if ai_player == 1 else 1
+                game.players[human_side - 1] = "You"
+                game.players[ai_player - 1] = "Computer"
             game.play()
         except Exception as e:
             print(f"\nError loading game: {e}")
@@ -1046,6 +1121,8 @@ class MainMenu:
             game.turn_number = data.get('turn_number', 0)
             game.move_history = data.get('move_history', [])
             game.load_state(data.get('game_state', {}))
+            game.ai_player = data.get('ai_player', None)
+            game.ai_difficulty = data.get('ai_difficulty', 'medium')
             game._resumed = True
 
             result = game.play()

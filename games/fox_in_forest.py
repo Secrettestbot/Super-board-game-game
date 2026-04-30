@@ -261,6 +261,8 @@ class FoxInTheForestGame(BaseGame):
 
     def make_move(self, move):
         """Process the move based on current phase."""
+        if move is None:
+            return False
         if self.phase == "play":
             return self._do_play(move)
         elif self.phase == "trick_done":
@@ -550,6 +552,130 @@ class FoxInTheForestGame(BaseGame):
             f"Scores: {self.players[0]} = {self.scores[0]}, "
             f"{self.players[1]} = {self.scores[1]}"
         )
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player - 1
+
+        if self.phase == "trick_done":
+            return "continue"
+        if self.phase == "round_over":
+            return "continue"
+
+        if self.phase == "ability":
+            if not self.pending_ability:
+                return "continue"
+            kind, pi = self.pending_ability
+
+            if kind == "swap_decree":
+                if difficulty == 'easy':
+                    return "n"
+                hand = self.hands[pi]
+                worst = min(range(len(hand)), key=lambda i: hand[i][0])
+                if hand[worst][0] < self.trump_card[0]:
+                    return "y"
+                return "n"
+
+            elif kind == "draw_deck":
+                hand = self.hands[pi]
+                worst = min(range(len(hand)), key=lambda i: hand[i][0])
+                return str(worst + 1)
+
+            elif kind == "draw_discard":
+                if not self.discard_pile:
+                    return "skip"
+                top = self.discard_pile[-1]
+                hand = self.hands[pi]
+                worst_val = min(c[0] for c in hand) if hand else 0
+                if top[0] > worst_val or top[1] == self.trump_suit:
+                    return "y"
+                return "n"
+
+            elif kind == "exchange_decree":
+                hand = self.hands[pi]
+                if not hand:
+                    return "0"
+                worst_idx = min(range(len(hand)), key=lambda i: hand[i][0])
+                if hand[worst_idx][0] < self.trump_card[0]:
+                    return str(worst_idx + 1)
+                return "0"
+
+            return "continue"
+
+        if self.phase == "play":
+            hand = self.hands[cp]
+            playable = self._get_playable_cards(cp)
+            if not playable:
+                return "1"
+
+            if difficulty == 'easy':
+                card = random.choice(playable)
+                return str(hand.index(card) + 1)
+
+            my_tricks = self.tricks_won[cp]
+            opp_tricks = self.tricks_won[1 - cp]
+            total_played = my_tricks + opp_tricks
+
+            want_more = my_tricks < 7
+            avoid_too_many = my_tricks >= 9
+
+            if not self.current_trick:
+                if avoid_too_many:
+                    weakest = min(playable, key=lambda c: (
+                        100 + c[0] if c[1] == self.trump_suit else c[0]))
+                    return str(hand.index(weakest) + 1)
+
+                if difficulty == 'hard' and want_more:
+                    trump_cards = [c for c in playable if c[1] == self.trump_suit]
+                    if trump_cards:
+                        best_trump = max(trump_cards, key=lambda c: c[0])
+                        if best_trump[0] >= 9:
+                            return str(hand.index(best_trump) + 1)
+
+                scored = []
+                for c in playable:
+                    val = c[0]
+                    if c[1] == self.trump_suit:
+                        val += 15
+                    scored.append((val, c))
+                scored.sort(key=lambda x: -x[0])
+
+                if difficulty == 'medium':
+                    top = scored[:max(1, len(scored) // 2)]
+                    _, card = random.choice(top)
+                else:
+                    _, card = scored[0]
+                return str(hand.index(card) + 1)
+            else:
+                lead_card = self.current_trick[0][1]
+                lead_suit = lead_card[1]
+                lead_val = lead_card[0]
+
+                if avoid_too_many:
+                    weakest = min(playable, key=lambda c: (
+                        100 + c[0] if c[1] == self.trump_suit else
+                        50 + c[0] if c[1] == lead_suit else c[0]))
+                    return str(hand.index(weakest) + 1)
+
+                winners = [c for c in playable
+                           if (c[1] == lead_suit and c[0] > lead_val) or
+                           (c[1] == self.trump_suit and lead_suit != self.trump_suit)]
+                losers = [c for c in playable if c not in winners]
+
+                if want_more and winners:
+                    cheapest_win = min(winners, key=lambda c: (
+                        100 + c[0] if c[1] == self.trump_suit else c[0]))
+                    return str(hand.index(cheapest_win) + 1)
+
+                if losers:
+                    weakest = min(losers, key=lambda c: c[0])
+                    return str(hand.index(weakest) + 1)
+
+                card = min(playable, key=lambda c: c[0])
+                return str(hand.index(card) + 1)
+
+        return "1"
 
     def check_game_over(self):
         """Check if someone has reached the target score."""

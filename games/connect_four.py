@@ -111,6 +111,8 @@ class ConnectFourGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         action, col = move
         if action == "drop":
             return self._drop(col)
@@ -140,6 +142,110 @@ class ConnectFourGame(BaseGame):
             self.board[r][col] = self.board[r - 1][col]
         self.board[0][col] = 0
         return True
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        opp = 2 if cp == 1 else 1
+        valid_cols = [c for c in range(self.cols) if self.board[0][c] == 0]
+
+        if not valid_cols:
+            if self.variation == "pop_out":
+                pop_cols = [c for c in range(self.cols) if self.board[self.rows - 1][c] == cp]
+                if pop_cols:
+                    return ("pop", random.choice(pop_cols))
+            return ("drop", 0)
+
+        if difficulty == 'easy':
+            return ("drop", random.choice(valid_cols))
+
+        def sim_drop(board, col, player):
+            nb = [row[:] for row in board]
+            for r in range(len(nb) - 1, -1, -1):
+                if nb[r][col] == 0:
+                    nb[r][col] = player
+                    return nb
+            return None
+
+        def has_win(board, player):
+            wl = self.win_length
+            for r in range(self.rows):
+                for c in range(self.cols):
+                    if board[r][c] != player:
+                        continue
+                    if c + wl <= self.cols and all(board[r][c + i] == player for i in range(wl)):
+                        return True
+                    if r + wl <= self.rows and all(board[r + i][c] == player for i in range(wl)):
+                        return True
+                    if r + wl <= self.rows and c + wl <= self.cols and all(board[r + i][c + i] == player for i in range(wl)):
+                        return True
+                    if r + wl <= self.rows and c - wl + 1 >= 0 and all(board[r + i][c - i] == player for i in range(wl)):
+                        return True
+            return False
+
+        def minimax(board, depth, maximizing, alpha, beta):
+            if has_win(board, cp):
+                return 1000 + depth
+            if has_win(board, opp):
+                return -1000 - depth
+            cols = [c for c in range(self.cols) if board[0][c] == 0]
+            if not cols or depth == 0:
+                score = 0
+                center = self.cols // 2
+                for r in range(self.rows):
+                    if board[r][center] == cp:
+                        score += 3
+                    elif board[r][center] == opp:
+                        score -= 3
+                return score
+            if maximizing:
+                best = -9999
+                for col in cols:
+                    nb = sim_drop(board, col, cp)
+                    if nb is None:
+                        continue
+                    val = minimax(nb, depth - 1, False, alpha, beta)
+                    best = max(best, val)
+                    alpha = max(alpha, val)
+                    if beta <= alpha:
+                        break
+                return best
+            else:
+                best = 9999
+                for col in cols:
+                    nb = sim_drop(board, col, opp)
+                    if nb is None:
+                        continue
+                    val = minimax(nb, depth - 1, True, alpha, beta)
+                    best = min(best, val)
+                    beta = min(beta, val)
+                    if beta <= alpha:
+                        break
+                return best
+
+        if difficulty == 'medium':
+            search_depth = 3
+        elif self.cols > 7:
+            search_depth = 3
+        else:
+            search_depth = 5
+        scores = []
+        for col in valid_cols:
+            nb = sim_drop(self.board, col, cp)
+            if nb is None:
+                continue
+            sc = minimax(nb, search_depth, False, -9999, 9999)
+            scores.append((sc, col))
+
+        scores.sort(key=lambda x: -x[0])
+        if difficulty == 'medium' and len(scores) > 1:
+            top = scores[:max(2, len(scores) // 3)]
+            _, best_col = random.choice(top)
+        else:
+            _, best_col = scores[0]
+
+        return ("drop", best_col)
 
     # -------------------------------------------------------- check_game_over
     def check_game_over(self):

@@ -92,6 +92,7 @@ class VillageGreenGame(BaseGame):
         "standard": "Standard game - 3x4 grid, 8 awards",
         "quick": "Quick game - 3x3 grid, 5 awards",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -325,6 +326,8 @@ class VillageGreenGame(BaseGame):
 
     def make_move(self, move):
         """Process a move."""
+        if move is None:
+            return False
         p = self.current_player
 
         if move[0] == "skip":
@@ -373,6 +376,47 @@ class VillageGreenGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        if not self.hands[p]:
+            return ("skip",)
+
+        empty = []
+        for r in range(self.rows):
+            for c in range(self.cols):
+                if self.grids[p][r][c] is None:
+                    empty.append((r, c))
+
+        if not empty:
+            return ("skip",)
+
+        if difficulty == 'easy':
+            card_idx = rand.randint(0, len(self.hands[p]) - 1)
+            r, c = rand.choice(empty)
+            pos = chr(65 + r) + str(c + 1)
+            return ("place", str(card_idx + 1), pos)
+
+        best_score = -999
+        best_move = None
+        for ci, card_name in enumerate(self.hands[p]):
+            for r, c in empty:
+                score = self._calc_adjacency_score(p, r, c, card_name)
+                if difficulty == 'medium':
+                    score += rand.random() * 2
+                if score > best_score:
+                    best_score = score
+                    best_move = (ci, r, c)
+
+        if best_move:
+            ci, r, c = best_move
+            pos = chr(65 + r) + str(c + 1)
+            return ("place", str(ci + 1), pos)
+
+        return ("skip",)
 
     def check_game_over(self):
         """Check if both players have filled their grids."""

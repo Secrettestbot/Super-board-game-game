@@ -86,6 +86,7 @@ class WordGame(BaseGame):
         "standard": "Standard (15x15 board)",
         "quick": "Quick (11x11 board)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation or "standard")
@@ -223,6 +224,8 @@ class WordGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         if move[0] == "challenge":
             return self._do_challenge()
         elif move[0] == "pass":
@@ -244,14 +247,24 @@ class WordGame(BaseGame):
         challenged_player = self.last_player
 
         print(f"\n  {self.players[challenger - 1]} challenges '{self.last_play}'!")
-        print(f"  Does {self.players[challenged_player - 1]} accept the challenge?")
-        print(f"  (If the word is invalid, type 'remove'. If valid, type 'keep')")
+        if self.ai_player == self.current_player:
+            # AI decides whether the challenge succeeds
+            difficulty = getattr(self, 'ai_difficulty', 'medium')
+            if difficulty == 'hard':
+                resp = "remove"
+            elif difficulty == 'medium':
+                resp = random.choice(["remove", "keep"])
+            else:
+                resp = "keep"
+        else:
+            print(f"  Does {self.players[challenged_player - 1]} accept the challenge?")
+            print(f"  (If the word is invalid, type 'remove'. If valid, type 'keep')")
 
-        while True:
-            resp = input_with_quit("  remove/keep: ").strip().lower()
-            if resp in ("remove", "keep"):
-                break
-            print("  Please type 'remove' or 'keep'.")
+            while True:
+                resp = input_with_quit("  remove/keep: ").strip().lower()
+                if resp in ("remove", "keep"):
+                    break
+                print("  Please type 'remove' or 'keep'.")
 
         if resp == "remove":
             # Remove tiles from board, return to player's rack
@@ -263,10 +276,10 @@ class WordGame(BaseGame):
             self.scores[challenged_player - 1] -= self.last_play_score
             print(f"  Word removed! {self.players[challenged_player - 1]} "
                   f"loses {self.last_play_score} points.")
-            input_with_quit("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
         else:
             print(f"  Word kept. {self.players[challenger - 1]} loses their turn.")
-            input_with_quit("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
 
         self.last_play = None
         self.last_play_tiles = []
@@ -446,7 +459,7 @@ class WordGame(BaseGame):
         self.last_player = self.current_player
         self.consecutive_passes = 0
 
-        input_with_quit("  Press Enter to continue...")
+        self._pause("  Press Enter to continue...")
         return True
 
     def _calculate_score(self, word, row, col, dr, dc, placed_positions):
@@ -534,6 +547,87 @@ class WordGame(BaseGame):
             cross_score += tile_value
 
         return cross_score * word_multiplier
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        pi = self.current_player - 1
+        rack = self.racks[pi]
+
+        if not rack:
+            return ("pass",)
+
+        if difficulty == 'easy':
+            if self.bag and len(rack) >= 2:
+                return ("exchange", rack[0] if rack[0] != ' ' else rack[0])
+            return ("pass",)
+
+        is_first = all(
+            self.board[r][c] is None
+            for r in range(self.size) for c in range(self.size)
+        )
+
+        if is_first:
+            usable = [t for t in rack if t != ' ']
+            if not usable:
+                usable = rack[:]
+            word_len = min(len(usable), 3 if difficulty == 'medium' else 4)
+            word = ""
+            for t in usable[:word_len]:
+                word += t if t != ' ' else 'a'
+            start_col = max(0, self.center - word_len // 2)
+            return ("play", word, self.center, start_col, "across")
+
+        candidates = []
+        for r in range(self.size):
+            for c in range(self.size):
+                if self.board[r][c] is not None:
+                    continue
+                has_neighbor = False
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < self.size and 0 <= nc < self.size:
+                        if self.board[nr][nc] is not None:
+                            has_neighbor = True
+                            break
+                if has_neighbor:
+                    candidates.append((r, c))
+
+        if not candidates:
+            return ("pass",)
+
+        best_plays = []
+        seen_tiles = set()
+        for tile in rack:
+            if tile in seen_tiles:
+                continue
+            seen_tiles.add(tile)
+            letter = tile if tile != ' ' else 'A'
+            display = letter if tile != ' ' else letter.lower()
+            base_val = TILE_VALUES.get(letter, 0)
+            for r, c in candidates:
+                score = base_val
+                prem = self.premiums.get((r, c))
+                if prem == 'DL':
+                    score *= 2
+                elif prem == 'TL':
+                    score *= 3
+                elif prem == 'DW':
+                    score *= 2
+                elif prem == 'TW':
+                    score *= 3
+                best_plays.append((score, display, r, c))
+
+        if best_plays:
+            best_plays.sort(key=lambda x: -x[0])
+            if difficulty == 'hard':
+                _, letter, r, c = best_plays[0]
+            else:
+                top = best_plays[:max(1, len(best_plays) // 3 + 1)]
+                _, letter, r, c = rand.choice(top)
+            return ("play", letter, r, c, "across")
+
+        return ("pass",)
 
     # -------------------------------------------------------- check_game_over
     def check_game_over(self):

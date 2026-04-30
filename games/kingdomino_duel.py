@@ -239,6 +239,7 @@ class KingdominoDuelGame(BaseGame):
             placements = move["placements"]
             # Validate all placements first
             temp_placements = []
+            already_placed = set()
             for pl in placements:
                 if pl.get("skip"):
                     temp_placements.append(None)
@@ -248,17 +249,18 @@ class KingdominoDuelGame(BaseGame):
                 terrain, crown = self.dice_results[die_idx]
                 if row < 0 or row >= self.grid_size or col < 0 or col >= self.grid_size:
                     return False
-                if self.grids[cp][row][col] != "Empty":
+                if self.grids[cp][row][col] != "Empty" or (row, col) in already_placed:
                     return False
-                # Adjacency check - must be next to something non-empty
+                # Adjacency check - must be next to something non-empty or a tile placed in this move
                 has_adj = False
                 for nr, nc in self._get_adjacent(row, col):
-                    if self.grids[cp][nr][nc] != "Empty":
+                    if self.grids[cp][nr][nc] != "Empty" or (nr, nc) in already_placed:
                         has_adj = True
                         break
                 if not has_adj:
                     return False
                 temp_placements.append((row, col, terrain, crown))
+                already_placed.add((row, col))
 
             # Apply placements
             placed_desc = []
@@ -292,6 +294,79 @@ class KingdominoDuelGame(BaseGame):
 
             return True
         return False
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        sp = str(cp)
+
+        if not self.available_pairs:
+            return {"action": "roll"}
+
+        def find_valid_positions(already_placed=set()):
+            positions = []
+            for r in range(self.grid_size):
+                for c in range(self.grid_size):
+                    if self.grids[sp][r][c] != "Empty" or (r, c) in already_placed:
+                        continue
+                    for nr, nc in self._get_adjacent(r, c):
+                        if self.grids[sp][nr][nc] != "Empty" or (nr, nc) in already_placed:
+                            positions.append((r, c))
+                            break
+            return positions
+
+        def score_pos(r, c, terrain, crown):
+            s = crown * 5
+            for nr, nc in self._get_adjacent(r, c):
+                if self.grids[sp][nr][nc] == terrain:
+                    s += 3 + self.crowns[sp][nr][nc] * 2
+            if difficulty == 'hard':
+                center = self.grid_size // 2
+                s -= abs(r - center) + abs(c - center)
+            return s
+
+        if difficulty == 'easy':
+            pi = random.randrange(len(self.available_pairs))
+            a, b = self.available_pairs[pi]
+            placements = []
+            placed = set()
+            for die_idx in [a, b]:
+                positions = find_valid_positions(placed)
+                if positions:
+                    r, c = random.choice(positions)
+                    placements.append({"die": die_idx, "row": r, "col": c, "skip": False})
+                    placed.add((r, c))
+                else:
+                    placements.append({"die": die_idx, "skip": True})
+            return {"action": "draft", "pair_idx": pi, "placements": placements}
+
+        best_result = None
+        best_total = -999
+        for pi, (a, b) in enumerate(self.available_pairs):
+            total_score = self.dice_results[a][1] + self.dice_results[b][1]
+            pair_placements = []
+            placed = set()
+            for die_idx in [a, b]:
+                terrain, crown = self.dice_results[die_idx]
+                positions = find_valid_positions(placed)
+                if not positions:
+                    pair_placements.append({"die": die_idx, "skip": True})
+                    continue
+                scored = [(score_pos(r, c, terrain, crown), r, c) for r, c in positions]
+                scored.sort(key=lambda x: -x[0])
+                if difficulty == 'medium':
+                    top = scored[:max(1, len(scored) // 3)]
+                    s, r, c = random.choice(top)
+                else:
+                    s, r, c = scored[0]
+                pair_placements.append({"die": die_idx, "row": r, "col": c, "skip": False})
+                total_score += s
+                placed.add((r, c))
+            if total_score > best_total:
+                best_total = total_score
+                best_result = {"action": "draft", "pair_idx": pi, "placements": pair_placements}
+        return best_result
 
     def check_game_over(self):
         if self.rounds_played >= self.max_turns:

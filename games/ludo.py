@@ -58,6 +58,10 @@ class LudoGame(BaseGame):
     # ------------------------------------------------------------------ setup
     def setup(self):
         """Initialize all pieces in base."""
+        comp_num = 1
+        while len(self.players) < self.num_players:
+            self.players.append(f"Computer {comp_num}")
+            comp_num += 1
         for p in range(1, self.num_players + 1):
             self.pieces[p] = ["base"] * self.pieces_per_player
         self.current_player = 1
@@ -351,6 +355,74 @@ class LudoGame(BaseGame):
         else:
             self.current_player = (self.current_player % self.num_players) + 1
 
+    side_labels = ("Red", "Blue")
+
+    def get_ai_move(self):
+        import random as rng
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        roll = rng.randint(1, 6)
+        self.last_roll = roll
+        self.extra_turn = (roll == 6)
+
+        movable = self._get_movable_pieces(p, roll)
+
+        if not movable:
+            return ("no_move", roll)
+
+        if len(movable) == 1:
+            return ("move", roll, movable[0])
+
+        if difficulty == 'easy':
+            return ("move", roll, rng.choice(movable))
+
+        scored = []
+        for idx in movable:
+            piece = self.pieces[p][idx]
+            score = 0
+            if piece == "base":
+                score = 50
+            else:
+                new_state = self._calc_new_position(p, piece, roll)
+                if new_state == "finished":
+                    score = 1000
+                elif new_state and new_state[0] == "home":
+                    score = 200 + new_state[1] * 10
+                elif new_state and new_state[0] == "main":
+                    for opp in range(1, self.num_players + 1):
+                        if opp == p:
+                            continue
+                        for opp_piece in self.pieces[opp]:
+                            if opp_piece == ("main", new_state[1]) and new_state[1] not in SAFE_SQUARES:
+                                score += 100
+                    start = START_POSITIONS[p]
+                    rel_pos = (new_state[1] - start) % MAIN_TRACK_SIZE
+                    score += rel_pos
+                    if new_state[1] in SAFE_SQUARES:
+                        score += 20
+                    if difficulty == 'hard':
+                        for opp in range(1, self.num_players + 1):
+                            if opp == p:
+                                continue
+                            for opp_piece in self.pieces[opp]:
+                                if opp_piece not in ("base", "finished") and opp_piece[0] == "main":
+                                    for d in range(1, 7):
+                                        opp_new = self._calc_new_position(opp, opp_piece, d)
+                                        if (opp_new and opp_new[0] == "main"
+                                                and opp_new[1] == new_state[1]
+                                                and new_state[1] not in SAFE_SQUARES):
+                                            score -= 15
+            scored.append((score, idx))
+
+        scored.sort(key=lambda x: -x[0])
+
+        if difficulty == 'medium':
+            top = scored[:max(1, len(scored) // 2)]
+            return ("move", roll, rng.choice([s[1] for s in top]))
+
+        return ("move", roll, scored[0][1])
+
     # --------------------------------------------------------- check_game_over
     def check_game_over(self):
         for p in range(1, self.num_players + 1):
@@ -390,36 +462,47 @@ class LudoGame(BaseGame):
         self.pieces = {}
         for k, v in state["pieces"].items():
             self.pieces[int(k)] = [deserialize_piece(p) for p in v]
+        comp_num = 1
+        while len(self.players) < self.num_players:
+            self.players.append(f"Computer {comp_num}")
+            comp_num += 1
 
     # ----------------------------------------------------------- play override
     def play(self):
         """Custom play loop to handle extra turns on 6 and multi-player cycling."""
-        self.setup()
+        if not self._resumed:
+            self.setup()
         while not self.game_over:
             clear_screen()
             self.display()
-            try:
-                move = self.get_move()
-            except Exception as e:
-                from engine.base import QuitGame, SuspendGame, ShowHelp, ShowTutorial
-                if isinstance(e, QuitGame):
-                    print("\nGame ended.")
-                    input_with_quit("Press Enter to return to menu...")
-                    return None
-                elif isinstance(e, SuspendGame):
-                    slot = self.save_game()
-                    print(f"\nGame saved as '{slot}'")
-                    input_with_quit("Press Enter to return to menu...")
-                    return 'suspended'
-                elif isinstance(e, ShowHelp):
-                    self.show_help()
-                    continue
-                elif isinstance(e, ShowTutorial):
-                    clear_screen()
-                    print(self.get_tutorial())
-                    input_with_quit("\nPress Enter to continue...")
-                    continue
-                raise
+
+            if self.ai_player == self.current_player:
+                move = self.get_ai_move()
+                import time
+                time.sleep(0.5)
+            else:
+                try:
+                    move = self.get_move()
+                except Exception as e:
+                    from engine.base import QuitGame, SuspendGame, ShowHelp, ShowTutorial
+                    if isinstance(e, QuitGame):
+                        print("\nGame ended.")
+                        input_with_quit("Press Enter to return to menu...")
+                        return None
+                    elif isinstance(e, SuspendGame):
+                        slot = self.save_game()
+                        print(f"\nGame saved as '{slot}'")
+                        input_with_quit("Press Enter to return to menu...")
+                        return 'suspended'
+                    elif isinstance(e, ShowHelp):
+                        self.show_help()
+                        continue
+                    elif isinstance(e, ShowTutorial):
+                        clear_screen()
+                        print(self.get_tutorial())
+                        input_with_quit("\nPress Enter to continue...")
+                        continue
+                    raise
 
             if self.make_move(move):
                 self.move_history.append(str(move))

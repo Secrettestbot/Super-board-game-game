@@ -91,6 +91,7 @@ class PatchworkGame(BaseGame):
         "standard": "Standard Patchwork (9x9 board)",
         "simple": "Simplified (fewer patches, 7x7 board)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -276,6 +277,10 @@ class PatchworkGame(BaseGame):
         """Display the full game state."""
         var_label = "Standard" if self.variation != "simple" else "Simple"
         active = self._get_active_player()
+        # Sync current_player so the base play-loop AI check works correctly.
+        # In Patchwork, switch_player() is a no-op because the "behind" player
+        # always goes, so current_player must be kept in sync here.
+        self.current_player = active + 1
         print(f"\n  === Patchwork ({var_label}) ===")
         print(f"  {self.players[0]} (P1): {self.buttons[0]} buttons, pos {self.positions[0]}/{self.track_length}   |   "
               f"{self.players[1]} (P2): {self.buttons[1]} buttons, pos {self.positions[1]}/{self.track_length}")
@@ -364,7 +369,12 @@ class PatchworkGame(BaseGame):
 
     def make_move(self, move):
         """Apply move. Returns True if valid."""
+        if move is None:
+            return False
         active = self._get_active_player()
+        # Keep current_player in sync with the actual active player so that
+        # _pause() and _get_placement() AI checks work correctly.
+        self.current_player = active + 1
         move_upper = move.upper().strip()
 
         if move_upper == 'A':
@@ -398,13 +408,13 @@ class PatchworkGame(BaseGame):
             # Check if player can afford it
             if self.buttons[active] < cost:
                 print(f"  Not enough buttons! You have {self.buttons[active]}, need {cost}.")
-                input_with_quit("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
                 return False
 
             # Check if any valid placement exists
             if not self._has_any_valid_placement(active, shape):
                 print("  No valid placement exists for this patch on your quilt!")
-                input_with_quit("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
                 return False
 
             # Get placement
@@ -417,7 +427,7 @@ class PatchworkGame(BaseGame):
 
             if not self._can_place_patch(active, transformed, row_off, col_off):
                 print("  Invalid placement! Patch doesn't fit there.")
-                input_with_quit("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
                 return False
 
             # Apply the move
@@ -441,7 +451,76 @@ class PatchworkGame(BaseGame):
         return False
 
     def _get_placement(self, p, shape):
-        """Interactive prompt to get placement details for a patch."""
+        """Interactive prompt to get placement details for a patch.
+
+        When the active player is the AI, auto-compute a valid placement
+        instead of prompting for input.
+        """
+        # --- AI bypass: compute placement automatically ---
+        if self.ai_player == p + 1:
+            difficulty = getattr(self, 'ai_difficulty', 'medium')
+            valid_placements = []
+            for rot in range(4):
+                for flip in [False, True]:
+                    transformed = self._transform_shape(shape, rot, flip)
+                    for row_off in range(self.board_size):
+                        for col_off in range(self.board_size):
+                            if self._can_place_patch(p, transformed, row_off, col_off):
+                                valid_placements.append((rot, flip, row_off, col_off))
+            if not valid_placements:
+                return None
+
+            if difficulty == 'easy':
+                choice = random.choice(valid_placements)
+            else:
+                # For medium/hard: score each placement and pick the best.
+                # Prefer placements that fill interior cells and are adjacent
+                # to existing patches.
+                best_score = -1
+                best = valid_placements[0]
+                for rot, flip, row_off, col_off in valid_placements:
+                    transformed = self._transform_shape(shape, rot, flip)
+                    score = 0
+                    for r, c in transformed:
+                        nr, nc = r + row_off, c + col_off
+                        # Reward interior cells (not on the border)
+                        if 0 < nr < self.board_size - 1 and 0 < nc < self.board_size - 1:
+                            score += 2
+                        # Reward adjacency to existing patches
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            ar, ac = nr + dr, nc + dc
+                            if (0 <= ar < self.board_size and
+                                    0 <= ac < self.board_size and
+                                    self.quilts[p][ar][ac]):
+                                score += 3
+                    if score > best_score:
+                        best_score = score
+                        best = (rot, flip, row_off, col_off)
+                if difficulty == 'medium':
+                    # Add some randomness: pick from top candidates
+                    scored = []
+                    for rot, flip, row_off, col_off in valid_placements:
+                        transformed = self._transform_shape(shape, rot, flip)
+                        s = 0
+                        for r, c in transformed:
+                            nr, nc = r + row_off, c + col_off
+                            if 0 < nr < self.board_size - 1 and 0 < nc < self.board_size - 1:
+                                s += 2
+                            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                                ar, ac = nr + dr, nc + dc
+                                if (0 <= ar < self.board_size and
+                                        0 <= ac < self.board_size and
+                                        self.quilts[p][ar][ac]):
+                                    s += 3
+                        scored.append((s, (rot, flip, row_off, col_off)))
+                    scored.sort(key=lambda x: x[0], reverse=True)
+                    top_n = max(1, len(scored) // 4)
+                    choice = random.choice(scored[:top_n])[1]
+                else:
+                    choice = best
+            return choice
+
+        # --- Human path: interactive prompt ---
         print(f"\n  Place the patch on your quilt.")
         print(f"  Current shape: {self._shape_to_ascii(shape)}")
         print(f"  Enter: rotation(0-3) flip(n/y) row col")
@@ -476,6 +555,42 @@ class PatchworkGame(BaseGame):
             return (rotation, flip, row_off, col_off)
         except (ValueError, IndexError):
             return None
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        active = self._get_active_player()
+
+        available = self._available_patches()
+        other = 1 - active
+        advance_spaces = max(1, min(self.positions[other] + 1, self.track_length) - self.positions[active])
+        advance_score = advance_spaces * 2
+
+        patch_scores = []
+        for i, (idx, patch) in enumerate(available):
+            cost, time_cost, income, shape = patch
+            if self.buttons[active] < cost:
+                continue
+            if not self._has_any_valid_placement(active, shape):
+                continue
+            cells = len(shape)
+            score = cells * 3 + income * 8 - cost * 1.5 - time_cost * 0.5
+            if difficulty == "hard":
+                score += income * 4
+            patch_scores.append((str(i + 1), score))
+
+        moves = [("A", advance_score)]
+        moves.extend(patch_scores)
+
+        if difficulty == "easy":
+            return rand.choice(moves)[0]
+        elif difficulty == "hard":
+            moves.sort(key=lambda x: x[1], reverse=True)
+            return moves[0][0]
+        else:
+            moves.sort(key=lambda x: x[1], reverse=True)
+            top = moves[:min(2, len(moves))]
+            return rand.choice(top)[0]
 
     def check_game_over(self):
         """Check if both players have reached the end of the time track."""

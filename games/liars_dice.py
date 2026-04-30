@@ -194,7 +194,7 @@ class LiarsDiceGame(BaseGame):
         cp = self.current_player
 
         if self.phase == "round_over":
-            input_with_quit("  Press Enter to start next round... ")
+            self._pause("  Press Enter to start next round... ")
             return "next_round"
 
         if self.phase == "bidding":
@@ -273,6 +273,8 @@ class LiarsDiceGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
 
         if move == "next_round":
@@ -330,7 +332,7 @@ class LiarsDiceGame(BaseGame):
         print(f"  {self.players[loser - 1]} now has {self.dice_count[loser]} dice.")
         self.round_starter = loser
         self.phase = "round_over"
-        input_with_quit("\n  Press Enter to continue... ")
+        self._pause("\n  Press Enter to continue... ")
         return True
 
     def _do_exact_call(self, cp):
@@ -372,7 +374,7 @@ class LiarsDiceGame(BaseGame):
             self.round_starter = caller
 
         self.phase = "round_over"
-        input_with_quit("\n  Press Enter to continue... ")
+        self._pause("\n  Press Enter to continue... ")
         return True
 
     def _do_next_round(self):
@@ -399,6 +401,92 @@ class LiarsDiceGame(BaseGame):
             pass
         else:
             super().switch_player()
+
+    # ---------------------------------------------------------- get_ai_move
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        opp = self._opponent(cp)
+
+        if self.phase == "round_over":
+            return "next_round"
+
+        my_dice = self.dice[cp]
+        total_dice = self._total_dice()
+        opp_count = self.dice_count[opp]
+
+        counts = {}
+        for d in my_dice:
+            counts[d] = counts.get(d, 0) + 1
+
+        wild = self.variation == "standard"
+        wild_count = counts.get(1, 0) if wild else 0
+
+        if self.current_bid is None:
+            best_face = 2
+            best_cnt = 0
+            for face in range(2, 7):
+                cnt = counts.get(face, 0) + (wild_count if wild else 0)
+                if cnt > best_cnt:
+                    best_cnt = cnt
+                    best_face = face
+            if best_cnt == 0:
+                best_face = random.randint(2, 6)
+                best_cnt = wild_count
+            p_each = 1/3 if wild else 1/6
+            expected = best_cnt + opp_count * p_each
+            qty = max(1, int(expected))
+            if difficulty == 'easy':
+                qty = max(1, best_cnt)
+            return f"bid {qty} {best_face}"
+
+        cur_qty, cur_face = self.current_bid
+        my_matching = counts.get(cur_face, 0)
+        if wild and cur_face != 1:
+            my_matching += wild_count
+        p_each = 1/3 if (wild and cur_face != 1) else 1/6
+        expected_total = my_matching + opp_count * p_each
+
+        if cur_qty > expected_total + (1.0 if difficulty == 'hard' else 1.5):
+            return "liar"
+
+        if self.variation == "exact" and difficulty == 'hard':
+            if abs(cur_qty - expected_total) < 0.5:
+                return "exact"
+
+        best_face = None
+        best_est = -1
+        for face in range(2, 7):
+            cnt = counts.get(face, 0) + (wild_count if wild else 0)
+            est = cnt + opp_count * p_each
+            if est > best_est:
+                best_est = est
+                best_face = face
+
+        new_qty = cur_qty
+        new_face = best_face if best_face else cur_face
+        if not self._is_valid_bid(new_qty, new_face):
+            new_qty = cur_qty + 1
+        if not self._is_valid_bid(new_qty, new_face):
+            for f in range(cur_face + 1, 7):
+                if self._is_valid_bid(cur_qty, f):
+                    new_qty = cur_qty
+                    new_face = f
+                    break
+            else:
+                new_qty = cur_qty + 1
+                new_face = 2
+        if self._is_valid_bid(new_qty, new_face):
+            my_cnt = counts.get(new_face, 0)
+            if wild and new_face != 1:
+                my_cnt += wild_count
+            est = my_cnt + opp_count * p_each
+            if new_qty > est + 2.5:
+                return "liar"
+            return f"bid {new_qty} {new_face}"
+
+        return "liar"
 
     # -------------------------------------------------------- check_game_over
     def check_game_over(self):

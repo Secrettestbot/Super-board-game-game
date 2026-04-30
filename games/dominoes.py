@@ -248,6 +248,8 @@ class DominoesGame(BaseGame):
     # ------------------------------------------------------------- make_move
     def make_move(self, move):
         """Apply a move to the game state. Returns True if valid."""
+        if move is None:
+            return False
         action = move["action"]
         player_idx = self.current_player - 1
         self._last_action = action
@@ -259,7 +261,7 @@ class DominoesGame(BaseGame):
             self.hands[player_idx].append(drawn)
             print(f"  Drew tile [{drawn[0]}|{drawn[1]}]")
             self.passed[player_idx] = False
-            input_with_quit("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
             return True
 
         if action == "pass":
@@ -305,6 +307,55 @@ class DominoesGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        hand = self.hands[self.current_player - 1]
+
+        if not self.chain:
+            if difficulty == 'easy':
+                tile = random.choice(hand)
+            else:
+                doubles = [t for t in hand if t[0] == t[1]]
+                tile = random.choice(doubles) if doubles else max(hand, key=lambda t: t[0] + t[1])
+            return {"action": "play", "tile": tile, "side": "right"}
+
+        playable = []
+        for tile in hand:
+            for side in ("left", "right"):
+                end_val = self.left_end if side == "left" else self.right_end
+                if self._tile_matches(tile, end_val):
+                    playable.append((tile, side))
+
+        if not playable:
+            if self.variation == "draw" and self.boneyard:
+                return {"action": "draw"}
+            return {"action": "pass"}
+
+        if difficulty == 'easy':
+            tile, side = random.choice(playable)
+            return {"action": "play", "tile": tile, "side": side}
+
+        scored = []
+        for tile, side in playable:
+            sc = tile[0] + tile[1]
+            if tile[0] == tile[1]:
+                sc += 3
+            if difficulty == 'hard':
+                end_val = self.left_end if side == "left" else self.right_end
+                new_end = tile[0] if tile[1] == end_val else tile[1]
+                opp_hand = self.hands[2 - self.current_player]
+                opp_can_match = sum(1 for t in opp_hand if t[0] == new_end or t[1] == new_end)
+                sc -= opp_can_match * 2
+            scored.append((sc, tile, side))
+
+        scored.sort(key=lambda x: -x[0])
+        if difficulty == 'medium' and len(scored) > 1 and random.random() < 0.2:
+            _, tile, side = random.choice(scored[:max(2, len(scored) // 2)])
+        else:
+            _, tile, side = scored[0]
+        return {"action": "play", "tile": tile, "side": side}
 
     # ---------------------------------------------------- check_game_over
     def check_game_over(self):

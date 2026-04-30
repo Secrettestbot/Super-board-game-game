@@ -247,6 +247,8 @@ class DuelingDiceGame(BaseGame):
         return "roll"
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player
 
         if move == "roll":
@@ -295,6 +297,51 @@ class DuelingDiceGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        if self.phase == "rolling":
+            return "roll"
+        if self.phase == "combat":
+            return "next_round"
+
+        if self.phase == "drafting":
+            if not self.dice_pool or self._total_drafted(p) >= self._max_draft():
+                return "done_drafting"
+
+            if difficulty == 'easy':
+                idx = random.randint(0, len(self.dice_pool) - 1)
+                can_atk = len(self.attack_slots[p]) < self.max_attack
+                can_def = len(self.defense_slots[p]) < self.max_defense
+                slot = random.choice(["attack", "defense"]) if can_atk and can_def else ("attack" if can_atk else "defense")
+                return {"die_index": idx, "slot": slot}
+
+            can_atk = len(self.attack_slots[p]) < self.max_attack
+            can_def = len(self.defense_slots[p]) < self.max_defense
+            idx = 0
+            die_val = self.dice_pool[0]
+
+            if difficulty == 'hard':
+                opp = 2 if p == 1 else 1
+                opp_atk = sum(self.attack_slots[opp])
+                my_def = sum(self.defense_slots[p])
+                need_def = opp_atk > my_def + 3 and can_def
+            else:
+                need_def = can_def and len(self.defense_slots[p]) == 0 and die_val >= 4
+
+            if need_def and can_def:
+                slot = "defense"
+            elif can_atk:
+                slot = "attack"
+            else:
+                slot = "defense"
+
+            return {"die_index": idx, "slot": slot}
+
+        return "roll"
 
     def check_game_over(self):
         for p in [1, 2]:

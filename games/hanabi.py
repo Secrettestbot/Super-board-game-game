@@ -233,6 +233,8 @@ class HanabiGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move. Returns True if valid."""
+        if move is None:
+            return False
         player = self.current_player
         other = 2 if player == 1 else 1
 
@@ -316,6 +318,83 @@ class HanabiGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+        other = 2 if player == 1 else 1
+        hand = self.hands[player]
+        known = self.known[player]
+
+        if difficulty == 'easy':
+            for i, k in enumerate(known):
+                if 'color' in k and 'number' in k:
+                    if self.piles.get(k['color'], 0) == k['number'] - 1:
+                        return ('play', i)
+            if self.hint_tokens > 0 and self.hands[other]:
+                card = random.choice(self.hands[other])
+                if random.random() < 0.5:
+                    return ('hint', 'color', card['color'])
+                return ('hint', 'number', card['number'])
+            if self.hint_tokens < self.max_hints and hand:
+                return ('discard', random.randint(0, len(hand) - 1))
+            if hand:
+                return ('play', random.randint(0, len(hand) - 1))
+            return ('discard', 0)
+
+        for i, k in enumerate(known):
+            if 'color' in k and 'number' in k:
+                if self.piles.get(k['color'], 0) == k['number'] - 1:
+                    return ('play', i)
+
+        if self.hint_tokens > 0:
+            other_hand = self.hands[other]
+            other_known = self.known[other]
+            best_hint = None
+            best_score = -1
+            for i, card in enumerate(other_hand):
+                playable = self.piles.get(card['color'], 0) == card['number'] - 1
+                if playable:
+                    if 'color' not in other_known[i]:
+                        affected = sum(1 for c in other_hand if c['color'] == card['color'])
+                        sc = 10 if affected == 1 else 5
+                        if sc > best_score:
+                            best_score = sc
+                            best_hint = ('hint', 'color', card['color'])
+                    if 'number' not in other_known[i]:
+                        affected = sum(1 for c in other_hand if c['number'] == card['number'])
+                        sc = 10 if affected == 1 else 5
+                        if sc > best_score:
+                            best_score = sc
+                            best_hint = ('hint', 'number', card['number'])
+            if best_hint:
+                return best_hint
+            if difficulty == 'hard':
+                for i, card in enumerate(other_hand):
+                    if card['number'] == 5 and 'number' not in other_known[i]:
+                        return ('hint', 'number', 5)
+
+        if self.hint_tokens < self.max_hints and hand:
+            best_idx = 0
+            best_risk = 999
+            for i, k in enumerate(known):
+                risk = 5
+                if 'number' in k:
+                    if 'color' in k and self.piles.get(k['color'], 0) >= k['number']:
+                        risk = -100
+                    else:
+                        risk = k['number']
+                if len(k) == 0:
+                    risk = 3
+                if risk < best_risk:
+                    best_risk = risk
+                    best_idx = i
+            return ('discard', best_idx)
+
+        if hand:
+            return ('play', 0)
+        return ('discard', 0)
 
     def check_game_over(self):
         """Check if the game is over."""

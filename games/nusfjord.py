@@ -94,6 +94,7 @@ class NusfjordGame(BaseGame):
         "standard": "Full game - 7 rounds with all buildings and elders",
         "quick": "Quick game - 5 rounds, smaller building deck, start with extra resources",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def setup(self):
         is_quick = self.variation == "quick"
@@ -170,6 +171,8 @@ class NusfjordGame(BaseGame):
         return move.strip()
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.player_data[str(self.current_player)]
         self.message = ""
 
@@ -244,17 +247,36 @@ class NusfjordGame(BaseGame):
             if not self.building_pool:
                 self.message = "No buildings available!"
                 return False
-            print("  Available buildings:")
-            for idx, bi in enumerate(self.building_pool):
-                b = BUILDING_CARDS[bi]
-                cost_parts = []
-                if b["cost_wood"] > 0:
-                    cost_parts.append(f"{b['cost_wood']} wood")
-                if b["cost_gold"] > 0:
-                    cost_parts.append(f"{b['cost_gold']} gold")
-                cost_str = ", ".join(cost_parts) if cost_parts else "free"
-                print(f"    {idx + 1}. {b['name']} (Cost: {cost_str}) {b['vp']} VP - {b['bonus']}")
-            bi_choice = input_with_quit("  Choose building: ").strip()
+            if self.ai_player == self.current_player:
+                # AI auto-selects a building
+                difficulty = getattr(self, 'ai_difficulty', 'medium')
+                affordable = []
+                for idx, bi in enumerate(self.building_pool):
+                    b = BUILDING_CARDS[bi]
+                    if p["wood"] >= b["cost_wood"] and p["gold"] >= b["cost_gold"]:
+                        affordable.append((idx, bi, b))
+                if not affordable:
+                    self.message = "No affordable buildings!"
+                    return False
+                if difficulty == 'easy':
+                    bi_idx = random.choice(affordable)[0]
+                else:
+                    # Medium/Hard: pick the building with the most VP
+                    best = max(affordable, key=lambda x: x[2]["vp"])
+                    bi_idx = best[0]
+                bi_choice = str(bi_idx + 1)
+            else:
+                print("  Available buildings:")
+                for idx, bi in enumerate(self.building_pool):
+                    b = BUILDING_CARDS[bi]
+                    cost_parts = []
+                    if b["cost_wood"] > 0:
+                        cost_parts.append(f"{b['cost_wood']} wood")
+                    if b["cost_gold"] > 0:
+                        cost_parts.append(f"{b['cost_gold']} gold")
+                    cost_str = ", ".join(cost_parts) if cost_parts else "free"
+                    print(f"    {idx + 1}. {b['name']} (Cost: {cost_str}) {b['vp']} VP - {b['bonus']}")
+                bi_choice = input_with_quit("  Choose building: ").strip()
             try:
                 bi_idx = int(bi_choice) - 1
                 if bi_idx < 0 or bi_idx >= len(self.building_pool):
@@ -283,15 +305,37 @@ class NusfjordGame(BaseGame):
             if not available:
                 self.message = "No elders available!"
                 return False
-            print("  Available elders:")
-            for idx, ei in enumerate(available):
-                e = ELDER_CARDS[ei]
-                hire_cost = e["feed"]
-                if any(BUILDING_CARDS[b]["name"] == "Elder Hall" for b in p["buildings"]):
-                    hire_cost = max(0, hire_cost - 1)
-                print(f"    {idx + 1}. {e['name']} (cost: {hire_cost} fish, "
-                      f"bonus: +{e['value']} {e['bonus']}, feeds: {e['feed']}/round)")
-            ei_choice = input_with_quit("  Choose elder: ").strip()
+            if self.ai_player == self.current_player:
+                # AI auto-selects an elder
+                difficulty = getattr(self, 'ai_difficulty', 'medium')
+                affordable = []
+                for idx, ei in enumerate(available):
+                    e = ELDER_CARDS[ei]
+                    hire_cost = e["feed"]
+                    if any(BUILDING_CARDS[b]["name"] == "Elder Hall" for b in p["buildings"]):
+                        hire_cost = max(0, hire_cost - 1)
+                    if p["fish"] >= hire_cost:
+                        affordable.append((idx, ei, e, hire_cost))
+                if not affordable:
+                    self.message = "Can't afford any elders!"
+                    return False
+                if difficulty == 'easy':
+                    ei_idx = random.choice(affordable)[0]
+                else:
+                    # Medium/Hard: pick elder with best value-to-feed ratio
+                    best = max(affordable, key=lambda x: x[2]["value"] - x[3])
+                    ei_idx = best[0]
+                ei_choice = str(ei_idx + 1)
+            else:
+                print("  Available elders:")
+                for idx, ei in enumerate(available):
+                    e = ELDER_CARDS[ei]
+                    hire_cost = e["feed"]
+                    if any(BUILDING_CARDS[b]["name"] == "Elder Hall" for b in p["buildings"]):
+                        hire_cost = max(0, hire_cost - 1)
+                    print(f"    {idx + 1}. {e['name']} (cost: {hire_cost} fish, "
+                          f"bonus: +{e['value']} {e['bonus']}, feeds: {e['feed']}/round)")
+                ei_choice = input_with_quit("  Choose elder: ").strip()
             try:
                 ei_idx = int(ei_choice) - 1
                 if ei_idx < 0 or ei_idx >= len(available):
@@ -332,10 +376,36 @@ class NusfjordGame(BaseGame):
             return True
 
         elif action == "trade":
-            print("  Trade options:")
-            print("    1. Sell 2 fish -> 1 gold")
-            print("    2. Buy 1 wood for 2 gold")
-            ti = input_with_quit("  Choose trade: ").strip()
+            if self.ai_player == self.current_player:
+                # AI auto-selects a trade
+                difficulty = getattr(self, 'ai_difficulty', 'medium')
+                if difficulty == 'easy':
+                    # Random valid trade
+                    options = []
+                    if p["fish"] >= 2:
+                        options.append("1")
+                    if p["gold"] >= 2:
+                        options.append("2")
+                    if not options:
+                        self.message = "Can't afford any trade!"
+                        return False
+                    ti = random.choice(options)
+                else:
+                    # Medium/Hard: prefer fish->gold if fish abundant, gold->wood if wood needed
+                    if p["fish"] >= 2 and (p["gold"] < 2 or p["wood"] >= 2):
+                        ti = "1"
+                    elif p["gold"] >= 2:
+                        ti = "2"
+                    elif p["fish"] >= 2:
+                        ti = "1"
+                    else:
+                        self.message = "Can't afford any trade!"
+                        return False
+            else:
+                print("  Trade options:")
+                print("    1. Sell 2 fish -> 1 gold")
+                print("    2. Buy 1 wood for 2 gold")
+                ti = input_with_quit("  Choose trade: ").strip()
             if ti == "1":
                 if p["fish"] < 2:
                     self.message = "Need 2 fish!"
@@ -399,6 +469,83 @@ class NusfjordGame(BaseGame):
                 5, self.player_data[str(i)]["forest_tiles"] + 1)
         if self.current_round <= self.max_rounds:
             self.message = f"Round {self.current_round}/{self.max_rounds} begins!"
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.player_data[str(self.current_player)]
+
+        if self.phase == "feed":
+            return ""
+
+        if p["workers_placed"] >= p["workers"]:
+            return str(len(ACTION_SPACES) + 1)
+
+        available = []
+        for i, act in enumerate(ACTION_SPACES):
+            if act not in self.used_actions:
+                available.append((i + 1, act))
+
+        if not available:
+            return str(len(ACTION_SPACES) + 1)
+
+        if difficulty == 'easy':
+            choices = [str(i) for i, _ in available] + [str(len(ACTION_SPACES) + 1)]
+            return random.choice(choices)
+
+        candidates = []
+        for idx, act in available:
+            score = 0
+            if act == "go_fishing":
+                fish = p["ships"] * p["ship_capacity"]
+                if any(BUILDING_CARDS[b]["name"] == "Boathouse" for b in p["buildings"]):
+                    fish += 1
+                score = 30 + fish * 5
+            elif act == "forestry":
+                if p["forest_tiles"] > 0:
+                    score = 25
+                else:
+                    continue
+            elif act == "build_ship":
+                cost = 2
+                if any(BUILDING_CARDS[b]["name"] == "Shipyard" for b in p["buildings"]):
+                    cost = 1
+                if p["wood"] >= cost:
+                    score = 20 + (5 - p["ships"]) * 5
+                else:
+                    continue
+            elif act == "build_building":
+                if p["wood"] >= 1 and self.building_pool:
+                    score = 35
+                else:
+                    continue
+            elif act == "employ_elder":
+                if p["fish"] >= 1 and self.elder_pool:
+                    score = 25
+                else:
+                    continue
+            elif act == "issue_shares":
+                if p["shares_issued"] < 3:
+                    score = 15 - p["shares_issued"] * 5
+                else:
+                    continue
+            elif act == "trade":
+                if p["fish"] >= 2 or p["gold"] >= 2:
+                    score = 12
+                else:
+                    continue
+            candidates.append((str(idx), score))
+
+        candidates.append((str(len(ACTION_SPACES) + 1), 5))
+
+        if not candidates:
+            return str(len(ACTION_SPACES) + 1)
+
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        if difficulty == 'medium':
+            top = candidates[:max(2, len(candidates) // 3)]
+            return random.choice(top)[0]
+        return candidates[0][0]
 
     def check_game_over(self):
         if self.current_round > self.max_rounds and self.phase == "actions":

@@ -138,6 +138,7 @@ class OrcLympicsGame(BaseGame):
         "standard": "5 classic events",
         "tournament": "7 events including Goblin Sprint and Dragon Dodge",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -312,6 +313,8 @@ class OrcLympicsGame(BaseGame):
         return 0
 
     def make_move(self, move):
+        if move is None:
+            return False
         action, data = move
         event = self.events[self.current_event_idx]
         p = self.current_event_player
@@ -446,6 +449,101 @@ class OrcLympicsGame(BaseGame):
             })
 
             self.event_phase = "done"
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        event = self.events[self.current_event_idx]
+        mechanic = event["mechanic"]
+
+        if self.event_phase == "done":
+            return ("next", "")
+
+        if self.event_phase == "rolling":
+            if mechanic == "laps":
+                return ("roll_lap", "")
+            elif mechanic == "push_luck":
+                if self.push_luck_busted:
+                    return ("push_done", "")
+                if self.push_luck_total == 0:
+                    return ("push_roll", "")
+                thresholds = {"easy": 10, "medium": 16, "hard": 22}
+                if self.push_luck_total >= thresholds.get(difficulty, 16):
+                    return ("push_stop", "")
+                return ("push_roll", "")
+            else:
+                return ("roll", "")
+
+        if self.event_phase == "rerolling":
+            if self.rerolls_left <= 0:
+                return ("done_rerolling", "")
+
+            if mechanic == "laps":
+                if difficulty == "easy":
+                    return ("keep_laps", "")
+                worst_lap = self.lap_scores.index(min(self.lap_scores))
+                if min(self.lap_scores) < 7:
+                    return ("reroll_lap", str(worst_lap + 1))
+                return ("keep_laps", "")
+
+            dice = self.current_dice
+            if not dice:
+                return ("keep", "")
+
+            reroll_positions = []
+
+            if mechanic == "total":
+                if difficulty == "easy":
+                    return ("keep", "")
+                avg = sum(dice) / len(dice)
+                reroll_positions = [i + 1 for i, d in enumerate(dice) if d < avg]
+
+            elif mechanic == "matches":
+                counts = {}
+                for d in dice:
+                    counts[d] = counts.get(d, 0) + 1
+                most_common_val = max(counts, key=counts.get)
+                reroll_positions = [i + 1 for i, d in enumerate(dice) if d != most_common_val]
+                if difficulty == "easy":
+                    reroll_positions = reroll_positions[:1]
+
+            elif mechanic == "threshold":
+                reroll_positions = [i + 1 for i, d in enumerate(dice) if d < 4]
+                if difficulty == "easy":
+                    reroll_positions = reroll_positions[:2]
+
+            elif mechanic == "straight":
+                sorted_unique = sorted(set(dice))
+                best_run = [sorted_unique[0]]
+                current_run = [sorted_unique[0]]
+                for i in range(1, len(sorted_unique)):
+                    if sorted_unique[i] == sorted_unique[i - 1] + 1:
+                        current_run.append(sorted_unique[i])
+                        if len(current_run) > len(best_run):
+                            best_run = list(current_run)
+                    else:
+                        current_run = [sorted_unique[i]]
+                keep_vals = set(best_run)
+                kept = []
+                for i, d in enumerate(dice):
+                    if d in keep_vals and d not in kept:
+                        kept.append(d)
+                    else:
+                        reroll_positions.append(i + 1)
+
+            elif mechanic == "drop_lowest":
+                min_val = min(dice)
+                min_idx = dice.index(min_val)
+                reroll_positions = [min_idx + 1]
+                for i, d in enumerate(dice):
+                    if d == 1 and (i + 1) not in reroll_positions:
+                        reroll_positions.append(i + 1)
+
+            if not reroll_positions:
+                return ("keep", "")
+            return ("reroll", " ".join(str(p) for p in reroll_positions))
+
+        return ("next", "")
 
     def check_game_over(self):
         # After finishing an event, move to next

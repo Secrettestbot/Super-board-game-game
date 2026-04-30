@@ -170,6 +170,10 @@ class ClaimGame(BaseGame):
                 print(f"  {msg}")
         print()
 
+    def switch_player(self):
+        """No-op: ClaimGame manages current_player internally in make_move/resolve_trick."""
+        pass
+
     def _card_str(self, card):
         return f"{card['faction']}({card['rank']})"
 
@@ -184,6 +188,9 @@ class ClaimGame(BaseGame):
             self.hands[player] = hand
         else:
             self.followers[player] = hand
+
+    def switch_player(self):
+        pass
 
     def get_move(self):
         hand = self._get_hand(self.current_player)
@@ -208,9 +215,14 @@ class ClaimGame(BaseGame):
         for i, c in enumerate(hand):
             print(f"  {i+1}:{self._card_str(c)}", end="")
         print()
+        if self.ai_player == self.current_player:
+            return None  # Should not be called during AI turns
         return ("play", input_with_quit(f"  Choose card (1-{len(hand)}): "))
 
     def make_move(self, move):
+        if move is None:
+            return False
+
         action, value = move
 
         if action == "auto":
@@ -229,7 +241,9 @@ class ClaimGame(BaseGame):
 
             # Check suit following rule
             if self.trick_phase == "follow":
-                lead_card = self.trick_cards[self.lead_player]
+                lead_card = self.trick_cards.get(self.lead_player)
+                if lead_card is None:
+                    return False
                 lead_faction = lead_card["faction"]
                 # Doppelgangers copy lead suit - no restriction
                 if lead_faction != "Doppelgangers":
@@ -336,6 +350,72 @@ class ClaimGame(BaseGame):
 
         # Different factions, lead player wins (follow suit rule - leader advantage)
         return self.lead_player
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        hand = self._get_hand(self.current_player)
+
+        if not hand:
+            return ("auto", "")
+
+        valid_indices = list(range(len(hand)))
+
+        if self.trick_phase == "follow":
+            lead_card = self.trick_cards.get(self.lead_player)
+            if lead_card is None:
+                return ("play", str(valid_indices[0] + 1))
+            lead_faction = lead_card["faction"]
+            if lead_faction != "Doppelgangers":
+                matching = [i for i in valid_indices if hand[i]["faction"] == lead_faction]
+                if matching:
+                    valid_indices = matching
+
+        if difficulty == 'easy':
+            idx = random.choice(valid_indices)
+            return ("play", str(idx + 1))
+
+        def score_card(i):
+            card = hand[i]
+            score = 0
+            if self.trick_phase == "lead":
+                score = -card["rank"]
+                if difficulty == 'hard':
+                    if card["faction"] == "Goblins":
+                        score += card["rank"]
+                    if card["faction"] == "Dragons":
+                        score += 5
+            else:
+                lead_card = self.trick_cards.get(self.lead_player)
+                if lead_card is None:
+                    return score
+                lead_f = lead_card["faction"]
+                eff_f = card["faction"]
+                if eff_f == "Doppelgangers":
+                    eff_f = lead_f
+                if eff_f == "Dragons" and lead_f != "Dragons":
+                    score += 10
+                elif eff_f == lead_f:
+                    if eff_f == "Goblins":
+                        score += (10 - card["rank"])
+                    else:
+                        score += card["rank"]
+                else:
+                    score = -card["rank"]
+                if self.phase == 2:
+                    score *= 2
+            return score
+
+        scored = [(score_card(i), i) for i in valid_indices]
+        scored.sort(key=lambda x: -x[0])
+
+        if difficulty == 'medium':
+            top = scored[:max(2, len(scored) // 3)]
+            _, idx = random.choice(top)
+        else:
+            _, idx = scored[0]
+
+        return ("play", str(idx + 1))
 
     def check_game_over(self):
         if self.phase == 2 and not self.followers[1] and not self.followers[2]:

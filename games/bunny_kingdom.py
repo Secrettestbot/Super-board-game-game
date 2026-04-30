@@ -75,6 +75,7 @@ class BunnyKingdomGame(BaseGame):
         self._deal_cards()
         self.cards_to_play = {1: [], 2: []}
         self.play_phase_idx = 0
+        self._stay_on_player = False
 
     def _generate_map(self):
         for r in range(GRID_ROWS):
@@ -309,7 +310,15 @@ class BunnyKingdomGame(BaseGame):
                 else:
                     return ('place_skip', 0)
 
+    def switch_player(self):
+        if self._stay_on_player:
+            self._stay_on_player = False
+            return
+        super().switch_player()
+
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
         opp = 2 if cp == 1 else 1
 
@@ -347,33 +356,39 @@ class BunnyKingdomGame(BaseGame):
             r, c = card['pos']
             if self.grid_owner[r][c] == 0:
                 self.grid_owner[r][c] = cp
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'place_skip':
             self.cards_to_play[cp].pop(0)
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'place_city':
             card = self.cards_to_play[cp].pop(0)
             r, c = move[2], move[3]
             self.grid_city[r][c] = max(self.grid_city[r][c], card['level'])
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'place_resource':
             card = self.cards_to_play[cp].pop(0)
             r, c = move[2], move[3]
             self.grid_resource[r][c] = card['resource']
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'place_parchment':
             card = self.cards_to_play[cp].pop(0)
             self.parchments[cp].append(card['parchment'])
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'place_celestial':
             card = self.cards_to_play[cp].pop(0)
             self.sky_territories[cp] = self.sky_territories.get(cp, 0) + 1
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'place_done':
             if not self.cards_to_play[1] and not self.cards_to_play[2]:
@@ -394,6 +409,83 @@ class BunnyKingdomGame(BaseGame):
             if self.round_num == self.max_rounds:
                 round_score += self._score_parchments(p)
             self.scores[p] += round_score
+
+    def get_ai_move(self):
+        """Return an AI-generated move."""
+        import random
+        cp = self.current_player
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.phase == 'draft':
+            hand = self.hands[cp]
+            if not hand:
+                return ('draft_done',)
+            if len(hand) == 1:
+                return ('draft_pick_last',)
+
+            if difficulty == 'easy':
+                i1, i2 = 0, 1
+                return ('draft_pick', i1, i2)
+
+            scored = []
+            for i, card in enumerate(hand):
+                score = 0
+                if card['type'] == 'territory':
+                    r, c = card['pos']
+                    if self.grid_owner[r][c] == 0:
+                        score += 5
+                        if self.grid_resource[r][c]:
+                            score += 3
+                elif card['type'] == 'city':
+                    score += card['level'] * 3
+                elif card['type'] == 'resource':
+                    score += 4
+                elif card['type'] == 'parchment':
+                    score += 3
+                elif card['type'] == 'celestial':
+                    score += 4
+                scored.append((score, i))
+
+            scored.sort(key=lambda x: -x[0])
+            i1 = scored[0][1]
+            i2 = scored[1][1]
+            if i1 > i2:
+                i1, i2 = i2, i1
+            return ('draft_pick', i1, i2)
+
+        elif self.phase == 'place':
+            cards = self.cards_to_play[cp]
+            if not cards:
+                return ('place_done',)
+            card = cards[0]
+            if card['type'] == 'territory':
+                r, c = card['pos']
+                if self.grid_owner[r][c] == 0:
+                    return ('place_territory', 0)
+                return ('place_skip', 0)
+            elif card['type'] == 'city':
+                for r in range(GRID_ROWS):
+                    for c in range(GRID_COLS):
+                        if self.grid_owner[r][c] == cp:
+                            return ('place_city', 0, r, c)
+                return ('place_skip', 0)
+            elif card['type'] == 'resource':
+                for r in range(GRID_ROWS):
+                    for c in range(GRID_COLS):
+                        if self.grid_owner[r][c] == cp and not self.grid_resource[r][c]:
+                            return ('place_resource', 0, r, c)
+                for r in range(GRID_ROWS):
+                    for c in range(GRID_COLS):
+                        if self.grid_owner[r][c] == cp:
+                            return ('place_resource', 0, r, c)
+                return ('place_skip', 0)
+            elif card['type'] == 'parchment':
+                return ('place_parchment', 0)
+            elif card['type'] == 'celestial':
+                return ('place_celestial', 0)
+            return ('place_skip', 0)
+
+        return ('place_done',)
 
     def check_game_over(self):
         if self.round_num > self.max_rounds:
@@ -435,6 +527,7 @@ class BunnyKingdomGame(BaseGame):
             self.sky_territories = {int(k): v for k, v in state['sky_territories'].items()}
         else:
             self.sky_territories = {}
+        self._stay_on_player = False
 
     def get_tutorial(self):
         celestial_text = ""

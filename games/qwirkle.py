@@ -47,6 +47,7 @@ class QwirkleGame(BaseGame):
         "standard": "Standard Qwirkle (6 shapes x 6 colors)",
         "simple": "Simplified (4 shapes x 4 colors)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -157,6 +158,8 @@ class QwirkleGame(BaseGame):
 
     def make_move(self, move):
         """Apply move. Returns True if valid."""
+        if move is None:
+            return False
         parts = move.strip().split()
         if not parts:
             return False
@@ -432,6 +435,61 @@ class QwirkleGame(BaseGame):
             c -= dc
         key = tuple(sorted(positions))
         return key, len(positions)
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player - 1
+        hand = self.hands[p]
+
+        if not hand:
+            return "x 1"
+
+        if not self.board:
+            return f"p 1 0 0"
+
+        best_move = None
+        best_score = -1
+
+        for i, tile in enumerate(hand):
+            for (r, c) in self.board:
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = r + dr, c + dc
+                    if (nr, nc) in self.board:
+                        continue
+                    temp_board = dict(self.board)
+                    temp_board[(nr, nc)] = tile
+                    h_line = self._get_line(temp_board, nr, nc, 0, 1)
+                    v_line = self._get_line(temp_board, nr, nc, 1, 0)
+                    if not self._valid_line(h_line) or not self._valid_line(v_line):
+                        continue
+                    score = 0
+                    if len(h_line) > 1:
+                        score += len(h_line)
+                        if len(h_line) == len(self.colors):
+                            score += QWIRKLE_BONUS
+                    if len(v_line) > 1:
+                        score += len(v_line)
+                        if len(v_line) == len(self.colors):
+                            score += QWIRKLE_BONUS
+                    if score == 0:
+                        score = 1
+                    if difficulty == "medium":
+                        score += rand.uniform(-1, 1)
+                    if score > best_score:
+                        best_score = score
+                        best_move = f"p {i + 1} {nr} {nc}"
+
+        if best_move:
+            return best_move
+
+        if self.bag:
+            indices = list(range(1, len(hand) + 1))
+            swap_count = min(3, len(hand), len(self.bag))
+            picks = rand.sample(indices, swap_count)
+            return "x " + " ".join(str(i) for i in picks)
+
+        return f"p 1 0 0"
 
     def check_game_over(self):
         """Check if game is over: bag empty and a player has no tiles."""

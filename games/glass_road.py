@@ -197,6 +197,8 @@ class GlassRoadGame(BaseGame):
         return move.strip()
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.player_data[str(self.current_player)]
         self.message = ""
 
@@ -339,6 +341,123 @@ class GlassRoadGame(BaseGame):
             pd["glass_wheel"] = max(0, pd["glass_wheel"] - 1)
             pd["brick_wheel"] = max(0, pd["brick_wheel"] - 1)
         self.message = f"Round {self.current_round} begins! Select 5 specialist cards."
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.player_data[str(self.current_player)]
+
+        if self.phase == "select":
+            return self._ai_select(difficulty, p)
+        elif self.phase == "play":
+            return self._ai_play(difficulty, p)
+        elif self.phase == "build":
+            return self._ai_build(difficulty, p)
+        return "pass"
+
+    def _ai_action_value(self, action, p):
+        score = 0
+        if "gain_vp" in action:
+            score += action["gain_vp"] * 3
+        if "gain" in action:
+            for res, amt in action["gain"].items():
+                current = p["resources"].get(res, 0)
+                score += min(amt, 7 - current) * 2
+        if "convert" in action:
+            for res, amt in action["convert"].items():
+                if p["resources"].get(res, 0) < amt:
+                    score -= 20
+        return score
+
+    def _ai_select(self, difficulty, p):
+        import random
+        if not p["hand"]:
+            return "1"
+
+        if difficulty == 'easy':
+            return str(random.randint(1, len(p["hand"])))
+
+        scored = []
+        for idx, ci in enumerate(p["hand"]):
+            card = SPECIALIST_CARDS[ci]
+            top_val = self._ai_action_value(card["top"], p)
+            bot_val = self._ai_action_value(card["bottom"], p)
+            score = max(top_val, bot_val)
+            if difficulty == 'hard':
+                for bi in self.building_pool:
+                    b = BUILDINGS[bi]
+                    for res, amt in b["cost"].items():
+                        deficit = amt - p["resources"].get(res, 0)
+                        if deficit > 0:
+                            if "gain" in card["top"] and res in card["top"]["gain"]:
+                                score += min(deficit, card["top"]["gain"][res]) * 2
+                            if "gain" in card["bottom"] and res in card["bottom"]["gain"]:
+                                score += min(deficit, card["bottom"]["gain"][res]) * 2
+            scored.append((score, idx + 1))
+
+        scored.sort(key=lambda x: -x[0])
+        if difficulty == 'medium':
+            top = scored[:max(1, len(scored) // 2)]
+            return str(random.choice(top)[1])
+        return str(scored[0][1])
+
+    def _ai_play(self, difficulty, p):
+        import random
+        if self.card_index >= len(p["selected"]):
+            return "s"
+
+        ci = p["selected"][self.card_index]
+        card = SPECIALIST_CARDS[ci]
+
+        if difficulty == 'easy':
+            return random.choice(["t", "b", "s"])
+
+        top_val = self._ai_action_value(card["top"], p)
+        bot_val = self._ai_action_value(card["bottom"], p)
+
+        if top_val < 0 and bot_val < 0:
+            return "s"
+        if top_val >= bot_val:
+            return "t" if top_val > 0 else "s"
+        return "b" if bot_val > 0 else "s"
+
+    def _ai_build(self, difficulty, p):
+        import random
+        if not self.building_pool:
+            return "pass"
+
+        affordable = []
+        for idx, bi in enumerate(self.building_pool):
+            b = BUILDINGS[bi]
+            can_afford = all(
+                p["resources"].get(res, 0) >= amt
+                for res, amt in b["cost"].items()
+            )
+            if can_afford:
+                affordable.append((idx, bi, b))
+
+        if not affordable:
+            return "pass"
+
+        if difficulty == 'easy':
+            idx, bi, b = random.choice(affordable)
+            return str(idx + 1)
+
+        scored = []
+        for idx, bi, b in affordable:
+            total_cost = sum(b["cost"].values())
+            efficiency = b["vp"] / max(1, total_cost)
+            if difficulty == 'hard':
+                score = b["vp"] * 2 + efficiency * 3
+            else:
+                score = b["vp"] + efficiency
+            scored.append((score, idx + 1))
+
+        scored.sort(key=lambda x: -x[0])
+        if difficulty == 'medium':
+            top = scored[:max(1, len(scored) // 2)]
+            return str(random.choice(top)[1])
+        return str(scored[0][1])
 
     def check_game_over(self):
         if self.current_round > self.max_rounds:

@@ -257,6 +257,8 @@ class BattleLineGame(BaseGame):
             print("  Usage: <card#> <flag#>  (e.g. '2 5')")
 
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
 
         if move[0] == 'claim':
@@ -298,6 +300,95 @@ class BattleLineGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        """Return an AI-generated move: play a card to a flag."""
+        cp = self.current_player
+        hand = self.hands[cp]
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if not hand:
+            for i in range(9):
+                if self.flag_status[i] == 0 and self._try_claim(i, cp):
+                    return ('claim', i)
+            return ('claim', 0)
+
+        moves = []
+        for ci, card in enumerate(hand):
+            if card[0] == 'T':
+                continue
+            for fi in range(9):
+                if self.flag_status[fi] != 0:
+                    continue
+                max_cards = 4 if self.flag_mud[fi] else 3
+                if len(self.flags[fi][cp]) >= max_cards:
+                    continue
+                moves.append(('play', ci, fi))
+
+        if not moves:
+            for ci, card in enumerate(hand):
+                for fi in range(9):
+                    if self.flag_status[fi] != 0:
+                        continue
+                    max_cards = 4 if self.flag_mud[fi] else 3
+                    if len(self.flags[fi][cp]) < max_cards:
+                        moves.append(('play', ci, fi))
+                        break
+                if moves:
+                    break
+
+        if not moves:
+            return ('play', 0, 0)
+
+        if difficulty == 'easy':
+            return random.choice(moves)
+
+        def score_move(m):
+            _, ci, fi = m
+            card = hand[ci]
+            score = 0
+            my_cards = self.flags[fi][cp]
+            opp_cards = self.flags[fi][3 - cp]
+            fog = self.flag_fog[fi]
+            mud = self.flag_mud[fi]
+            needed = 4 if mud else 3
+
+            test_cards = list(my_cards) + [card]
+            formation = _classify_formation(test_cards, fog=fog, mud=mud)
+
+            if len(test_cards) == needed and formation:
+                rank = FORMATION_RANKS.get(formation[0], 0)
+                score += rank * 10 + formation[1]
+
+            if my_cards:
+                vals = [c[1] for c in my_cards if c[0] != 'T']
+                colors = set(c[0] for c in my_cards if c[0] != 'T')
+                if card[0] != 'T':
+                    if card[0] in colors:
+                        score += 5
+                    all_vals = sorted(vals + [card[1]])
+                    if all_vals == list(range(all_vals[0], all_vals[0] + len(all_vals))):
+                        score += 8
+                    if len(colors) == 1 and card[0] in colors:
+                        score += 6
+
+            if len(opp_cards) >= 2:
+                score += 3
+            if len(my_cards) == 0:
+                score -= 2
+
+            if 2 <= fi <= 6:
+                score += 1
+
+            return score
+
+        scored = [(score_move(m), random.random(), m) for m in moves]
+        scored.sort(key=lambda x: (-x[0], x[1]))
+
+        if difficulty == 'medium':
+            top = scored[:max(3, len(scored) // 4)]
+            return random.choice(top)[2]
+        return scored[0][2]
 
     def _auto_claim(self):
         """Check and auto-claim any provably won flags."""

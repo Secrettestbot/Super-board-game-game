@@ -305,6 +305,8 @@ class KingOfTokyoGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
 
         if move.startswith("yield_"):
@@ -526,19 +528,114 @@ class KingOfTokyoGame(BaseGame):
                 heal = min(card["regen"], self.max_health[cp] - self.health[cp])
                 self.health[cp] += heal
 
-        # Reset for next player
-        self.dice = [""] * self.num_dice
-        self.kept = [False] * self.num_dice
-        self.rolls_left = 3
-        self.phase = "roll"
         return True
 
     # -------------------------------------------------------- switch_player
     def switch_player(self):
         if self.phase in ("roll", "resolve", "buy"):
-            pass  # Don't switch mid-turn
+            pass
         else:
+            self.dice = [""] * self.num_dice
+            self.kept = [False] * self.num_dice
+            self.rolls_left = 3
+            self.phase = "roll"
             super().switch_player()
+
+    # ---------------------------------------------------------- get_ai_move
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        opp = self._opponent(cp)
+
+        if self.pending_yield:
+            defender = self.in_tokyo
+            if self.health[defender] <= 4:
+                return "yield_yield"
+            if self.health[defender] >= 8:
+                return "yield_stay"
+            if difficulty == 'hard':
+                return "yield_stay"
+            return "yield_yield"
+
+        if self.phase == "roll":
+            if self.rolls_left == 3:
+                return "roll"
+            if self.rolls_left <= 0:
+                return "done"
+            if difficulty == 'easy':
+                if random.random() < 0.5:
+                    return "roll"
+                return "done"
+
+            counts = {}
+            for face in self.dice:
+                counts[face] = counts.get(face, 0) + 1
+            keep_list = []
+            for i, face in enumerate(self.dice):
+                keep = False
+                if face == "claws":
+                    keep = True
+                elif face == "heart" and cp != self.in_tokyo and self.health[cp] < self.max_health[cp]:
+                    keep = True
+                elif face == "energy":
+                    if counts.get("energy", 0) >= 2 or self.energy[cp] < 4:
+                        keep = True
+                elif face in ("1", "2", "3") and counts.get(face, 0) >= 2:
+                    keep = True
+                if keep:
+                    keep_list.append(i + 1)
+            if len(keep_list) >= len(self.dice):
+                return "done"
+            desired = set(i - 1 for i in keep_list)
+            current_kept = set(i for i, k in enumerate(self.kept) if k)
+            if desired != current_kept:
+                if keep_list:
+                    return f"keep {' '.join(str(i) for i in keep_list)}"
+            return "roll"
+
+        elif self.phase == "resolve":
+            return "resolve"
+
+        elif self.phase == "buy":
+            if difficulty == 'easy':
+                return "pass_buy"
+            best_idx = None
+            best_value = 0
+            for i, card in enumerate(self.shop):
+                if self.energy[cp] >= card["cost"]:
+                    value = 0
+                    if card.get("vp"):
+                        value = card["vp"] * 2.5
+                    elif card.get("heal"):
+                        needed = self.max_health[cp] - self.health[cp]
+                        value = min(card["heal"], needed) * 2
+                    elif card.get("extra_damage"):
+                        value = 6
+                    elif card.get("extra_dice"):
+                        value = 8
+                    elif card.get("armor"):
+                        value = 6
+                    elif card.get("blast_damage"):
+                        value = card["blast_damage"] * 2
+                    elif card.get("regen"):
+                        value = 4
+                    elif card.get("energy_vp"):
+                        value = 3
+                    elif card.get("max_hp"):
+                        value = 5
+                    ratio = value / max(1, card["cost"])
+                    if ratio > best_value:
+                        best_value = ratio
+                        best_idx = i + 1
+            if best_idx and best_value >= 1.0:
+                return f"buy {best_idx}"
+            return "pass_buy"
+
+        elif self.phase == "end_turn":
+            return "end_turn"
+
+        return "roll"
 
     # -------------------------------------------------------- check_game_over
     def check_game_over(self):

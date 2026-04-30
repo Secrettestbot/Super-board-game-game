@@ -343,6 +343,88 @@ class MandalaGame(BaseGame):
         # Reset mandala
         self.mandalas[m_idx] = {"mountain": [], "fields": {"1": [], "2": []}}
 
+    side_labels = ("Player 1", "Player 2")
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = str(self.current_player)
+        hand = self.hands[cp]
+
+        if not hand:
+            return {"action": "draw"}
+
+        if difficulty == 'easy':
+            for m_idx in range(2):
+                present = self._mandala_colors(m_idx)
+                available = [c for c in hand if c not in present]
+                if available:
+                    color = random.choice(available)
+                    if random.random() < 0.5:
+                        return {"action": "mountain", "mandala": m_idx, "color": color}
+                    else:
+                        count = hand.count(color)
+                        return {"action": "field", "mandala": m_idx, "color": color, "count": count}
+            return {"action": "draw"}
+
+        best_move = None
+        best_score = -999
+
+        for m_idx in range(2):
+            present = self._mandala_colors(m_idx)
+            available_colors = set(c for c in hand if c not in present)
+            colors_needed = len(COLORS) - len(present)
+
+            for color in available_colors:
+                m_score = 0
+                would_complete = (colors_needed == 1)
+
+                if would_complete:
+                    count1 = len(self.mandalas[m_idx]["fields"][cp])
+                    opp = "2" if cp == "1" else "1"
+                    count2 = len(self.mandalas[m_idx]["fields"][opp])
+                    if count1 > count2:
+                        m_score += 15
+                    elif count1 == count2:
+                        m_score += 5
+                    else:
+                        m_score -= 5
+
+                m_score += 1
+                if color in self.cups[cp]:
+                    m_score += self.cups[cp].index(color) + 1
+
+                if difficulty == 'hard':
+                    if len(self.mandalas[m_idx]["mountain"]) > 3:
+                        m_score += 3
+
+                if m_score > best_score:
+                    best_score = m_score
+                    best_move = {"action": "mountain", "mandala": m_idx, "color": color}
+
+                count_in_hand = hand.count(color)
+                f_score = count_in_hand * 3
+                if would_complete:
+                    count1 = len(self.mandalas[m_idx]["fields"][cp]) + count_in_hand
+                    opp = "2" if cp == "1" else "1"
+                    count2 = len(self.mandalas[m_idx]["fields"][opp])
+                    if count1 > count2:
+                        f_score += 15
+                    elif count1 == count2:
+                        f_score += 5
+                    else:
+                        f_score -= 5
+                else:
+                    f_score += 2
+
+                if f_score > best_score:
+                    best_score = f_score
+                    best_move = {"action": "field", "mandala": m_idx, "color": color, "count": count_in_hand}
+
+        if best_move:
+            return best_move
+        return {"action": "draw"}
+
     def check_game_over(self):
         # Game ends when deck is empty and a player can't draw
         if not self.deck:

@@ -106,6 +106,7 @@ class ViticultureGame(BaseGame):
         "standard": "Full game - play to 20 VP across up to 7 years",
         "quick": "Quick game - play to 15 VP across up to 5 years, start with extra resources",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def setup(self):
         is_quick = self.variation == "quick"
@@ -202,6 +203,10 @@ class ViticultureGame(BaseGame):
         return move.strip()
 
     def make_move(self, move):
+        if move is None:
+            return False
+        if isinstance(move, tuple) and move[0] == "ai_done":
+            return True
         actions = SUMMER_ACTIONS if self.season == "summer" else WINTER_ACTIONS
         p = self.player_data[str(self.current_player)]
         self.message = ""
@@ -578,6 +583,332 @@ class ViticultureGame(BaseGame):
                     pd["lira"] += 1
                 if self.year <= self.max_years:
                     self.message = f"Year {self.year} begins! Summer season."
+
+    def _ai_score_action(self, action, p):
+        if action == "draw_vine":
+            return 3
+        elif action == "plant_vine":
+            if not p["hand_vines"]:
+                return None
+            for vine in p["hand_vines"]:
+                total = vine["red"] + vine["white"]
+                if (vine["red"] > 3 or vine["white"] > 3) and "trellis" not in p["structures"]:
+                    continue
+                if total > 4 and "irrigation" not in p["structures"]:
+                    continue
+                for fi in range(3):
+                    curr = sum(v["red"] + v["white"] for v in p["fields"][fi])
+                    if curr + total <= 6:
+                        return 5
+            return None
+        elif action == "give_tour":
+            return 2.5
+        elif action == "build_structure":
+            affordable = [k for k, v in STRUCTURES.items()
+                          if k not in p["structures"] and p["lira"] >= v["cost"]]
+            return 4 if affordable else None
+        elif action == "play_summer_visitor":
+            return 3
+        elif action == "sell_grape":
+            reds = [i for i in range(1, 10) if p["crush_pad_red"][i]]
+            whites = [i for i in range(1, 10) if p["crush_pad_white"][i]]
+            return 2 if (reds or whites) else None
+        elif action == "draw_order":
+            return 3
+        elif action == "harvest":
+            planted = [fi for fi in range(3) if p["fields"][fi]]
+            return 4.5 if planted else None
+        elif action == "make_wine":
+            reds = [i for i in range(1, 10) if p["crush_pad_red"][i]]
+            whites = [i for i in range(1, 10) if p["crush_pad_white"][i]]
+            if not reds and not whites:
+                return None
+            max_val = 9
+            if "large_cellar" in p["structures"]:
+                max_val = 9
+            elif "medium_cellar" in p["structures"]:
+                max_val = 6
+            else:
+                max_val = 3
+            can_make = any(rv <= max_val for rv in reds) or any(wv <= max_val for wv in whites)
+            return 5 if can_make else None
+        elif action == "fill_order":
+            if not p["hand_orders"]:
+                return None
+            for order in p["hand_orders"]:
+                cellar_key = f"cellar_{order['type']}"
+                available = [i for i in range(order["min_value"], 10) if p[cellar_key][i]]
+                if available:
+                    return 8 + order["vp"]
+            return None
+        elif action == "play_winter_visitor":
+            return 3
+        elif action == "train_worker":
+            if p["lira"] < 4 or p["workers"] >= 6:
+                return None
+            return 3.5
+        return None
+
+    def _ai_execute_action(self, action, p):
+        import random as rand
+
+        if action == "draw_vine":
+            count = 2 if "cottage" in p["structures"] else 1
+            drawn = []
+            for _ in range(count):
+                if self.vine_deck:
+                    drawn.append(self.vine_deck.pop())
+                else:
+                    drawn.append(dict(rand.choice(VINE_CARDS)))
+            p["hand_vines"].extend(drawn)
+            names = ", ".join(v["name"] for v in drawn)
+            self.message = f"Drew vine(s): {names}"
+            return True
+
+        elif action == "plant_vine":
+            best = None
+            best_val = -1
+            for vi, vine in enumerate(p["hand_vines"]):
+                total = vine["red"] + vine["white"]
+                if (vine["red"] > 3 or vine["white"] > 3) and "trellis" not in p["structures"]:
+                    continue
+                if total > 4 and "irrigation" not in p["structures"]:
+                    continue
+                for fi in range(3):
+                    curr = sum(v["red"] + v["white"] for v in p["fields"][fi])
+                    if curr + total <= 6 and total > best_val:
+                        best_val = total
+                        best = (vi, fi)
+            if not best:
+                return False
+            vi, fi = best
+            vine = p["hand_vines"].pop(vi)
+            p["fields"][fi].append(vine)
+            self.message = f"Planted {vine['name']} in Field {fi + 1}."
+            if "windmill" in p["structures"]:
+                p["vp"] += 1
+                self.message += " +1 VP from Windmill!"
+            return True
+
+        elif action == "give_tour":
+            p["lira"] += 2
+            self.message = "Gave a tour! +2 Lira."
+            if "tasting_room" in p["structures"]:
+                p["vp"] += 1
+                self.message += " +1 VP from Tasting Room!"
+            return True
+
+        elif action == "build_structure":
+            affordable = [(k, v) for k, v in STRUCTURES.items()
+                          if k not in p["structures"] and p["lira"] >= v["cost"]]
+            if not affordable:
+                return False
+            priority = ["medium_cellar", "trellis", "irrigation", "yoke",
+                         "windmill", "cottage", "large_cellar", "tasting_room"]
+            chosen = None
+            for name in priority:
+                for k, v in affordable:
+                    if k == name:
+                        chosen = (k, v)
+                        break
+                if chosen:
+                    break
+            if not chosen:
+                chosen = affordable[0]
+            k, v = chosen
+            p["lira"] -= v["cost"]
+            p["structures"].append(k)
+            self.message = f"Built {k.replace('_', ' ').title()}!"
+            return True
+
+        elif action == "play_summer_visitor":
+            p["vp"] += 1
+            p["lira"] += 1
+            self.message = "Played Summer Visitor! +1 VP, +1 Lira."
+            return True
+
+        elif action == "sell_grape":
+            reds = [(v, "red") for v in range(9, 0, -1) if p["crush_pad_red"][v]]
+            whites = [(v, "white") for v in range(9, 0, -1) if p["crush_pad_white"][v]]
+            all_grapes = reds + whites
+            if not all_grapes:
+                return False
+            val, gtype = all_grapes[0]
+            lira = max(1, val - 1)
+            p[f"crush_pad_{gtype}"][val] = 0
+            p["lira"] += lira
+            self.message = f"Sold {gtype} grape (value {val}) for {lira} Lira."
+            return True
+
+        elif action == "draw_order":
+            if self.order_deck:
+                card = self.order_deck.pop()
+            else:
+                card = dict(rand.choice(WINE_ORDERS))
+            p["hand_orders"].append(card)
+            self.message = f"Drew order: {card['type']} wine >= {card['min_value']} for {card['vp']} VP."
+            return True
+
+        elif action == "harvest":
+            planted = [(fi, f) for fi, f in enumerate(p["fields"]) if f]
+            if not planted:
+                return False
+            best_fi = max(planted, key=lambda x: sum(v["red"] + v["white"] for v in x[1]))[0]
+            field = p["fields"][best_fi]
+            red_val = min(sum(v["red"] for v in field), 9)
+            white_val = min(sum(v["white"] for v in field), 9)
+            if red_val > 0:
+                p["crush_pad_red"][red_val] = 1
+            if white_val > 0:
+                p["crush_pad_white"][white_val] = 1
+            msg = f"Harvested Field {best_fi + 1}!"
+            if red_val > 0:
+                msg += f" Red grape value {red_val}."
+            if white_val > 0:
+                msg += f" White grape value {white_val}."
+            if "yoke" in p["structures"]:
+                other = [(fi, f) for fi, f in enumerate(p["fields"]) if f and fi != best_fi]
+                if other:
+                    fi2, field2 = other[0]
+                    r2 = min(sum(v["red"] for v in field2), 9)
+                    w2 = min(sum(v["white"] for v in field2), 9)
+                    if r2 > 0:
+                        p["crush_pad_red"][r2] = 1
+                    if w2 > 0:
+                        p["crush_pad_white"][w2] = 1
+                    msg += f" Yoke: also harvested Field {fi2 + 1}!"
+            self.message = msg
+            return True
+
+        elif action == "make_wine":
+            reds = [i for i in range(1, 10) if p["crush_pad_red"][i]]
+            whites = [i for i in range(1, 10) if p["crush_pad_white"][i]]
+            max_val = 9
+            if "large_cellar" in p["structures"]:
+                max_val = 9
+            elif "medium_cellar" in p["structures"]:
+                max_val = 6
+            else:
+                max_val = 3
+            best_option = None
+            best_val_score = 0
+            for rv in reds:
+                for wv in whites:
+                    bv = rv + wv
+                    if bv <= max_val and bv > best_val_score:
+                        best_val_score = bv
+                        best_option = ("blush", rv, wv)
+            for rv in reds:
+                if rv <= max_val and rv > best_val_score:
+                    best_val_score = rv
+                    best_option = ("red", rv, 0)
+            for wv in whites:
+                if wv <= max_val and wv > best_val_score:
+                    best_val_score = wv
+                    best_option = ("white", 0, wv)
+            if not best_option:
+                return False
+            wtype, rv, wv = best_option
+            if rv > 0:
+                p["crush_pad_red"][rv] = 0
+            if wv > 0:
+                p["crush_pad_white"][wv] = 0
+            if wtype == "red":
+                p["cellar_red"][rv] = 1
+                self.message = f"Made Red wine value {rv}!"
+            elif wtype == "white":
+                p["cellar_white"][wv] = 1
+                self.message = f"Made White wine value {wv}!"
+            elif wtype == "blush":
+                val = min(rv + wv, 9)
+                p["cellar_blush"][val] = 1
+                self.message = f"Made Blush wine value {val}!"
+            return True
+
+        elif action == "fill_order":
+            if not p["hand_orders"]:
+                return False
+            best = None
+            best_vp = -1
+            for oi, order in enumerate(p["hand_orders"]):
+                cellar_key = f"cellar_{order['type']}"
+                available = [i for i in range(order["min_value"], 10) if p[cellar_key][i]]
+                if available and order["vp"] > best_vp:
+                    best_vp = order["vp"]
+                    best = (oi, order, available[0])
+            if not best:
+                return False
+            oi, order, wine_val = best
+            p[f"cellar_{order['type']}"][wine_val] = 0
+            p["vp"] += order["vp"]
+            p["lira"] += order["lira"]
+            p["hand_orders"].pop(oi)
+            self.message = (f"Filled order! Used {order['type']} wine value {wine_val}. "
+                            f"+{order['vp']} VP, +{order['lira']} Lira.")
+            return True
+
+        elif action == "play_winter_visitor":
+            p["vp"] += 1
+            p["lira"] += 1
+            self.message = "Played Winter Visitor! +1 VP, +1 Lira."
+            return True
+
+        elif action == "train_worker":
+            if p["lira"] < 4 or p["workers"] >= 6:
+                return False
+            p["lira"] -= 4
+            p["workers"] += 1
+            self.message = "Trained a new worker! -4 Lira."
+            return True
+
+        return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.player_data[str(self.current_player)]
+        actions = SUMMER_ACTIONS if self.season == "summer" else WINTER_ACTIONS
+
+        if p["workers_placed"] >= p["workers"]:
+            return str(len(actions) + 1)
+
+        available = []
+        for i, action in enumerate(actions):
+            if len(self.players) <= 2 and action in self.used_actions[self.season]:
+                continue
+            available.append((i, action))
+
+        if not available:
+            return str(len(actions) + 1)
+
+        scored = []
+        for idx, action in available:
+            score = self._ai_score_action(action, p)
+            if score is not None:
+                scored.append((score, idx, action))
+
+        if not scored:
+            return str(len(actions) + 1)
+
+        scored.sort(key=lambda x: -x[0])
+
+        if difficulty == 'easy':
+            chosen = rand.choice(scored)
+        elif difficulty == 'hard':
+            chosen = scored[0]
+        else:
+            top = scored[:max(1, len(scored) // 2 + 1)]
+            chosen = rand.choice(top)
+
+        action = chosen[2]
+        success = self._ai_execute_action(action, p)
+        if success:
+            p["workers_placed"] += 1
+            self.used_actions[self.season].append(action)
+            self._advance_season()
+            return ("ai_done",)
+
+        return str(len(actions) + 1)
 
     def check_game_over(self):
         for i in range(1, len(self.players) + 1):

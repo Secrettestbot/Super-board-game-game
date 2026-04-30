@@ -71,6 +71,7 @@ class TerraformingMarsDiceGame(BaseGame):
         'standard': 'Standard terraforming (temperature, oxygen, oceans)',
         'venus': 'Includes Venus Next expansion parameters',
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -91,6 +92,13 @@ class TerraformingMarsDiceGame(BaseGame):
         self.available_projects = list(range(len(PROJECTS)))
         if self.variation == 'venus':
             self.venus_projects = list(range(len(VENUS_PROJECTS)))
+        self._stay_on_player = False
+
+    def switch_player(self):
+        if self._stay_on_player:
+            self._stay_on_player = False
+            return
+        super().switch_player()
 
     def _roll_production(self, count):
         return [random.choice(PRODUCTION_DICE) for _ in range(count)]
@@ -227,24 +235,29 @@ class TerraformingMarsDiceGame(BaseGame):
                 print("  Enter project number or 'done'.")
 
     def make_move(self, move):
+        if move is None:
+            return False
         cp = self.current_player
         if move[0] == 'roll':
             self.current_roll = self._roll_production(self.production_dice_count[cp])
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'reroll':
             indices = move[1]
             self.rerolls[cp] -= 1
             for i in indices:
                 self.current_roll[i] = random.choice(PRODUCTION_DICE)
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'accept_roll':
             for r in self.current_roll:
                 self.resources[cp][r] += 1
             self.current_roll = []
             self.phase = 'action'
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'buy_project':
             idx = move[1]
@@ -260,7 +273,8 @@ class TerraformingMarsDiceGame(BaseGame):
                 return False
             self._apply_project(proj, cp)
             self.built_projects[cp].append(proj['name'])
-            return False
+            self._stay_on_player = True
+            return True
 
         elif move[0] == 'end_actions':
             self.phase = 'production'
@@ -270,6 +284,40 @@ class TerraformingMarsDiceGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        if self.phase == 'production':
+            if not self.current_roll:
+                return ('roll',)
+            return ('accept_roll',)
+
+        elif self.phase == 'action':
+            all_projs = [(i, PROJECTS[i], 'standard') for i in self.available_projects]
+            if self.variation == 'venus' and hasattr(self, 'venus_projects'):
+                all_projs += [(i, VENUS_PROJECTS[i], 'venus') for i in self.venus_projects]
+            affordable = []
+            for idx, (pi, proj, ptype) in enumerate(all_projs):
+                if self._can_afford(proj, cp):
+                    s = proj['vp'] * 2
+                    if proj['effect'] in ('oxygen', 'temperature', 'ocean', 'venus'):
+                        s += 3
+                    elif proj['effect'] == 'production':
+                        s += 4
+                    if difficulty == "easy":
+                        s += rand.uniform(-3, 3)
+                    elif difficulty == "medium":
+                        s += rand.uniform(-1, 1)
+                    affordable.append((s, idx))
+            if affordable:
+                affordable.sort(reverse=True)
+                return ('buy_project', affordable[0][1])
+            return ('end_actions',)
+
+        return ('end_actions',)
 
     def check_game_over(self):
         if self.round_num > self.max_rounds or self._all_global_params_maxed():
@@ -317,6 +365,7 @@ class TerraformingMarsDiceGame(BaseGame):
         self.available_projects = state['available_projects']
         if self.variation == 'venus':
             self.venus_projects = state.get('venus_projects', [])
+        self._stay_on_player = False
 
     def get_tutorial(self):
         venus_text = ""

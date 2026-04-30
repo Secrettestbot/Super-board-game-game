@@ -93,6 +93,7 @@ class RaceForTheGalaxyGame(BaseGame):
         "standard": "Standard (game ends at 12 tableau cards or VP pool empty)",
         "quick":    "Quick (game ends at 8 tableau cards or VP pool empty)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     STARTING_WORLDS = {1: "Old Earth", 2: "Alpha Centauri"}
 
@@ -202,8 +203,12 @@ class RaceForTheGalaxyGame(BaseGame):
         # Step 1: Both players pick roles simultaneously (ask in sequence)
         roles_chosen = {}
         for p in (1, 2):
-            role = self._pick_role(p)
-            roles_chosen[p] = role
+            if self.ai_player == p:
+                import random as _rand
+                difficulty = getattr(self, 'ai_difficulty', 'medium')
+                roles_chosen[p] = self._ai_pick_role(p, difficulty, _rand)
+            else:
+                roles_chosen[p] = self._pick_role(p)
 
         return ("turn", roles_chosen)
 
@@ -223,6 +228,8 @@ class RaceForTheGalaxyGame(BaseGame):
 
     # ------------------------------------------------------------ make_move
     def make_move(self, move):
+        if move is None:
+            return False
         if move[0] != "turn":
             return False
 
@@ -275,9 +282,15 @@ class RaceForTheGalaxyGame(BaseGame):
 
     def _ask_discard(self, player, n):
         """Ask player to choose n cards to discard from hand."""
+        hand = self.hands[player]
+
+        # AI auto-discards lowest-VP cards
+        if self.ai_player == player:
+            candidates = sorted(hand, key=lambda c: c["vp"])
+            return candidates[:n]
+
         clear_screen()
         self.display()
-        hand = self.hands[player]
         print(f"\n{BOLD}{self.players[player-1]}: Discard {n} card(s) from hand{RESET}")
         for i, c in enumerate(hand, 1):
             print(f"  {i}. {_card_str(c, show_good=True)}")
@@ -334,10 +347,19 @@ class RaceForTheGalaxyGame(BaseGame):
 
     def _ask_play_card(self, player, options, card_type, discount):
         """Ask player to choose a card to play or skip."""
-        clear_screen()
-        self.display()
         effective = [(c, max(0, c["cost"] - discount)) for c in options]
         hand_size = len(self.hands[player])
+
+        # AI auto-selects the best affordable card (highest VP)
+        if self.ai_player == player:
+            affordable = [(c, cost) for c, cost in effective if hand_size - 1 >= cost]
+            if not affordable:
+                return None
+            affordable.sort(key=lambda x: x[0]["vp"], reverse=True)
+            return affordable[0][0]
+
+        clear_screen()
+        self.display()
         print(f"\n{BOLD}{self.players[player-1]}: Play a {card_type}? "
               f"(hand={hand_size} cards){RESET}")
         if discount:
@@ -419,6 +441,50 @@ class RaceForTheGalaxyGame(BaseGame):
                 self.phase_log.append(f"  {self.players[p-1]}: no new goods produced.")
 
     # ---------------------------------------------------- check_game_over
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        ai_role = self._ai_pick_role(p, difficulty, rand)
+        roles_chosen = {}
+        roles_chosen[p] = ai_role
+
+        opp = 3 - p
+        opp_role = self._pick_role(opp)
+        roles_chosen[opp] = opp_role
+
+        return ("turn", roles_chosen)
+
+    def _ai_pick_role(self, player, difficulty, rand):
+        if difficulty == "easy":
+            return rand.choice(ROLES)
+
+        hand = self.hands[player]
+        tableau = self.tableau[player]
+        goods = self.goods[player]
+
+        scored = []
+        devs = [c for c in hand if c["type"] == DEVELOPMENT]
+        worlds = [c for c in hand if c["type"] == WORLD]
+        prod_without_goods = [c for c in tableau if c["produces"] and c not in {g[0] for g in goods}]
+
+        explore_score = 5 + (3 if len(hand) < 4 else 0)
+        develop_score = len(devs) * 4 if devs else 0
+        settle_score = len(worlds) * 4 if worlds else 0
+        consume_score = len(goods) * 6 if goods else 0
+        produce_score = len(prod_without_goods) * 5 if prod_without_goods else 0
+
+        for name, score in [(EXPLORE, explore_score), (DEVELOP, develop_score),
+                            (SETTLE, settle_score), (CONSUME, consume_score),
+                            (PRODUCE, produce_score)]:
+            if difficulty == "medium":
+                score += rand.uniform(-3, 3)
+            scored.append((score, name))
+
+        scored.sort(reverse=True)
+        return scored[0][1]
+
     def check_game_over(self):
         """Check if any player has reached end condition."""
         for p in (1, 2):

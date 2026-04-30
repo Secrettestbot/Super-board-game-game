@@ -40,6 +40,7 @@ class MinesweeperGame(BaseGame):
         "intermediate": "Intermediate (16x16, 40 mines)",
         "expert": "Expert (16x30, 99 mines)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -72,20 +73,23 @@ class MinesweeperGame(BaseGame):
         self.winner = None
 
         # Ask for player count
-        clear_screen()
-        print(f"\n{'='*50}")
-        print(f"  MINESWEEPER ({self.label})")
-        print(f"{'='*50}")
-        print(f"\n  Grid: {self.rows}x{self.cols} with {self.num_mines} mines\n")
-        print("  How many players?")
-        print("    1. Single player (classic)")
-        print("    2. Two players (take turns revealing)")
-        while True:
-            choice = input_with_quit("\n  Enter 1 or 2: ").strip()
-            if choice in ("1", "2"):
-                self.num_players = int(choice)
-                break
-            print("  Please enter 1 or 2.")
+        if self.ai_player:
+            self.num_players = 2
+        else:
+            clear_screen()
+            print(f"\n{'='*50}")
+            print(f"  MINESWEEPER ({self.label})")
+            print(f"{'='*50}")
+            print(f"\n  Grid: {self.rows}x{self.cols} with {self.num_mines} mines\n")
+            print("  How many players?")
+            print("    1. Single player (classic)")
+            print("    2. Two players (take turns revealing)")
+            while True:
+                choice = input_with_quit("\n  Enter 1 or 2: ").strip()
+                if choice in ("1", "2"):
+                    self.num_players = int(choice)
+                    break
+                print("  Please enter 1 or 2.")
 
         if self.num_players == 1:
             self.players = ["Player 1"]
@@ -219,35 +223,37 @@ class MinesweeperGame(BaseGame):
     # --------------------------------------------------------------- make_move
     def make_move(self, move):
         """Parse and apply a move. Returns True if valid."""
+        if move is None:
+            return False
         parts = move.lower().split()
         if len(parts) != 3:
             print("  Invalid format. Use 'r ROW COL' or 'f ROW COL'.")
-            input_with_quit("  Press Enter to try again...")
+            self._pause("  Press Enter to try again...")
             return False
 
         action = parts[0]
         if action not in ('r', 'f'):
             print("  Action must be 'r' (reveal) or 'f' (flag/unflag).")
-            input_with_quit("  Press Enter to try again...")
+            self._pause("  Press Enter to try again...")
             return False
 
         try:
             row, col = int(parts[1]), int(parts[2])
         except ValueError:
             print("  ROW and COL must be numbers.")
-            input_with_quit("  Press Enter to try again...")
+            self._pause("  Press Enter to try again...")
             return False
 
         if not (0 <= row < self.rows and 0 <= col < self.cols):
             print(f"  Out of bounds. ROW: 0-{self.rows-1}, COL: 0-{self.cols-1}.")
-            input_with_quit("  Press Enter to try again...")
+            self._pause("  Press Enter to try again...")
             return False
 
         if action == 'f':
             # Flag / unflag
             if self.revealed[row][col]:
                 print("  Cannot flag a revealed cell.")
-                input_with_quit("  Press Enter to try again...")
+                self._pause("  Press Enter to try again...")
                 return False
             self.flagged[row][col] = not self.flagged[row][col]
             # Flagging does not consume a turn in 2p mode
@@ -258,12 +264,12 @@ class MinesweeperGame(BaseGame):
         # action == 'r' (reveal)
         if self.revealed[row][col]:
             print("  Cell already revealed.")
-            input_with_quit("  Press Enter to try again...")
+            self._pause("  Press Enter to try again...")
             return False
 
         if self.flagged[row][col]:
             print("  Cell is flagged. Unflag it first with 'f ROW COL'.")
-            input_with_quit("  Press Enter to try again...")
+            self._pause("  Press Enter to try again...")
             return False
 
         # Place mines on first reveal
@@ -288,6 +294,78 @@ class MinesweeperGame(BaseGame):
             self.scores[self.current_player - 1] += count
         self._last_action = 'reveal'
         return True
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.first_reveal:
+            corners = [(0, 0), (0, self.cols - 1), (self.rows - 1, 0), (self.rows - 1, self.cols - 1)]
+            r, c = random.choice(corners)
+            return f"r {r} {c}"
+
+        if difficulty == 'easy':
+            unrevealed = [(r, c) for r in range(self.rows) for c in range(self.cols)
+                          if not self.revealed[r][c] and not self.flagged[r][c]]
+            if unrevealed:
+                r, c = random.choice(unrevealed)
+                return f"r {r} {c}"
+            return "r 0 0"
+
+        safe_cells = set()
+        mine_cells = set()
+
+        for r in range(self.rows):
+            for c in range(self.cols):
+                if not self.revealed[r][c] or self.adjacent[r][c] == 0:
+                    continue
+                num = self.adjacent[r][c]
+                unrevealed_nb = []
+                for dr in range(-1, 2):
+                    for dc in range(-1, 2):
+                        if dr == 0 and dc == 0:
+                            continue
+                        nr, nc = r + dr, c + dc
+                        if 0 <= nr < self.rows and 0 <= nc < self.cols and not self.revealed[nr][nc]:
+                            unrevealed_nb.append((nr, nc))
+                flagged_count = sum(1 for nr, nc in unrevealed_nb if self.flagged[nr][nc])
+                unflagged = [(nr, nc) for nr, nc in unrevealed_nb if not self.flagged[nr][nc]]
+                if flagged_count == num and unflagged:
+                    safe_cells.update(unflagged)
+                if len(unrevealed_nb) == num and unflagged:
+                    mine_cells.update(unflagged)
+
+        unflagged_mines = {(r, c) for r, c in mine_cells if not self.flagged[r][c]}
+        if unflagged_mines:
+            r, c = next(iter(unflagged_mines))
+            return f"f {r} {c}"
+
+        if safe_cells:
+            r, c = next(iter(safe_cells))
+            return f"r {r} {c}"
+
+        unrevealed = [(r, c) for r in range(self.rows) for c in range(self.cols)
+                      if not self.revealed[r][c] and not self.flagged[r][c]]
+        if not unrevealed:
+            return "r 0 0"
+
+        if difficulty == 'hard':
+            scored = []
+            for r, c in unrevealed:
+                adj_rev = 0
+                for dr in range(-1, 2):
+                    for dc in range(-1, 2):
+                        if dr == 0 and dc == 0:
+                            continue
+                        nr, nc = r + dr, c + dc
+                        if 0 <= nr < self.rows and 0 <= nc < self.cols and self.revealed[nr][nc]:
+                            adj_rev += 1
+                scored.append(((r, c), adj_rev))
+            scored.sort(key=lambda x: x[1])
+            r, c = scored[0][0]
+        else:
+            r, c = random.choice(unrevealed)
+        return f"r {r} {c}"
 
     # --------------------------------------------------------- check_game_over
     def check_game_over(self):

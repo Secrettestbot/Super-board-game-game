@@ -16,6 +16,7 @@ class PongHauKiGame(BaseGame):
     min_players = 2
     max_players = 2
     variations = {"standard": "Standard"}
+    side_labels = ("X", "O")
 
     # Board layout (point numbering):
     #
@@ -113,6 +114,78 @@ class PongHauKiGame(BaseGame):
                     if self.board[adj] == 0:
                         return True
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        opp = 3 - p
+
+        moves = []
+        for pt, val in self.board.items():
+            if val == p:
+                for adj in self.ADJACENCY[pt]:
+                    if self.board[adj] == 0:
+                        moves.append((pt, adj))
+
+        if not moves:
+            return moves[0] if moves else (1, 5)
+
+        if difficulty == "easy":
+            return rand.choice(moves)
+
+        def _get_moves_for(board, player):
+            result = []
+            for pt, val in board.items():
+                if val == player:
+                    for adj in self.ADJACENCY[pt]:
+                        if board[adj] == 0:
+                            result.append((pt, adj))
+            return result
+
+        def minimax(board, player, depth, maximizing):
+            opp_moves = _get_moves_for(board, 3 - player)
+            cur_moves = _get_moves_for(board, player)
+            if not opp_moves:
+                return 100 - depth if maximizing else -(100 - depth)
+            if not cur_moves:
+                return -(100 - depth) if maximizing else 100 - depth
+            if depth >= 12:
+                return 0
+
+            if maximizing:
+                best = -999
+                for frm, to in cur_moves:
+                    new_board = dict(board)
+                    new_board[frm] = 0
+                    new_board[to] = player
+                    val = minimax(new_board, 3 - player, depth + 1, False)
+                    best = max(best, val)
+                return best
+            else:
+                best = 999
+                for frm, to in cur_moves:
+                    new_board = dict(board)
+                    new_board[frm] = 0
+                    new_board[to] = player
+                    val = minimax(new_board, 3 - player, depth + 1, True)
+                    best = min(best, val)
+                return best
+
+        scored = []
+        for frm, to in moves:
+            new_board = dict(self.board)
+            new_board[frm] = 0
+            new_board[to] = p
+            val = minimax(new_board, opp, 0, False)
+            scored.append((val, frm, to))
+
+        scored.sort(reverse=True)
+        if difficulty == "medium":
+            top = [s for s in scored if s[0] >= scored[0][0] - 10]
+            pick = rand.choice(top)
+            return (pick[1], pick[2])
+        return (scored[0][1], scored[0][2])
 
     def check_game_over(self):
         """Game is over when the current (next) player cannot move."""

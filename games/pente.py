@@ -14,6 +14,7 @@ class PenteGame(BaseGame):
         "standard": "Standard Pente (19x19)",
         "small": "Small Pente (13x13)",
     }
+    side_labels = ("Black", "White")
 
     SYMBOLS = {0: "\u00b7", 1: "\u25cf", 2: "\u25cb"}  # · ● ○
 
@@ -180,6 +181,8 @@ class PenteGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         row, col = move
         if self.board[row][col] != 0:
             return False
@@ -222,6 +225,73 @@ class PenteGame(BaseGame):
                 self.captures[player] += 2
 
     # -------------------------------------------------------- check_game_over
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        opp = 3 - p
+
+        if self.turn_number == 0:
+            return (self.center, self.center)
+
+        empty = [(r, c) for r in range(self.size) for c in range(self.size)
+                 if self.board[r][c] == 0]
+        if self.turn_number == 2:
+            empty = [(r, c) for r, c in empty
+                     if max(abs(r - self.center), abs(c - self.center)) >= 3]
+        if not empty:
+            return (0, 0)
+
+        if difficulty == "easy":
+            return rand.choice(empty)
+
+        directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
+        best_move = None
+        best_score = -9999
+        sample = empty if difficulty == "hard" else rand.sample(empty, min(40, len(empty)))
+
+        for r, c in sample:
+            score = 0
+            for dr, dc in directions:
+                own = 0
+                opp_c = 0
+                for sign in [1, -1]:
+                    for dist in range(1, 5):
+                        nr, nc = r + dr * dist * sign, c + dc * dist * sign
+                        if 0 <= nr < self.size and 0 <= nc < self.size:
+                            if self.board[nr][nc] == p:
+                                own += 1
+                            elif self.board[nr][nc] == opp:
+                                opp_c += 1
+                                break
+                            else:
+                                break
+                        else:
+                            break
+                score += own ** 2 * 2 + opp_c ** 2
+
+            for dr, dc in self.DIRECTIONS:
+                r1, c1 = r + dr, c + dc
+                r2, c2 = r + 2 * dr, c + 2 * dc
+                r3, c3 = r + 3 * dr, c + 3 * dc
+                if (0 <= r1 < self.size and 0 <= c1 < self.size and
+                    0 <= r2 < self.size and 0 <= c2 < self.size and
+                    0 <= r3 < self.size and 0 <= c3 < self.size):
+                    if (self.board[r1][c1] == opp and self.board[r2][c2] == opp and
+                            self.board[r3][c3] == p):
+                        score += 20
+
+            center_dist = max(abs(r - self.center), abs(c - self.center))
+            score -= center_dist * 0.5
+
+            if difficulty == "medium":
+                score += rand.uniform(-3, 3)
+            if score > best_score:
+                best_score = score
+                best_move = (r, c)
+
+        return best_move if best_move else rand.choice(empty)
+
     def check_game_over(self):
         # Check five-in-a-row for the player who just moved
         if self._has_five_in_a_row(self.current_player):

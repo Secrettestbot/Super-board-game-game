@@ -1,5 +1,6 @@
 """Alquerque - Ancient predecessor to checkers."""
 
+import random
 from engine.base import BaseGame, input_with_quit, clear_screen
 
 
@@ -17,6 +18,7 @@ class AlquerqueGame(BaseGame):
     min_players = 2
     max_players = 2
     variations = {"standard": "Standard Alquerque"}
+    side_labels = ("X", "O")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -305,6 +307,104 @@ class AlquerqueGame(BaseGame):
         self.board = state["board"]
         self.pieces_count = state["pieces_count"]
         self.must_continue_from = state.get("must_continue_from")
+
+    def get_ai_move(self):
+        """Return a valid move for the AI player."""
+        player = self.current_player
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        # If continuing a multi-jump, must move from that piece
+        if self.must_continue_from is not None:
+            pos = self.must_continue_from
+            captures = self._get_captures_from(pos, player)
+            if captures:
+                if difficulty == 'easy':
+                    mid, land = random.choice(captures)
+                    return (pos, land)
+                else:
+                    # Pick capture that leads to most further captures
+                    best = captures[0]
+                    best_count = 0
+                    for mid, land in captures:
+                        # Simulate
+                        saved = self.board[:]
+                        self.board[pos] = 0
+                        self.board[mid] = 0
+                        self.board[land] = player
+                        further = len(self._get_captures_from(land, player))
+                        self.board = saved
+                        if further > best_count:
+                            best_count = further
+                            best = (mid, land)
+                    return (pos, best[1])
+
+        # Collect all captures
+        all_captures = []
+        for pos in range(25):
+            if self.board[pos] == player:
+                for mid, land in self._get_captures_from(pos, player):
+                    all_captures.append((pos, land))
+
+        if all_captures:
+            if difficulty == 'easy':
+                return random.choice(all_captures)
+            # Prefer captures that chain
+            best_move = all_captures[0]
+            best_score = 0
+            for frm, to in all_captures:
+                score = 10
+                saved = self.board[:]
+                # Find mid
+                fr, fc = divmod(frm, 5)
+                tr, tc = divmod(to, 5)
+                mr, mc = (fr + tr) // 2, (fc + tc) // 2
+                mid = mr * 5 + mc
+                self.board[frm] = 0
+                self.board[mid] = 0
+                self.board[to] = player
+                further = len(self._get_captures_from(to, player))
+                score += further * 10
+                self.board = saved
+                if difficulty == 'medium':
+                    score += random.randint(0, 5)
+                if score > best_score:
+                    best_score = score
+                    best_move = (frm, to)
+            return best_move
+
+        # Simple moves
+        all_moves = []
+        for pos in range(25):
+            if self.board[pos] == player:
+                for adj in self.adjacency[pos]:
+                    if self.board[adj] == 0:
+                        all_moves.append((pos, adj))
+
+        if not all_moves:
+            return (0, 1)  # fallback
+
+        if difficulty == 'easy':
+            return random.choice(all_moves)
+
+        # Prefer center and forward moves
+        best_move = all_moves[0]
+        best_score = -999
+        for frm, to in all_moves:
+            score = 0
+            tr, tc = divmod(to, 5)
+            # Center preference
+            score -= abs(tr - 2) + abs(tc - 2)
+            # Forward: player 1 moves toward lower rows, player 2 toward higher
+            if player == 1:
+                score += (4 - tr)
+            else:
+                score += tr
+            if difficulty == 'medium':
+                score += random.randint(0, 3)
+            if score > best_score:
+                best_score = score
+                best_move = (frm, to)
+        return best_move
 
     def switch_player(self):
         """Override to prevent switching during multi-jumps."""

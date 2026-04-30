@@ -97,11 +97,123 @@ class GomokuGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         row, col = move
         if self.board[row][col] != 0:
             return False
         self.board[row][col] = self.current_player
         return True
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+        opponent = 2 if player == 1 else 1
+
+        has_stones = any(self.board[r][c] != 0
+                         for r in range(self.size) for c in range(self.size))
+        if not has_stones:
+            return (self.size // 2, self.size // 2)
+
+        candidates = []
+        for r in range(self.size):
+            for c in range(self.size):
+                if self.board[r][c] != 0:
+                    continue
+                if not self._ai_has_near(r, c, 2):
+                    continue
+                if self.variation == "renju" and player == 1:
+                    if self._check_renju_violation(r, c):
+                        continue
+                candidates.append((r, c))
+
+        if not candidates:
+            center = self.size // 2
+            return (center, center)
+
+        if difficulty == 'easy':
+            near1 = [(r, c) for r, c in candidates if self._ai_has_near(r, c, 1)]
+            return random.choice(near1 if near1 else candidates)
+
+        scored = []
+        for r, c in candidates:
+            score = self._ai_eval_pos(r, c, player, opponent, difficulty)
+            scored.append((score, (r, c)))
+
+        scored.sort(key=lambda x: -x[0])
+        if difficulty == 'medium':
+            top = scored[:max(1, len(scored) // 4)]
+            return random.choice(top)[1]
+        return scored[0][1]
+
+    def _ai_has_near(self, r, c, radius):
+        for dr in range(-radius, radius + 1):
+            for dc in range(-radius, radius + 1):
+                if dr == 0 and dc == 0:
+                    continue
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < self.size and 0 <= nc < self.size and self.board[nr][nc] != 0:
+                    return True
+        return False
+
+    def _ai_eval_pos(self, r, c, player, opponent, difficulty):
+        score = 0
+        directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
+
+        self.board[r][c] = player
+        for dr, dc in directions:
+            count = 1
+            nr, nc = r + dr, c + dc
+            while 0 <= nr < self.size and 0 <= nc < self.size and self.board[nr][nc] == player:
+                count += 1
+                nr += dr
+                nc += dc
+            fwd_open = 0 <= nr < self.size and 0 <= nc < self.size and self.board[nr][nc] == 0
+            nr, nc = r - dr, c - dc
+            while 0 <= nr < self.size and 0 <= nc < self.size and self.board[nr][nc] == player:
+                count += 1
+                nr -= dr
+                nc -= dc
+            bwd_open = 0 <= nr < self.size and 0 <= nc < self.size and self.board[nr][nc] == 0
+            if count >= 5:
+                score += 10000
+            elif count == 4:
+                score += 5000 if (fwd_open and bwd_open) else 500
+            elif count == 3:
+                score += 200 if (fwd_open and bwd_open) else 50
+            elif count == 2 and fwd_open and bwd_open:
+                score += 20
+        self.board[r][c] = 0
+
+        self.board[r][c] = opponent
+        for dr, dc in directions:
+            count = 1
+            nr, nc = r + dr, c + dc
+            while 0 <= nr < self.size and 0 <= nc < self.size and self.board[nr][nc] == opponent:
+                count += 1
+                nr += dr
+                nc += dc
+            fwd_open = 0 <= nr < self.size and 0 <= nc < self.size and self.board[nr][nc] == 0
+            nr, nc = r - dr, c - dc
+            while 0 <= nr < self.size and 0 <= nc < self.size and self.board[nr][nc] == opponent:
+                count += 1
+                nr -= dr
+                nc -= dc
+            bwd_open = 0 <= nr < self.size and 0 <= nc < self.size and self.board[nr][nc] == 0
+            if count >= 5:
+                score += 9000
+            elif count == 4:
+                score += 4000 if (fwd_open or bwd_open) else 200
+            elif count == 3 and fwd_open and bwd_open:
+                score += 400
+        self.board[r][c] = 0
+
+        if difficulty == 'hard':
+            center = self.size // 2
+            score -= abs(r - center) + abs(c - center)
+
+        return score
 
     # -------------------------------------------------------- check_game_over
     def check_game_over(self):

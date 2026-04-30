@@ -234,6 +234,8 @@ class IsleOfSkyeGame(BaseGame):
 
     def make_move(self, move):
         """Process player action."""
+        if move is None:
+            return False
         pi = self.current_player - 1
         parts = move.split()
         if not parts:
@@ -271,6 +273,15 @@ class IsleOfSkyeGame(BaseGame):
                     print("  That tile is discarded!")
                     return False
                 self.prices[pi][tidx] = amount
+                priced = sum(1 for p in self.prices[pi] if p >= 0)
+                discards = sum(1 for d in self.discarded[pi] if d)
+                if priced == 2 and discards == 1:
+                    opp = 1 - pi
+                    opp_priced = sum(1 for p in self.prices[opp] if p >= 0)
+                    opp_disc = sum(1 for d in self.discarded[opp] if d)
+                    if opp_priced == 2 and opp_disc == 1:
+                        self.phase = "buy"
+                        self.bought_this_round = [None, None]
                 return True
             elif cmd == "discard" and len(parts) == 2:
                 try:
@@ -298,6 +309,12 @@ class IsleOfSkyeGame(BaseGame):
                         self.phase = "buy"
                         self.bought_this_round = [None, None]
                 return True
+            elif cmd == "pass":
+                priced = sum(1 for p in self.prices[pi] if p >= 0)
+                discards = sum(1 for d in self.discarded[pi] if d)
+                if priced == 2 and discards == 1:
+                    return True
+                return False
 
         elif self.phase == "buy":
             if cmd == "buy" and len(parts) == 3:
@@ -411,10 +428,118 @@ class IsleOfSkyeGame(BaseGame):
                 for pi in range(2):
                     self.scores[pi] += self.journey_track[pi]
                     print(f"  P{pi+1} journey bonus: +{self.journey_track[pi]}")
-            input("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
         self.round_number += 1
         self.phase = "draw"
         self.drawn_tiles = [[], []]
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        pi = self.current_player - 1
+
+        if self.phase == "draw":
+            return "draw"
+
+        if self.phase == "price":
+            tiles = self.drawn_tiles[pi]
+            discarded_count = sum(1 for d in self.discarded[pi] if d)
+            priced_count = sum(1 for p in self.prices[pi] if p >= 0)
+
+            if discarded_count == 1 and priced_count == 2:
+                return "pass"
+
+            if discarded_count == 0:
+                if difficulty == 'easy':
+                    idx = random.randint(0, 2)
+                else:
+                    worst_idx = 0
+                    worst_val = 999
+                    for i, t in enumerate(tiles):
+                        val = {"village": 5, "lake": 4, "mountain": 3, "forest": 2, "pasture": 1}.get(t["terrain"], 1)
+                        if t.get("gold_bonus", 0):
+                            val += t["gold_bonus"]
+                        if val < worst_val:
+                            worst_val = val
+                            worst_idx = i
+                    idx = worst_idx
+                return f"discard {idx + 1}"
+
+            if priced_count < 2:
+                for i in range(3):
+                    if not self.discarded[pi][i] and self.prices[pi][i] < 0:
+                        max_price = self.gold[pi]
+                        if max_price <= 0:
+                            price = 0
+                        elif difficulty == 'easy':
+                            price = random.randint(0, max(1, max_price // 3))
+                        else:
+                            price = max(0, max_price // 4)
+                        return f"price {i + 1} {price}"
+            return "pass"
+
+        if self.phase == "buy":
+            opp = 1 - pi
+            best_buy = None
+            best_val = -1
+
+            for j in range(3):
+                if not self.discarded[opp][j] and self.prices[opp][j] >= 0:
+                    tile = self.drawn_tiles[opp][j]
+                    if tile is not None:
+                        price = self.prices[opp][j]
+                        if price <= self.gold[pi]:
+                            val = {"village": 5, "lake": 4, "mountain": 3, "forest": 2, "pasture": 1}.get(tile["terrain"], 1)
+                            val += tile.get("gold_bonus", 0) - price
+                            if val > best_val:
+                                best_val = val
+                                best_buy = f"buy {opp + 1} {j + 1}"
+
+            for j in range(3):
+                if not self.discarded[pi][j] and self.prices[pi][j] >= 0:
+                    tile = self.drawn_tiles[pi][j]
+                    if tile is not None:
+                        price = self.prices[pi][j]
+                        if price <= self.gold[pi]:
+                            val = {"village": 5, "lake": 4, "mountain": 3, "forest": 2, "pasture": 1}.get(tile["terrain"], 1)
+                            val += tile.get("gold_bonus", 0) - price
+                            if val > best_val:
+                                best_val = val
+                                best_buy = f"buy {pi + 1} {j + 1}"
+
+            if best_buy and (difficulty != 'easy' or random.random() < 0.7):
+                return best_buy
+            return "pass"
+
+        if self.phase == "place":
+            tile = self.bought_this_round[pi]
+            if tile is None:
+                return "keep"
+            grid = self.landscape_grid[pi]
+            best_spot = None
+            for r in range(9):
+                for c in range(9):
+                    if grid[r][c] is None:
+                        adj = False
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = r + dr, c + dc
+                            if 0 <= nr < 9 and 0 <= nc < 9 and grid[nr][nc] is not None:
+                                adj = True
+                                break
+                        if adj:
+                            if best_spot is None:
+                                best_spot = (r, c)
+                            if difficulty == 'hard':
+                                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                                    nr, nc = r + dr, c + dc
+                                    if 0 <= nr < 9 and 0 <= nc < 9 and grid[nr][nc] is not None:
+                                        if grid[nr][nc]["terrain"] == tile["terrain"]:
+                                            return f"place {r} {c}"
+            if best_spot is not None:
+                return f"place {best_spot[0]} {best_spot[1]}"
+            return "keep"
+
+        return "pass"
 
     def check_game_over(self):
         """Game ends after max rounds."""

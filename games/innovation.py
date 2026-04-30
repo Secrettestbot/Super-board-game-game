@@ -323,6 +323,8 @@ class InnovationGame(BaseGame):
         return ("action", input_with_quit("  Enter action: "))
 
     def make_move(self, move):
+        if move is None:
+            return False
         action, value = move
         val = value.strip().lower()
         cp = self.current_player
@@ -564,6 +566,81 @@ class InnovationGame(BaseGame):
         if self.actions_remaining <= 0:
             self.actions_remaining = 2
             self.switch_player()
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        hand = self.hands[cp]
+        score = self._score_total(cp)
+        highest_age = self._highest_age_on_board(cp)
+
+        achievable = []
+        for ach in self.achievements:
+            req = 5 * ach["age"]
+            if score >= req and highest_age >= ach["age"]:
+                achievable.append(ach)
+
+        if achievable:
+            best_ach = max(achievable, key=lambda a: a["age"])
+            return ("action", f"a {best_ach['age']}")
+
+        actions = []
+
+        actions.append(("d", 5.0))
+
+        if hand:
+            best_card = max(hand, key=lambda c: c["age"])
+            idx = hand.index(best_card) + 1
+            meld_score = best_card["age"] * 2
+            if not any(self.boards[cp].get(c, {}).get("cards") for c in COLORS):
+                meld_score += 10
+            actions.append((f"m {idx}", meld_score))
+
+        for color in COLORS:
+            top = self._get_top_card(cp, color)
+            if top:
+                dogma_val = 3.0
+                key = top["dogma_key"]
+                if key in ("draw_and_score", "draw_and_meld"):
+                    dogma_val = 8.0
+                elif key == "score":
+                    dogma_val = 7.0 if hand else 0
+                elif key in ("splay_right", "splay_up"):
+                    dogma_val = 6.0
+                elif key == "achieve":
+                    dogma_val = 6.0
+                elif key.startswith("demand"):
+                    opp = 3 - cp
+                    featured = top["featured_icon"]
+                    my_icons = self._count_icons(cp)
+                    opp_icons = self._count_icons(opp)
+                    if my_icons.get(featured, 0) > opp_icons.get(featured, 0):
+                        dogma_val = 7.0
+                    else:
+                        dogma_val = 1.0
+                elif key == "meld":
+                    dogma_val = 5.0 if hand else 0
+                elif key == "draw":
+                    dogma_val = 5.0
+                elif key == "tuck":
+                    dogma_val = 4.0 if hand else 0
+
+                actions.append((f"g {color}", dogma_val))
+
+        if difficulty == 'easy':
+            act_str, _ = random.choice(actions)
+            return ("action", act_str)
+
+        actions.sort(key=lambda x: -x[1])
+
+        if difficulty == 'medium':
+            top = actions[:max(2, len(actions) // 3)]
+            act_str, _ = random.choice(top)
+        else:
+            act_str, _ = actions[0]
+
+        return ("action", act_str)
 
     def check_game_over(self):
         if self.game_over:

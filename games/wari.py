@@ -13,6 +13,7 @@ class WariGame(BaseGame):
     variations = {
         "standard": "Standard Wari/Awale",
     }
+    side_labels = ("Player 1 (Bottom)", "Player 2 (Top)")
 
     NUM_PITS = 6
     INITIAL_SEEDS = 4
@@ -289,6 +290,66 @@ class WariGame(BaseGame):
             self.stall_count += 1
 
         return True
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        side = self.current_player - 1
+        valid = self._get_valid_moves(side)
+
+        if not valid:
+            return None
+
+        if difficulty == 'easy':
+            return rand.choice(valid)
+
+        opp = self._opponent(side)
+        scored = []
+        for pit in valid:
+            score = 0
+            sim_board = [row[:] for row in self.board]
+            seeds = sim_board[side][pit]
+            sim_board[side][pit] = 0
+            cs, cp = side, pit
+            while seeds > 0:
+                cp += 1
+                if cp >= self.NUM_PITS:
+                    cp = 0
+                    cs = self._opponent(cs)
+                if cs == side and cp == pit:
+                    continue
+                sim_board[cs][cp] += 1
+                seeds -= 1
+
+            captured = 0
+            if cs == opp:
+                cap_pit = cp
+                while cap_pit >= 0:
+                    val = sim_board[opp][cap_pit]
+                    if val == 2 or val == 3:
+                        captured += val
+                        sim_board[opp][cap_pit] = 0
+                        cap_pit -= 1
+                    else:
+                        break
+                remaining = sum(sim_board[opp])
+                if remaining == 0 and captured > 0:
+                    captured = 0
+
+            score += captured * 3
+            seed_count = self.board[side][pit]
+            if seed_count > (self.NUM_PITS - 1 - pit):
+                score += 1
+
+            scored.append((score, pit))
+
+        scored.sort(key=lambda x: -x[0])
+
+        if difficulty == 'hard':
+            return scored[0][1]
+
+        top = scored[:max(1, len(scored) // 2 + 1)]
+        return rand.choice(top)[1]
 
     # -------------------------------------------------------- check_game_over
     def check_game_over(self):

@@ -258,6 +258,47 @@ class CockroachPokerGame(BaseGame):
         # Override: switching is handled in make_move based on who lost
         pass
 
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = str(self.current_player)
+
+        if self.phase == "offer":
+            if not self.hands[cp]:
+                return {"action": "no_cards"}
+            bugs = self._bug_types()
+            card = random.choice(self.hands[cp])
+
+            if difficulty == 'easy':
+                claim = random.choice(bugs)
+            else:
+                opp = "2" if cp == "1" else "1"
+                opp_face = self.face_up[opp]
+                if difficulty == 'hard' and random.random() < 0.6:
+                    safe = [b for b in bugs if opp_face.get(b, 0) == 0]
+                    claim = random.choice(safe) if safe else card
+                else:
+                    claim = card if random.random() < 0.4 else random.choice(bugs)
+            return {"action": "offer", "card": card, "claim": claim}
+
+        elif self.phase == "respond":
+            if difficulty == 'easy':
+                return {"action": random.choice(["accept_true", "accept_false"])}
+
+            claim = self.offered_claim
+            my_count = sum(1 for c in self.hands[cp] if c == claim)
+            face_count = self.face_up["1"].get(claim, 0) + self.face_up["2"].get(claim, 0)
+            total_visible = my_count + face_count
+            max_copies = 6 if claim.startswith("Royal") else 8
+
+            if total_visible >= max_copies - 2:
+                return {"action": "accept_false"}
+            if difficulty == 'hard' and total_visible >= max_copies // 2:
+                return {"action": "accept_false"}
+            return {"action": "accept_true" if random.random() < 0.5 else "accept_false"}
+
+        return {"action": "no_cards"}
+
     def check_game_over(self):
         lose_threshold = 4
         if self.variation == "royal":

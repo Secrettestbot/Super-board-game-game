@@ -1,5 +1,6 @@
 """Mancala - Ancient seed-sowing board game with multiple variations."""
 
+import random
 from engine.base import BaseGame, input_with_quit, clear_screen
 
 
@@ -15,6 +16,7 @@ class MancalaGame(BaseGame):
         "oware": "Oware/Awari - 6 pits, 4 seeds, 2-or-3 capture rule, no extra turns",
         "congkak": "Congkak - 7 pits, 7 seeds, larger board with extra turns",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation or "kalah")
@@ -113,6 +115,8 @@ class MancalaGame(BaseGame):
     # ----------------------------------------------------------- make_move
     def make_move(self, move):
         """Apply the chosen move. Returns True if valid."""
+        if move is None:
+            return False
         self.extra_turn = False
 
         if self.variation == "oware":
@@ -276,6 +280,62 @@ class MancalaGame(BaseGame):
             # Don't switch - current player goes again
             return
         super().switch_player()
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        n = self.num_pits
+        p = self.current_player
+
+        valid_pits = []
+        for pit in range(1, n + 1):
+            idx = (pit - 1) if p == 1 else (n + pit - 1)
+            if self.pits[idx] > 0:
+                valid_pits.append(pit)
+
+        if not valid_pits:
+            return valid_pits[0] if valid_pits else 1
+
+        if difficulty == 'easy':
+            return random.choice(valid_pits)
+
+        saved_pits = list(self.pits)
+        saved_stores = list(self.stores)
+        saved_extra = self.extra_turn
+
+        scored = []
+        for pit in valid_pits:
+            self.pits = list(saved_pits)
+            self.stores = list(saved_stores)
+            self.extra_turn = saved_extra
+
+            if self.variation == "oware":
+                self._make_move_oware(pit)
+            else:
+                self._make_move_kalah(pit)
+
+            score = self.stores[p - 1] - saved_stores[p - 1]
+            if self.extra_turn:
+                score += 5
+            if difficulty == 'hard':
+                opp = 2 if p == 1 else 1
+                opp_range = range(n, n * 2) if p == 1 else range(0, n)
+                opp_seeds = sum(self.pits[i] for i in opp_range)
+                if opp_seeds == 0:
+                    score += 20
+            scored.append((score, pit))
+
+        self.pits = list(saved_pits)
+        self.stores = list(saved_stores)
+        self.extra_turn = saved_extra
+
+        scored.sort(key=lambda x: -x[0])
+
+        if difficulty == 'medium':
+            top = scored[:max(1, len(scored) // 3)]
+            return random.choice([s[1] for s in top])
+
+        return scored[0][1]
 
     # ---------------------------------------------------- check_game_over
     def check_game_over(self):

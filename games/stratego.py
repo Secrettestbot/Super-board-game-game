@@ -70,6 +70,7 @@ class StrategoGame(BaseGame):
         "standard": "Standard Stratego (10x10)",
         "quick": "Quick Stratego (8x8, fewer pieces)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -191,6 +192,8 @@ class StrategoGame(BaseGame):
 
     def make_move(self, move):
         """Apply move. Returns True if valid."""
+        if move is None:
+            return False
         try:
             parts = move.split()
             if len(parts) != 4:
@@ -341,6 +344,84 @@ class StrategoGame(BaseGame):
             self.board[fr][fc] = None
             self.board[tr][tc] = None
             self.last_battle_msg = f"{a_name}({a_rank}) vs {d_name}({d_rank}). Both destroyed!"
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+        size = self.board_size
+
+        moves = []
+        for r in range(size):
+            for c in range(size):
+                piece = self.board[r][c]
+                if piece is None or piece[0] != player:
+                    continue
+                rank = piece[1]
+                if rank in ("B", "F"):
+                    continue
+                if rank == "2":
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        for dist in range(1, size):
+                            nr, nc = r + dr * dist, c + dc * dist
+                            if not (0 <= nr < size and 0 <= nc < size):
+                                break
+                            if (nr, nc) in self.lakes:
+                                break
+                            target = self.board[nr][nc]
+                            if target is not None:
+                                if target[0] == player:
+                                    break
+                                moves.append((r, c, nr, nc, rank))
+                                break
+                            moves.append((r, c, nr, nc, rank))
+                else:
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = r + dr, c + dc
+                        if 0 <= nr < size and 0 <= nc < size:
+                            if (nr, nc) not in self.lakes:
+                                target = self.board[nr][nc]
+                                if target is None or target[0] != player:
+                                    moves.append((r, c, nr, nc, rank))
+
+        if not moves:
+            return "0 0 0 0"
+
+        if difficulty == "easy":
+            fr, fc, tr, tc, _ = rand.choice(moves)
+            return f"{fr} {fc} {tr} {tc}"
+
+        scored = []
+        for fr, fc, tr, tc, rank in moves:
+            s = 0.0
+            try:
+                rank_val = int(rank)
+            except ValueError:
+                rank_val = 0
+            target = self.board[tr][tc]
+            if target is not None:
+                s += 10
+                if rank == "3":
+                    s += 5
+                if rank_val >= 7:
+                    s -= 3
+                if rank == "1":
+                    s += 8
+            forward = (tr - fr) if player == 1 else (fr - tr)
+            s += forward * 0.5
+            center = size / 2
+            s += (2 - abs(tc - center)) * 0.3
+            if rank_val <= 3:
+                s += 1
+            elif rank_val >= 8:
+                s -= 1
+            if difficulty == "medium":
+                s += rand.uniform(-3, 3)
+            scored.append((s, fr, fc, tr, tc))
+
+        scored.sort(reverse=True)
+        _, fr, fc, tr, tc = scored[0]
+        return f"{fr} {fc} {tr} {tc}"
 
     def check_game_over(self):
         """Check if a flag is captured or a player cannot move."""

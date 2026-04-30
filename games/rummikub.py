@@ -16,6 +16,7 @@ class RummikubGame(BaseGame):
         "standard": "Standard Rummikub",
         "simple": "Simple (no jokers)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     COLORS = ['R', 'B', 'O', 'K']
     COLOR_NAMES = {'R': 'Red', 'B': 'Blue', 'O': 'Orange', 'K': 'Black'}
@@ -411,9 +412,136 @@ class RummikubGame(BaseGame):
     # ------------------------------------------------------------- make_move
     def make_move(self, move):
         """Apply the completed turn. Always returns True since validation is in get_move."""
+        if move is None:
+            return False
         return True
 
     # --------------------------------------------------------- check_game_over
+    def get_ai_move(self):
+        import random as rand
+        import copy as cp
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        pidx = self.current_player - 1
+        hand = self.hands[pidx]
+
+        self._turn_snapshot_hands = cp.deepcopy(hand)
+        self._turn_snapshot_table = cp.deepcopy(self.table_melds)
+        self._turn_drew = False
+        self._turn_played = False
+
+        if difficulty == "easy":
+            if self.pool:
+                tile = self.pool.pop(rand.randint(0, len(self.pool) - 1))
+                hand.append(tile)
+                hand.sort(key=self._tile_sort_key)
+                self._turn_drew = True
+                return "draw"
+
+        # Try to form melds from hand
+        def find_groups(tiles):
+            by_num = {}
+            for i, t in enumerate(tiles):
+                if t[0] == 'J':
+                    continue
+                by_num.setdefault(t[1], []).append(i)
+            groups = []
+            for num, indices in by_num.items():
+                colors_seen = set()
+                unique = []
+                for idx in indices:
+                    c = tiles[idx][0]
+                    if c not in colors_seen:
+                        colors_seen.add(c)
+                        unique.append(idx)
+                if len(unique) >= 3:
+                    groups.append(unique[:4])
+            return groups
+
+        def find_runs(tiles):
+            by_color = {}
+            for i, t in enumerate(tiles):
+                if t[0] == 'J':
+                    continue
+                by_color.setdefault(t[0], []).append((t[1], i))
+            runs = []
+            for color, nums_indices in by_color.items():
+                nums_indices.sort()
+                seen = set()
+                unique = []
+                for num, idx in nums_indices:
+                    if num not in seen:
+                        seen.add(num)
+                        unique.append((num, idx))
+                for start in range(len(unique)):
+                    run = [unique[start]]
+                    for j in range(start + 1, len(unique)):
+                        if unique[j][0] == run[-1][0] + 1:
+                            run.append(unique[j])
+                        else:
+                            break
+                    if len(run) >= 3:
+                        runs.append([idx for _, idx in run])
+            return runs
+
+        all_melds = find_groups(hand) + find_runs(hand)
+
+        if not self.initial_meld_done[pidx]:
+            valid_melds = []
+            for meld_indices in all_melds:
+                tiles = [hand[i] for i in meld_indices]
+                val = sum(self.tile_value(t) for t in tiles)
+                if val >= 30 and self._is_valid_meld(tiles):
+                    valid_melds.append((val, meld_indices))
+            if valid_melds:
+                valid_melds.sort(key=lambda x: x[0], reverse=True)
+                best = valid_melds[0][1]
+                tiles = [hand[i] for i in best]
+                for i in sorted(best, reverse=True):
+                    hand.pop(i)
+                self.table_melds.append(tiles)
+                self.initial_meld_done[pidx] = True
+                self._turn_played = True
+                return "done"
+        else:
+            placed_any = True
+            while placed_any:
+                placed_any = False
+                all_melds = find_groups(hand) + find_runs(hand)
+                if not all_melds:
+                    break
+                best_meld = max(all_melds, key=len)
+                tiles = [hand[i] for i in best_meld]
+                if self._is_valid_meld(tiles):
+                    for i in sorted(best_meld, reverse=True):
+                        hand.pop(i)
+                    self.table_melds.append(tiles)
+                    self._turn_played = True
+                    placed_any = True
+
+            if difficulty == "hard" and self.initial_meld_done[pidx]:
+                for tile_idx in range(len(hand) - 1, -1, -1):
+                    tile = hand[tile_idx]
+                    for meld_idx, meld in enumerate(self.table_melds):
+                        new_meld = meld + [tile]
+                        arranged = self._best_meld_arrangement(new_meld)
+                        if arranged is not None:
+                            hand.pop(tile_idx)
+                            self.table_melds[meld_idx] = arranged
+                            self._turn_played = True
+                            break
+
+        if self._turn_played:
+            return "done"
+
+        if self.pool:
+            tile = self.pool.pop(rand.randint(0, len(self.pool) - 1))
+            hand.append(tile)
+            hand.sort(key=self._tile_sort_key)
+            self._turn_drew = True
+            return "draw"
+
+        return "pass"
+
     def check_game_over(self):
         """Check if a player has emptied their hand or pool is empty."""
         for pidx in range(2):

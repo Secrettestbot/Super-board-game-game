@@ -370,6 +370,8 @@ class GinRummyGame(BaseGame):
 
     def make_move(self, move):
         """Process the move based on current phase."""
+        if move is None:
+            return False
         if self.phase == "draw":
             return self._do_draw(move)
         elif self.phase == "discard":
@@ -393,10 +395,10 @@ class GinRummyGame(BaseGame):
                 # Need all 10 cards in melds - but big gin requires 11 cards
                 # Big gin only works if player can form melds with all 11 cards
                 print("  Big Gin requires 11 cards in melds. Draw first.")
-                input_with_quit("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
                 return False
             print("  Big Gin requires 0 deadwood with all 11 cards. Draw first.")
-            input_with_quit("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
             return False
 
         if move == "draw deck":
@@ -413,7 +415,7 @@ class GinRummyGame(BaseGame):
         elif move == "draw discard":
             if not self.discard_pile:
                 print("  Discard pile is empty!")
-                input_with_quit("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
                 return False
             card = self.discard_pile.pop()
             self.hands[cp].append(card)
@@ -424,12 +426,12 @@ class GinRummyGame(BaseGame):
         elif move in ("knock", "gin"):
             # Player must draw first before knocking/gin
             print("  You must draw a card first!")
-            input_with_quit("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
             return False
 
         else:
             print("  Invalid command. Use 'draw deck' or 'draw discard'.")
-            input_with_quit("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
             return False
 
     def _do_discard(self, move):
@@ -448,11 +450,11 @@ class GinRummyGame(BaseGame):
                 return True
             else:
                 print(f"  Cannot Big Gin - deadwood is {dw_val} (need 0 with all 11 cards).")
-                input_with_quit("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
                 return False
 
         # Knock or gin: must specify which card to discard
-        if move.startswith("knock") or move == "gin":
+        if move.startswith("knock") or move.startswith("gin"):
             parts = move.split()
             if len(parts) == 1 and move == "gin":
                 # Auto-detect: try all possible discards for gin
@@ -470,7 +472,7 @@ class GinRummyGame(BaseGame):
                         self._score_hand(bonus_type="gin")
                         return True
                 print("  Cannot Gin - no discard leaves 0 deadwood.")
-                input_with_quit("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
                 return False
 
             if len(parts) == 2 and parts[0] == "knock":
@@ -480,14 +482,14 @@ class GinRummyGame(BaseGame):
                     return False
                 if idx < 0 or idx >= len(hand):
                     print("  Invalid card number.")
-                    input_with_quit("  Press Enter to continue...")
+                    self._pause("  Press Enter to continue...")
                     return False
                 # Check if knocking is possible after discarding this card
                 remaining = hand[:idx] + hand[idx + 1:]
                 melds, dw_cards, dw_val = find_best_melds(remaining)
                 if dw_val > self.knock_value:
                     print(f"  Cannot knock - deadwood would be {dw_val} (max {self.knock_value}).")
-                    input_with_quit("  Press Enter to continue...")
+                    self._pause("  Press Enter to continue...")
                     return False
                 discard_card = hand[idx]
                 self.hands[cp] = remaining
@@ -508,13 +510,13 @@ class GinRummyGame(BaseGame):
                     return False
                 if idx < 0 or idx >= len(hand):
                     print("  Invalid card number.")
-                    input_with_quit("  Press Enter to continue...")
+                    self._pause("  Press Enter to continue...")
                     return False
                 remaining = hand[:idx] + hand[idx + 1:]
                 melds, dw_cards, dw_val = find_best_melds(remaining)
                 if dw_val != 0:
                     print(f"  Cannot Gin - deadwood would be {dw_val} (need 0).")
-                    input_with_quit("  Press Enter to continue...")
+                    self._pause("  Press Enter to continue...")
                     return False
                 discard_card = hand[idx]
                 self.hands[cp] = remaining
@@ -526,7 +528,7 @@ class GinRummyGame(BaseGame):
                 return True
 
             print("  Usage: 'knock <card#>' or 'gin' or 'gin <card#>'")
-            input_with_quit("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
             return False
 
         # Regular discard
@@ -534,7 +536,7 @@ class GinRummyGame(BaseGame):
             parts = move.split()
             if len(parts) != 2:
                 print("  Usage: 'discard <card#>'")
-                input_with_quit("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
                 return False
             try:
                 idx = int(parts[1]) - 1
@@ -542,7 +544,7 @@ class GinRummyGame(BaseGame):
                 return False
             if idx < 0 or idx >= len(hand):
                 print("  Invalid card number.")
-                input_with_quit("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
                 return False
             discard_card = hand.pop(idx)
             self.discard_pile.append(discard_card)
@@ -568,7 +570,7 @@ class GinRummyGame(BaseGame):
             pass
 
         print("  Invalid command. Use 'discard <#>', '<#>', 'knock <#>', 'gin', or 'big gin'.")
-        input_with_quit("  Press Enter to continue...")
+        self._pause("  Press Enter to continue...")
         return False
 
     def _do_knock_melds(self, move):
@@ -592,12 +594,12 @@ class GinRummyGame(BaseGame):
             idx = int(move) - 1
         except ValueError:
             print("  Enter a card number or 'done'.")
-            input_with_quit("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
             return False
 
         if idx < 0 or idx >= len(self.opponent_deadwood):
             print("  Invalid card number.")
-            input_with_quit("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
             return False
 
         card = self.opponent_deadwood[idx]
@@ -608,7 +610,7 @@ class GinRummyGame(BaseGame):
             return True
         else:
             print(f"  {card_str(card)} cannot be laid off on any of the knocker's melds.")
-            input_with_quit("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
             return False
 
     def _score_hand(self, bonus_type="knock"):
@@ -657,6 +659,96 @@ class GinRummyGame(BaseGame):
                     f"(deadwood difference: {o_dw_val} - {k_dw_val})")
 
         self.phase = "scoring"
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player - 1
+
+        if self.phase in ("scoring", "round_over"):
+            return "continue"
+        if self.phase == "knock_melds":
+            return ""
+        if self.phase == "opponent_layoff":
+            for i, card in enumerate(self.opponent_deadwood):
+                if can_lay_off(card, self.knocker_melds):
+                    return str(i + 1)
+            return "done"
+        if self.phase == "draw":
+            return self._ai_draw(difficulty, cp)
+        if self.phase == "discard":
+            return self._ai_discard(difficulty, cp)
+        return ""
+
+    def _ai_draw(self, difficulty, cp):
+        import random
+        hand = self.hands[cp]
+
+        if difficulty == 'easy':
+            if self.discard_pile and random.random() < 0.3:
+                return "draw discard"
+            return "draw deck"
+
+        if self.discard_pile:
+            discard_card = self.discard_pile[-1]
+            test_hand = list(hand) + [discard_card]
+            _, _, new_dw = find_best_melds(test_hand)
+            _, _, cur_dw = find_best_melds(hand)
+            improvement = cur_dw - (new_dw - card_value(discard_card))
+            threshold = 3 if difficulty == 'hard' else 5
+            if improvement >= threshold:
+                return "draw discard"
+
+        return "draw deck"
+
+    def _ai_discard(self, difficulty, cp):
+        import random
+        hand = self.hands[cp]
+
+        for i in range(len(hand)):
+            remaining = hand[:i] + hand[i + 1:]
+            _, _, dw = find_best_melds(remaining)
+            if dw == 0:
+                return f"gin {i + 1}"
+
+        melds, dw_cards, dw_val = find_best_melds(hand)
+        if dw_val == 0 and len(hand) == 11:
+            return "big gin"
+
+        best_knock_idx = None
+        best_knock_dw = 999
+        for i in range(len(hand)):
+            remaining = hand[:i] + hand[i + 1:]
+            _, _, dw = find_best_melds(remaining)
+            if dw <= self.knock_value and dw < best_knock_dw:
+                best_knock_dw = dw
+                best_knock_idx = i
+
+        if best_knock_idx is not None:
+            if difficulty == 'easy':
+                if best_knock_dw <= 3:
+                    return f"knock {best_knock_idx + 1}"
+            elif difficulty == 'medium':
+                if best_knock_dw <= 6:
+                    return f"knock {best_knock_idx + 1}"
+            else:
+                return f"knock {best_knock_idx + 1}"
+
+        if difficulty == 'easy':
+            return str(random.randint(1, len(hand)))
+
+        best_discard = None
+        best_dw = 999
+        for i in range(len(hand)):
+            remaining = hand[:i] + hand[i + 1:]
+            _, _, dw = find_best_melds(remaining)
+            if dw < best_dw:
+                best_dw = dw
+                best_discard = i
+
+        if best_discard is not None:
+            return f"discard {best_discard + 1}"
+        return "discard 1"
 
     def check_game_over(self):
         """Check if the game is over after a move."""

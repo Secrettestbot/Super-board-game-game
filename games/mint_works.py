@@ -76,6 +76,7 @@ class MintWorksGame(BaseGame):
         "standard": "Standard game - first to 7 stars wins",
         "quick": "Quick game - first to 5 stars wins",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -314,6 +315,8 @@ class MintWorksGame(BaseGame):
 
     def make_move(self, move):
         """Process a move."""
+        if move is None:
+            return False
         p = self.current_player
 
         if move[0] == "invalid":
@@ -461,6 +464,103 @@ class MintWorksGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+
+        if self.passed[p]:
+            return ("pass",)
+
+        available = []
+        for i, loc in enumerate(self.locations):
+            if len(loc["workers"]) < loc["max_slots"] and self.mints[p] >= loc["cost"]:
+                available.append((i, loc))
+
+        if not available:
+            return ("pass",)
+
+        if difficulty == 'easy':
+            if random.random() < 0.3:
+                return ("pass",)
+            i, loc = random.choice(available)
+            if loc["name"] == "Supplier" and self.plan_display:
+                pi = random.randint(1, len(self.plan_display))
+                discount = self._get_supplier_discount(p)
+                plan = self.plan_display[pi - 1]
+                cost = loc["cost"] + max(1, plan["buy_cost"] - discount)
+                if self.mints[p] >= cost:
+                    return ("supplier", i, str(pi))
+                return ("pass",)
+            elif loc["name"] == "Builder" and self.plans_hand[p]:
+                pi = random.randint(1, len(self.plans_hand[p]))
+                discount = self._get_builder_discount(p)
+                plan = self.plans_hand[p][pi - 1]
+                cost = loc["cost"] + max(1, plan["build_cost"] - discount)
+                if self.mints[p] >= cost:
+                    return ("builder", i, str(pi))
+                return ("pass",)
+            else:
+                return ("location", i)
+
+        candidates = [(("pass",), 5)]
+
+        for i, loc in available:
+            if loc["name"] == "Supplier" and self.plan_display:
+                s_disc = self._get_supplier_discount(p)
+                b_disc = self._get_builder_discount(p)
+                for pi, plan in enumerate(self.plan_display):
+                    buy_cost = max(1, plan["buy_cost"] - s_disc)
+                    total = loc["cost"] + buy_cost
+                    if self.mints[p] >= total:
+                        build_cost = max(1, plan["build_cost"] - b_disc)
+                        efficiency = plan["stars"] / (total + build_cost)
+                        score = 20 + efficiency * 30
+                        if plan.get("bonus") in ("mints", "lotto"):
+                            score += 15
+                        if plan.get("bonus") in ("supplier_discount", "builder_discount"):
+                            score += 10
+                        if difficulty == 'hard':
+                            need = self.stars_to_win - self.stars[p]
+                            if plan["stars"] >= need:
+                                score += 50
+                        candidates.append((("supplier", i, str(pi + 1)), score))
+            elif loc["name"] == "Builder" and self.plans_hand[p]:
+                b_disc = self._get_builder_discount(p)
+                for pi, plan in enumerate(self.plans_hand[p]):
+                    build_cost = max(1, plan["build_cost"] - b_disc)
+                    total = loc["cost"] + build_cost
+                    if self.mints[p] >= total:
+                        score = 40 + plan["stars"] * 10
+                        if plan.get("bonus") in ("mints", "lotto"):
+                            score += 15
+                        if difficulty == 'hard':
+                            need = self.stars_to_win - self.stars[p]
+                            if plan["stars"] >= need:
+                                score += 100
+                        candidates.append((("builder", i, str(pi + 1)), score))
+            elif loc["name"] == "Wholesaler":
+                score = 25
+                if self.mints[p] <= 3:
+                    score += 10
+                candidates.append((("location", i), score))
+            elif loc["name"] == "Lotto":
+                score = 15
+                if difficulty == 'hard':
+                    score = 10
+                candidates.append((("location", i), score))
+            elif loc["name"] == "Leadership":
+                score = 18
+                if self.first_player != p:
+                    score += 10
+                candidates.append((("location", i), score))
+
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        if difficulty == 'medium':
+            top = candidates[:max(2, len(candidates) // 3)]
+            return random.choice(top)[0]
+        return candidates[0][0]
 
     def check_game_over(self):
         """Check if someone has enough stars."""

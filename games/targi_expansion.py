@@ -69,6 +69,7 @@ class TargiExpansionGame(BaseGame):
         "standard": "Standard Expansion",
         "sand_dunes": "Sand Dunes Mode",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -398,6 +399,68 @@ class TargiExpansionGame(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        sp = str(cp)
+
+        if self.phase == "place_workers":
+            available = []
+            for r, c in BORDER_POSITIONS:
+                if not self._occupied(r, c) and not self._is_corner(r, c):
+                    available.append((r, c))
+            if not available:
+                return None
+            if difficulty == "easy":
+                r, c = rand.choice(available)
+                return {"action": "place_worker", "row": r, "col": c}
+            scored = []
+            for r, c in available:
+                s = 0.0
+                card, idx = self._get_border_card(r, c)
+                if card and card["type"] == "resource":
+                    for res, amt in card["gives"].items():
+                        if res == "Gold":
+                            s += amt * 3
+                        elif res == "Water":
+                            s += amt * 2
+                        else:
+                            s += amt * 1.5
+                elif card and card["type"] == "action":
+                    s += 2
+                if difficulty == "medium":
+                    s += rand.uniform(-1, 1)
+                scored.append((s, r, c))
+            scored.sort(reverse=True)
+            _, r, c = scored[0]
+            return {"action": "place_worker", "row": r, "col": c}
+
+        elif self.phase == "resolve":
+            return {"action": "resolve"}
+
+        elif self.phase == "buy":
+            intersections = self._get_intersection_cards(cp)
+            if not intersections:
+                return {"action": "end_buy"}
+            best = None
+            best_val = -1
+            for i, (r, c, card) in enumerate(intersections):
+                affordable = all(self.resources[sp].get(res, 0) >= amt
+                                 for res, amt in card["cost"].items())
+                if affordable:
+                    val = card["points"]
+                    if difficulty == "easy":
+                        val += rand.uniform(-2, 2)
+                    if val > best_val:
+                        best_val = val
+                        best = (r, c)
+            if best:
+                return {"action": "buy", "row": best[0], "col": best[1]}
+            return {"action": "end_buy"}
+
+        return None
 
     def check_game_over(self):
         for p in [1, 2]:

@@ -292,6 +292,7 @@ class PalmIslandGame(BaseGame):
         "standard": "Standard game - 8 rounds through the deck",
         "quick": "Quick game - 5 rounds through the deck",
     }
+    side_labels = ("Player 1",)
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -445,6 +446,8 @@ class PalmIslandGame(BaseGame):
 
     def make_move(self, move):
         """Process a move."""
+        if move is None:
+            return False
         card = self.cards[self.current_card_idx]
         info = self._get_card_info(card)
         choice = move[0]
@@ -500,6 +503,64 @@ class PalmIslandGame(BaseGame):
     def switch_player(self):
         """Override - single player game, no switching."""
         pass
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        card = self.cards[self.current_card_idx]
+        info = self._get_card_info(card)
+
+        can_upgrade = info["can_upgrade"] and self._can_afford(info["upgrade_cost"])
+        has_produces = bool(info["produces"])
+
+        if difficulty == "easy":
+            if can_upgrade and rand.random() < 0.3:
+                return ("U",)
+            if has_produces:
+                return ("G",)
+            return ("S",)
+
+        gather_score = 0
+        upgrade_score = 0
+        skip_score = 1
+
+        if has_produces:
+            for res in info["produces"]:
+                if self.resources[res] < 3:
+                    gather_score += 8
+                elif self.resources[res] < 5:
+                    gather_score += 4
+                else:
+                    gather_score += 1
+
+        if can_upgrade:
+            template = CARD_TEMPLATES[card["template_idx"]]
+            next_state = template["states"][card["state"] + 1]
+            score_gain = next_state["score"] - info["score"]
+            produce_gain = len(next_state["produces"]) - len(info["produces"])
+            upgrade_score = score_gain * 5 + produce_gain * 3 + 5
+            if self.round_num > self.max_rounds * 0.6:
+                upgrade_score += score_gain * 3
+            if difficulty == "hard":
+                if next_state["score"] >= 5:
+                    upgrade_score += 10
+                if self.round_num <= 3 and produce_gain > 0:
+                    upgrade_score += 8
+
+        moves = []
+        if has_produces:
+            moves.append(("G", gather_score))
+        if can_upgrade:
+            moves.append(("U", upgrade_score))
+        moves.append(("S", skip_score))
+
+        if difficulty == "hard":
+            best = max(moves, key=lambda x: x[1])
+            return (best[0],)
+        else:
+            moves.sort(key=lambda x: x[1], reverse=True)
+            top = moves[:min(2, len(moves))]
+            return (rand.choice(top)[0],)
 
     def check_game_over(self):
         """Check if all rounds are complete."""

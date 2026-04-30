@@ -354,6 +354,92 @@ class GemRushGame(BaseGame):
 
         return False
 
+    def get_ai_move(self):
+        import random
+        from itertools import combinations
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        opp = 2 if p == 1 else 1
+
+        hand = self.hands[p]
+        safe_banked = [g for g in self.banked_gems[p] if g in SAFE_GEMS]
+        opp_banked = [g for g in self.banked_gems[opp] if g in SAFE_GEMS]
+
+        craftable = []
+        for recipe_name in RECIPES:
+            needed = {"Ring": 2, "Necklace": 3, "Crown": 5}.get(recipe_name, 0)
+            if len(safe_banked) >= needed:
+                for combo in combinations(range(len(safe_banked)), needed):
+                    gems = [safe_banked[i] for i in combo]
+                    if _recipe_check(recipe_name, gems):
+                        craftable.append((recipe_name, gems, list(combo)))
+                        break
+
+        if difficulty == 'easy':
+            if craftable:
+                recipe_name, gems, indices = random.choice(craftable)
+                return ("craft", recipe_name, gems, indices)
+            if hand and len(hand) >= 3:
+                return "bank"
+            if self.mine_bag:
+                return "mine"
+            if hand:
+                return "bank"
+            return "pass"
+
+        best_action = None
+        best_score = -999
+
+        for recipe_name, gems, indices in craftable:
+            score = RECIPES[recipe_name]["points"] * 10
+            if recipe_name == "Crown":
+                score += 5
+            if score > best_score:
+                best_score = score
+                best_action = ("craft", recipe_name, gems, indices)
+
+        if difficulty == 'hard' and safe_banked:
+            opp_counts = {}
+            for g in opp_banked:
+                opp_counts[g] = opp_counts.get(g, 0) + 1
+            for gem_type, count in opp_counts.items():
+                if count == 1 and gem_type in safe_banked:
+                    idx = safe_banked.index(gem_type)
+                    score = 25
+                    if score > best_score:
+                        best_score = score
+                        best_action = ("give", gem_type, idx)
+
+        if hand:
+            score = len(hand) * 3
+            obsidian_ratio = sum(1 for g in self.mine_bag if g == "Obsidian") / max(1, len(self.mine_bag))
+            if len(hand) >= 2:
+                score += obsidian_ratio * 20
+            if len(hand) >= 4:
+                score += 15
+            if score > best_score:
+                best_score = score
+                best_action = "bank"
+
+        if self.mine_bag:
+            obsidian_count = sum(1 for g in self.mine_bag if g == "Obsidian")
+            total = len(self.mine_bag)
+            risk = obsidian_count / max(1, total)
+            score = 10 - risk * 30
+            if not hand:
+                score += 15
+            elif len(hand) >= 3:
+                score -= 10
+            if difficulty == 'hard':
+                score -= len(hand) * risk * 10
+            if score > best_score:
+                best_score = score
+                best_action = "mine"
+
+        if best_action:
+            return best_action
+        return "pass"
+
     def check_game_over(self):
         """Check if the game is over."""
         # Win: reached target score

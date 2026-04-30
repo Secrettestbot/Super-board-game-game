@@ -13,6 +13,7 @@ class QuixoGame(BaseGame):
     variations = {
         "standard": "Standard 5x5 Quixo",
     }
+    side_labels = ("X", "O")
 
     SYMBOLS = {0: ".", 1: "X", 2: "O"}
 
@@ -192,6 +193,8 @@ class QuixoGame(BaseGame):
 
     # -------------------------------------------------------------- make_move
     def make_move(self, move):
+        if move is None:
+            return False
         r, c, d = move
         # Validate once more
         if not self._is_border(r, c):
@@ -208,6 +211,100 @@ class QuixoGame(BaseGame):
         return True
 
     # -------------------------------------------------------- check_game_over
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        opp = 3 - p
+
+        moves = []
+        for r in range(5):
+            for c in range(5):
+                if not self._is_border(r, c):
+                    continue
+                if self.board[r][c] == opp:
+                    continue
+                for d in self._get_valid_directions(r, c):
+                    moves.append((r, c, d))
+
+        if not moves:
+            return (0, 0, "L")
+
+        if difficulty == "easy":
+            return rand.choice(moves)
+
+        def _simulate(board, r, c, d, symbol):
+            b = [row[:] for row in board]
+            if d == "L":
+                row = b[r]
+                row.pop(c)
+                row.append(symbol)
+            elif d == "R":
+                row = b[r]
+                row.pop(c)
+                row.insert(0, symbol)
+            elif d == "U":
+                col_vals = [b[rr][c] for rr in range(5)]
+                col_vals.pop(r)
+                col_vals.append(symbol)
+                for rr in range(5):
+                    b[rr][c] = col_vals[rr]
+            elif d == "D":
+                col_vals = [b[rr][c] for rr in range(5)]
+                col_vals.pop(r)
+                col_vals.insert(0, symbol)
+                for rr in range(5):
+                    b[rr][c] = col_vals[rr]
+            return b
+
+        def _count_lines(board, player):
+            count = 0
+            for r in range(5):
+                n = sum(1 for c in range(5) if board[r][c] == player)
+                if n >= 3:
+                    count += n ** 2
+            for c in range(5):
+                n = sum(1 for r in range(5) if board[r][c] == player)
+                if n >= 3:
+                    count += n ** 2
+            d1 = sum(1 for i in range(5) if board[i][i] == player)
+            if d1 >= 3:
+                count += d1 ** 2
+            d2 = sum(1 for i in range(5) if board[i][4 - i] == player)
+            if d2 >= 3:
+                count += d2 ** 2
+            return count
+
+        def _has_five_b(board, player):
+            for r in range(5):
+                if all(board[r][c] == player for c in range(5)):
+                    return True
+            for c in range(5):
+                if all(board[r][c] == player for r in range(5)):
+                    return True
+            if all(board[i][i] == player for i in range(5)):
+                return True
+            if all(board[i][4 - i] == player for i in range(5)):
+                return True
+            return False
+
+        scored = []
+        sample = moves if difficulty == "hard" else rand.sample(moves, min(30, len(moves)))
+        for r, c, d in sample:
+            b = _simulate(self.board, r, c, d, p)
+            if _has_five_b(b, p) and not _has_five_b(b, opp):
+                return (r, c, d)
+            if _has_five_b(b, opp):
+                score = -1000
+            else:
+                score = _count_lines(b, p) - _count_lines(b, opp) * 1.2
+            if difficulty == "medium":
+                score += rand.uniform(-3, 3)
+            scored.append((score, r, c, d))
+
+        scored.sort(reverse=True)
+        return (scored[0][1], scored[0][2], scored[0][3])
+
     def check_game_over(self):
         p1_wins = self._has_five(1)
         p2_wins = self._has_five(2)

@@ -37,6 +37,7 @@ class ParadeGame(BaseGame):
         "standard": "Standard game - 6 colors, values 0-10",
         "quick": "Quick game - 4 colors, values 0-10",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -179,6 +180,8 @@ class ParadeGame(BaseGame):
             return {"card_idx": idx}
 
     def make_move(self, move):
+        if move is None:
+            return False
         if move == "pass":
             return True
 
@@ -251,6 +254,40 @@ class ParadeGame(BaseGame):
             else:
                 score += value
         return score
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        hand = self.hands[p]
+
+        if not hand:
+            return "pass"
+
+        opp = 2 if p == 1 else 1
+        scored = []
+        for i, card in enumerate(hand):
+            removed = self._cards_removed_by(card, self.parade)
+            penalty = sum(c[1] for c in removed)
+            num_removed = len(removed)
+            score = -(penalty + num_removed * 2)
+            if difficulty == "hard":
+                for rc in removed:
+                    my_count = sum(1 for c in self.collections[p] if c[0] == rc[0]) + 1
+                    opp_count = sum(1 for c in self.collections[opp] if c[0] == rc[0])
+                    if my_count > opp_count:
+                        score += rc[1] - 1
+            scored.append((i, score))
+
+        if difficulty == "easy":
+            return {"card_idx": rand.choice(range(len(hand)))}
+        elif difficulty == "hard":
+            scored.sort(key=lambda x: x[1], reverse=True)
+            return {"card_idx": scored[0][0]}
+        else:
+            scored.sort(key=lambda x: x[1], reverse=True)
+            top = scored[:min(2, len(scored))]
+            return {"card_idx": rand.choice(top)[0]}
 
     def check_game_over(self):
         # Game ends when final round is over (both players had a turn)

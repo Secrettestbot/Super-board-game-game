@@ -1,5 +1,7 @@
 """Abalone - Push opponent's marbles off a hexagonal board."""
 
+import random
+import copy
 from engine.base import BaseGame, input_with_quit, clear_screen
 
 
@@ -23,6 +25,7 @@ class AbaloneGame(BaseGame):
         "standard": "Standard Abalone (14 marbles each)",
         "small": "Small (9 marbles each, smaller board)",
     }
+    side_labels = ("White", "Black")
 
     # Six hex directions in axial coordinates (q, r)
     # East, West, NE, SW, NW, SE
@@ -523,6 +526,124 @@ class AbaloneGame(BaseGame):
             q, r = key.split(",")
             self.board[(int(q), int(r))] = val
         self.captured = {int(k): v for k, v in state["captured"].items()}
+
+    def get_ai_move(self):
+        """Return a valid move for the AI player."""
+        player = self.current_player
+        opponent = 3 - player
+        all_moves = []
+
+        # Gather all valid moves
+        my_positions = [pos for pos, p in self.board.items() if p == player]
+
+        for pos in my_positions:
+            for d_name, (dq, dr) in self.DIRECTIONS.items():
+                # Single marble move
+                move = ([pos], (dq, dr))
+                if self._try_move_valid(move, player):
+                    all_moves.append(move)
+
+        # Group moves (2-3 marbles in a line)
+        for pos in my_positions:
+            for d_name, (udq, udr) in self.DIRECTIONS.items():
+                for length in [2, 3]:
+                    group = []
+                    valid_group = True
+                    for step in range(length):
+                        gp = (pos[0] + udq * step, pos[1] + udr * step)
+                        if self.board.get(gp) != player:
+                            valid_group = False
+                            break
+                        group.append(gp)
+                    if not valid_group or len(group) < 2:
+                        continue
+                    # Try all 6 directions for this group
+                    for md_name, (mdq, mdr) in self.DIRECTIONS.items():
+                        move = (group, (mdq, mdr))
+                        if self._try_move_valid(move, player):
+                            all_moves.append(move)
+
+        if not all_moves:
+            # Fallback: return a single marble move to any adjacent empty cell
+            for pos in my_positions:
+                for d_name, (dq, dr) in self.DIRECTIONS.items():
+                    return ([pos], (dq, dr))
+
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if difficulty == 'easy':
+            return random.choice(all_moves)
+
+        # Score moves for medium/hard
+        def score_move(move):
+            marbles, direction = move
+            dq, dr = direction
+            score = 0
+            # Simulate the move
+            saved_board = dict(self.board)
+            saved_captured = dict(self.captured)
+            result = self._try_move_apply(move, player)
+            if result:
+                # Check if we captured
+                new_captures = self.captured[player] - saved_captured[player]
+                score += new_captures * 100
+                # Prefer pushing toward edge
+                for m in marbles:
+                    new_pos = (m[0] + dq, m[1] + dr)
+                    # Check if opponent near edge
+                    for d2, (dq2, dr2) in self.DIRECTIONS.items():
+                        check = (new_pos[0] + dq2, new_pos[1] + dr2)
+                        if check not in self.valid_cells and self.board.get(new_pos) == opponent:
+                            score += 30
+                # Prefer center control
+                for m in marbles:
+                    new_pos = (m[0] + dq, m[1] + dr)
+                    dist_center = max(abs(new_pos[0]), abs(new_pos[1]), abs(new_pos[0] + new_pos[1]))
+                    score -= dist_center * 2
+                # Prefer larger groups
+                score += len(marbles) * 5
+            # Restore state
+            self.board = saved_board
+            self.captured = saved_captured
+            return score
+
+        if difficulty == 'medium':
+            # Pick from top moves with some randomness
+            scored = [(score_move(m), random.random(), m) for m in all_moves]
+            scored.sort(key=lambda x: (-x[0], x[1]))
+            top = scored[:max(3, len(scored) // 4)]
+            return random.choice(top)[2]
+        else:
+            # Hard: pick the best move
+            scored = [(score_move(m), random.random(), m) for m in all_moves]
+            scored.sort(key=lambda x: (-x[0], x[1]))
+            return scored[0][2]
+
+    def _try_move_valid(self, move, player):
+        """Check if a move is valid without modifying state."""
+        saved_board = dict(self.board)
+        saved_captured = dict(self.captured)
+        marbles, direction = move
+
+        # Basic validation
+        for pos in marbles:
+            if self.board.get(pos) != player:
+                self.board = saved_board
+                self.captured = saved_captured
+                return False
+
+        result = self.make_move(move)
+        self.board = saved_board
+        self.captured = saved_captured
+        return result
+
+    def _try_move_apply(self, move, player):
+        """Apply move and return True if valid. Caller must save/restore state."""
+        marbles, direction = move
+        for pos in marbles:
+            if self.board.get(pos) != player:
+                return False
+        return self.make_move(move)
 
     def get_tutorial(self):
         """Return tutorial text for Abalone."""

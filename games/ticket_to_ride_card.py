@@ -189,6 +189,7 @@ class TicketToRideCardGame(BaseGame):
         "standard": "Standard map (many cities)",
         "express": "Express map (smaller, faster game)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation or "standard")
@@ -276,11 +277,24 @@ class TicketToRideCardGame(BaseGame):
         if not available:
             return
 
+        min_keep = 2 if initial else 1
+
+        # AI auto-selects tickets without prompting for input
+        if self.ai_player == player:
+            discard_idx = self._ai_choose_tickets(available, min_keep)
+            for i, ticket in enumerate(available):
+                if i in discard_idx:
+                    self.tickets_deck.insert(0, ticket)
+                else:
+                    self.tickets[player].append(ticket)
+            kept = [available[i] for i in range(len(available)) if i not in discard_idx]
+            print(f"  AI keeps {len(kept)} ticket(s).")
+            return
+
         print(f"\n  {self.players[player - 1]}, choose destination tickets to keep:")
         for i, (a, b, pts) in enumerate(available, 1):
             print(f"    {i}. {a} -> {b}  ({pts} pts)")
 
-        min_keep = 2 if initial else 1
         print(f"  You must keep at least {min_keep}. Enter numbers to DISCARD (e.g. '3' or '1 3'), or press Enter to keep all:")
 
         while True:
@@ -310,6 +324,62 @@ class TicketToRideCardGame(BaseGame):
 
         kept = [available[i] for i in range(len(available)) if i not in discard_idx]
         print(f"  Kept {len(kept)} ticket(s).")
+
+    def _ai_choose_tickets(self, available, min_keep):
+        """AI selects which tickets to discard. Returns set of indices to discard."""
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.ai_player
+
+        if difficulty == 'hard':
+            # Hard AI keeps all tickets (greedy for points)
+            return set()
+
+        if difficulty == 'easy':
+            # Easy AI keeps exactly the minimum, chosen randomly
+            keep_indices = set(rand.sample(range(len(available)), min(min_keep, len(available))))
+            return set(range(len(available))) - keep_indices
+
+        # Medium AI: score each ticket and keep the best ones
+        # Prefer shorter-distance tickets and ones that share cities with
+        # already-held tickets or claimed routes
+        connected_cities = set()
+        for i, (a, b, _, _, _) in enumerate(self.routes):
+            if self.claimed.get(i) == cp:
+                connected_cities.add(a)
+                connected_cities.add(b)
+        for a, b, _ in self.tickets[cp]:
+            connected_cities.add(a)
+            connected_cities.add(b)
+
+        scored = []
+        for idx, (a, b, pts) in enumerate(available):
+            score = pts  # base: ticket point value
+            # Bonus if cities overlap with existing network/tickets
+            if a in connected_cities:
+                score += 4
+            if b in connected_cities:
+                score += 4
+            # Penalize very long tickets slightly (harder to complete)
+            if pts >= 15:
+                score -= 3
+            scored.append((score, idx))
+
+        scored.sort(key=lambda x: -x[0])
+
+        # Keep min_keep or more -- keep tickets with positive-ish scores
+        keep_indices = set()
+        for _, idx in scored:
+            keep_indices.add(idx)
+            if len(keep_indices) >= min_keep:
+                # Keep going only if remaining tickets also look good
+                break
+
+        # If we'd discard more than allowed, keep all
+        if len(available) - len(keep_indices) > len(available) - min_keep:
+            keep_indices = set(range(len(available)))
+
+        return set(range(len(available))) - keep_indices
 
     # ---------------------------------------------------------------- display
 
@@ -398,9 +468,13 @@ class TicketToRideCardGame(BaseGame):
                 print("  Enter: draw, claim, or tickets")
 
     def make_move(self, move):
+        if move is None:
+            return False
         action = move[0]
         cp = self.current_player
 
+        if action == "ai_done":
+            return True
         if action == "draw":
             return self._do_draw(cp)
         elif action == "claim":
@@ -547,6 +621,128 @@ class TicketToRideCardGame(BaseGame):
         return True
 
     # -------------------------------------------------------------- game over
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+        hand = self.hands[cp]
+
+        hand_counts = {}
+        for c in hand:
+            hand_counts[c] = hand_counts.get(c, 0) + 1
+        wild_count = hand_counts.get("Wild", 0)
+
+        claimable = []
+        for i, (a, b, length, color, _) in enumerate(self.routes):
+            if i in self.claimed:
+                continue
+            if self.trains_left[cp] < length:
+                continue
+            if color:
+                cc = hand_counts.get(color, 0)
+                if cc + wild_count >= length:
+                    claimable.append((i, color, length))
+            else:
+                for col in COLORS:
+                    cc = hand_counts.get(col, 0)
+                    if cc + wild_count >= length:
+                        claimable.append((i, col, length))
+                        break
+
+        if difficulty == 'easy':
+            if claimable and rand.random() < 0.4:
+                idx, use_color, length = rand.choice(claimable)
+                self._ai_do_claim(cp, idx, use_color, length)
+                return ("ai_done",)
+            self._ai_do_draw(cp)
+            return ("ai_done",)
+
+        ticket_cities = set()
+        for a, b, pts in self.tickets[cp]:
+            ticket_cities.add(a)
+            ticket_cities.add(b)
+
+        scored_routes = []
+        for idx, use_color, length in claimable:
+            a, b, l, color, _ = self.routes[idx]
+            score = ROUTE_POINTS.get(length, 0)
+            if a in ticket_cities or b in ticket_cities:
+                score += 8
+            if a in ticket_cities and b in ticket_cities:
+                score += 5
+            scored_routes.append((score, idx, use_color, length))
+
+        if scored_routes:
+            scored_routes.sort(key=lambda x: -x[0])
+            if difficulty == 'medium':
+                top = scored_routes[:max(1, len(scored_routes) // 2)]
+                pick = rand.choice(top)
+            else:
+                pick = scored_routes[0]
+            self._ai_do_claim(cp, pick[1], pick[2], pick[3])
+            return ("ai_done",)
+
+        self._ai_do_draw(cp, difficulty)
+        return ("ai_done",)
+
+    def _ai_do_claim(self, cp, route_idx, use_color, length):
+        color_count = self.hands[cp].count(use_color)
+        wilds_needed = max(0, length - color_count)
+        for _ in range(length - wilds_needed):
+            self.hands[cp].remove(use_color)
+        for _ in range(wilds_needed):
+            self.hands[cp].remove("Wild")
+        self.discard.extend([use_color] * (length - wilds_needed))
+        self.discard.extend(["Wild"] * wilds_needed)
+        self.claimed[route_idx] = cp
+        self.trains_left[cp] -= length
+        a, b, l, _, _ = self.routes[route_idx]
+        pts = ROUTE_POINTS.get(length, 0)
+        print(f"  AI claims {a} -> {b} for {pts} points!")
+        if self.trains_left[cp] <= 2 and not self.last_round:
+            self.last_round = True
+            self.last_round_trigger = cp
+            print(f"\n  {self.players[cp-1]} has 2 or fewer trains left -- LAST ROUND begins!")
+
+    def _ai_do_draw(self, cp, difficulty='medium'):
+        import random as rand
+        needed_colors = set()
+        hand_counts = {}
+        for c in self.hands[cp]:
+            hand_counts[c] = hand_counts.get(c, 0) + 1
+        for i, (a, b, length, color, _) in enumerate(self.routes):
+            if i in self.claimed:
+                continue
+            if color and hand_counts.get(color, 0) + hand_counts.get("Wild", 0) < length:
+                needed_colors.add(color)
+
+        for _ in range(2):
+            drew_faceup = False
+            if self.face_up:
+                best_idx = -1
+                best_score = -1
+                for fi, fc in enumerate(self.face_up):
+                    if fc == "Wild":
+                        s = 5
+                    elif fc in needed_colors:
+                        s = 3
+                    else:
+                        s = 1
+                    if s > best_score:
+                        best_score = s
+                        best_idx = fi
+                if best_score >= 3 or difficulty == 'easy':
+                    card = self.face_up.pop(best_idx)
+                    self.hands[cp].append(card)
+                    self._refill_face_up()
+                    drew_faceup = True
+                    if card == "Wild":
+                        break
+            if not drew_faceup:
+                card = self._draw_train()
+                if card:
+                    self.hands[cp].append(card)
 
     def check_game_over(self):
         if self.last_round:

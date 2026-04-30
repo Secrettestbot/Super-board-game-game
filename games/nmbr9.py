@@ -76,6 +76,7 @@ class Nmbr9Game(BaseGame):
         "standard": "Standard Game",
         "plus": "Nmbr 9++ (larger tiles)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -303,6 +304,21 @@ class Nmbr9Game(BaseGame):
         cp = self.current_player
         action = move["action"]
 
+        if action == "pass":
+            self.log.append(
+                f"{self.players[cp-1]} passes (no valid placement)")
+            if cp == 1:
+                self.current_player = 2
+                return True
+            else:
+                self.tiles_played += 1
+                if self.deck:
+                    self.current_tile = self.deck.pop()
+                else:
+                    self.current_tile = None
+                self.current_player = 1
+                return True
+
         if action == "place":
             layer = move["layer"]
             row, col = move["row"], move["col"]
@@ -338,6 +354,83 @@ class Nmbr9Game(BaseGame):
                 return True
 
         return False
+
+    def switch_player(self):
+        pass
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        cp = self.current_player
+
+        if self.current_tile is None:
+            return None
+
+        number = self.current_tile
+        base_shape = self._get_shape(number)
+
+        orientations = []
+        for rot in range(4):
+            shape = rotate_shape(base_shape, rot)
+            orientations.append((rot, False, shape))
+            flipped = flip_shape(shape)
+            orientations.append((rot, True, flipped))
+
+        sp = str(cp)
+        board = self.boards[sp]
+        min_r, max_r, min_c, max_c = GRID_SIZE, 0, GRID_SIZE, 0
+        has_tiles = False
+        for layer in range(MAX_LAYERS):
+            for r in range(GRID_SIZE):
+                for c in range(GRID_SIZE):
+                    if self._get_cell(board, layer, r, c) is not None:
+                        min_r = min(min_r, r)
+                        max_r = max(max_r, r)
+                        min_c = min(min_c, c)
+                        max_c = max(max_c, c)
+                        has_tiles = True
+
+        if not has_tiles:
+            center = GRID_SIZE // 2
+            for rot, do_flip, shape in orientations:
+                if self._can_place(cp, 0, center, center, shape):
+                    return {"action": "place", "layer": 0, "row": center, "col": center,
+                            "rotation": rot, "flip": do_flip}
+            return {"action": "place", "layer": 0, "row": center, "col": center,
+                    "rotation": 0, "flip": False}
+
+        max_shape_dim = max(
+            max((dr for dr, dc in s), default=0)
+            for _, _, s in orientations
+        )
+        sr = max(0, min_r - max_shape_dim - 1)
+        er = min(GRID_SIZE - 1, max_r + max_shape_dim + 1)
+        sc = max(0, min_c - max_shape_dim - 1)
+        ec = min(GRID_SIZE - 1, max_c + max_shape_dim + 1)
+
+        valid = []
+        for layer in range(MAX_LAYERS):
+            for r in range(sr, er + 1):
+                for c in range(sc, ec + 1):
+                    for rot, do_flip, shape in orientations:
+                        if self._can_place(cp, layer, r, c, shape):
+                            score = number * layer * 5
+                            if layer > 0:
+                                score += 20
+                            valid.append(({"action": "place", "layer": layer, "row": r,
+                                           "col": c, "rotation": rot, "flip": do_flip}, score))
+
+        if not valid:
+            return {"action": "pass"}
+
+        if difficulty == 'easy':
+            return random.choice(valid)[0]
+
+        valid.sort(key=lambda x: x[1], reverse=True)
+        if difficulty == 'medium':
+            top = valid[:max(3, len(valid) // 4)]
+            return random.choice(top)[0]
+        return valid[0][0]
 
     def check_game_over(self):
         if self.current_tile is None and self.tiles_played >= self.total_tiles:

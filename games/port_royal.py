@@ -70,6 +70,7 @@ class PortRoyalGame(BaseGame):
         "standard": "Standard Game",
         "expansion": "With Contracts",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -199,9 +200,6 @@ class PortRoyalGame(BaseGame):
         cp = self.current_player
         sp = str(cp)
 
-        if cp == 2:
-            return self._ai_get_move()
-
         if self.phase == "flip":
             print(f"  {self.players[0]}: Flip another card or stop?")
             print(f"  [f] Flip a card    [s] Stop and hire")
@@ -250,48 +248,63 @@ class PortRoyalGame(BaseGame):
 
         return None
 
-    def _ai_get_move(self):
-        """AI decision making."""
-        sp = "2"
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        sp = str(p)
 
         if self.phase == "flip":
             ship_count = len(self.ship_colors_in_harbor)
             unique_colors = len(set(self.ship_colors_in_harbor))
             if ship_count > 0 and ship_count != unique_colors:
-                return {"action": "stop_flip"}  # would bust
-            if len(self.harbor) >= 4:
+                return {"action": "stop_flip"}
+            if difficulty == "easy":
+                limit = 3
+            elif difficulty == "hard":
+                limit = 5
+            else:
+                limit = 4
+            if len(self.harbor) >= limit:
                 return {"action": "stop_flip"}
             return {"action": "flip"}
 
         elif self.phase == "hire":
             if self.hires_remaining <= 0:
                 return {"action": "end_hire"}
-            # Try to hire best affordable person
-            best_idx = None
-            best_val = -1
-            discount = self._get_hire_discount(2)
+            discount = self._get_hire_discount(p)
+            candidates = []
             for i, card in enumerate(self.harbor):
                 if card["type"] == "person":
                     cost = max(0, card["cost"] - discount)
-                    if cost <= self.coins[sp] and card["points"] > best_val:
-                        best_val = card["points"]
-                        best_idx = i
+                    if cost <= self.coins[sp]:
+                        score = card["points"] * 10
+                        if difficulty == "hard":
+                            if card["ability"] in ("admiral", "mademoiselle"):
+                                score += 8
+                            if card["ability"] == "trader":
+                                score += 5
+                        candidates.append((score, i))
                 elif card["type"] == "ship":
-                    if self._get_sword_strength(2) >= card["coins"]:
-                        if card["coins"] > best_val:
-                            best_val = card["coins"]
-                            best_idx = i
-            if best_idx is not None:
-                return {"action": "hire", "index": best_idx}
-            return {"action": "end_hire"}
+                    if self._get_sword_strength(p) >= card["coins"]:
+                        candidates.append((card["coins"] * 3, i))
+            if not candidates:
+                return {"action": "end_hire"}
+            candidates.sort(reverse=True)
+            if difficulty == "easy":
+                pick = rand.choice(candidates)
+                return {"action": "hire", "index": pick[1]}
+            return {"action": "hire", "index": candidates[0][1]}
 
         elif self.phase == "opponent_hire":
             if self.opponent_hires <= 0:
                 return {"action": "end_opponent_hire"}
+            discount = self._get_hire_discount(p)
+            min_points = 2 if difficulty != "easy" else 3
             for i, card in enumerate(self.harbor):
                 if card["type"] == "person":
-                    cost = max(0, card["cost"] - self._get_hire_discount(2)) + 1
-                    if cost <= self.coins[sp] and card["points"] >= 2:
+                    cost = max(0, card["cost"] - discount) + 1
+                    if cost <= self.coins[sp] and card["points"] >= min_points:
                         return {"action": "opponent_hire", "index": i}
             return {"action": "end_opponent_hire"}
 

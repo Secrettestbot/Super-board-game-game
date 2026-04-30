@@ -272,26 +272,41 @@ class BlockadeGame(BaseGame):
 
     def make_move(self, move):
         """Apply move. Returns True if valid."""
+        if move is None:
+            return False
         parts = move.lower().split()
         num_pawns = len(self.pawns[self.current_player])
 
         try:
+            no_wall = False
             if num_pawns == 1:
-                if len(parts) != 4:
+                if len(parts) == 2:
+                    pawn_idx = 0
+                    direction = parts[0]
+                    distance = int(parts[1])
+                    no_wall = True
+                elif len(parts) == 4:
+                    pawn_idx = 0
+                    direction = parts[0]
+                    distance = int(parts[1])
+                    wall_pos_str = parts[2]
+                    wall_orient = parts[3]
+                else:
                     return False
-                pawn_idx = 0
-                direction = parts[0]
-                distance = int(parts[1])
-                wall_pos_str = parts[2]
-                wall_orient = parts[3]
             else:
-                if len(parts) != 5:
+                if len(parts) == 3:
+                    pawn_idx = int(parts[0]) - 1
+                    direction = parts[1]
+                    distance = int(parts[2])
+                    no_wall = True
+                elif len(parts) == 5:
+                    pawn_idx = int(parts[0]) - 1
+                    direction = parts[1]
+                    distance = int(parts[2])
+                    wall_pos_str = parts[3]
+                    wall_orient = parts[4]
+                else:
                     return False
-                pawn_idx = int(parts[0]) - 1
-                direction = parts[1]
-                distance = int(parts[2])
-                wall_pos_str = parts[3]
-                wall_orient = parts[4]
         except (ValueError, IndexError):
             return False
 
@@ -301,12 +316,12 @@ class BlockadeGame(BaseGame):
             return False
         if distance < 1 or distance > 2:
             return False
-        if wall_orient not in ('h', 'v'):
-            return False
-
-        wall_pos = self._algebraic_to_pos(wall_pos_str)
-        if wall_pos is None:
-            return False
+        if not no_wall:
+            if wall_orient not in ('h', 'v'):
+                return False
+            wall_pos = self._algebraic_to_pos(wall_pos_str)
+            if wall_pos is None:
+                return False
 
         # Direction deltas
         dir_map = {'up': (-1, 0), 'down': (1, 0), 'left': (0, -1), 'right': (0, 1)}
@@ -328,29 +343,174 @@ class BlockadeGame(BaseGame):
         self.pawns[self.current_player][pawn_idx] = (pr, pc)
 
         # Validate and place wall
-        wr, wc = wall_pos
-        valid_wall = False
-        if wall_orient == 'h':
-            if self._can_place_h_wall(wr, wc):
-                self.h_walls.add((wr, wc))
-                if self._wall_leaves_paths_open():
-                    valid_wall = True
-                else:
-                    self.h_walls.discard((wr, wc))
+        if no_wall:
+            has_any_valid = False
+            for wr2 in range(self.rows):
+                for wc2 in range(self.cols):
+                    for wo2, can_place, wall_set in [('h', self._can_place_h_wall, self.h_walls),
+                                                      ('v', self._can_place_v_wall, self.v_walls)]:
+                        if can_place(wr2, wc2):
+                            wall_set.add((wr2, wc2))
+                            if self._wall_leaves_paths_open():
+                                has_any_valid = True
+                            wall_set.discard((wr2, wc2))
+                            if has_any_valid:
+                                break
+                    if has_any_valid:
+                        break
+                if has_any_valid:
+                    break
+            if has_any_valid:
+                self.pawns[self.current_player][pawn_idx] = old_pos
+                return False
         else:
-            if self._can_place_v_wall(wr, wc):
-                self.v_walls.add((wr, wc))
-                if self._wall_leaves_paths_open():
-                    valid_wall = True
-                else:
-                    self.v_walls.discard((wr, wc))
+            wr, wc = wall_pos
+            valid_wall = False
+            if wall_orient == 'h':
+                if self._can_place_h_wall(wr, wc):
+                    self.h_walls.add((wr, wc))
+                    if self._wall_leaves_paths_open():
+                        valid_wall = True
+                    else:
+                        self.h_walls.discard((wr, wc))
+            else:
+                if self._can_place_v_wall(wr, wc):
+                    self.v_walls.add((wr, wc))
+                    if self._wall_leaves_paths_open():
+                        valid_wall = True
+                    else:
+                        self.v_walls.discard((wr, wc))
 
-        if not valid_wall:
-            # Revert pawn movement
-            self.pawns[self.current_player][pawn_idx] = old_pos
-            return False
+            if not valid_wall:
+                self.pawns[self.current_player][pawn_idx] = old_pos
+                return False
 
         return True
+
+    def get_ai_move(self):
+        """Return an AI-generated move string."""
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        num_pawns = len(self.pawns[p])
+        goal_row = self.rows - 1 if p == 1 else 0
+
+        moves = []
+        for pi in range(num_pawns):
+            pr, pc = self.pawns[p][pi]
+            pawn_positions = self._get_all_pawn_positions()
+            pawn_positions.discard((pr, pc))
+
+            for direction, (dr, dc) in [('up', (-1, 0)), ('down', (1, 0)),
+                                         ('left', (0, -1)), ('right', (0, 1))]:
+                for dist in [1, 2]:
+                    cr, cc = pr, pc
+                    valid_path = True
+                    for _ in range(dist):
+                        nr, nc = cr + dr, cc + dc
+                        if not self._is_path_clear(cr, cc, nr, nc, pawn_positions):
+                            valid_path = False
+                            break
+                        cr, cc = nr, nc
+                    if not valid_path:
+                        continue
+
+                    old_pos = self.pawns[p][pi]
+                    self.pawns[p][pi] = (cr, cc)
+
+                    opp = 2 if p == 1 else 1
+                    opp_positions = self.pawns[opp]
+                    wall_candidates = set()
+                    radius = 1
+                    for opr, opc in opp_positions:
+                        for wr in range(max(0, opr - radius), min(self.rows, opr + radius + 1)):
+                            for wc in range(max(0, opc - radius), min(self.cols, opc + radius + 1)):
+                                wall_candidates.add((wr, wc))
+
+                    wall_candidates = list(wall_candidates)
+                    random.shuffle(wall_candidates)
+                    wall_candidates = wall_candidates[:8]
+
+                    for wr, wc in wall_candidates:
+                        for wo in ['h', 'v']:
+                            wall_ok = False
+                            if wo == 'h' and self._can_place_h_wall(wr, wc):
+                                self.h_walls.add((wr, wc))
+                                if self._wall_leaves_paths_open():
+                                    wall_ok = True
+                                self.h_walls.discard((wr, wc))
+                            elif wo == 'v' and self._can_place_v_wall(wr, wc):
+                                self.v_walls.add((wr, wc))
+                                if self._wall_leaves_paths_open():
+                                    wall_ok = True
+                                self.v_walls.discard((wr, wc))
+
+                            if wall_ok:
+                                wall_str = f"{self._col_to_letter(wc)}{wr + 1}"
+                                if num_pawns == 1:
+                                    move_str = f"{direction} {dist} {wall_str} {wo}"
+                                else:
+                                    move_str = f"{pi + 1} {direction} {dist} {wall_str} {wo}"
+                                new_dist = abs(cr - goal_row)
+                                moves.append((move_str, new_dist))
+
+                    self.pawns[p][pi] = old_pos
+
+        if not moves:
+            for pi in range(num_pawns):
+                pr, pc = self.pawns[p][pi]
+                pawn_positions = self._get_all_pawn_positions()
+                pawn_positions.discard((pr, pc))
+                for direction, (dr, dc) in [('down' if p == 1 else 'up', (-1, 0) if p == 2 else (1, 0)),
+                                             ('left', (0, -1)), ('right', (0, 1)),
+                                             ('up' if p == 1 else 'down', (1, 0) if p == 2 else (-1, 0))]:
+                    for dist in [1, 2]:
+                        cr, cc = pr, pc
+                        valid_path = True
+                        for _ in range(dist):
+                            nr, nc = cr + dr, cc + dc
+                            if not self._is_path_clear(cr, cc, nr, nc, pawn_positions):
+                                valid_path = False
+                                break
+                            cr, cc = nr, nc
+                        if not valid_path:
+                            continue
+                        old_pos = self.pawns[p][pi]
+                        self.pawns[p][pi] = (cr, cc)
+                        for wr in range(self.rows):
+                            for wc in range(self.cols):
+                                for wo in ['h', 'v']:
+                                    wall_ok = False
+                                    if wo == 'h' and self._can_place_h_wall(wr, wc):
+                                        self.h_walls.add((wr, wc))
+                                        if self._wall_leaves_paths_open():
+                                            wall_ok = True
+                                        self.h_walls.discard((wr, wc))
+                                    elif wo == 'v' and self._can_place_v_wall(wr, wc):
+                                        self.v_walls.add((wr, wc))
+                                        if self._wall_leaves_paths_open():
+                                            wall_ok = True
+                                        self.v_walls.discard((wr, wc))
+                                    if wall_ok:
+                                        wall_str = f"{self._col_to_letter(wc)}{wr + 1}"
+                                        self.pawns[p][pi] = old_pos
+                                        if num_pawns == 1:
+                                            return f"{direction} {dist} {wall_str} {wo}"
+                                        return f"{pi + 1} {direction} {dist} {wall_str} {wo}"
+                        self.pawns[p][pi] = old_pos
+            direction = 'down' if p == 1 else 'up'
+            if num_pawns == 1:
+                return f"{direction} 1"
+            return f"1 {direction} 1"
+
+        if difficulty == 'easy':
+            return random.choice(moves)[0]
+
+        moves.sort(key=lambda x: x[1])
+        if difficulty == 'medium':
+            top = moves[:max(5, len(moves) // 5)]
+            return random.choice(top)[0]
+        return moves[0][0]
 
     def check_game_over(self):
         """Check if a player has reached the opponent's starting row."""

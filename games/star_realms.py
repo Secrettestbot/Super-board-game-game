@@ -186,6 +186,7 @@ class StarRealms(BaseGame):
         "standard": "Standard game - 50 authority each, full trade deck",
         "quick": "Quick game - 30 authority each, smaller trade deck for faster play",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def setup(self):
         starting_authority = 50 if self.variation == "standard" else 30
@@ -344,6 +345,8 @@ class StarRealms(BaseGame):
         return move
 
     def make_move(self, move):
+        if move is None:
+            return False
         p = self.current_player
         opp = 2 if p == 1 else 1
         parts = move.split()
@@ -416,7 +419,7 @@ class StarRealms(BaseGame):
                 self.combat_pool = 0
                 self.authority[opp] -= dmg
                 print(f"  Dealt {dmg} damage to {self.players[opp - 1]}!")
-                input("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
                 return True
             else:
                 try:
@@ -433,7 +436,7 @@ class StarRealms(BaseGame):
                 destroyed = self.bases[opp].pop(idx)
                 self.discards[opp].append(destroyed)
                 print(f"  Destroyed {destroyed['name']}!")
-                input("  Press Enter to continue...")
+                self._pause("  Press Enter to continue...")
                 return True
 
         elif action == "scrap":
@@ -464,7 +467,7 @@ class StarRealms(BaseGame):
             self._scrap_card(card, p)
             # Card is removed from game (not put in discard)
             print(f"  Scrapped {card['name']} for its ability!")
-            input("  Press Enter to continue...")
+            self._pause("  Press Enter to continue...")
             return True
 
         elif action == "end":
@@ -483,6 +486,68 @@ class StarRealms(BaseGame):
             return True
 
         return False
+
+    def get_ai_move(self):
+        import random as rand
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        p = self.current_player
+        opp = 2 if p == 1 else 1
+
+        # Phase 1: Play all cards from hand
+        if self.hands[p]:
+            return f"play 1"
+
+        # Phase 2: Attack bases first, then face
+        if self.combat_pool > 0:
+            if self.bases[opp]:
+                for i, base in enumerate(self.bases[opp]):
+                    if self.combat_pool >= base["base_defense"]:
+                        return f"attack {i}"
+                # Can't destroy any base, attack face if no bases block
+            if not self.bases[opp]:
+                return "attack face"
+
+        # Phase 3: Buy cards
+        if self.trade_pool > 0:
+            affordable = []
+            for i, card in enumerate(self.trade_row):
+                if card["cost"] <= self.trade_pool:
+                    score = card["combat"] * 2 + card["trade"] + card["authority"]
+                    if card["is_base"]:
+                        score += card["base_defense"]
+                    for c_in_play in self.in_play[p] + self.bases[p]:
+                        if c_in_play["faction"] == card["faction"] and card["faction"] != UNALIGNED:
+                            score += 3
+                            break
+                    for c_in_disc in self.discards[p]:
+                        if c_in_disc["faction"] == card["faction"] and card["faction"] != UNALIGNED:
+                            score += 1
+                            break
+                    if difficulty == "easy":
+                        score += rand.uniform(-3, 3)
+                    elif difficulty == "medium":
+                        score += rand.uniform(-1, 1)
+                    affordable.append((score, i))
+            if affordable:
+                affordable.sort(reverse=True)
+                _, best_idx = affordable[0]
+                return f"buy {best_idx + 1}"
+            if self.trade_pool >= 2 and self.explorers_remaining > 0:
+                return "buy e"
+
+        # Phase 4: Scrap cards with scrap abilities (medium/hard)
+        if difficulty != "easy":
+            for i, card in enumerate(self.in_play[p]):
+                has_scrap = (card["scrap_trade"] or card["scrap_combat"] or
+                             card["scrap_authority"] or card["scrap_draw"])
+                if has_scrap and card["name"] in ("Scout", "Viper", "Explorer"):
+                    return f"scrap {i}"
+
+        # Phase 5: If still have combat, attack face
+        if self.combat_pool > 0 and not self.bases[opp]:
+            return "attack face"
+
+        return "end"
 
     def check_game_over(self):
         for player in [1, 2]:

@@ -438,6 +438,8 @@ class DvonnGame(BaseGame):
 
     def make_move(self, move):
         """Apply a move to the game state. Returns True if valid."""
+        if move is None:
+            return False
         if move[0] == 'pass':
             self.passed[self.current_player] = True
             return True
@@ -493,6 +495,71 @@ class DvonnGame(BaseGame):
     def switch_player(self):
         """Switch to the next player."""
         super().switch_player()
+
+    def get_ai_move(self):
+        import random
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        player = self.current_player
+
+        if self.phase == 'placement':
+            empty = [pos for pos in self.valid_positions if pos not in self.board]
+            if not empty:
+                return ('pass',)
+
+            if self.placement_step < self.num_dvonn:
+                piece_type = DVONN
+            else:
+                piece_type = WHITE if player == 1 else BLACK
+
+            if difficulty == 'easy':
+                return ('place', random.choice(empty), piece_type)
+
+            scored = []
+            for pos in empty:
+                sc = 0
+                neighbors = self._get_neighbors(pos[0], pos[1])
+                for n in neighbors:
+                    if n in self.board:
+                        sc += 1
+                mid_r = self.num_rows // 2
+                mid_q = self.row_lengths[mid_r] // 2 + self.row_q_starts[mid_r]
+                dist = abs(pos[0] - mid_q) + abs(pos[1] - mid_r)
+                sc += max(0, 5 - dist)
+                scored.append((sc, pos))
+            scored.sort(key=lambda x: -x[0])
+            if difficulty == 'medium' and len(scored) > 2:
+                top = scored[:max(3, len(scored) // 3)]
+                _, pos = random.choice(top)
+            else:
+                _, pos = scored[0]
+            return ('place', pos, piece_type)
+
+        valid_moves = self._get_valid_moves(player)
+        if not valid_moves:
+            return ('pass',)
+
+        if difficulty == 'easy':
+            return ('move',) + random.choice(valid_moves)
+
+        scored = []
+        for from_pos, to_pos in valid_moves:
+            sc = 0
+            dest_stack = self.board.get(to_pos, [])
+            sc += len(dest_stack)
+            if DVONN in dest_stack:
+                sc += 10
+            opp = BLACK if player == 1 else WHITE
+            if dest_stack and dest_stack[-1] == opp:
+                sc += 5
+            scored.append((sc, from_pos, to_pos))
+
+        scored.sort(key=lambda x: -x[0])
+        if difficulty == 'medium' and len(scored) > 1:
+            top = scored[:max(2, len(scored) // 3)]
+            _, fp, tp = random.choice(top)
+        else:
+            _, fp, tp = scored[0]
+        return ('move', fp, tp)
 
     def check_game_over(self):
         """Check if the game is over.

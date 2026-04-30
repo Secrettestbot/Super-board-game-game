@@ -1,5 +1,6 @@
 """Kalah - A classic Mancala variant with capture and extra-turn rules."""
 
+import random
 from engine.base import BaseGame, input_with_quit, clear_screen
 
 
@@ -15,6 +16,7 @@ class KalahGame(BaseGame):
         "large": "Large Kalah (6 pits, 6 seeds)",
         "small": "Small Kalah (4 pits, 3 seeds)",
     }
+    side_labels = ("Player 1", "Player 2")
 
     def __init__(self, variation=None):
         super().__init__(variation)
@@ -120,6 +122,8 @@ class KalahGame(BaseGame):
 
     def make_move(self, move):
         """Sow seeds from the chosen pit. Returns True if valid."""
+        if move is None:
+            return False
         try:
             pit_num = int(move)
         except (ValueError, TypeError):
@@ -212,6 +216,126 @@ class KalahGame(BaseGame):
                 else:
                     self.winner = None  # draw
                 return
+
+    def get_ai_move(self):
+        """Return an AI move as a string pit number."""
+        import copy
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        n = self.num_pits
+        player = self.current_player
+        start, end = self._pit_range(player)
+
+        # Find valid pits
+        valid_pits = [i + 1 for i in range(n) if self.pits[start + i] > 0]
+        if not valid_pits:
+            return "1"
+
+        if difficulty == "easy":
+            return str(random.choice(valid_pits))
+
+        # Check for extra turn moves
+        my_store = self._store_index(player)
+        opponent = 2 if player == 1 else 1
+        opponent_store = self._store_index(opponent)
+
+        extra_turn_pits = []
+        capture_pits = []
+        for pit_num in valid_pits:
+            pit_index = start + pit_num - 1
+            seeds = self.pits[pit_index]
+            # Simulate sowing to find where last seed lands
+            total_positions = len(self.pits)
+            current_index = pit_index
+            remaining = seeds
+            while remaining > 0:
+                current_index = (current_index + 1) % total_positions
+                if current_index == opponent_store:
+                    continue
+                remaining -= 1
+            if current_index == my_store:
+                extra_turn_pits.append(pit_num)
+            # Check for capture
+            my_start, my_end = self._pit_range(player)
+            if my_start <= current_index < my_end:
+                # Would the pit be empty before we drop? (currently 0 and not the starting pit)
+                if self.pits[current_index] == 0 and current_index != pit_index:
+                    offset = current_index - my_start
+                    opp_start, opp_end = self._pit_range(opponent)
+                    opposite_index = opp_start + (n - 1 - offset)
+                    if self.pits[opposite_index] > 0:
+                        capture_pits.append((pit_num, self.pits[opposite_index]))
+
+        if difficulty == "medium":
+            if extra_turn_pits:
+                return str(random.choice(extra_turn_pits))
+            if capture_pits:
+                # Pick the capture with most seeds
+                best = max(capture_pits, key=lambda x: x[1])
+                return str(best[0])
+            return str(random.choice(valid_pits))
+
+        # Hard: minimax with alpha-beta pruning
+        def evaluate(game_state):
+            """Evaluate position from player's perspective."""
+            p_store = game_state.pits[game_state._store_index(player)]
+            o_store = game_state.pits[game_state._store_index(opponent)]
+            return p_store - o_store
+
+        def minimax(state, depth, alpha, beta, maximizing):
+            if depth == 0 or state.game_over:
+                return evaluate(state), None
+            cur = state.current_player
+            s, e = state._pit_range(cur)
+            moves = [i + 1 for i in range(state.num_pits) if state.pits[s + i] > 0]
+            if not moves:
+                return evaluate(state), None
+
+            best_move = moves[0]
+            if maximizing:
+                max_eval = float('-inf')
+                for m in moves:
+                    child = copy.deepcopy(state)
+                    child.make_move(str(m))
+                    child.check_game_over()
+                    if not child.game_over:
+                        # Check if extra turn (don't switch)
+                        old_player = child.current_player
+                        child.switch_player()
+                        next_maximizing = (child.current_player == player)
+                    else:
+                        next_maximizing = False
+                    val, _ = minimax(child, depth - 1, alpha, beta, next_maximizing)
+                    if val > max_eval:
+                        max_eval = val
+                        best_move = m
+                    alpha = max(alpha, val)
+                    if beta <= alpha:
+                        break
+                return max_eval, best_move
+            else:
+                min_eval = float('inf')
+                for m in moves:
+                    child = copy.deepcopy(state)
+                    child.make_move(str(m))
+                    child.check_game_over()
+                    if not child.game_over:
+                        old_player = child.current_player
+                        child.switch_player()
+                        next_maximizing = (child.current_player == player)
+                    else:
+                        next_maximizing = True
+                    val, _ = minimax(child, depth - 1, alpha, beta, next_maximizing)
+                    if val < min_eval:
+                        min_eval = val
+                        best_move = m
+                    beta = min(beta, val)
+                    if beta <= alpha:
+                        break
+                return min_eval, best_move
+
+        is_maximizing = True
+        _, best = minimax(copy.deepcopy(self), 5, float('-inf'), float('inf'), is_maximizing)
+        return str(best) if best else str(valid_pits[0])
 
     def get_state(self):
         """Return serializable game state."""

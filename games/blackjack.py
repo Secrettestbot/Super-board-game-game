@@ -264,6 +264,8 @@ class BlackjackGame(BaseGame):
 
     def make_move(self, move):
         """Process the move. Returns True if valid."""
+        if move is None:
+            return False
         move_type, move_data = move
 
         if move_type == "bet":
@@ -416,6 +418,63 @@ class BlackjackGame(BaseGame):
                                else f"Push! ({player_val} vs {dealer_val})")
 
         self.round_result = " | ".join(results)
+
+    def get_ai_move(self):
+        """Return an AI-generated move based on basic strategy."""
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+
+        if self.phase == "betting":
+            if difficulty == 'easy':
+                return ("bet", random.choice([5, 10, 15]))
+            bet = min(max(5, self.chips[0] // 10), self.chips[0])
+            return ("bet", bet)
+
+        if self.phase == "dealer_turn":
+            return ("dealer", None)
+
+        if self.phase == "round_over":
+            if self.round_number >= self.max_rounds:
+                return ("continue", "stop")
+            return ("continue", "")
+
+        if self.phase == "playing":
+            hand = self.player_hands[self.active_hand_index]
+            val = hand_value(hand)
+
+            if difficulty == 'easy':
+                if val < 17:
+                    return ("action", "hit")
+                return ("action", "stand")
+
+            dealer_up = card_value(self.dealer_hand[0]) if self.dealer_hand else 10
+
+            if val >= 17:
+                return ("action", "stand")
+            if val <= 11:
+                if val == 11 and len(hand) == 2 and self.chips[0] >= self.bets[self.active_hand_index]:
+                    return ("action", "double")
+                return ("action", "hit")
+
+            if difficulty == 'hard':
+                if val == 16 and dealer_up >= 7:
+                    return ("action", "hit")
+                if val == 15 and dealer_up >= 7:
+                    return ("action", "hit")
+                if val == 12 and dealer_up <= 3:
+                    return ("action", "hit")
+                if val <= 11:
+                    return ("action", "hit")
+                if 13 <= val <= 16 and dealer_up >= 7:
+                    return ("action", "hit")
+                return ("action", "stand")
+
+            if val <= 16 and dealer_up >= 7:
+                return ("action", "hit")
+            if val <= 12:
+                return ("action", "hit")
+            return ("action", "stand")
+
+        return ("bet", 10)
 
     def check_game_over(self):
         """Check if the game should end."""
@@ -571,40 +630,45 @@ class BlackjackGame(BaseGame):
             if self.game_over:
                 break
 
-            try:
-                move = self.get_move()
-            except Exception as e:
-                from engine.base import QuitGame, SuspendGame, ShowHelp, ShowTutorial
-                if isinstance(e, QuitGame):
-                    print("\nGame ended.")
-                    input_with_quit("Press Enter to return to menu...")
-                    return None
-                elif isinstance(e, SuspendGame):
-                    slot = self.save_game()
-                    print(f"\nGame saved as '{slot}'")
-                    input_with_quit("Press Enter to return to menu...")
-                    return 'suspended'
-                elif isinstance(e, ShowHelp):
-                    self.show_help()
-                    continue
-                elif isinstance(e, ShowTutorial):
-                    clear_screen()
-                    print(self.get_tutorial())
-                    input_with_quit("\nPress Enter to continue...")
-                    continue
-                elif isinstance(e, KeyboardInterrupt):
-                    print("\n\nInterrupted! Save before quitting? (y/n): ", end="")
-                    try:
-                        ans = input_with_quit().strip().lower()
-                        if ans == 'y':
-                            slot = self.save_game()
-                            print(f"Game saved as '{slot}'")
-                        print("Returning to menu...")
-                        input_with_quit("Press Enter to continue...")
-                    except KeyboardInterrupt:
-                        pass
-                    return None
-                raise
+            if self.ai_player == self.current_player:
+                import time as _time
+                move = self.get_ai_move()
+                _time.sleep(0.5)
+            else:
+                try:
+                    move = self.get_move()
+                except Exception as e:
+                    from engine.base import QuitGame, SuspendGame, ShowHelp, ShowTutorial
+                    if isinstance(e, QuitGame):
+                        print("\nGame ended.")
+                        input_with_quit("Press Enter to return to menu...")
+                        return None
+                    elif isinstance(e, SuspendGame):
+                        slot = self.save_game()
+                        print(f"\nGame saved as '{slot}'")
+                        input_with_quit("Press Enter to return to menu...")
+                        return 'suspended'
+                    elif isinstance(e, ShowHelp):
+                        self.show_help()
+                        continue
+                    elif isinstance(e, ShowTutorial):
+                        clear_screen()
+                        print(self.get_tutorial())
+                        input_with_quit("\nPress Enter to continue...")
+                        continue
+                    elif isinstance(e, KeyboardInterrupt):
+                        print("\n\nInterrupted! Save before quitting? (y/n): ", end="")
+                        try:
+                            ans = input_with_quit().strip().lower()
+                            if ans == 'y':
+                                slot = self.save_game()
+                                print(f"Game saved as '{slot}'")
+                            print("Returning to menu...")
+                            input_with_quit("Press Enter to continue...")
+                        except KeyboardInterrupt:
+                            pass
+                        return None
+                    raise
 
             if self.make_move(move):
                 self.move_history.append(str(move))
