@@ -25,6 +25,7 @@ export default defineConfig({
         yinsh: resolve(__dirname, 'games/yinsh.html'),
         tiny_towns: resolve(__dirname, 'games/tiny_towns.html'),
         tictactoe: resolve(__dirname, 'games/tictactoe.html'),
+        connect_four: resolve(__dirname, 'games/connect_four.html'),
       },
     },
   },

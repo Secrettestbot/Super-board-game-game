@@ -13,4 +13,5 @@ export const PLAYABLE: Record<string, string> = {
   yinsh: 'games/yinsh.html',
   tiny_towns: 'games/tiny_towns.html',
   tictactoe: 'games/tictactoe.html',
+  connect_four: 'games/connect_four.html',
 }
