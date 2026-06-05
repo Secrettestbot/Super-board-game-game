@@ -15,4 +15,10 @@ export const PLAYABLE: Record<string, string> = {
   tictactoe: 'games/tictactoe.html',
   connect_four: 'games/connect_four.html',
   reversi: 'games/reversi.html',
+  checkers: 'games/checkers.html',
+  gomoku: 'games/gomoku.html',
+  nim: 'games/nim.html',
+  dots_boxes: 'games/dots_boxes.html',
+  blackjack: 'games/blackjack.html',
+  mancala: 'games/mancala.html',
 }

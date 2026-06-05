@@ -5,16 +5,19 @@ a "Game Library" selection screen plus self-contained, playable game pages with 
 opponent. This is the real, compiled app (no CDN React / in-browser Babel) — the
 prototypes in `../design/` remain the visual reference.
 
-The library shell + the framework + **nine fully-playable games** are done:
+The library shell + the framework + **fifteen fully-playable games** are done:
 
 - **Ported from the design handoff prototypes** (6): **Yahtzee** (dice), **Xiangqi** (board),
   **Skull King** (trick-taking + bidding), **The Crew** (co-op trick-taking), **Yinsh**
   (GIPF rings & markers), **Tiny Towns** (solo pattern-builder).
-- **Built from scratch on the framework** (3) — the remaining catalog games have no
+- **Built from scratch on the framework** (9) — the remaining catalog games have no
   prototypes, so these were designed and implemented directly: **Tic-Tac-Toe** (perfect
-  minimax), **Connect Four** (alpha-beta), **Reversi** (positional alpha-beta).
+  minimax), **Connect Four** (alpha-beta), **Reversi** (positional alpha-beta),
+  **Checkers** (alpha-beta, mandatory captures), **Gomoku** (threat heuristic),
+  **Nim** (perfect nim-sum), **Dots and Boxes** (safe-move heuristic), **Blackjack**
+  (fixed-rule dealer), **Mancala / Kalah** (alpha-beta with extra-turns).
 
-The other ~100 catalog games still render cards but show a "coming soon" notice on launch.
+The other ~90 catalog games still render cards but show a "coming soon" notice on launch.
 
 ## Run
 

@@ -1,0 +1,113 @@
+/* ==========================================================
+   GOMOKU / FIVE IN A ROW — "Five stones, one line."
+   Theme: warm wood goban, glossy onyx & ivory stones, thin grid, star points.
+   Display: Noto Serif · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #1b1410;
+  --bg-2:    #120d09;
+  --panel:   #271c14;
+  --panel-2: #1f160f;
+  --ink:     #f4ece0;
+  --ink-2:   #c4ad94;
+  --ink-3:   #836a52;
+  --line:    #3a2c1f;
+  --line-2:  #523e2c;
+
+  /* token contract -> this theme (warm amber primary, dark text on accent) */
+  --accent:  #d99b4a;  --accent-d:#a86f23;  --accent-hi:#f3bf72;  --accent-ink:#2a1804;
+  --trim:    #d99b4a;  --trim-hi:#f3bf72;
+  --you:     #f3bf72;  --foe:#d8cdbb;
+  --good:    #8fc56a;  --warn:#e07b4e;
+
+  /* game-specific */
+  --black:   #1b1c1d;  --white:#f4f1e7;  --white-d:#c8c2af;
+  --wood:    #c8975a;  --wood-2:#b07e44;  --grid:#6e4a23;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Noto Serif", Georgia, serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(217,155,74,0.08) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.title-main { letter-spacing: -0.01em; }
+
+.stage { grid-template-columns: auto 220px; gap: clamp(18px, 2.6vw, 38px); }
+
+.gk-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.gk-board {
+  --cell: clamp(19px, min(5.0vh, 3.0vw), 38px);
+  --pad: calc(var(--cell) * 0.62);
+  padding: var(--pad);
+  background:
+    repeating-linear-gradient(96deg, rgba(110,74,35,0.05) 0 7px, transparent 7px 15px),
+    radial-gradient(ellipse at 32% 18%, var(--wood) 0%, var(--wood-2) 78%);
+  border: 2px solid #7c5526; border-radius: 10px;
+  box-shadow: 0 16px 44px rgba(0,0,0,0.55), inset 0 0 38px rgba(120,78,30,0.35);
+}
+.gk-grid {
+  display: grid;
+  grid-template-columns: repeat(15, var(--cell));
+  grid-template-rows: repeat(15, var(--cell));
+}
+.gk-pt { position: relative; cursor: pointer; }
+
+/* grid lines drawn as centred segments on each intersection; edge points are clipped
+   so the outermost lines stop flush at the rim */
+.gk-h, .gk-v { position: absolute; background: var(--grid); pointer-events: none; }
+.gk-h { top: 50%; left: 0; right: 0; height: 1.4px; transform: translateY(-50%); }
+.gk-v { left: 50%; top: 0; bottom: 0; width: 1.4px; transform: translateX(-50%); }
+.gk-h.l0 { left: 50%; } .gk-h.r0 { right: 50%; }
+.gk-v.t0 { top: 50%; } .gk-v.b0 { bottom: 50%; }
+
+.gk-star {
+  position: absolute; top: 50%; left: 50%; width: 28%; height: 28%;
+  transform: translate(-50%, -50%); border-radius: 50%; background: var(--grid);
+}
+
+.gk-pt:hover .gk-h, .gk-pt:hover .gk-v { background: #4f3014; }
+
+.gk-stone {
+  position: absolute; top: 50%; left: 50%; width: 88%; height: 88%;
+  transform: translate(-50%, -50%); border-radius: 50%;
+  animation: drop 0.16s ease-out;
+}
+.gk-stone.b { background: radial-gradient(circle at 36% 28%, #555a5d, var(--black) 72%); box-shadow: 0 2px 4px rgba(0,0,0,0.55), inset 0 -2px 4px rgba(0,0,0,0.45), inset 2px 2px 5px rgba(255,255,255,0.18); }
+.gk-stone.w { background: radial-gradient(circle at 36% 28%, #fff, var(--white-d) 78%); box-shadow: 0 2px 4px rgba(0,0,0,0.5), inset 0 -2px 4px rgba(0,0,0,0.22), inset 2px 2px 5px rgba(255,255,255,0.6); }
+.gk-stone.last::after { content: ""; position: absolute; inset: 28%; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--accent-hi); }
+.gk-stone.win { box-shadow: 0 0 0 2px var(--good), 0 0 12px rgba(143,197,106,0.8); animation: pulse 1s ease-in-out infinite; }
+@keyframes drop { from { transform: translate(-50%, -50%) scale(0.5); } to { transform: translate(-50%, -50%) scale(1); } }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 2px var(--good), 0 0 10px rgba(143,197,106,0.7); } 50% { box-shadow: 0 0 0 2px var(--good), 0 0 18px rgba(143,197,106,1); } }
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.scoreboard { display: flex; flex-direction: column; gap: 9px; }
+.sc { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.sc.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sc-stone { width: 18px; height: 18px; border-radius: 50%; flex: 0 0 auto; }
+.sc-stone.b { background: radial-gradient(circle at 36% 28%, #555a5d, var(--black)); border: 1px solid #000; }
+.sc-stone.w { background: radial-gradient(circle at 36% 28%, #fff, var(--white-d)); }
+.sc-name { font-family: var(--display); font-weight: 600; font-size: 14px; flex: 1; }
+.sc-n { font-family: var(--display); font-weight: 700; font-size: 20px; }
+.sc.b .sc-n { color: var(--ink); } .sc.w .sc-n { color: var(--white); }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 168px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--accent-hi); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0 4px; font-family: var(--display); font-weight: 600; font-size: 18px; text-align: center; }
+.finalsc .you { color: var(--accent-hi); } .finalsc .foe { color: var(--white); }
+.modal-body i { color: var(--accent-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }
