@@ -1,0 +1,135 @@
+/* ==========================================================
+   PIG — "Roll your luck."
+   Theme: warm wood + green felt table, a chunky candy-red die, bright and tactile.
+   Display: Fredoka · Body: Nunito · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #2a1d12;
+  --bg-2:    #1d130b;
+  --panel:   #3a2817;
+  --panel-2: #31210f;
+  --ink:     #fdf3e3;
+  --ink-2:   #d8c0a0;
+  --ink-3:   #9c8262;
+  --line:    #4a3520;
+  --line-2:  #65491f;
+
+  /* token contract -> this theme (warm red primary, light text) */
+  --accent:  #e0473a;  --accent-d:#b22f24;  --accent-hi:#ff7a6e;  --accent-ink:#fff4f1;
+  --trim:    #f3b53e;  --trim-hi:#ffd066;
+  --you:     #ffd066;  --foe:#7fd6a4;
+  --good:    #7fd6a4;  --warn:#ff7a6e;
+
+  /* game-specific */
+  --felt:    #2f7d4f;  --felt-2:#246340;  --felt-rim:#173f29;
+  --die:     #e8443a;  --die-2:#c4322a;  --pip:#fff4f1;
+  --gold:    #f3b53e;  --gold-hi:#ffd066;
+
+  --sans:    "Nunito", system-ui, sans-serif;
+  --display: "Fredoka", system-ui, sans-serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(243,181,62,0.10) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 240px; gap: clamp(18px, 2.6vw, 40px); }
+
+/* ---- The table ---- */
+.pig-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.pig-table {
+  display: flex; flex-direction: column; align-items: center; gap: 22px;
+  padding: 30px 38px 34px;
+  background: radial-gradient(ellipse at 50% 34%, var(--felt), var(--felt-2) 72%, var(--felt-rim));
+  border: 6px solid #5a3a1d; border-radius: 26px;
+  box-shadow: 0 20px 52px rgba(0,0,0,0.6), inset 0 0 0 2px rgba(0,0,0,0.25), inset 0 2px 14px rgba(255,255,255,0.05);
+}
+
+.pig-turnlabel {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+  color: rgba(255,255,255,0.7);
+}
+
+/* ---- The die ---- */
+.die {
+  width: clamp(86px, 15vh, 118px); height: clamp(86px, 15vh, 118px);
+  border-radius: 22%;
+  background: linear-gradient(150deg, #ff6056 0%, var(--die) 46%, var(--die-2) 100%);
+  border: 2px solid #8e231d;
+  box-shadow: 0 10px 22px rgba(0,0,0,0.45), inset 0 3px 6px rgba(255,255,255,0.35), inset 0 -6px 10px rgba(0,0,0,0.3);
+  display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+  padding: 16%; gap: 4%;
+}
+.die.rolling { animation: tumble 0.34s ease-out; }
+.die.bust { background: linear-gradient(150deg, #555, #2b2b2b); border-color: #1a1a1a; }
+@keyframes tumble {
+  0%   { transform: rotate(-18deg) scale(0.7); }
+  55%  { transform: rotate(10deg) scale(1.08); }
+  100% { transform: none; }
+}
+.die-empty {
+  width: clamp(86px, 15vh, 118px); height: clamp(86px, 15vh, 118px);
+  border-radius: 22%; border: 2px dashed rgba(255,255,255,0.28);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--display); font-weight: 600; font-size: 13px; color: rgba(255,255,255,0.5);
+  text-align: center; line-height: 1.2; padding: 12px;
+}
+.pip { border-radius: 50%; background: var(--pip); box-shadow: inset 0 -1px 1px rgba(0,0,0,0.3); align-self: center; justify-self: center; width: 76%; height: 76%; }
+.pip.off { background: transparent; box-shadow: none; }
+.die.bust .pip { background: #d8453b; }
+
+/* ---- Turn total readout ---- */
+.turn-readout { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.tr-num {
+  font-family: var(--display); font-weight: 700; font-size: clamp(40px, 8vh, 60px); line-height: 1;
+  color: var(--gold-hi); text-shadow: 0 2px 0 rgba(0,0,0,0.3);
+}
+.tr-num.bust { color: var(--warn); }
+.tr-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase; color: rgba(255,255,255,0.6); }
+
+/* ---- Action buttons ---- */
+.pig-actions { display: flex; gap: 14px; }
+.big-btn {
+  font-family: var(--display); font-weight: 600; font-size: 19px; letter-spacing: 0.02em;
+  padding: 13px 30px; border-radius: 14px; cursor: pointer; min-width: 130px;
+  border: 2px solid; transition: transform 0.1s, filter 0.13s; color: #fff;
+}
+.big-btn:active { transform: translateY(2px); }
+.big-btn.roll { background: linear-gradient(180deg, #ff6056, var(--die)); border-color: #8e231d; box-shadow: 0 5px 0 #7a1f19; }
+.big-btn.roll:hover:not(:disabled) { filter: brightness(1.07); }
+.big-btn.roll:active { box-shadow: 0 1px 0 #7a1f19; }
+.big-btn.hold { background: linear-gradient(180deg, #ffd066, var(--gold)); border-color: #b07d12; color: #4a3208; box-shadow: 0 5px 0 #a06f10; }
+.big-btn.hold:hover:not(:disabled) { filter: brightness(1.05); }
+.big-btn.hold:active { box-shadow: 0 1px 0 #a06f10; }
+.big-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; transform: none; }
+
+/* ---- Side ---- */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.scoreboard { display: flex; flex-direction: column; gap: 9px; }
+.sc { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 11px; border: 1.5px solid var(--line); transition: all 0.15s; }
+.sc.on { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); background: rgba(243,181,62,0.06); }
+.sc-token { width: 18px; height: 18px; border-radius: 6px; flex: 0 0 auto; }
+.sc-token.you { background: linear-gradient(150deg, #ffd066, var(--gold)); border: 1px solid #b07d12; }
+.sc-token.ai { background: linear-gradient(150deg, #9bf0c0, var(--foe)); border: 1px solid #2f8a5d; }
+.sc-name { font-family: var(--display); font-weight: 600; font-size: 14px; flex: 1; }
+.sc-n { font-family: var(--display); font-weight: 700; font-size: 24px; color: var(--ink); }
+.sc-goal { font-family: var(--mono); font-size: 9px; color: var(--ink-3); margin-top: 1px; }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 168px; overflow-y: auto; }
+.log-line { font-size: 11.5px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--gold-hi); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- Overlays ---- */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 22px; }
+.finalsc .you { color: var(--gold-hi); } .finalsc .foe { color: var(--foe); }
+.modal-body i { color: var(--gold-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } .die, .die-empty { width: 92px; height: 92px; } }

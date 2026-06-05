@@ -5,19 +5,24 @@ a "Game Library" selection screen plus self-contained, playable game pages with 
 opponent. This is the real, compiled app (no CDN React / in-browser Babel) — the
 prototypes in `../design/` remain the visual reference.
 
-The library shell + the framework + **fifteen fully-playable games** are done:
+The library shell + the framework + **twenty-one fully-playable games** are done:
 
-- **Ported from the design handoff prototypes** (6): **Yahtzee** (dice), **Xiangqi** (board),
-  **Skull King** (trick-taking + bidding), **The Crew** (co-op trick-taking), **Yinsh**
-  (GIPF rings & markers), **Tiny Towns** (solo pattern-builder).
-- **Built from scratch on the framework** (9) — the remaining catalog games have no
-  prototypes, so these were designed and implemented directly: **Tic-Tac-Toe** (perfect
-  minimax), **Connect Four** (alpha-beta), **Reversi** (positional alpha-beta),
-  **Checkers** (alpha-beta, mandatory captures), **Gomoku** (threat heuristic),
-  **Nim** (perfect nim-sum), **Dots and Boxes** (safe-move heuristic), **Blackjack**
-  (fixed-rule dealer), **Mancala / Kalah** (alpha-beta with extra-turns).
+- **Ported from the design handoff prototypes** (6): Yahtzee, Xiangqi, Skull King,
+  The Crew, Yinsh, Tiny Towns.
+- **Built from scratch on the framework** (15) — the remaining catalog games have no
+  prototypes, so these were designed + implemented directly: Tic-Tac-Toe (perfect minimax),
+  Connect Four (alpha-beta), Reversi (positional alpha-beta), Checkers (alpha-beta, mandatory
+  captures), Gomoku (threat heuristic), Nim (perfect nim-sum), Dots and Boxes (safe-move
+  heuristic), Blackjack (fixed-rule dealer), Mancala/Kalah (alpha-beta + extra-turns),
+  Breakthrough (alpha-beta), Pig (push-your-luck, hold-at-20 AI), Mastermind (deduction),
+  Battleship (hunt/target AI), Onitama (alpha-beta over move cards), Hex (connection-distance
+  heuristic).
 
-The other ~90 catalog games still render cards but show a "coming soon" notice on launch.
+The other ~85 catalog games still render cards but show a "coming soon" notice on launch.
+
+Each game from `breakthrough` onward also ships a Vitest logic test
+(`src/games/<id>/<id>.test.ts`) that plays full games against its own AI and asserts
+invariants. Run the whole suite in parallel with `npm test`.
 
 ## Run
 

@@ -1,0 +1,163 @@
+/* ==========================================================
+   ONITAMA — "The way of the wind."
+   Theme: warm stone temple, indigo (Blue) vs vermilion (Red) pieces, carved board with a
+   gilded temple arch on each back row, cards drawn as little 5x5 pattern grids.
+   Display: Noto Serif · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #16110d;
+  --bg-2:    #0e0a07;
+  --panel:   #221b14;
+  --panel-2: #1b150f;
+  --ink:     #f3ece0;
+  --ink-2:   #c2b29c;
+  --ink-3:   #847565;
+  --line:    #322619;
+  --line-2:  #4a3a26;
+
+  /* token contract -> this theme (gilt primary, dark text) */
+  --accent:  #c8a86a;  --accent-d:#9a7c3e;  --accent-hi:#e3c98c;  --accent-ink:#241a08;
+  --trim:    #c8a86a;  --trim-hi:#e3c98c;
+  --you:     #8db3e2;  --foe:#e08a6f;
+  --good:    #8fc8a0;  --warn:#e08a6f;
+
+  /* game-specific */
+  --stone:   #4b4036;  --stone-2:#3d342b;  --stone-alt:#52473b;  --stone-edge:#2a221a;
+  --blue:    #5a86c4;  --blue-hi:#9cc0ef;  --blue-d:#2f4d78;
+  --red:     #cf6a4e;  --red-hi:#f0a085;  --red-d:#8a3b27;
+  --gild:    #c8a86a;  --gild-hi:#e3c98c;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Noto Serif", Georgia, serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(200,168,106,0.07) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 224px; gap: clamp(16px, 2.4vw, 36px); }
+
+.on-play { display: contents; }
+.on-mid { display: flex; flex-direction: column; align-items: center; gap: clamp(8px, 1.4vh, 14px); grid-column: 1; }
+
+/* ---- board ---- */
+.on-board {
+  --cell: clamp(48px, min(11vh, 8.4vw), 86px);
+  display: grid;
+  grid-template-columns: repeat(5, var(--cell));
+  grid-template-rows: repeat(5, var(--cell));
+  gap: 3px; padding: 12px; border-radius: 14px;
+  background: linear-gradient(160deg, #2e251b, #221a12);
+  border: 2px solid #4a3a26;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(200,168,106,0.08);
+}
+.on-cell {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(150deg, var(--stone), var(--stone-2));
+  border-radius: 7px; cursor: default;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), inset 0 -2px 3px rgba(0,0,0,0.3);
+}
+.on-cell.alt { background: linear-gradient(150deg, var(--stone-alt), var(--stone)); }
+.on-cell.last-from::before,
+.on-cell.last-to::after {
+  content: ""; position: absolute; inset: 7%; border-radius: 6px; pointer-events: none;
+}
+.on-cell.last-from::before { box-shadow: inset 0 0 0 2px rgba(200,168,106,0.35); }
+.on-cell.last-to::after { box-shadow: inset 0 0 0 2px rgba(227,201,140,0.7); }
+
+/* temple arches on each back-row centre */
+.arch {
+  position: absolute; inset: 16%;
+  border-radius: 50% 50% 8px 8px;
+  border: 2px solid rgba(200,168,106,0.5);
+  background: radial-gradient(circle at 50% 30%, rgba(200,168,106,0.16), transparent 70%);
+  pointer-events: none;
+}
+.on-cell.temple-ai .arch { border-color: rgba(207,106,78,0.55); }
+.on-cell.temple-you .arch { border-color: rgba(90,134,196,0.6); }
+
+.on-cell.movable { cursor: pointer; }
+.on-cell.movable:hover { background: linear-gradient(150deg, #5c5040, #4b4036); }
+.on-cell.dest { cursor: pointer; }
+.on-cell.dest:hover { background: linear-gradient(150deg, #5c5040, #4b4036); }
+.dest-dot { width: 26%; height: 26%; border-radius: 50%; background: rgba(227,201,140,0.55); box-shadow: 0 0 8px rgba(227,201,140,0.5); }
+
+/* ---- pieces ---- */
+.piece {
+  width: 78%; height: 78%; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  position: relative; animation: drop 0.16s ease-out;
+  box-shadow: 0 3px 5px rgba(0,0,0,0.5), inset 0 -3px 5px rgba(0,0,0,0.35), inset 0 2px 3px rgba(255,255,255,0.18);
+}
+@keyframes drop { from { transform: scale(0.6); } to { transform: none; } }
+.piece.you { background: radial-gradient(circle at 38% 30%, var(--blue-hi), var(--blue-d)); border: 1px solid #1f3658; }
+.piece.ai  { background: radial-gradient(circle at 38% 30%, var(--red-hi), var(--red-d)); border: 1px solid #5e2417; }
+.piece.master { box-shadow: 0 3px 6px rgba(0,0,0,0.55), inset 0 -3px 5px rgba(0,0,0,0.35), 0 0 0 2px rgba(227,201,140,0.85); }
+.piece .crown { font-size: calc(var(--cell) * 0.42); line-height: 1; color: var(--gild-hi); text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+.piece.you .crown { color: #f3ecda; }
+.piece .pip { width: 30%; height: 30%; border-radius: 50%; background: rgba(255,255,255,0.32); box-shadow: inset 0 1px 2px rgba(0,0,0,0.4); }
+.piece.sel { outline: 2px solid var(--gild-hi); outline-offset: 2px; }
+.piece.master.sel { outline: 2px solid var(--gild-hi); outline-offset: 3px; }
+
+/* ---- card rows ---- */
+.cardrow { display: flex; gap: clamp(8px, 1.2vw, 16px); justify-content: center; grid-column: 1; }
+.foe-row { align-self: start; }
+
+.mcard {
+  background: linear-gradient(165deg, var(--panel), var(--panel-2));
+  border: 1.5px solid var(--line-2); border-radius: 11px;
+  padding: 8px 9px 9px; width: clamp(86px, 9vw, 112px);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  transition: all 0.13s;
+}
+.mcard.selectable { cursor: pointer; }
+.mcard.selectable:hover { border-color: var(--gild); transform: translateY(-2px); }
+.mcard.selected { border-color: var(--gild-hi); box-shadow: 0 0 0 1px var(--gild-hi), 0 8px 20px rgba(0,0,0,0.45); }
+.mcard.faded { opacity: 0.62; }
+.mcard-name { font-family: var(--display); font-weight: 700; font-size: clamp(12px, 1.2vw, 15px); color: var(--ink); letter-spacing: 0.01em; }
+
+.card-grid {
+  --cg: clamp(8px, 0.95vw, 12px);
+  display: grid; grid-template-columns: repeat(5, var(--cg)); grid-template-rows: repeat(5, var(--cg));
+  gap: 2px;
+}
+.cg-cell { background: #2b2118; border-radius: 2px; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02); }
+.cg-cell.move { background: radial-gradient(circle, var(--gild-hi), var(--gild)); box-shadow: 0 0 5px rgba(227,201,140,0.5); }
+.cg-cell.centre { background: #efe6d2; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.25); }
+
+/* ---- side panel ---- */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; grid-column: 2; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.turnpanel { display: flex; flex-direction: column; gap: 8px; }
+.panel-l { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); }
+.turnwho { font-family: var(--display); font-weight: 700; font-size: 18px; }
+.turnwho.you { color: var(--blue-hi); } .turnwho.ai { color: var(--red-hi); } .turnwho.over { color: var(--ink-2); }
+.midwrap { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; margin-top: 2px; }
+.midwrap .mcard { width: 96px; }
+
+.passbtn {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 9px 11px; border-radius: 9px; cursor: pointer; margin-top: 2px;
+  background: var(--accent); color: var(--accent-ink); border: 1.5px solid var(--accent-d);
+  transition: filter 0.13s;
+}
+.passbtn:hover { filter: brightness(1.1); }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 168px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--blue-hi); } .log-line.ai { color: var(--red-hi); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- modal flourishes ---- */
+.modal-body i { color: var(--gild-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 760px) {
+  .title-main { font-size: 23px; }
+  .mcard-name { font-size: 12px; }
+}

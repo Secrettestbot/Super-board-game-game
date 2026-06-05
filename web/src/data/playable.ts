@@ -21,4 +21,10 @@ export const PLAYABLE: Record<string, string> = {
   dots_boxes: 'games/dots_boxes.html',
   blackjack: 'games/blackjack.html',
   mancala: 'games/mancala.html',
+  breakthrough: 'games/breakthrough.html',
+  pig: 'games/pig.html',
+  mastermind: 'games/mastermind.html',
+  battleship: 'games/battleship.html',
+  onitama: 'games/onitama.html',
+  hex: 'games/hex.html',
 }
