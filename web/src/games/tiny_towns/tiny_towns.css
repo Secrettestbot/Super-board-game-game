@@ -1,0 +1,108 @@
+/* ==========================================================
+   TINY TOWNS — "Small plot, careful plans."
+   Theme: a warm storybook village on a dark-oak table. Five resource tiles in friendly
+   hues, buildings raised in cream with coloured roofs.
+   Display: Bitter · Body: Inter · Mono: JetBrains Mono.
+
+   Shared shell lives in ../../framework/tokens.css; this file supplies the token values,
+   the town/supply/building classes, and a few overrides. The gold primary button needs
+   dark text (--accent-ink).
+   ========================================================== */
+
+:root {
+  --bg:      #1d1a12;
+  --bg-2:    #13110b;
+  --panel:   #2a2417;
+  --panel-2: #211c12;
+  --ink:     #f1ead6;
+  --ink-2:   #beb091;
+  --ink-3:   #80735a;
+  --line:    #38301f;
+  --line-2:  #4c4029;
+
+  /* token contract -> this theme */
+  --accent:  #d8a83e;  --accent-d:#a87d24;  --accent-hi:#f1cd72;  --accent-ink:#2a1d05;
+  --trim:    #d8a83e;  --trim-hi:#f1cd72;
+  --you:     #f1cd72;  --foe:#beb091;
+  --good:    #74b87a;  --warn:#e0894e;  --bad:#d2603f;
+
+  /* game-specific */
+  --wood:    #a06a3c;  --brick:#c0573f;  --glass:#46a6a0;  --wheat:#d8a83e;  --stone:#8a8f96;
+  --gold:    #d8a83e;  --gold-d:#a87d24;  --gold-hi:#f1cd72;
+  --roof:    #6a7d9c;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Bitter", Georgia, serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(ellipse at 50% -8%, rgba(216,168,62,0.09) 0%, transparent 52%), radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.5) 0%, transparent 55%);
+}
+
+.app { max-width: 1080px; }
+.title-main { letter-spacing: -0.01em; }
+.turn-banner { font-size: 20px; font-weight: 700; }
+
+/* ===== STAGE ===== */
+.stage { grid-template-columns: auto 250px; gap: clamp(18px, 2.6vw, 38px); }
+.boardside { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+
+/* supply */
+.supply { display: flex; align-items: center; gap: 12px; }
+.supply-l { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); }
+.restile { border-radius: 9px; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 2px 3px rgba(255,255,255,0.25), inset 0 -3px 5px rgba(0,0,0,0.3), 0 2px 4px rgba(0,0,0,0.35); border: 1.5px solid rgba(0,0,0,0.2); }
+.restile span { font-family: var(--display); font-weight: 700; color: rgba(0,0,0,0.62); font-size: 11px; letter-spacing: 0.01em; }
+.restile.big { width: 92px; height: 44px; }
+.restile.big.empty { background: var(--panel); border: 1.5px dashed var(--line-2); box-shadow: none; }
+.restile.big.empty span { color: var(--ink-3); }
+.r-wood { background: linear-gradient(160deg, #b9804e, var(--wood)); } .r-brick { background: linear-gradient(160deg, #d56e54, var(--brick)); }
+.r-glass { background: linear-gradient(160deg, #5cc0ba, var(--glass)); } .r-wheat { background: linear-gradient(160deg, #ebc05c, var(--wheat)); }
+.r-stone { background: linear-gradient(160deg, #a3a8af, var(--stone)); }
+
+/* town grid */
+.town { --cell: clamp(58px, min(15vh, 9vw), 110px); display: grid; grid-template-columns: repeat(4, var(--cell)); grid-template-rows: repeat(4, var(--cell)); gap: 8px; padding: 14px; background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 16px; box-shadow: 0 16px 40px rgba(0,0,0,0.5); }
+.tcell { border-radius: 11px; background: #18140d; border: 1.5px solid var(--line); display: flex; align-items: center; justify-content: center; padding: 4px; transition: all 0.12s; }
+.tcell.empty { border-style: dashed; }
+.tcell.placeable { cursor: pointer; }
+.tcell.placeable:hover { border-color: var(--gold); background: #221c11; }
+.town.building .tcell.candidate { cursor: pointer; box-shadow: inset 0 0 0 2px var(--gold-hi); border-color: var(--gold-hi); }
+.tcell .restile { width: 100%; height: 100%; }
+.tcell .restile span { font-size: calc(var(--cell) * 0.13); }
+.btile { width: 100%; height: 100%; border-radius: 8px; background: linear-gradient(165deg, #efe6d0, #ddceac); border: 1.5px solid #b8a87e; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; box-shadow: 0 2px 4px rgba(0,0,0,0.35); }
+.btile .bi { font-size: calc(var(--cell) * 0.34); line-height: 1; color: var(--roof); }
+.btile .bn { font-family: var(--display); font-weight: 700; font-size: calc(var(--cell) * 0.13); color: #5a4a2e; }
+.b-cottage .bi { color: #c0573f; } .b-farm .bi { color: #87903a; } .b-well .bi { color: #46a6a0; } .b-chapel .bi { color: #8a6ab0; } .b-tavern .bi { color: #c08a3a; }
+
+/* ===== SIDE ===== */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { padding: 12px 12px; border-radius: 13px; }
+.blist { display: flex; flex-direction: column; gap: 6px; }
+.brow { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 9px; border: 1.5px solid transparent; transition: all 0.12s; }
+.brow.can { background: var(--panel); border-color: var(--line-2); cursor: pointer; }
+.brow.can:hover { border-color: var(--gold); }
+.brow.active { border-color: var(--gold-hi); box-shadow: 0 0 0 1px var(--gold-hi); }
+.brow:not(.can) { opacity: 0.5; }
+.pat { display: grid; gap: 2px; flex: 0 0 auto; width: 30px; }
+.pcell { width: 100%; aspect-ratio: 1; border-radius: 2px; }
+.pcell.blank { background: transparent; }
+.pcell.r-wood { background: var(--wood); } .pcell.r-brick { background: var(--brick); } .pcell.r-glass { background: var(--glass); } .pcell.r-wheat { background: var(--wheat); } .pcell.r-stone { background: var(--stone); }
+.brow-txt { flex: 1; }
+.brow-name { font-family: var(--display); font-weight: 700; font-size: 13px; }
+.brow-desc { font-family: var(--mono); font-size: 9px; color: var(--ink-3); line-height: 1.3; }
+.brow-go { font-family: var(--mono); font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--gold-hi); letter-spacing: 0.06em; }
+.endbtn { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; padding: 12px; border-radius: 10px; cursor: pointer; background: var(--panel); color: var(--ink); border: 1.5px solid var(--line-2); transition: all 0.12s; }
+.endbtn:hover { border-color: var(--gold); color: var(--gold-hi); }
+
+/* ===== OVERLAYS (overrides) ===== */
+.overlay { background: rgba(8,6,3,0.82); }
+.modal { max-height: 88vh; overflow-y: auto; }
+.modal-title { font-size: 34px; }
+.modal-body i { color: var(--gold-hi); font-style: normal; font-weight: 600; }
+.scoretable { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.st-row { display: grid; grid-template-columns: 1fr auto auto; gap: 14px; font-family: var(--mono); font-size: 13px; color: var(--ink-2); padding: 3px 0; border-bottom: 1px solid var(--line); }
+.st-n { color: var(--ink-3); } .st-p { font-family: var(--display); font-weight: 700; color: var(--good); min-width: 34px; text-align: right; }
+.st-p.neg { color: var(--bad); }
+
+@media (max-height: 720px) { .title-main { font-size: 24px; } }

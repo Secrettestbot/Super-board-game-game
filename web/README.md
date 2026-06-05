@@ -5,9 +5,11 @@ a "Game Library" selection screen plus self-contained, playable game pages with 
 opponent. This is the real, compiled app (no CDN React / in-browser Babel) — the
 prototypes in `../design/` remain the visual reference.
 
-This is the **first vertical slice**: the library shell + the framework that games are
-built on + one fully-playable game (**Yahtzee**). The other ~110 catalog games still
-render cards but show a "coming soon" notice on launch.
+The library shell + the framework that games are built on + **six fully-playable games**
+are done: **Yahtzee** (dice), **Xiangqi** (board), **Skull King** (trick-taking + bidding),
+**The Crew** (co-op trick-taking), **Yinsh** (GIPF rings & markers), and **Tiny Towns**
+(solo pattern-builder). The other ~110 catalog games still render cards but show a
+"coming soon" notice on launch.
 
 ## Run
 
@@ -44,7 +46,8 @@ src/
     LibraryApp.tsx, GameCard.tsx, GameModal.tsx, GameTypo.tsx, selection.css
     tweaks/                   the appearance/layout/sort panel (useTweaks + TweaksPanel)
   games/
-    yahtzee/                  logic.ts (pure rules + AI) · Yahtzee.tsx (UI) · yahtzee.css
+    yahtzee/  xiangqi/  skull_king/  the_crew/  yinsh/  tiny_towns/
+                              each: logic.ts (pure rules + AI) · <Game>.tsx (UI) · <game>.css
 ```
 
 ### The token contract

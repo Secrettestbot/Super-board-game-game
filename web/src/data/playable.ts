@@ -11,4 +11,5 @@ export const PLAYABLE: Record<string, string> = {
   skull_king: 'games/skull_king.html',
   the_crew: 'games/the_crew.html',
   yinsh: 'games/yinsh.html',
+  tiny_towns: 'games/tiny_towns.html',
 }

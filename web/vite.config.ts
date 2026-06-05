@@ -23,6 +23,7 @@ export default defineConfig({
         skull_king: resolve(__dirname, 'games/skull_king.html'),
         the_crew: resolve(__dirname, 'games/the_crew.html'),
         yinsh: resolve(__dirname, 'games/yinsh.html'),
+        tiny_towns: resolve(__dirname, 'games/tiny_towns.html'),
       },
     },
   },
