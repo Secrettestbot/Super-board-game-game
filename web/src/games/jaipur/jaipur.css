@@ -1,0 +1,154 @@
+/* ==========================================================
+   JAIPUR — "The bazaar trade."
+   Theme: a vibrant Rajasthan bazaar — deep saffron & spice surfaces, jewel goods,
+   camel motifs, gold tokens. Display: Marcellus · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #1a0f0a;
+  --bg-2:    #120a06;
+  --panel:   #2a1810;
+  --panel-2: #20120b;
+  --ink:     #f6ead7;
+  --ink-2:   #d3b48f;
+  --ink-3:   #94714f;
+  --line:    #3a2417;
+  --line-2:  #573620;
+
+  /* token contract -> this theme (saffron-gold primary, dark text on it) */
+  --accent:  #e6a83a;  --accent-d:#b67a17;  --accent-hi:#f7cd6a;  --accent-ink:#2a1604;
+  --trim:    #e07a3a;  --trim-hi:#f6a960;
+  --you:     #f7cd6a;  --foe:#d3b48f;
+  --good:    #79c98f;  --warn:#e07a3a;
+
+  /* game-specific goods palette */
+  --diamond: #7fd0e0;  --gold-c:#f0c860;  --silver-c:#d8dde2;
+  --cloth:   #e06a8c;  --spice:#e0813a;   --leather:#b8895a;
+  --camel:   #d8b07a;
+  --rupee:   #f7cd6a;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Marcellus", Georgia, serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(230,168,58,0.10) 0%, transparent 50%),
+    radial-gradient(ellipse at 12% 100%, rgba(224,106,140,0.06) 0%, transparent 45%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 244px; gap: clamp(16px, 2.2vw, 32px); align-items: stretch; }
+
+/* ---- main column ---- */
+.jp-main { display: flex; flex-direction: column; gap: 13px; justify-content: center; min-height: 0; }
+
+.jp-rival { display: flex; align-items: center; gap: 9px; padding: 2px 2px; }
+.jp-rl { font-family: var(--display); font-size: 15px; color: var(--ink-2); letter-spacing: 0.04em; margin-right: 2px; }
+.jp-chip {
+  font-family: var(--mono); font-size: 11px; padding: 4px 9px; border-radius: 999px;
+  background: var(--panel-2); border: 1px solid var(--line-2); color: var(--ink-2);
+}
+.jp-chip.camel { color: var(--camel); }
+.jp-chip.rupee { color: var(--rupee); border-color: var(--accent-d); }
+
+.jp-block { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 14px; padding: 12px 13px; }
+.jp-label { font-family: var(--display); font-size: 14px; letter-spacing: 0.06em; color: var(--accent-hi); margin-bottom: 9px; }
+.jp-sub { font-family: var(--mono); font-size: 10px; color: var(--ink-3); letter-spacing: 0.04em; }
+
+/* ---- cards (market + hand share the card look) ---- */
+.jp-market { display: grid; grid-template-columns: repeat(5, 1fr); gap: 9px; }
+.jp-card {
+  --c: var(--ink-2);
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  height: clamp(74px, 13vh, 104px); padding: 8px 4px; cursor: pointer;
+  background: linear-gradient(160deg, var(--panel), var(--panel-2));
+  border: 1.5px solid var(--line-2); border-radius: 11px; color: var(--ink);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(255,255,255,0.02);
+  transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+.jp-card:not(:disabled):hover { transform: translateY(-3px); border-color: var(--c); box-shadow: 0 10px 22px rgba(0,0,0,0.5); }
+.jp-card:disabled { cursor: default; opacity: 0.78; }
+.jp-glyph { font-size: 24px; line-height: 1; color: var(--c); filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
+.jp-cname { font-family: var(--display); font-size: 12px; letter-spacing: 0.03em; color: var(--ink); }
+.jp-tval {
+  position: absolute; top: 5px; right: 6px; font-family: var(--mono); font-size: 10px; font-weight: 600;
+  color: var(--accent-ink); background: var(--accent-hi); border-radius: 999px; min-width: 17px; height: 17px;
+  display: flex; align-items: center; justify-content: center; padding: 0 2px;
+}
+
+/* goods colour accents (applied to .jp-card and .jp-good) */
+.g-diamond { --c: var(--diamond); } .g-gold { --c: var(--gold-c); } .g-silver { --c: var(--silver-c); }
+.g-cloth   { --c: var(--cloth); }   .g-spice { --c: var(--spice); }  .g-leather { --c: var(--leather); }
+.jp-card.camel, .jp-good.camel { --c: var(--camel); }
+
+/* ---- action buttons ---- */
+.jp-actions { display: flex; gap: 9px; margin-top: 10px; }
+.jp-btn {
+  flex: 1; font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 10px 8px; border-radius: 9px; cursor: pointer;
+  background: var(--panel); color: var(--ink); border: 1.5px solid var(--line-2); transition: all 0.12s;
+}
+.jp-btn:not(:disabled):hover { border-color: var(--trim); color: var(--trim-hi); }
+.jp-btn.sell:not(:disabled) { background: var(--accent); color: var(--accent-ink); border-color: var(--accent-d); }
+.jp-btn.sell:not(:disabled):hover { filter: brightness(1.08); color: var(--accent-ink); }
+.jp-btn:disabled { opacity: 0.45; cursor: default; }
+
+/* ---- your hand ---- */
+.jp-hand { display: flex; flex-wrap: wrap; gap: 9px; min-height: 74px; align-items: center; }
+.jp-good {
+  --c: var(--ink-2);
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  width: 78px; height: 74px; padding: 6px; cursor: pointer;
+  background: linear-gradient(160deg, var(--panel), var(--panel-2));
+  border: 1.5px solid var(--line-2); border-radius: 11px; color: var(--ink);
+  box-shadow: 0 5px 13px rgba(0,0,0,0.38); transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+.jp-good:not(:disabled):hover { transform: translateY(-2px); border-color: var(--c); }
+.jp-good.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 6px 16px rgba(0,0,0,0.5); }
+.jp-good.locked { opacity: 0.6; cursor: default; }
+.jp-good:disabled { cursor: default; }
+.jp-good.camel { cursor: default; }
+.jp-good .jp-glyph { font-size: 20px; }
+.jp-good .jp-cname { font-size: 11px; }
+.jp-qty { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--accent-hi); }
+.jp-empty { font-size: 12px; color: var(--ink-3); font-style: italic; padding: 6px 2px; }
+
+/* ---- side ---- */
+.side { display: flex; flex-direction: column; gap: 10px; align-self: stretch; min-height: 0; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 11px 12px; }
+
+.jp-scoreboard { display: flex; flex-direction: column; gap: 7px; }
+.jp-sc { display: flex; align-items: center; gap: 10px; padding: 8px 11px; border-radius: 9px; border: 1.5px solid var(--line); }
+.jp-sc.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-d); }
+.jp-scn { font-family: var(--display); font-size: 14px; flex: 1; letter-spacing: 0.04em; }
+.jp-scn.you { color: var(--you); } .jp-scn.foe { color: var(--foe); }
+.jp-scv { font-family: var(--display); font-weight: 700; font-size: 22px; color: var(--rupee); }
+.jp-camelrow { font-family: var(--mono); font-size: 10px; color: var(--ink-2); letter-spacing: 0.03em; text-align: center; padding-top: 2px; }
+.jp-camelbonus { display: block; color: var(--ink-3); margin-top: 2px; }
+
+.jp-tokens { display: flex; flex-direction: column; gap: 4px; }
+.jp-trow { --c: var(--ink-2); display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 7px; }
+.jp-tglyph { font-size: 14px; color: var(--c); width: 16px; text-align: center; }
+.jp-tname { font-family: var(--display); font-size: 12px; flex: 1; color: var(--ink); letter-spacing: 0.02em; }
+.jp-tstack { font-family: var(--mono); font-size: 10px; color: var(--rupee); }
+
+.logbox { flex: 1 1 auto; min-height: 44px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.5; color: var(--ink-2); }
+.log-line.you { color: var(--accent-hi); }
+.log-line.ai { color: var(--ink-2); }
+.log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- overlays ---- */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 24px; }
+.finalsc .you { color: var(--you); } .finalsc .foe { color: var(--foe); }
+.modal-body i { color: var(--accent-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) {
+  .title-main { font-size: 23px; }
+  .jp-card { height: clamp(64px, 11vh, 88px); }
+}

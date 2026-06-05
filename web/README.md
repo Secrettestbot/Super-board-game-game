@@ -5,10 +5,11 @@ a "Game Library" selection screen plus self-contained, playable game pages with 
 opponent. This is the real, compiled app (no CDN React / in-browser Babel) — the
 prototypes in `../design/` remain the visual reference.
 
-The library shell + the framework + **fifty-three fully-playable games** are done (6 ported
-from the design prototypes + 47 built from scratch on the framework). The latest batch added
-Backgammon, Love Letter, No Thanks!, Zombie Dice, Royal Game of Ur, Shut the Box, Coloretto,
-and Entropy. Highlights of the
+The library shell + the framework + **sixty fully-playable games** are done (6 ported
+from the design prototypes + 54 built from scratch on the framework). The latest batch added
+Lost Cities, Jaipur, The Fox in the Forest, Qwixx, Can't Stop, Carnac, and Dominoes. The batch
+before added Backgammon, Love Letter, No Thanks!, Zombie Dice, Royal Game of Ur, Shut the Box,
+Coloretto, and Entropy. Highlights of the
 later batches: classic abstracts (Quoridor, Quarto, Pentago, Nine Men's Morris, Ataxx,
 Konane, Pong Hau K'i, Fox & Hounds, Amazons, Lines of Action, Santorini, Tablut, Surakarta,
 Yote, Alquerque, Dara, Fanorona, Abalone, Kamisado), connection/territory (Hex, Pente, Tsuro),

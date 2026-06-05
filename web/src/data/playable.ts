@@ -59,4 +59,11 @@ export const PLAYABLE: Record<string, string> = {
   shut_the_box: 'games/shut_the_box.html',
   coloretto: 'games/coloretto.html',
   entropy: 'games/entropy.html',
+  lost_cities: 'games/lost_cities.html',
+  jaipur: 'games/jaipur.html',
+  fox_in_forest: 'games/fox_in_forest.html',
+  qwixx: 'games/qwixx.html',
+  cant_stop: 'games/cant_stop.html',
+  carnac: 'games/carnac.html',
+  dominoes: 'games/dominoes.html',
 }
