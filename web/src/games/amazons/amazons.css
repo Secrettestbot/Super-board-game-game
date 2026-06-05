@@ -1,0 +1,142 @@
+/* ==========================================================
+   GAME OF THE AMAZONS — "Move, then burn."
+   Theme: a frozen lake board — pale-blue ice squares, carved queens, arrows that
+   scorch squares into glowing embers. Ice & fire.
+   Display: Cormorant Garamond · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #0a121c;
+  --bg-2:    #060c14;
+  --panel:   #122031;
+  --panel-2: #0d1826;
+  --ink:     #eaf3fb;
+  --ink-2:   #9db6cd;
+  --ink-3:   #5c7488;
+  --line:    #1d3043;
+  --line-2:  #2d4860;
+
+  /* token contract -> this theme (ember primary; light enough -> dark ink on accent) */
+  --accent:  #ff8a3c;  --accent-d:#c25e1a;  --accent-hi:#ffb368;  --accent-ink:#27130a;
+  --trim:    #6fd0ff;  --trim-hi:#aee6ff;
+  --you:     #cfe9ff;  --foe:#ffb98a;
+  --good:    #8fe0c0;  --warn:#ff9a5c;
+
+  /* game-specific — ice & ember */
+  --ice:      #c4dcee;  --ice-2:#a9c8e0;   /* light squares */
+  --ice-d:    #7c9bb6;  --ice-d2:#6c8aa6;  /* dark squares */
+  --queen-w:  #f4f9ff;  --queen-w-d:#bcd0e2;
+  --queen-b:  #243443;  --queen-b-d:#0e1a26;
+  --ember:    #ff7a2c;  --ember-hi:#ffd17a;  --ember-d:#8a2b10;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Cormorant Garamond", Georgia, serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(111,208,255,0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 120%, rgba(255,122,44,0.07) 0%, transparent 52%);
+}
+
+/* The display font reads small at default weights — bump the title a touch. */
+.title-main { font-size: 34px; font-weight: 700; letter-spacing: 0.01em; }
+.turn-banner { font-size: 23px; }
+
+.stage { grid-template-columns: auto 232px; gap: clamp(16px, 2.4vw, 34px); }
+
+.az-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.az-board {
+  --cell: clamp(28px, min(6.6vh, 4.4vw), 50px);
+  display: grid;
+  grid-template-columns: repeat(10, var(--cell));
+  grid-template-rows: repeat(10, var(--cell));
+  gap: 0; padding: 9px; border-radius: 12px;
+  background: #15324a;
+  border: 2px solid #0c2032;
+  box-shadow: 0 18px 48px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(111,208,255,0.08);
+}
+
+.az-cell {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  cursor: default; transition: background 0.12s;
+}
+.az-cell.lite { background: linear-gradient(150deg, var(--ice) 0%, var(--ice-2) 100%); }
+.az-cell.dark { background: linear-gradient(150deg, var(--ice-d) 0%, var(--ice-d2) 100%); }
+
+/* last completed move highlight */
+.az-cell.last { box-shadow: inset 0 0 0 2px rgba(111,208,255,0.65); z-index: 1; }
+
+/* selected amazon */
+.az-cell.selected { box-shadow: inset 0 0 0 3px var(--ember-hi); z-index: 2; }
+
+/* queen-move destinations */
+.az-cell.move-t { cursor: pointer; }
+.az-cell.move-t:hover { background: #d8ecff; }
+.az-cell.move-t.dark:hover { background: #a8c6df; }
+
+/* arrow-shot targets */
+.az-cell.shoot-t { cursor: pointer; }
+.az-cell.shoot-t:hover { background: #ffc88f; }
+
+/* queen carving */
+.az-queen { width: 78%; height: 78%; filter: drop-shadow(0 1.5px 1.5px rgba(0,0,0,0.45)); }
+.az-queen.w path, .az-queen.w rect, .az-queen.w circle { fill: var(--queen-w); stroke: var(--queen-w-d); stroke-width: 1; }
+.az-queen.b path, .az-queen.b rect, .az-queen.b circle { fill: var(--queen-b); stroke: var(--queen-b-d); stroke-width: 1; }
+
+/* burned (arrow) square — glowing ember scar */
+.az-burn {
+  position: absolute; inset: 7%; border-radius: 4px;
+  background: radial-gradient(circle at 50% 38%, var(--ember-hi) 0%, var(--ember) 38%, var(--ember-d) 100%);
+  box-shadow: 0 0 10px rgba(255,122,44,0.7), inset 0 -2px 4px rgba(0,0,0,0.45);
+  animation: scorch 0.22s ease-out;
+}
+.az-cell.last-shot .az-burn { box-shadow: 0 0 16px rgba(255,140,60,0.95), inset 0 -2px 4px rgba(0,0,0,0.45); }
+@keyframes scorch { from { transform: scale(0.3); opacity: 0.4; } to { transform: none; opacity: 1; } }
+
+/* hint dot for a queen-move destination */
+.az-dot {
+  width: 24%; height: 24%; border-radius: 50%;
+  background: rgba(111,208,255,0.55); box-shadow: 0 0 6px rgba(111,208,255,0.5);
+}
+/* spark for an arrow target */
+.az-spark {
+  position: absolute; width: 30%; height: 30%; border-radius: 50%;
+  background: radial-gradient(circle, var(--ember-hi) 0%, var(--ember) 60%, transparent 72%);
+  box-shadow: 0 0 8px rgba(255,140,60,0.6);
+}
+
+/* ---- side ---- */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.az-score { display: flex; flex-direction: column; gap: 9px; }
+.az-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 11px;
+  border-radius: 10px; border: 1.5px solid var(--line);
+}
+.az-row .az-queen { width: 24px; height: 24px; flex: 0 0 auto; }
+.az-row.on { border-color: var(--ember); box-shadow: 0 0 0 1px var(--ember); }
+.az-name { font-family: var(--display); font-weight: 600; font-size: 18px; flex: 1; }
+.az-mob { font-family: var(--mono); font-weight: 600; font-size: 17px; color: var(--ink); }
+.az-row.b .az-mob { color: var(--ink-2); }
+
+.az-readout { display: flex; flex-direction: column; gap: 5px; padding: 2px 2px 0; }
+.az-readout > span { font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3); }
+.az-bar { height: 7px; border-radius: 4px; background: var(--queen-b); overflow: hidden; border: 1px solid var(--line-2); }
+.az-bar-w { height: 100%; background: linear-gradient(90deg, var(--trim), var(--queen-w)); }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 156px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--trim-hi); }
+.log-line.ai  { color: var(--foe); }
+.log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- overlays ---- */
+.modal-body i { color: var(--ember-hi); font-style: normal; font-weight: 600; }
+.modal-title { font-size: 38px; }
+
+@media (max-height: 720px) { .title-main { font-size: 27px; } }

@@ -7,5 +7,7 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts'],
     environment: 'node',
+    // Some games self-play full matches against a search AI; give them headroom.
+    testTimeout: 20000,
   },
 })

@@ -1,0 +1,113 @@
+/* ==========================================================
+   FANORONA (Fanoron-Tsivy) — "Approach and withdrawal."
+   Theme: Malagasy red-earth wood, carved ivory & ebony stones, pale incised line-art.
+   Display: Lora · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #1a0f0a;
+  --bg-2:    #120a06;
+  --panel:   #2b1a11;
+  --panel-2: #20130c;
+  --ink:     #f4ece0;
+  --ink-2:   #caa988;
+  --ink-3:   #8a6647;
+  --line:    #3a2417;
+  --line-2:  #58371f;
+
+  /* token contract -> this theme (warm terracotta primary, dark text) */
+  --accent:  #d98a3d;  --accent-d:#a8601f;  --accent-hi:#f0ab5f;  --accent-ink:#2a1604;
+  --trim:    #e0b070;  --trim-hi:#f3cf93;
+  --you:     #f0e3cd;  --foe:#caa988;
+  --good:    #6fc090;  --warn:#e08a4e;
+
+  /* game-specific */
+  --wood:    #6e2c14;  --wood-2:#561f0d;  --wood-edge:#8a3a1c;
+  --boardln: #e7c08a;  --node:#caa477;
+  --stone-w: #f1e8d6;  --stone-w-d:#bcae93;
+  --stone-b: #221a15;  --stone-b-d:#0c0805;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Lora", Georgia, serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(224,176,112,0.07) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.title-main { letter-spacing: 0.01em; }
+
+.stage { grid-template-columns: auto 232px; gap: clamp(16px, 2.4vw, 36px); }
+
+.fn-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.fn-board {
+  width: clamp(380px, min(76vh, 60vw), 660px);
+  height: auto;
+  filter: drop-shadow(0 18px 46px rgba(0,0,0,0.6));
+}
+
+.fn-bg { fill: var(--wood); stroke: var(--wood-edge); stroke-width: 3; }
+.fn-lines line { stroke: var(--boardln); stroke-width: 2; opacity: 0.62; stroke-linecap: round; }
+
+.fn-node { fill: var(--node); opacity: 0.55; }
+.fn-node.strong { opacity: 0.8; }
+
+.fn-trail { stroke: var(--trim-hi); stroke-width: 3; opacity: 0.5; stroke-linecap: round; stroke-dasharray: 1 7; }
+
+/* destination hints */
+.fn-hint { fill: rgba(240,171,95,0.16); stroke: var(--accent-hi); stroke-width: 1.5; cursor: pointer; transition: fill 0.12s; }
+.fn-hint:hover { fill: rgba(240,171,95,0.34); }
+.fn-hint.cap { fill: rgba(224,138,78,0.22); stroke: var(--warn); stroke-width: 2; }
+.fn-hint.cap:hover { fill: rgba(224,138,78,0.42); }
+
+/* pieces */
+.fn-piece-g { cursor: default; }
+.fn-piece-g.movable { cursor: pointer; }
+.fn-piece { stroke-width: 1; animation: fn-pop 0.16s ease-out; }
+.fn-piece.w { fill: var(--stone-w); stroke: var(--stone-w-d); }
+.fn-piece.b { fill: var(--stone-b); stroke: #000; }
+.fn-piece-g.movable .fn-piece.w:hover { filter: brightness(1.08); }
+.fn-piece.sel { stroke: var(--accent-hi); stroke-width: 3; filter: drop-shadow(0 0 5px rgba(240,171,95,0.8)); }
+@keyframes fn-pop { from { transform: scale(0.6); transform-box: fill-box; transform-origin: center; } to { transform: none; } }
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.scoreboard { display: flex; flex-direction: column; gap: 9px; }
+.sc { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.sc.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sc-disc { width: 18px; height: 18px; border-radius: 50%; flex: 0 0 auto; }
+.sc-disc.w { background: radial-gradient(circle at 38% 30%, #fff, var(--stone-w-d)); border: 1px solid var(--stone-w-d); }
+.sc-disc.b { background: radial-gradient(circle at 38% 30%, #44372d, var(--stone-b)); border: 1px solid #000; }
+.sc-name { font-family: var(--display); font-weight: 600; font-size: 14px; flex: 1; }
+.sc-n { font-family: var(--display); font-weight: 700; font-size: 20px; }
+.sc.w .sc-n { color: var(--ink); } .sc.b .sc-n { color: var(--ink-2); }
+.sc-bar { height: 7px; border-radius: 4px; background: var(--stone-b); overflow: hidden; border: 1px solid var(--line-2); }
+.sc-bar-w { height: 100%; background: var(--stone-w); border-right: 1px solid var(--line-2); }
+
+.chainbox .panel-l { margin-bottom: 5px; }
+.chainbox p { font-size: 11.5px; line-height: 1.5; color: var(--ink-2); margin: 0 0 9px; }
+.fn-end {
+  font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; padding: 8px 14px; border-radius: 8px; cursor: pointer; width: 100%;
+  background: var(--accent); color: var(--accent-ink); border: 1.5px solid var(--accent-d);
+  transition: filter 0.13s;
+}
+.fn-end:hover { filter: brightness(1.1); }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 168px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--trim-hi); } .log-line.ai { color: var(--ink-2); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 22px; }
+.finalsc .you { color: var(--trim-hi); } .finalsc .foe { color: var(--ink-2); }
+.modal-body i { color: var(--trim-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

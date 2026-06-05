@@ -1,0 +1,140 @@
+/* ==========================================================
+   KAMISADO — "The colour chain."
+   Theme: deep indigo night, a vivid 8-colour board, sleek colour-coded towers,
+   electric-cyan trim. Display: Space Grotesk · Body: Inter · Mono: Space Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #0c0e1a;
+  --bg-2:    #070811;
+  --panel:   #161a2e;
+  --panel-2: #11142440;
+  --ink:     #eef0fb;
+  --ink-2:   #a3a9cc;
+  --ink-3:   #5b618a;
+  --line:    #232846;
+  --line-2:  #353c66;
+
+  /* token contract -> this theme (electric cyan primary, dark text on it) */
+  --accent:  #45e0d0;  --accent-d:#1f9f93;  --accent-hi:#84f4e8;  --accent-ink:#062019;
+  --trim:    #45e0d0;  --trim-hi:#84f4e8;
+  --you:     #84f4e8;  --foe:#b7bce0;
+  --good:    #5fd089;  --warn:#ec6f6f;
+
+  /* the 8 Kamisado colours */
+  --k0: #ef7d23;  /* orange */
+  --k1: #3b73e0;  /* blue   */
+  --k2: #9a5cd6;  /* purple */
+  --k3: #e96aa0;  /* pink   */
+  --k4: #f2c63a;  /* yellow */
+  --k5: #d6406a;  /* red    */
+  --k6: #5fb86a;  /* green  */
+  --k7: #9c6b3f;  /* brown  */
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Space Grotesk", system-ui, sans-serif;
+  --mono:    "Space Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(69,224,208,0.08) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 222px; gap: clamp(16px, 2.4vw, 34px); }
+
+.km-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.km-board {
+  --cell: clamp(33px, min(7.1vh, 4.7vw), 56px);
+  display: grid; grid-template-columns: repeat(8, var(--cell)); grid-template-rows: repeat(8, var(--cell));
+  gap: 0; padding: 8px; background: #05060d;
+  border: 2px solid #1a1f3a; border-radius: 12px; box-shadow: 0 18px 46px rgba(0,0,0,0.6);
+}
+
+/* cells — flat saturated colour with a soft inner highlight */
+.km-cell {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  cursor: default; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.22);
+}
+.km-cell.c0 { background: var(--k0); } .km-cell.c1 { background: var(--k1); }
+.km-cell.c2 { background: var(--k2); } .km-cell.c3 { background: var(--k3); }
+.km-cell.c4 { background: var(--k4); } .km-cell.c5 { background: var(--k5); }
+.km-cell.c6 { background: var(--k6); } .km-cell.c7 { background: var(--k7); }
+.km-cell::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(circle at 50% 30%, rgba(255,255,255,0.14), transparent 62%);
+}
+
+.km-cell.from::after, .km-cell.to::after {
+  content: ""; position: absolute; inset: 3px; border-radius: 4px; pointer-events: none;
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,0.55);
+}
+.km-cell.to::after { box-shadow: inset 0 0 0 2px var(--accent-hi); }
+
+.km-cell.dest { cursor: pointer; }
+.km-cell.dest:hover::before { background: radial-gradient(circle at 50% 30%, rgba(255,255,255,0.3), transparent 65%); }
+
+.km-dot {
+  width: 28%; height: 28%; border-radius: 50%; position: relative; z-index: 2;
+  background: rgba(255,255,255,0.85); box-shadow: 0 0 8px rgba(255,255,255,0.7);
+}
+
+/* towers — colour-coded discs; you = bright ring, ai = dark ring */
+.km-tower {
+  position: relative; z-index: 3; width: 76%; height: 76%; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 3px 5px rgba(0,0,0,0.55), inset 0 -3px 5px rgba(0,0,0,0.4), inset 0 3px 4px rgba(255,255,255,0.28);
+  transition: transform 0.12s;
+}
+.km-tower.c0 { background: var(--k0); } .km-tower.c1 { background: var(--k1); }
+.km-tower.c2 { background: var(--k2); } .km-tower.c3 { background: var(--k3); }
+.km-tower.c4 { background: var(--k4); } .km-tower.c5 { background: var(--k5); }
+.km-tower.c6 { background: var(--k6); } .km-tower.c7 { background: var(--k7); }
+.km-tower.you { outline: 2px solid rgba(255,255,255,0.92); outline-offset: -2px; }
+.km-tower.ai  { outline: 2px solid rgba(8,10,20,0.85); outline-offset: -2px; }
+.km-pip { width: 30%; height: 30%; border-radius: 50%; }
+.km-tower.you .km-pip { background: rgba(255,255,255,0.95); box-shadow: 0 0 4px rgba(255,255,255,0.6); }
+.km-tower.ai  .km-pip { background: rgba(8,10,20,0.75); }
+
+.km-tower.movable { cursor: pointer; box-shadow: 0 0 0 3px var(--accent-hi), 0 3px 6px rgba(0,0,0,0.55), inset 0 -3px 5px rgba(0,0,0,0.4); animation: pulse 1.4s ease-in-out infinite; }
+.km-tower.sel { box-shadow: 0 0 0 3px #fff, 0 0 14px var(--accent-hi); animation: none; transform: scale(1.06); }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 3px var(--accent-hi), 0 3px 6px rgba(0,0,0,0.55); } 50% { box-shadow: 0 0 0 5px var(--accent), 0 3px 6px rgba(0,0,0,0.55); } }
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 10px; align-self: center; }
+.panel { background: var(--panel); border: 1.5px solid var(--line); border-radius: 13px; padding: 11px 13px; }
+
+.turnbox { display: flex; flex-direction: column; gap: 7px; }
+.turn-row { display: flex; gap: 8px; }
+.turn-who { flex: 1; text-align: center; font-family: var(--display); font-weight: 600; font-size: 13px; padding: 7px 0; border-radius: 8px; border: 1.5px solid var(--line-2); color: var(--ink-3); }
+.turn-who.you { color: var(--you); }
+.turn-row.on .turn-who.you { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: rgba(69,224,208,0.08); }
+.turn-row:not(.on) .turn-who.foe { border-color: var(--foe); box-shadow: 0 0 0 1px var(--foe); color: var(--foe); }
+.req-l { margin-top: 4px; }
+.req { display: flex; align-items: center; gap: 9px; font-family: var(--display); font-weight: 600; font-size: 15px; color: var(--ink); }
+.req.free { color: var(--ink-2); font-size: 13px; font-style: italic; }
+.req-chip { width: 20px; height: 20px; border-radius: 5px; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35), 0 1px 3px rgba(0,0,0,0.5); }
+
+.swatchbox { display: flex; flex-direction: column; gap: 7px; }
+.swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+.sw { aspect-ratio: 1; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.25); }
+
+.req-chip.c0, .sw.c0 { background: var(--k0); } .req-chip.c1, .sw.c1 { background: var(--k1); }
+.req-chip.c2, .sw.c2 { background: var(--k2); } .req-chip.c3, .sw.c3 { background: var(--k3); }
+.req-chip.c4, .sw.c4 { background: var(--k4); } .req-chip.c5, .sw.c5 { background: var(--k5); }
+.req-chip.c6, .sw.c6 { background: var(--k6); } .req-chip.c7, .sw.c7 { background: var(--k7); }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 158px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.5; color: var(--ink-2); }
+.log-line.you { color: var(--accent-hi); }
+.log-line.ai { color: var(--foe); }
+.log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalmsg { text-align: center; font-size: 14px; line-height: 1.6; color: var(--ink-2); margin: 10px 4px 2px; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

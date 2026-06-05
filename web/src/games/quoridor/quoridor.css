@@ -1,0 +1,145 @@
+/* ==========================================================
+   QUORIDOR — "Race and wall."
+   Theme: warm wooden / agate board with carved groove slots for walls; a teal pawn (you) and
+   a terracotta pawn (rival); gold move hints. Display: Jost · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   The board is a CSS grid of interleaved tracks: cell, gap, cell, gap, … so cells land on odd
+   tracks (2k+1) and wall grooves on the even gap tracks between them.
+   ========================================================== */
+
+:root {
+  --bg:      #1a140d;
+  --bg-2:    #110c07;
+  --panel:   #261b11;
+  --panel-2: #1d140c;
+  --ink:     #f3ead9;
+  --ink-2:   #c2ab8d;
+  --ink-3:   #7d6648;
+  --line:    #352616;
+  --line-2:  #4d3a23;
+
+  /* token contract -> this theme (warm gold primary, dark text) */
+  --accent:    #d9a441;  --accent-d:#a87a1d;  --accent-hi:#f1c873;  --accent-ink:#2a1c05;
+  --trim:      #d9a441;  --trim-hi:#f1c873;
+  --you:       #4fb6c9;  --foe:#d98060;
+  --good:      #6fc090;  --warn:#e0894e;
+
+  /* game-specific */
+  --wood:      #c9a468;  --wood-2:#b08c4f;  --groove:#8a6a38;  --groove-2:#6d5128;
+  --frame:     #3a2a18;  --frame-2:#6b4e2c;
+  --pawn-you:  #2b6f8e;  --pawn-you-hi:#4fb6c9;
+  --pawn-ai:   #c45a3a;  --pawn-ai-hi:#e98a66;
+  --wall:      #5a3f20;  --wall-hi:#7a572d;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Jost", system-ui, sans-serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(217,164,65,0.07) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 232px; gap: clamp(18px, 2.6vw, 38px); }
+
+.qd-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+
+.qd-board {
+  --cell: clamp(30px, min(6.7vh, 4.4vw), 52px);
+  --gap:  calc(var(--cell) * 0.26);
+  display: grid;
+  grid-template-columns: repeat(9, var(--cell) var(--gap));
+  grid-template-rows:    repeat(9, var(--cell) var(--gap));
+  /* trailing gap tracks (after last cell) collapse — drop them via negative margin */
+  margin-right: calc(var(--gap) * -1);
+  margin-bottom: calc(var(--gap) * -1);
+  padding: 14px; gap: 0;
+  background:
+    repeating-linear-gradient(90deg, rgba(0,0,0,0.05) 0 2px, transparent 2px 7px),
+    linear-gradient(150deg, var(--wood) 0%, var(--wood-2) 100%);
+  border: 3px solid var(--frame); border-radius: 14px;
+  box-shadow: 0 16px 46px rgba(0,0,0,0.58), inset 0 0 0 2px var(--frame-2);
+}
+
+.qd-cell {
+  background: radial-gradient(circle at 50% 36%, rgba(255,255,255,0.10), rgba(0,0,0,0.10));
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px rgba(60,40,18,0.35), inset 0 1px 2px rgba(255,255,255,0.12);
+  display: flex; align-items: center; justify-content: center;
+  position: relative; cursor: default;
+}
+.qd-cell.target { cursor: pointer; }
+.qd-cell.target:hover { box-shadow: inset 0 0 0 2px var(--accent-hi); }
+
+.qd-pawn {
+  width: 72%; height: 72%; border-radius: 50%;
+  box-shadow: 0 3px 5px rgba(0,0,0,0.5), inset 0 -3px 5px rgba(0,0,0,0.35), inset 0 2px 4px rgba(255,255,255,0.35);
+  animation: drop 0.18s ease-out;
+}
+.qd-pawn.you { background: radial-gradient(circle at 38% 30%, var(--pawn-you-hi), var(--pawn-you)); }
+.qd-pawn.ai  { background: radial-gradient(circle at 38% 30%, var(--pawn-ai-hi), var(--pawn-ai)); }
+@keyframes drop { from { transform: scale(0.6); } to { transform: none; } }
+
+.qd-dot { width: 26%; height: 26%; border-radius: 50%; background: rgba(241,200,115,0.55); box-shadow: 0 0 7px rgba(241,200,115,0.5); }
+
+/* placed walls span across the gap track between two cell pairs */
+.qd-wall {
+  border-radius: 4px;
+  background: linear-gradient(180deg, var(--wall-hi), var(--wall));
+  box-shadow: 0 3px 6px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.18), inset 0 -2px 3px rgba(0,0,0,0.4);
+  z-index: 3;
+  animation: wallin 0.16s ease-out;
+}
+.qd-wall.h { height: var(--gap); margin: 1px 2px; align-self: center; }
+.qd-wall.v { width: var(--gap); margin: 2px 1px; justify-self: center; }
+@keyframes wallin { from { transform: scale(0.7); opacity: 0.2; } to { transform: none; opacity: 1; } }
+
+/* legal wall grooves to click (wall mode) */
+.qd-slot {
+  border-radius: 4px; z-index: 4; cursor: pointer;
+  background: rgba(217,164,65,0.16);
+  outline: 1px dashed rgba(241,200,115,0.45); outline-offset: -1px;
+  transition: background 0.12s;
+}
+.qd-slot.h { height: var(--gap); margin: 1px 2px; align-self: center; }
+.qd-slot.v { width: var(--gap); margin: 2px 1px; justify-self: center; }
+.qd-slot:hover { background: linear-gradient(180deg, var(--wall-hi), var(--wall)); outline-color: var(--accent-hi); }
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.scoreboard { display: flex; flex-direction: column; gap: 9px; }
+.sc { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.sc.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sc-pawn { width: 18px; height: 18px; border-radius: 50%; flex: 0 0 auto; box-shadow: inset 0 -2px 3px rgba(0,0,0,0.4); }
+.sc-pawn.you { background: radial-gradient(circle at 38% 30%, var(--pawn-you-hi), var(--pawn-you)); }
+.sc-pawn.ai  { background: radial-gradient(circle at 38% 30%, var(--pawn-ai-hi), var(--pawn-ai)); }
+.sc-name { font-family: var(--display); font-weight: 600; font-size: 13.5px; flex: 1; }
+.sc-walls { font-family: var(--mono); font-size: 8px; letter-spacing: -1px; color: var(--accent-hi); overflow: hidden; max-width: 70px; white-space: nowrap; }
+.sc-n { font-family: var(--display); font-weight: 700; font-size: 19px; min-width: 20px; text-align: right; }
+.sc.you .sc-n { color: var(--pawn-you-hi); } .sc.ai .sc-n { color: var(--pawn-ai-hi); }
+
+.qd-wallbtn {
+  font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 11px 12px; border-radius: 10px; cursor: pointer;
+  background: var(--panel); color: var(--ink); border: 1.5px solid var(--line-2);
+  transition: all 0.13s;
+}
+.qd-wallbtn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-hi); }
+.qd-wallbtn.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent-d); }
+.qd-wallbtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 150px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--accent-hi); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; gap: 22px; margin: 12px 0; font-family: var(--display); font-weight: 600; font-size: 15px; }
+.finalsc .you { color: var(--pawn-you-hi); } .finalsc .foe { color: var(--pawn-ai-hi); }
+.modal-body i { color: var(--accent-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

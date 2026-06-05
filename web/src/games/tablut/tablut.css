@@ -1,0 +1,118 @@
+/* ==========================================================
+   TABLUT — "The king's flight."
+   Theme: carved Norse wood, a marked throne and four corner refuges,
+   pale bone defenders, dark iron attackers, a gilded crowned king.
+   Display: Cinzel · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #1a130a;
+  --bg-2:    #110c06;
+  --panel:   #2a1f12;
+  --panel-2: #20170d;
+  --ink:     #f2e6d0;
+  --ink-2:   #c2a780;
+  --ink-3:   #846a4a;
+  --line:    #3a2b19;
+  --line-2:  #564022;
+
+  /* token contract -> this theme (warm gold primary, dark text on it) */
+  --accent:  #e0a83c;  --accent-d:#a87216;  --accent-hi:#f6c860;  --accent-ink:#241704;
+  --trim:    #d99a3a;  --trim-hi:#f6c860;
+  --you:     #f4d58a;  --foe:#c98a6a;
+  --good:    #7fbf6e;  --warn:#d4663a;
+
+  /* game-specific */
+  --wood:    #5a3f22;  --wood-2:#4a3219;  --wood-edge:#33230f;
+  --grain:   #6b4d2a;
+  --def-pc:  #efe6d2;  --def-d:#bcae90;
+  --att-pc:  #2b2620;  --att-hi:#4a4138;
+  --king:    #f0c34a;  --king-d:#a87a1c;
+  --refuge:  #8a4a2c;  --throne:#7a5a30;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Cinzel", "Caudex", Georgia, serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(ellipse at 50% -8%, rgba(224,168,60,0.07) 0%, transparent 52%), radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 234px; gap: clamp(18px, 2.6vw, 38px); }
+
+.tb-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.tb-board {
+  --cell: clamp(30px, min(6.7vh, 4.6vw), 52px);
+  display: grid; grid-template-columns: repeat(9, var(--cell)); grid-template-rows: repeat(9, var(--cell));
+  gap: 2px; padding: 12px; background: var(--wood-edge);
+  border: 3px solid #2a1c0c; border-radius: 12px;
+  box-shadow: 0 16px 46px rgba(0,0,0,0.6), inset 0 0 0 2px rgba(122,90,48,0.25);
+}
+.tb-cell {
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.025), rgba(0,0,0,0.18)),
+    repeating-linear-gradient(0deg, var(--wood), var(--wood) 3px, var(--wood-2) 3px, var(--wood-2) 6px);
+  display: flex; align-items: center; justify-content: center; position: relative;
+  cursor: default; border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.18);
+}
+.tb-cell.throne { background: radial-gradient(circle at 50% 42%, #6e5128, #4a3219); box-shadow: inset 0 0 0 1px rgba(246,200,96,0.3); }
+.tb-cell.corner { background: radial-gradient(circle at 50% 42%, #7a3c22, #4a2614); box-shadow: inset 0 0 0 1px rgba(201,83,47,0.45); }
+
+/* engraved glyph on throne + corners */
+.tb-glyph { position: absolute; width: 56%; height: 56%; border-radius: 50%; pointer-events: none; opacity: 0.55; }
+.throne .tb-glyph { border: 1.5px solid rgba(246,200,96,0.6); box-shadow: inset 0 0 0 3px rgba(246,200,96,0.12); }
+.corner .tb-glyph { border: 1.5px solid rgba(232,150,90,0.7); transform: rotate(45deg); border-radius: 4px; }
+
+/* interaction states (only on the defender's turn) */
+.tb-cell.sel { outline: 2px solid var(--accent-hi); outline-offset: -2px; z-index: 2; }
+.tb-cell.target { cursor: pointer; }
+.tb-cell.target:hover { box-shadow: inset 0 0 0 2px rgba(246,200,96,0.55); }
+.tb-cell.last::after { content: ""; position: absolute; inset: 8%; border-radius: 4px; box-shadow: inset 0 0 0 2px rgba(244,213,138,0.55); pointer-events: none; }
+.tb-cell.lastfrom::after { content: ""; position: absolute; inset: 30%; border-radius: 50%; background: rgba(244,213,138,0.18); pointer-events: none; }
+
+/* pieces */
+.tb-piece { width: 78%; height: 78%; border-radius: 50%; position: relative; z-index: 1; animation: drop 0.16s ease-out; }
+.tb-piece.def { background: radial-gradient(circle at 38% 30%, #fff, var(--def-d)); box-shadow: 0 2px 4px rgba(0,0,0,0.5), inset 0 -2px 3px rgba(0,0,0,0.28); }
+.tb-piece.att { background: radial-gradient(circle at 38% 30%, var(--att-hi), var(--att-pc)); box-shadow: 0 2px 4px rgba(0,0,0,0.55), inset 0 -2px 3px rgba(0,0,0,0.5); }
+.tb-piece.king {
+  width: 86%; height: 86%; border-radius: 50%;
+  background: radial-gradient(circle at 38% 30%, #ffe89a, var(--king-d));
+  box-shadow: 0 2px 6px rgba(0,0,0,0.55), 0 0 0 2px rgba(168,122,28,0.6), inset 0 -2px 3px rgba(0,0,0,0.3);
+  display: flex; align-items: center; justify-content: center;
+}
+.tb-piece.king svg { width: 62%; height: 62%; }
+.tb-piece.king svg path { fill: #4a3208; stroke: #2a1c04; stroke-width: 0.6; }
+@keyframes drop { from { transform: scale(0.6); } to { transform: none; } }
+.tb-dot { width: 24%; height: 24%; border-radius: 50%; background: rgba(246,200,96,0.5); box-shadow: 0 0 6px rgba(246,200,96,0.45); }
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.sideboard { display: flex; flex-direction: column; gap: 9px; }
+.sd { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.sd.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sd-chip { width: 18px; height: 18px; border-radius: 50%; flex: 0 0 auto; }
+.sd-chip.def { background: radial-gradient(circle at 38% 30%, #fff, var(--def-d)); border: 1px solid var(--def-d); }
+.sd-chip.att { background: radial-gradient(circle at 38% 30%, var(--att-hi), var(--att-pc)); border: 1px solid #000; }
+.sd-name { font-family: var(--display); font-weight: 600; font-size: 13.5px; flex: 1; letter-spacing: 0.02em; }
+.sd-n { font-family: var(--display); font-weight: 700; font-size: 20px; display: inline-flex; align-items: baseline; gap: 4px; }
+.sd-king { color: var(--king); font-size: 15px; }
+
+.hintbox .hint-l { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); margin-bottom: 5px; }
+.hintbox p { margin: 0; font-size: 11.5px; line-height: 1.55; color: var(--ink-2); }
+.hintbox b { color: var(--accent-hi); font-weight: 600; }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 132px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--you); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; margin: 14px 0 4px; font-family: var(--display); font-weight: 700; font-size: 24px; color: var(--accent-hi); letter-spacing: 0.04em; }
+.modal-body i { color: var(--accent-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

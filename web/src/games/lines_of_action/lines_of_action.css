@@ -1,0 +1,100 @@
+/* ==========================================================
+   LINES OF ACTION — "Converge."
+   Theme: deep slate board, two-tone squares, ivory & electric-blue stones,
+   emphasised grid lines, glowing move dots.
+   Display: Manrope · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #0c0e13;
+  --bg-2:    #07080c;
+  --panel:   #161a23;
+  --panel-2: #11141c;
+  --ink:     #eef1f8;
+  --ink-2:   #a6aebf;
+  --ink-3:   #646c7d;
+  --line:    #232838;
+  --line-2:  #353d52;
+
+  /* token contract -> this theme (electric blue primary, dark ink on accent) */
+  --accent:  #5b8dff;  --accent-d:#2f5fd6;  --accent-hi:#8fb1ff;  --accent-ink:#06101f;
+  --trim:    #5b8dff;  --trim-hi:#8fb1ff;
+  --you:     #8fb1ff;  --foe:#c7ccd8;
+  --good:    #5fcf8f;  --warn:#e6915a;
+
+  /* game-specific */
+  --black:   #e7ebf5;  --black-d:#b9c0d2;   /* "Black" player = ivory stones */
+  --white:   #5b8dff;  --white-d:#2f5fd6;   /* "White" player = blue stones  */
+  --sq-lt:   #1c212e;  --sq-dk:#161a25;
+  --grid:    #2b3346;  --grid-hi:#3f4a64;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Manrope", system-ui, sans-serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(ellipse at 50% -8%, rgba(91,141,255,0.07) 0%, transparent 52%), radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 230px; gap: clamp(18px, 2.6vw, 38px); }
+
+.loa-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.loa-board {
+  --cell: clamp(34px, min(7.3vh, 4.9vw), 58px);
+  display: grid; grid-template-columns: repeat(8, var(--cell)); grid-template-rows: repeat(8, var(--cell));
+  gap: 0; padding: 12px; background: var(--bg-2);
+  border: 2px solid var(--grid); border-radius: 12px; box-shadow: 0 16px 44px rgba(0,0,0,0.6);
+}
+.loa-cell {
+  display: flex; align-items: center; justify-content: center; position: relative; cursor: default;
+  box-shadow: inset 0 0 0 0.5px var(--grid);
+}
+.loa-cell.lt { background: var(--sq-lt); }
+.loa-cell.dk { background: var(--sq-dk); }
+.loa-cell.sel { box-shadow: inset 0 0 0 2px var(--accent-hi); cursor: pointer; }
+.loa-cell.dest { cursor: pointer; }
+.loa-cell.dest:hover { background: #232c40; }
+.loa-cell.last::after { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 0 2px rgba(143,177,255,0.35); pointer-events: none; }
+
+.loa-piece {
+  width: 76%; height: 76%; border-radius: 50%; position: relative; z-index: 1;
+  animation: drop 0.16s ease-out; cursor: pointer;
+}
+.loa-piece.b { background: radial-gradient(circle at 36% 30%, #ffffff, var(--black-d)); box-shadow: 0 2px 4px rgba(0,0,0,0.55), inset 0 -2px 3px rgba(0,0,0,0.22); }
+.loa-piece.w { background: radial-gradient(circle at 36% 30%, #9fc0ff, var(--white-d)); box-shadow: 0 2px 4px rgba(0,0,0,0.55), inset 0 -2px 3px rgba(0,0,0,0.35), 0 0 10px rgba(91,141,255,0.4); }
+@keyframes drop { from { transform: scale(0.6); } to { transform: none; } }
+
+.loa-dot { width: 30%; height: 30%; border-radius: 50%; background: rgba(143,177,255,0.55); box-shadow: 0 0 8px rgba(91,141,255,0.5); }
+.loa-ring { position: absolute; inset: 8%; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--warn); z-index: 2; pointer-events: none; }
+.loa-piece.threat { animation: pulse 1.1s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { filter: none; } 50% { filter: brightness(1.18); } }
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.scoreboard { display: flex; flex-direction: column; gap: 9px; }
+.sc { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.sc.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sc-disc { width: 18px; height: 18px; border-radius: 50%; flex: 0 0 auto; }
+.sc-disc.b { background: radial-gradient(circle at 36% 30%, #fff, var(--black-d)); border: 1px solid var(--line-2); }
+.sc-disc.w { background: radial-gradient(circle at 36% 30%, #9fc0ff, var(--white-d)); box-shadow: 0 0 7px rgba(91,141,255,0.5); }
+.sc-name { font-family: var(--display); font-weight: 700; font-size: 14px; flex: 1; }
+.sc-meta { font-family: var(--mono); font-weight: 600; font-size: 11px; color: var(--ink-2); white-space: nowrap; }
+.sc.on .sc-meta { color: var(--accent-hi); }
+.sc-hint { font-size: 11px; line-height: 1.5; color: var(--ink-3); padding: 2px 2px 0; }
+.sc-hint b { color: var(--ink-2); }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 150px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--accent-hi); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; margin: 12px 0 4px; font-family: var(--display); font-weight: 600; font-size: 15px; text-align: center; }
+.finalsc .you { color: var(--accent-hi); } .finalsc .foe { color: var(--foe); }
+.modal-body i { color: var(--accent-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }
