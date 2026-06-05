@@ -21,6 +21,7 @@ export default defineConfig({
         yahtzee: resolve(__dirname, 'games/yahtzee.html'),
         xiangqi: resolve(__dirname, 'games/xiangqi.html'),
         skull_king: resolve(__dirname, 'games/skull_king.html'),
+        the_crew: resolve(__dirname, 'games/the_crew.html'),
       },
     },
   },

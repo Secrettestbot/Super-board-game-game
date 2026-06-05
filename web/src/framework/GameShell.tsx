@@ -10,6 +10,8 @@ export interface GameShellProps {
   subtitle: string
   onRules: () => void
   onNew: () => void
+  /** Label for the primary action button. Defaults to "New Game". */
+  newLabel?: string
   /** Left status text in the modebar, e.g. "Round 3 / 13". */
   modeLeft: ReactNode
   /** Center banner — current prompt / turn / result. */
@@ -36,6 +38,7 @@ export function GameShell({
   subtitle,
   onRules,
   onNew,
+  newLabel = 'New Game',
   modeLeft,
   banner,
   bannerClass = '',
@@ -61,7 +64,7 @@ export function GameShell({
         </div>
         <div className="tools">
           <button className="tool-btn" onClick={onRules}>Rules</button>
-          <button className="tool-btn primary" onClick={onNew}>New Game</button>
+          <button className="tool-btn primary" onClick={onNew}>{newLabel}</button>
         </div>
       </header>
 
