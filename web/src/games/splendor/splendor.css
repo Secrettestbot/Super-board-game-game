@@ -1,0 +1,229 @@
+/* ==========================================================
+   SPLENDOR — "Renaissance gem merchants."
+   Theme: deep midnight velvet with jewel-tone gems and gilded cards.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #12101c;
+  --bg-2:    #0c0a16;
+  --panel:   #1d1930;
+  --panel-2: #171327;
+  --ink:     #f4f0ff;
+  --ink-2:   #b6acd2;
+  --ink-3:   #756c92;
+  --line:    #2c2745;
+  --line-2:  #443c66;
+
+  /* token contract -> this theme (gilded gold primary, dark ink on it) */
+  --accent:    #e9c46a;  --accent-d:#b88a23;  --accent-hi:#f6dc94;  --accent-ink:#2a1e00;
+  --trim:      #c084fc;  --trim-hi:#d9b4ff;
+  --you:       #6fe0c0;  --foe:#ff9a76;
+  --good:      #6fe0a0;  --warn:#ff7d7d;
+
+  /* gem palette (5 gems + gold wild) */
+  --emerald:   #2fbf71;  --emerald-d:#1c8a4f;
+  --sapphire:  #4a86ff;  --sapphire-d:#2b5bcc;
+  --ruby:      #f04668;  --ruby-d:#c01e44;
+  --diamond:   #e8edf5;  --diamond-d:#9aa6bd;
+  --onyx:      #3a3550;  --onyx-d:#1c1830;
+  --gold:      #f0c64a;  --gold-d:#bd9314;
+
+  --card-bg:   #221d39;  --card-line:#3a3358;
+  --gem-ink:   #0a0814;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -6%, rgba(233,196,106,0.08) 0%, transparent 52%),
+    radial-gradient(ellipse at 8% 108%, rgba(192,132,252,0.07) 0%, transparent 46%),
+    radial-gradient(ellipse at 92% 112%, rgba(74,134,255,0.06) 0%, transparent 46%);
+}
+
+.stage {
+  grid-template-columns: minmax(0, 1fr) 268px;
+  gap: clamp(14px, 2vw, 28px);
+  align-items: stretch;
+}
+
+/* ---- main column: nobles, three tiers, bank ---- */
+.sp-main { display: flex; flex-direction: column; gap: clamp(8px, 1.1vh, 14px); min-height: 0; min-width: 0; overflow: auto; }
+
+.sp-section-l {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--ink-3); margin-bottom: 4px;
+}
+
+/* nobles row */
+.sp-nobles { display: flex; gap: 8px; flex-wrap: wrap; }
+.sp-noble {
+  width: 64px; height: 64px; border-radius: 12px;
+  background: linear-gradient(150deg, #2a2440, #1b1730);
+  border: 1.5px solid var(--accent-d);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 4px 12px rgba(0,0,0,0.4);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  position: relative; padding: 4px;
+}
+.sp-noble .sp-noble-pts {
+  position: absolute; top: 3px; left: 6px;
+  font-family: var(--display); font-weight: 700; font-size: 14px; color: var(--accent-hi);
+}
+.sp-noble-reqs { display: flex; gap: 3px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
+.sp-req { display: flex; align-items: center; gap: 1px; font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--ink-2); }
+.sp-req .sp-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+/* ---- tier rows ---- */
+.sp-tiers { display: flex; flex-direction: column; gap: clamp(7px, 1vh, 12px); }
+.sp-tier { display: flex; align-items: stretch; gap: 9px; }
+.sp-tier-deck {
+  flex: 0 0 auto; width: 50px; border-radius: 12px;
+  background: linear-gradient(160deg, #2a2348, #181428);
+  border: 1.5px solid var(--card-line);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  font-family: var(--display); color: var(--ink-2);
+  cursor: default;
+}
+.sp-tier-deck.can { cursor: pointer; border-color: var(--accent-d); }
+.sp-tier-deck.can:hover { background: linear-gradient(160deg, #352c5c, #201a36); color: var(--accent-hi); }
+.sp-tier-deck .tnum { font-size: 20px; font-weight: 700; line-height: 1; }
+.sp-tier-deck .tcount { font-family: var(--mono); font-size: 9px; color: var(--ink-3); }
+
+.sp-row { display: flex; gap: 9px; flex: 1 1 auto; min-width: 0; }
+
+/* ---- development card ---- */
+.sp-card {
+  flex: 1 1 0; min-width: 0;
+  border-radius: 12px; padding: 7px 8px;
+  background: linear-gradient(165deg, var(--card-bg), #18142b);
+  border: 1.5px solid var(--card-line);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
+  display: flex; flex-direction: column; gap: 5px; position: relative;
+  transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+.sp-card.empty { background: rgba(255,255,255,0.012); border-style: dashed; box-shadow: none; }
+.sp-card.afford { border-color: var(--good); }
+.sp-card.selectable { cursor: pointer; }
+.sp-card.selectable:hover { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0,0,0,0.5); }
+.sp-card-top { display: flex; align-items: flex-start; justify-content: space-between; }
+.sp-card-pts { font-family: var(--display); font-weight: 700; font-size: 18px; line-height: 1; }
+.sp-card-pts.zero { color: var(--ink-3); }
+.sp-card-bonus {
+  width: 20px; height: 20px; border-radius: 6px; flex: 0 0 auto;
+  box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.18), 0 1px 3px rgba(0,0,0,0.4);
+}
+.sp-card-cost { display: flex; flex-direction: column; gap: 2px; margin-top: auto; }
+.sp-cost-pill {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px;
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  color: var(--gem-ink);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.25);
+}
+.sp-cost-row { display: flex; gap: 3px; flex-wrap: wrap; }
+.sp-card-actions { display: flex; gap: 4px; }
+.sp-mini-btn {
+  flex: 1 1 0; font-family: var(--mono); font-size: 9px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; padding: 3px 2px; border-radius: 6px; cursor: pointer;
+  background: var(--panel); color: var(--ink-2); border: 1px solid var(--line-2);
+  transition: all 0.12s;
+}
+.sp-mini-btn:hover:not(:disabled) { border-color: var(--trim); color: var(--trim-hi); }
+.sp-mini-btn.buy:not(:disabled) { background: var(--accent); color: var(--accent-ink); border-color: var(--accent-d); }
+.sp-mini-btn.buy:hover:not(:disabled) { filter: brightness(1.08); }
+.sp-mini-btn:disabled { opacity: 0.32; cursor: default; }
+
+/* gem color fills */
+.gem-emerald  { background: linear-gradient(150deg, var(--emerald),  var(--emerald-d)); }
+.gem-sapphire { background: linear-gradient(150deg, var(--sapphire), var(--sapphire-d)); }
+.gem-ruby     { background: linear-gradient(150deg, var(--ruby),     var(--ruby-d)); }
+.gem-diamond  { background: linear-gradient(150deg, var(--diamond),  var(--diamond-d)); color: #1a1a22; }
+.gem-onyx     { background: linear-gradient(150deg, #5a5378, var(--onyx-d)); color: #f0eefa; }
+.gem-gold     { background: linear-gradient(150deg, var(--gold),     var(--gold-d)); }
+
+/* ---- token bank ---- */
+.sp-bank { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.sp-bank-tok {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.sp-coin {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--display); font-weight: 700; font-size: 17px; color: var(--gem-ink);
+  box-shadow: inset 0 2px 4px rgba(255,255,255,0.25), inset 0 -3px 6px rgba(0,0,0,0.35), 0 3px 8px rgba(0,0,0,0.4);
+  border: 2px solid rgba(0,0,0,0.2);
+  position: relative; transition: transform 0.12s, box-shadow 0.12s;
+}
+.sp-coin.gem-diamond, .sp-coin.gem-gold { color: #2a230a; }
+.sp-coin.pick { cursor: pointer; outline: 2px solid transparent; }
+.sp-coin.pick:hover { transform: scale(1.08); }
+.sp-coin.chosen { outline: 3px solid var(--accent-hi); box-shadow: inset 0 2px 4px rgba(255,255,255,0.25), 0 0 0 3px rgba(246,220,148,0.4), 0 3px 8px rgba(0,0,0,0.4); }
+.sp-coin.disabled { opacity: 0.35; cursor: default; }
+.sp-coin.empty { opacity: 0.22; }
+.sp-bank-lbl { font-family: var(--mono); font-size: 8px; letter-spacing: 0.08em; color: var(--ink-3); text-transform: uppercase; }
+
+/* ---- action controls ---- */
+.sp-controls { display: flex; flex-direction: column; gap: 8px; }
+.sp-control-hint { font-family: var(--mono); font-size: 10px; color: var(--ink-3); line-height: 1.5; }
+.sp-btns { display: flex; gap: 7px; flex-wrap: wrap; }
+.sp-btn {
+  font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink); border: 1.5px solid var(--accent-d);
+  transition: filter 0.12s, opacity 0.12s;
+}
+.sp-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.sp-btn.ghost { background: var(--panel); color: var(--ink-2); border-color: var(--line-2); }
+.sp-btn.ghost:hover:not(:disabled) { border-color: var(--trim); color: var(--trim-hi); }
+.sp-btn:disabled { opacity: 0.34; cursor: default; }
+
+/* ---- side panels: tableaus ---- */
+.side { display: flex; flex-direction: column; gap: 11px; min-height: 0; }
+.sp-tableau { display: flex; flex-direction: column; gap: 8px; }
+.sp-tableau.on { border-color: var(--accent-d); box-shadow: 0 0 0 1px var(--accent-d); }
+.sp-tab-head { display: flex; align-items: center; gap: 8px; }
+.sp-pawn { width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto; }
+.sp-pawn.you { background: var(--you); }
+.sp-pawn.ai  { background: var(--foe); }
+.sp-tab-name { font-family: var(--display); font-weight: 700; font-size: 16px; }
+.sp-tab-prestige { margin-left: auto; font-family: var(--display); font-weight: 700; font-size: 18px; color: var(--accent-hi); }
+.sp-tab-prestige small { font-family: var(--mono); font-size: 9px; color: var(--ink-3); font-weight: 600; }
+
+.sp-tab-gems { display: flex; gap: 5px; flex-wrap: wrap; }
+.sp-tab-gem {
+  display: flex; align-items: center; gap: 4px;
+  font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--ink);
+  padding: 2px 6px 2px 3px; border-radius: 8px; background: rgba(255,255,255,0.04);
+  border: 1px solid var(--line);
+}
+.sp-tab-gem .sp-swatch { width: 13px; height: 13px; border-radius: 4px; }
+.sp-tab-gem .sp-bcount { color: var(--accent-hi); }
+.sp-tab-gem .sp-tcount { color: var(--ink-2); }
+.sp-tab-gem .sep { color: var(--ink-3); }
+
+.sp-tab-meta { font-family: var(--mono); font-size: 10px; color: var(--ink-3); display: flex; gap: 10px; }
+.sp-tab-meta b { color: var(--ink-2); font-weight: 600; }
+
+/* reserved card chips */
+.sp-reserved { display: flex; gap: 5px; flex-wrap: wrap; }
+.sp-res-chip {
+  display: flex; align-items: center; gap: 4px;
+  padding: 3px 7px; border-radius: 8px; font-family: var(--mono); font-size: 10px; font-weight: 600;
+  background: var(--card-bg); border: 1px solid var(--card-line); color: var(--ink-2);
+  transition: all 0.12s;
+}
+.sp-res-chip .sp-swatch { width: 11px; height: 11px; border-radius: 3px; }
+.sp-res-chip.buyable { cursor: pointer; border-color: var(--good); color: var(--ink); }
+.sp-res-chip.buyable:hover { background: var(--panel); }
+
+.logbox { max-height: 132px; overflow-y: auto; display: flex; flex-direction: column-reverse; gap: 2px; }
+
+@media (max-height: 760px) {
+  .sp-coin { width: 34px; height: 34px; font-size: 15px; }
+  .sp-noble { width: 56px; height: 56px; }
+}

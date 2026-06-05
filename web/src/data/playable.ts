@@ -82,4 +82,12 @@ export const PLAYABLE: Record<string, string> = {
   hanamikoji: 'games/hanamikoji.html',
   coup: 'games/coup.html',
   point_salad: 'games/point_salad.html',
+  azul: 'games/azul.html',
+  kingdomino: 'games/kingdomino.html',
+  qwirkle: 'games/qwirkle.html',
+  splendor: 'games/splendor.html',
+  pickomino: 'games/pickomino.html',
+  cockroach_poker: 'games/cockroach_poker.html',
+  battle_line: 'games/battle_line.html',
+  port_royal: 'games/port_royal.html',
 }

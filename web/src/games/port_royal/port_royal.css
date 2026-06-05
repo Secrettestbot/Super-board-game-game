@@ -1,0 +1,170 @@
+/* ==========================================================
+   PORT ROYAL — "Flip your luck in a Caribbean harbor."
+   Theme: sun-bleached teal water, warm sand panels, a sunset-coral accent.
+   Push-your-luck harbor cards vs two AI captains.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Shared shell lives in ../../framework/tokens.css; we style the cards.
+   ========================================================== */
+
+:root {
+  --bg:      #0c1f24;
+  --bg-2:    #07151a;
+  --panel:   #14323a;
+  --panel-2: #0f262d;
+  --ink:     #f3ede0;
+  --ink-2:   #b9c8c4;
+  --ink-3:   #6f8a87;
+  --line:    #1f4048;
+  --line-2:  #2c565f;
+
+  /* token contract -> this theme (sunset-coral primary on teal) */
+  --accent:    #f0915a;  --accent-d:#c4623a;  --accent-hi:#ffb487;  --accent-ink:#2a1208;
+  --trim:      #e8c172;  --trim-hi:#ffe0a0;
+  --you:       #66d3c4;  --foe:#f0915a;
+  --good:      #5fc6a0;  --warn:#e8924e;
+
+  /* 5 ship colors (the required game-specific vars) */
+  --ship-red:    #d9534f;  --ship-red-d:#9e342f;
+  --ship-blue:   #4a8fd6;  --ship-blue-d:#2c5e93;
+  --ship-green:  #5aa86a;  --ship-green-d:#367042;
+  --ship-yellow: #e0b84a;  --ship-yellow-d:#a8842a;
+  --ship-black:  #3a3f4a;  --ship-black-d:#1f232b;
+
+  --sand:    #d8c39a;
+  --gold:    #f0c860;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(240,145,90,0.10) 0%, transparent 50%),
+    radial-gradient(ellipse at 82% 12%, rgba(102,211,196,0.08) 0%, transparent 42%),
+    radial-gradient(ellipse at 50% 122%, rgba(0,0,0,0.5) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 264px; gap: clamp(16px, 2.4vw, 34px); align-items: start; }
+
+/* ===== play area ===== */
+.pr-wrap { display: flex; flex-direction: column; gap: clamp(12px, 2vh, 22px); min-width: 0; }
+
+.pr-deckrow {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+.pr-pile {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 10px 14px; border-radius: 12px;
+  background: var(--panel-2); border: 1px solid var(--line);
+}
+.pr-pile b { font-family: var(--mono); font-size: 18px; color: var(--ink); }
+.pr-pile span { font-size: 10px; letter-spacing: .8px; text-transform: uppercase; color: var(--ink-3); }
+
+.pr-riskbox {
+  margin-left: auto; display: flex; flex-direction: column; gap: 4px;
+  min-width: 150px; padding: 8px 12px; border-radius: 12px;
+  background: var(--panel-2); border: 1px solid var(--line);
+}
+.pr-risk-l { font-size: 10px; letter-spacing: .8px; text-transform: uppercase; color: var(--ink-3); display: flex; justify-content: space-between; }
+.pr-risk-l b { font-family: var(--mono); color: var(--ink); }
+.pr-risk-bar { height: 8px; border-radius: 4px; background: #0a1c20; overflow: hidden; }
+.pr-risk-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--good), var(--warn) 55%, var(--ship-red)); transition: width .25s; }
+
+/* ===== harbor ===== */
+.pr-harbor-label { font-family: var(--display); font-size: 13px; letter-spacing: .5px; color: var(--ink-2); text-transform: uppercase; }
+.pr-harbor {
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch;
+  min-height: 132px; padding: 14px;
+  background: radial-gradient(ellipse at 50% 0%, #123036, #0b2025);
+  border: 2px solid var(--line); border-radius: 16px;
+  box-shadow: inset 0 0 50px rgba(0,0,0,0.35);
+}
+.pr-harbor.empty { align-items: center; justify-content: center; color: var(--ink-3); font-style: italic; }
+
+/* ===== a card ===== */
+.pr-card {
+  position: relative; width: 86px; min-height: 110px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: 8px; border-radius: 11px;
+  border: 2px solid rgba(0,0,0,0.35);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+  color: #fff; cursor: default; user-select: none;
+  font-family: var(--sans);
+}
+.pr-card.takeable { cursor: pointer; outline: 2px solid transparent; transition: transform .1s, outline-color .1s; }
+.pr-card.takeable:hover { transform: translateY(-4px); outline-color: var(--accent-hi); }
+.pr-card.disabled { opacity: .5; }
+
+.pr-card .pr-kind { font-size: 9px; letter-spacing: .8px; text-transform: uppercase; opacity: .85; }
+.pr-card .pr-title { font-family: var(--display); font-size: 14px; line-height: 1.05; }
+.pr-card .pr-stat { font-family: var(--mono); font-size: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+.pr-card .pr-sym { font-size: 10px; opacity: .9; }
+
+/* ship colors */
+.pr-card.ship.red    { background: linear-gradient(160deg, var(--ship-red),    var(--ship-red-d)); }
+.pr-card.ship.blue   { background: linear-gradient(160deg, var(--ship-blue),   var(--ship-blue-d)); }
+.pr-card.ship.green  { background: linear-gradient(160deg, var(--ship-green),  var(--ship-green-d)); }
+.pr-card.ship.yellow { background: linear-gradient(160deg, var(--ship-yellow), var(--ship-yellow-d)); color: #241d08; }
+.pr-card.ship.black  { background: linear-gradient(160deg, var(--ship-black),  var(--ship-black-d)); }
+
+.pr-card.person {
+  background: linear-gradient(160deg, #ece0c2, #cdb88c); color: #2e2410;
+  border-color: rgba(0,0,0,0.25);
+}
+.pr-card.expedition {
+  background: linear-gradient(160deg, #2b5a64, #173b43);
+  border-color: var(--gold);
+}
+.pr-card.dup { box-shadow: 0 0 0 2px var(--ship-red), 0 6px 16px rgba(0,0,0,0.4); }
+
+/* ===== actions ===== */
+.pr-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.pr-btn {
+  font-family: var(--display); font-size: 15px; letter-spacing: .4px;
+  padding: 11px 22px; border-radius: 11px; cursor: pointer;
+  border: none; background: var(--accent); color: var(--accent-ink);
+  box-shadow: 0 4px 0 var(--accent-d);
+}
+.pr-btn:hover:not(:disabled) { background: var(--accent-hi); }
+.pr-btn:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 2px 0 var(--accent-d); }
+.pr-btn.stop { background: var(--trim); color: #2a1f06; box-shadow: 0 4px 0 #b89436; }
+.pr-btn.stop:hover:not(:disabled) { background: var(--trim-hi); }
+.pr-btn:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
+.pr-hint { color: var(--ink-3); font-size: 12px; align-self: center; }
+
+/* ===== side panel: players + expeditions + log ===== */
+.pr-players { display: flex; flex-direction: column; gap: 10px; }
+.pr-pl {
+  padding: 10px 12px; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line);
+}
+.pr-pl.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.pr-pl.disc { background: var(--panel); }
+.pr-pl-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pr-pl-name { font-family: var(--display); font-size: 14px; }
+.pr-pl.you .pr-pl-name { color: var(--you); }
+.pr-pl.ai .pr-pl-name { color: var(--foe); }
+.pr-pl-inf { font-family: var(--mono); font-size: 16px; color: var(--gold); }
+.pr-pl-inf small { font-size: 10px; color: var(--ink-3); }
+.pr-pl-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; font-family: var(--mono); font-size: 11px; color: var(--ink-2); }
+.pr-pl-row .tag { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; }
+.pr-syms { margin-top: 5px; display: flex; gap: 4px; flex-wrap: wrap; }
+.pr-sympill { font-size: 9px; background: var(--line); color: var(--ink-2); border-radius: 5px; padding: 1px 5px; letter-spacing: .3px; }
+.pr-disc-badge { font-size: 9px; text-transform: uppercase; letter-spacing: .6px; color: var(--accent); border: 1px solid var(--accent-d); border-radius: 5px; padding: 1px 5px; }
+
+.pr-exped { display: flex; flex-direction: column; gap: 6px; }
+.pr-exped-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; padding: 6px 8px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; }
+.pr-exped-row .needs { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.pr-exped-row b { color: var(--gold); font-family: var(--mono); }
+
+.pr-final { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 2px; }
+.pr-final-row { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 14px; }
+.pr-final-row.win { color: var(--gold); font-weight: 700; }
+.pr-final-row .you { color: var(--you); }
+.pr-final-row .foe { color: var(--foe); }
+
+.side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.log-line.foe { color: var(--foe); }
+.pr-logbox { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }

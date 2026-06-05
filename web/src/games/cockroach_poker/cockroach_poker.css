@@ -1,0 +1,219 @@
+/* ==========================================================
+   COCKROACH POKER — "Pass the bug, call the bluff."
+   Theme: creepy-cute terrarium — mossy green-black night, sickly chartreuse accent,
+   bubblegum-pink trim, glowing vermin glyphs on bone-cream cards.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #11160f;
+  --bg-2:    #0b0f0a;
+  --panel:   #1b2417;
+  --panel-2: #151d12;
+  --ink:     #ecf6df;
+  --ink-2:   #aabd97;
+  --ink-3:   #6c8061;
+  --line:    #2c3a24;
+  --line-2:  #43562f;
+
+  /* token contract -> this theme (toxic chartreuse primary, dark ink on it) */
+  --accent:    #b9e34b;  --accent-d:#7fa31f;  --accent-hi:#d6f57e;  --accent-ink:#16210a;
+  --trim:      #ff7ac0;  --trim-hi:#ffadda;
+  --you:       #7fe0b4;  --foe:#ff9a6a;
+  --good:      #8ee85a;  --warn:#ff6a6a;
+
+  /* game-specific */
+  --card:      #f4efe0;  --card-ink:#23301a;  --card-edge:#cdc6ad;
+  --card-back: #243a2a;  --card-back-2:#16271b;  --card-back-line:#3d6a4a;
+  --pile:      #202b1a;  --pile-line:#33451f;
+  --danger:    #ff6a6a;  --danger-glow: rgba(255,106,106,0.5);
+  --seat-on:   #b9e34b;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(185,227,75,0.08) 0%, transparent 52%),
+    radial-gradient(ellipse at 8% 112%, rgba(255,122,192,0.07) 0%, transparent 46%),
+    radial-gradient(ellipse at 92% 116%, rgba(127,224,180,0.06) 0%, transparent 46%);
+}
+
+.stage { grid-template-columns: minmax(0, 1fr) 244px; gap: clamp(14px, 2.2vw, 30px); align-items: stretch; }
+
+/* ---- Main column: opponents on top, table center, your hand below ---- */
+.cp-main { display: flex; flex-direction: column; gap: clamp(8px, 1.4vh, 16px); min-height: 0; min-width: 0; }
+
+/* ---- Seats (collected piles per player) ---- */
+.cp-seats { display: flex; gap: clamp(8px, 1.2vw, 16px); justify-content: center; flex-wrap: wrap; }
+.cp-seat {
+  flex: 1 1 0; min-width: 168px; max-width: 340px;
+  background: linear-gradient(165deg, var(--panel), var(--panel-2));
+  border: 1.5px solid var(--line); border-radius: 13px; padding: 9px 11px 10px;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+.cp-seat.on { border-color: var(--seat-on); box-shadow: 0 0 0 1px var(--seat-on), 0 6px 22px rgba(185,227,75,0.14); }
+.cp-seat.you { border-left: 3px solid var(--you); }
+.cp-seat.foe { border-left: 3px solid var(--foe); }
+.cp-seat.lost { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn); opacity: 0.92; }
+
+.cp-seat-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px; }
+.cp-seat-name { font-family: var(--display); font-weight: 700; font-size: 15px; color: var(--ink); }
+.cp-seat-meta { font-family: var(--mono); font-size: 10px; color: var(--ink-3); margin-left: auto; letter-spacing: 0.06em; }
+.cp-seat-tag { font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; padding: 1px 6px; border-radius: 5px; }
+.cp-seat-tag.win { background: rgba(142,232,90,0.18); color: var(--good); }
+.cp-seat-tag.lose { background: rgba(255,106,106,0.18); color: var(--warn); }
+
+/* a row of the 8 vermin pile tallies */
+.cp-piles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.cp-pile {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: var(--pile); border: 1px solid var(--pile-line); border-radius: 8px;
+  padding: 5px 2px 4px; position: relative; transition: all 0.15s;
+}
+.cp-pile.empty { opacity: 0.42; }
+.cp-pile-glyph { font-size: clamp(15px, 2vw, 20px); line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
+.cp-pile-count { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--ink-2); }
+.cp-pile.has .cp-pile-count { color: var(--ink); }
+.cp-pile.warn3 { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger), 0 0 12px var(--danger-glow); }
+.cp-pile.warn3 .cp-pile-count { color: var(--danger); font-weight: 700; }
+.cp-pile-pips { display: flex; gap: 2px; height: 4px; }
+.cp-pip { width: 4px; height: 4px; border-radius: 50%; background: var(--line-2); }
+.cp-pip.on { background: var(--accent); }
+.cp-pip.danger { background: var(--danger); }
+
+/* ---- Center table: the pending card / claim ---- */
+.cp-table {
+  flex: 1 1 auto; min-height: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  background: radial-gradient(ellipse at 50% 40%, rgba(185,227,75,0.05), transparent 70%), var(--panel-2);
+  border: 1.5px solid var(--line); border-radius: 15px; padding: clamp(12px, 2vh, 22px);
+}
+.cp-table-empty { font-family: var(--mono); font-size: 11px; color: var(--ink-3); letter-spacing: 0.08em; text-align: center; }
+
+.cp-pass-from { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+.cp-pass-from b { color: var(--ink-2); }
+
+/* the face-down/face-up card on the table */
+.cp-card {
+  width: clamp(78px, 11vw, 104px); aspect-ratio: 5 / 7; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.55); position: relative;
+}
+.cp-card.back {
+  background: repeating-linear-gradient(45deg, var(--card-back) 0 8px, var(--card-back-2) 8px 16px);
+  border: 2px solid var(--card-back-line);
+}
+.cp-card.back::after {
+  content: "?"; font-family: var(--display); font-weight: 700; font-size: 34px; color: var(--card-back-line);
+}
+.cp-card.face {
+  background: linear-gradient(160deg, var(--card), #e7e0cd);
+  border: 2px solid var(--card-edge);
+}
+.cp-card.face .cp-card-glyph { font-size: clamp(38px, 6vw, 54px); filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3)); }
+.cp-card.face .cp-card-label {
+  position: absolute; bottom: 6px; left: 0; right: 0; text-align: center;
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--card-ink);
+}
+
+.cp-claim {
+  font-family: var(--display); font-size: clamp(17px, 2.4vw, 22px); font-weight: 700; color: var(--ink);
+  text-align: center;
+}
+.cp-claim .glyph { margin-right: 6px; }
+.cp-claim .name { color: var(--accent-hi); }
+.cp-claim-sub { font-family: var(--sans); font-size: 11.5px; font-style: italic; color: var(--ink-2); text-align: center; max-width: 320px; }
+
+/* peeked badge (you saw the true card) */
+.cp-peek {
+  font-family: var(--mono); font-size: 10px; color: var(--trim-hi); letter-spacing: 0.08em;
+  border: 1px dashed var(--trim); border-radius: 6px; padding: 3px 9px;
+}
+.cp-peek b { color: #fff; }
+
+/* ---- Decision controls ---- */
+.cp-controls { display: flex; flex-direction: column; gap: 9px; align-items: center; width: 100%; }
+.cp-btn-row { display: flex; gap: 9px; flex-wrap: wrap; justify-content: center; }
+.cp-btn {
+  font-family: var(--mono); font-size: 11.5px; font-weight: 600; letter-spacing: 0.06em;
+  padding: 9px 15px; border-radius: 9px; cursor: pointer; white-space: nowrap;
+  background: var(--panel); color: var(--ink); border: 1.5px solid var(--line-2);
+  transition: all 0.13s;
+}
+.cp-btn:hover:not(:disabled) { border-color: var(--trim); color: var(--trim-hi); transform: translateY(-1px); }
+.cp-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.cp-btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent-d); }
+.cp-btn.primary:hover:not(:disabled) { filter: brightness(1.08); color: var(--accent-ink); }
+.cp-btn.true { border-color: var(--good); color: var(--good); }
+.cp-btn.true:hover:not(:disabled) { background: rgba(142,232,90,0.14); color: var(--good); }
+.cp-btn.false { border-color: var(--warn); color: var(--warn); }
+.cp-btn.false:hover:not(:disabled) { background: rgba(255,106,106,0.14); color: var(--warn); }
+.cp-ctl-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3); }
+
+/* pass-on target picker */
+.cp-targets { display: flex; gap: 8px; }
+
+/* ---- Your hand ---- */
+.cp-hand-wrap {
+  background: linear-gradient(0deg, var(--panel-2), transparent);
+  border-top: 1.5px solid var(--line); padding-top: 8px;
+}
+.cp-hand-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.cp-hand-title { font-family: var(--display); font-weight: 700; font-size: 14px; color: var(--ink); }
+.cp-hand-hint { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.cp-hand {
+  display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px;
+}
+.cp-hcard {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  background: linear-gradient(160deg, var(--card), #e7e0cd); color: var(--card-ink);
+  border: 1.5px solid var(--card-edge); border-radius: 9px; padding: 7px 2px 5px;
+  cursor: pointer; transition: all 0.13s; position: relative;
+}
+.cp-hcard:hover:not(.disabled) { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,0.4); border-color: var(--accent); }
+.cp-hcard.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 6px 16px rgba(0,0,0,0.4); transform: translateY(-3px); }
+.cp-hcard.disabled { opacity: 0.34; cursor: default; }
+.cp-hcard-glyph { font-size: clamp(20px, 2.6vw, 28px); line-height: 1; }
+.cp-hcard-name { font-family: var(--mono); font-size: 8px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--card-ink); opacity: 0.7; }
+.cp-hcard-count {
+  position: absolute; top: -5px; right: -5px; min-width: 16px; height: 16px; padding: 0 3px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--trim); color: #fff; font-family: var(--mono); font-size: 9px; font-weight: 700;
+  border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+
+/* the claim picker (when passing) */
+.cp-claimpick { display: flex; flex-direction: column; gap: 7px; align-items: center; }
+.cp-claimgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.cp-claimchip {
+  display: flex; align-items: center; gap: 5px; padding: 6px 9px; cursor: pointer;
+  background: var(--panel); border: 1.5px solid var(--line-2); border-radius: 8px;
+  font-family: var(--sans); font-size: 11px; color: var(--ink); transition: all 0.12s;
+}
+.cp-claimchip:hover { border-color: var(--trim); color: var(--trim-hi); }
+.cp-claimchip.truth { border-color: var(--good); }
+.cp-claimchip .glyph { font-size: 16px; }
+
+.cp-targetpick { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.cp-targetbtn {
+  font-family: var(--mono); font-size: 11px; font-weight: 600; padding: 8px 14px;
+  border-radius: 9px; cursor: pointer; background: var(--panel); color: var(--ink);
+  border: 1.5px solid var(--line-2); transition: all 0.13s;
+}
+.cp-targetbtn:hover { border-color: var(--accent); color: var(--accent-hi); transform: translateY(-1px); }
+
+/* ---- Side column ---- */
+.cp-side { display: flex; flex-direction: column; gap: 11px; min-height: 0; }
+.cp-legend { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px 10px; }
+.cp-legend-item { display: flex; align-items: center; gap: 6px; font-family: var(--sans); font-size: 11px; color: var(--ink-2); }
+.cp-legend-item .glyph { font-size: 15px; }
+.logbox { flex: 1 1 auto; min-height: 60px; overflow-y: auto; }
+
+@media (max-height: 760px) {
+  .cp-hcard-name, .cp-pile-pips { display: none; }
+}
