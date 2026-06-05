@@ -51,4 +51,12 @@ export const PLAYABLE: Record<string, string> = {
   kamisado: 'games/kamisado.html',
   tsuro: 'games/tsuro.html',
   liars_dice: 'games/liars_dice.html',
+  backgammon: 'games/backgammon.html',
+  love_letter: 'games/love_letter.html',
+  no_thanks: 'games/no_thanks.html',
+  zombie_dice: 'games/zombie_dice.html',
+  ur: 'games/ur.html',
+  shut_the_box: 'games/shut_the_box.html',
+  coloretto: 'games/coloretto.html',
+  entropy: 'games/entropy.html',
 }
