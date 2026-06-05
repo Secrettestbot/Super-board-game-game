@@ -26,6 +26,7 @@ export default defineConfig({
         tiny_towns: resolve(__dirname, 'games/tiny_towns.html'),
         tictactoe: resolve(__dirname, 'games/tictactoe.html'),
         connect_four: resolve(__dirname, 'games/connect_four.html'),
+        reversi: resolve(__dirname, 'games/reversi.html'),
       },
     },
   },
