@@ -1,0 +1,200 @@
+/* ==========================================================
+   GIN RUMMY — "Meld, knock, take the night."
+   Theme: a 1920s speakeasy card table — deep billiard green, brass/gold trim,
+   warm amber light, cream playing cards with classic red/black suits.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #0c1c15;
+  --bg-2:    #071109;
+  --panel:   #102a1e;
+  --panel-2: #0c2117;
+  --ink:     #f1ead6;
+  --ink-2:   #c2c8b4;
+  --ink-3:   #7f8d77;
+  --line:    #1c3a2a;
+  --line-2:  #2c5640;
+
+  /* token contract -> this theme (brass-gold accent on green, cream ink) */
+  --accent:    #d8b15a;  --accent-d: #9a7a2c;  --accent-hi: #f1d27a;  --accent-ink: #19120a;
+  --trim:      #c9a24a;  --trim-hi:  #f1d27a;
+  --you:       #f1d27a;  --foe: #d98c5f;
+  --good:      #6fce97;  --warn: #e58a6a;
+
+  /* game-specific */
+  --felt:      #14563a;  --felt-d: #0e3b28;  --felt-hi: #1c6e4a;
+  --brass:     #d8b15a;  --brass-d: #9a7a2c;  --brass-hi: #f1d27a;
+  --cream:     #f6efdc;  --cream-2: #eadfc3;  --cream-edge: #c9b487;
+  --suit-red:  #c2342c;  --suit-black: #1f2a23;
+  --back-1:    #1d6a48;  --back-2: #0f3f2b;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(241,210,122,0.12) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, rgba(14,59,40,0.6) 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 18%, rgba(217,140,95,0.07) 0%, transparent 42%);
+}
+
+.stage { grid-template-columns: auto 236px; gap: clamp(16px, 2.4vw, 34px); align-items: stretch; }
+
+/* ---- table ---- */
+.gr-table {
+  display: flex; flex-direction: column; justify-content: space-between;
+  gap: clamp(10px, 2vh, 26px); min-height: 0; align-self: stretch;
+  background:
+    radial-gradient(ellipse at 50% 45%, var(--felt-hi) 0%, var(--felt) 46%, var(--felt-d) 100%);
+  border: 1.5px solid var(--line-2);
+  border-radius: 18px;
+  padding: clamp(14px, 2.6vh, 28px) clamp(16px, 2vw, 30px);
+  box-shadow: inset 0 0 80px rgba(0,0,0,0.4), 0 14px 40px rgba(0,0,0,0.45);
+  position: relative;
+}
+.gr-table::after {
+  content: ""; position: absolute; inset: 7px; border-radius: 13px; pointer-events: none;
+  border: 1px solid rgba(217,177,90,0.22);
+}
+
+.gr-seat { display: flex; flex-direction: column; gap: 9px; align-items: center; }
+.gr-seat.foe { order: 0; }
+.gr-seat-label {
+  font-family: var(--display); font-weight: 600; font-size: 15px; color: var(--ink);
+  display: inline-flex; align-items: center; gap: 8px; letter-spacing: 0.01em;
+}
+.gr-meta { font-family: var(--mono); font-size: 10px; color: var(--ink-2); letter-spacing: 0.04em; margin-left: 6px; }
+.gr-meta b { font-weight: 600; }
+.gr-meta b.gin { color: var(--brass-hi); } .gr-meta b.ok { color: var(--good); } .gr-meta b.hi { color: var(--warn); }
+.gr-dot { width: 10px; height: 10px; border-radius: 50%; box-shadow: inset 0 -1px 2px rgba(0,0,0,0.4); }
+.gr-dot.you { background: radial-gradient(circle at 38% 32%, var(--brass-hi), var(--brass)); }
+.gr-dot.foe { background: radial-gradient(circle at 38% 32%, #eaa57c, var(--foe)); }
+
+.gr-hand { display: flex; justify-content: center; flex-wrap: wrap; }
+.gr-hand.you { gap: 2px; }
+.gr-hand.foe { gap: 2px; }
+.gr-slot { display: flex; }
+
+/* ---- center piles ---- */
+.gr-center { display: flex; justify-content: center; gap: clamp(18px, 3vw, 40px); align-items: flex-start; }
+.gr-pile { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.gr-pile-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3); }
+.gr-pilecard { border-radius: 11px; }
+.gr-pilecard.draw { cursor: pointer; }
+.gr-pilecard.draw .gr-card { box-shadow: 0 0 0 2px var(--brass), 0 10px 22px rgba(0,0,0,0.5); }
+.gr-pilecard.draw:hover .gr-card { transform: translateY(-5px); box-shadow: 0 0 0 2px var(--brass-hi), 0 16px 30px rgba(0,0,0,0.55); }
+.gr-empty {
+  width: clamp(56px, 7vw, 74px); height: calc(clamp(56px, 7vw, 74px) * 1.42);
+  border-radius: 11px; border: 1.5px dashed var(--line-2); background: rgba(0,0,0,0.18);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 10px; color: var(--ink-3);
+}
+
+/* ---- cards ---- */
+.gr-card {
+  --w: clamp(56px, min(8.4vh, 6.2vw), 74px);
+  width: var(--w); height: calc(var(--w) * 1.42);
+  border-radius: 9px; position: relative;
+  border: 1.5px solid var(--cream-edge);
+  box-shadow: 0 7px 18px rgba(0,0,0,0.4);
+  font-family: var(--display); user-select: none;
+  transition: transform 0.13s ease, box-shadow 0.13s ease, filter 0.13s ease, margin 0.13s ease;
+}
+.gr-card.small { --w: clamp(46px, min(6.4vh, 5vw), 60px); border-radius: 8px; }
+
+.gr-card.face {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.55), transparent 62%),
+    linear-gradient(168deg, var(--cream) 0%, var(--cream-2) 100%);
+}
+.gr-card.face.red { color: var(--suit-red); }
+.gr-card.face.black { color: var(--suit-black); }
+
+.gr-card.back {
+  background:
+    repeating-linear-gradient(45deg, rgba(0,0,0,0.10) 0 5px, transparent 5px 10px),
+    linear-gradient(160deg, var(--back-1) 0%, var(--back-2) 100%);
+  border-color: var(--brass-d);
+}
+.gr-card.back .gr-back-motif {
+  position: absolute; inset: 5px; border-radius: 6px;
+  border: 1px solid rgba(217,177,90,0.5);
+  background: radial-gradient(circle at 50% 50%, rgba(217,177,90,0.16), transparent 60%);
+}
+.gr-card.back.dim { filter: brightness(0.8); }
+
+.gr-corner { position: absolute; font-weight: 700; line-height: 0.9; font-size: calc(var(--w) * 0.24); display: flex; flex-direction: column; align-items: center; }
+.gr-corner i { font-style: normal; font-size: calc(var(--w) * 0.21); }
+.gr-corner.tl { top: 4px; left: 5px; }
+.gr-corner.br { bottom: 4px; right: 5px; transform: rotate(180deg); }
+.gr-pip { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: calc(var(--w) * 0.5); opacity: 0.92; }
+
+/* meld vs deadwood states (your hand) */
+.gr-card.face.meld { border-color: var(--brass); box-shadow: 0 0 0 1.5px rgba(217,177,90,0.55), 0 7px 18px rgba(0,0,0,0.4); }
+.gr-card.face.meld.run { border-color: #7fc8e0; box-shadow: 0 0 0 1.5px rgba(127,200,224,0.5), 0 7px 18px rgba(0,0,0,0.4); }
+.gr-card.face.dead { filter: brightness(0.93) saturate(0.9); opacity: 0.96; }
+.gr-card.face.click { cursor: pointer; }
+.gr-card.face.click:hover { transform: translateY(-9px); box-shadow: 0 14px 28px rgba(0,0,0,0.5); z-index: 5; }
+.gr-card.face.sel { transform: translateY(-13px); box-shadow: 0 0 0 2.5px var(--brass-hi), 0 18px 32px rgba(0,0,0,0.55); z-index: 6; }
+
+/* fan overlap for the human hand */
+.gr-hand.you .gr-slot:not(:first-child) .gr-card { margin-left: -10px; }
+.gr-hand.foe .gr-slot:not(:first-child) .gr-card { margin-left: -16px; }
+
+/* ---- side ---- */
+.side { display: flex; flex-direction: column; gap: 11px; min-height: 0; }
+
+.gr-score { display: flex; flex-direction: column; gap: 8px; }
+.gr-srow {
+  display: flex; align-items: center; gap: 9px; padding: 7px 9px; border-radius: 9px;
+  border: 1px solid transparent;
+}
+.gr-srow.on { border-color: var(--line-2); background: rgba(217,177,90,0.06); }
+.gr-sname { font-family: var(--display); font-weight: 600; font-size: 15px; color: var(--ink); flex: 1; }
+.gr-spts { font-family: var(--mono); font-weight: 600; font-size: 18px; color: var(--brass-hi); }
+.gr-target { font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3); text-align: center; padding-top: 2px; }
+
+.gr-control { display: flex; flex-direction: column; gap: 10px; }
+.gr-hint { font-size: 12px; line-height: 1.45; color: var(--ink-2); min-height: 18px; }
+.gr-hint b { font-weight: 700; }
+.gr-hint b.gin { color: var(--brass-hi); } .gr-hint b.ok { color: var(--good); } .gr-hint b.hi { color: var(--warn); }
+.gr-btnrow { display: flex; gap: 8px; }
+.gr-btn {
+  flex: 1; font-family: var(--display); font-weight: 600; font-size: 13px; color: var(--ink);
+  background: var(--panel-2); border: 1.5px solid var(--line-2); border-radius: 9px;
+  padding: 9px 8px; cursor: pointer; transition: all 0.12s;
+}
+.gr-btn:hover:not(:disabled) { border-color: var(--brass); color: var(--brass-hi); transform: translateY(-1px); }
+.gr-btn:disabled { opacity: 0.42; cursor: default; }
+.gr-btn.knock:not(:disabled) { border-color: var(--brass); color: var(--brass-hi); background: rgba(217,177,90,0.1); }
+.gr-btn.knock:hover:not(:disabled) { background: rgba(217,177,90,0.2); }
+.gr-btn.primary { background: linear-gradient(165deg, var(--brass), var(--brass-d)); color: var(--accent-ink); border-color: var(--brass-d); }
+.gr-btn.primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.gr-btn.wide { width: 100%; padding: 11px; font-size: 14px; }
+
+.logbox { flex: 1 1 auto; min-height: 60px; max-height: 230px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--brass-hi); }
+.log-line.ai { color: var(--foe); }
+.log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- result modal ---- */
+.gr-result-grid { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; margin: 14px 0 10px; }
+.gr-rcol { text-align: center; }
+.gr-rname { font-family: var(--display); font-weight: 700; font-size: 18px; }
+.gr-rname.you { color: var(--you); } .gr-rname.foe { color: var(--foe); }
+.gr-rdead { font-family: var(--mono); font-size: 11px; color: var(--ink-2); margin-top: 2px; }
+.gr-rvs { font-family: var(--display); font-weight: 700; font-size: 30px; color: var(--brass-hi); }
+.gr-rscore { text-align: center; font-family: var(--mono); font-size: 12px; color: var(--ink-2); margin-top: 4px; }
+.gr-rscore b.you { color: var(--you); } .gr-rscore b.foe { color: var(--foe); }
+.gr-rlay { text-align: center; font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-top: 8px; }
+
+.modal-body i { color: var(--brass-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 740px) { .title-main { font-size: 23px; } }

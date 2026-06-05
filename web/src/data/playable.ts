@@ -66,4 +66,12 @@ export const PLAYABLE: Record<string, string> = {
   cant_stop: 'games/cant_stop.html',
   carnac: 'games/carnac.html',
   dominoes: 'games/dominoes.html',
+  quixo: 'games/quixo.html',
+  kalah: 'games/kalah.html',
+  tafl: 'games/tafl.html',
+  hearts: 'games/hearts.html',
+  spades: 'games/spades.html',
+  gin_rummy: 'games/gin_rummy.html',
+  cribbage: 'games/cribbage.html',
+  skull: 'games/skull.html',
 }

@@ -1,0 +1,121 @@
+/* ==========================================================
+   HNEFATAFL (Brandubh, 7x7) — "the siege of the throne."
+   Theme: cold Norse stone and steel, a frost-blue marked throne and four
+   ice-pale corner refuges, bone-white defenders, dark iron attackers, a
+   silver-blue crowned king.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #0e151c;
+  --bg-2:    #080d12;
+  --panel:   #16212c;
+  --panel-2: #111a23;
+  --ink:     #e6eef5;
+  --ink-2:   #9fb4c6;
+  --ink-3:   #5e7488;
+  --line:    #233140;
+  --line-2:  #34495c;
+
+  /* token contract -> this theme (frost-blue primary, dark ink on it) */
+  --accent:    #5aa6d6;  --accent-d: #2f6f9e;  --accent-hi: #8fcdf0;  --accent-ink: #07141d;
+  --trim:      #6fb3dd;  --trim-hi:  #a6dcfa;
+  --you:       #bfe2f6;  --foe:      #d59a86;
+  --good:      #74c79a;  --warn:     #d97a4f;
+
+  /* game-specific */
+  --stone:     #2c3b49;  --stone-2:  #243140;  --stone-edge: #0c141b;
+  --grain:     #38495a;
+  --def-pc:    #eef4f8;  --def-d:    #aab9c6;
+  --att-pc:    #1b2026;  --att-hi:   #3a444f;
+  --king:      #bfe2f6;  --king-d:   #4f86ab;
+  --refuge:    #3d6b8a;  --throne:   #345d7c;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(90,166,214,0.08) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 234px; gap: clamp(18px, 2.6vw, 38px); }
+
+.hf-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.hf-board {
+  --cell: clamp(40px, min(8.6vh, 6.2vw), 66px);
+  display: grid; grid-template-columns: repeat(7, var(--cell)); grid-template-rows: repeat(7, var(--cell));
+  gap: 2px; padding: 13px; background: var(--stone-edge);
+  border: 3px solid #060b10; border-radius: 12px;
+  box-shadow: 0 16px 46px rgba(0,0,0,0.6), inset 0 0 0 2px rgba(60,90,118,0.25);
+}
+.hf-cell {
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.03), rgba(0,0,0,0.2)),
+    repeating-linear-gradient(0deg, var(--stone), var(--stone) 3px, var(--stone-2) 3px, var(--stone-2) 6px);
+  display: flex; align-items: center; justify-content: center; position: relative;
+  cursor: default; border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.2);
+}
+.hf-cell.throne { background: radial-gradient(circle at 50% 42%, #3a6386, #243140); box-shadow: inset 0 0 0 1px rgba(143,205,240,0.32); }
+.hf-cell.corner { background: radial-gradient(circle at 50% 42%, #2f5470, #1c3140); box-shadow: inset 0 0 0 1px rgba(143,205,240,0.42); }
+
+/* engraved glyph on throne + corners */
+.hf-glyph { position: absolute; width: 56%; height: 56%; border-radius: 50%; pointer-events: none; opacity: 0.6; }
+.throne .hf-glyph { border: 1.5px solid rgba(143,205,240,0.6); box-shadow: inset 0 0 0 3px rgba(143,205,240,0.12); }
+.corner .hf-glyph { border: 1.5px solid rgba(166,220,250,0.7); transform: rotate(45deg); border-radius: 4px; }
+
+/* interaction states (only on the defender's turn) */
+.hf-cell.sel { outline: 2px solid var(--accent-hi); outline-offset: -2px; z-index: 2; }
+.hf-cell.target { cursor: pointer; }
+.hf-cell.target:hover { box-shadow: inset 0 0 0 2px rgba(143,205,240,0.55); }
+.hf-cell.last::after { content: ""; position: absolute; inset: 8%; border-radius: 4px; box-shadow: inset 0 0 0 2px rgba(191,226,246,0.55); pointer-events: none; }
+.hf-cell.lastfrom::after { content: ""; position: absolute; inset: 30%; border-radius: 50%; background: rgba(191,226,246,0.18); pointer-events: none; }
+
+/* pieces */
+.hf-piece { width: 78%; height: 78%; border-radius: 50%; position: relative; z-index: 1; animation: drop 0.16s ease-out; }
+.hf-piece.def { background: radial-gradient(circle at 38% 30%, #fff, var(--def-d)); box-shadow: 0 2px 4px rgba(0,0,0,0.5), inset 0 -2px 3px rgba(0,0,0,0.28); }
+.hf-piece.att { background: radial-gradient(circle at 38% 30%, var(--att-hi), var(--att-pc)); box-shadow: 0 2px 4px rgba(0,0,0,0.55), inset 0 -2px 3px rgba(0,0,0,0.5); }
+.hf-piece.king {
+  width: 86%; height: 86%; border-radius: 50%;
+  background: radial-gradient(circle at 38% 30%, #eaf6ff, var(--king-d));
+  box-shadow: 0 2px 6px rgba(0,0,0,0.55), 0 0 0 2px rgba(79,134,171,0.6), inset 0 -2px 3px rgba(0,0,0,0.3);
+  display: flex; align-items: center; justify-content: center;
+}
+.hf-piece.king svg { width: 62%; height: 62%; }
+.hf-piece.king svg path { fill: #143042; stroke: #08141d; stroke-width: 0.6; }
+@keyframes drop { from { transform: scale(0.6); } to { transform: none; } }
+.hf-dot { width: 24%; height: 24%; border-radius: 50%; background: rgba(143,205,240,0.5); box-shadow: 0 0 6px rgba(143,205,240,0.45); }
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.sideboard { display: flex; flex-direction: column; gap: 9px; }
+.sd { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.sd.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sd-chip { width: 18px; height: 18px; border-radius: 50%; flex: 0 0 auto; }
+.sd-chip.def { background: radial-gradient(circle at 38% 30%, #fff, var(--def-d)); border: 1px solid var(--def-d); }
+.sd-chip.att { background: radial-gradient(circle at 38% 30%, var(--att-hi), var(--att-pc)); border: 1px solid #000; }
+.sd-name { font-family: var(--display); font-weight: 600; font-size: 13.5px; flex: 1; letter-spacing: 0.01em; }
+.sd-n { font-family: var(--display); font-weight: 700; font-size: 20px; display: inline-flex; align-items: baseline; gap: 4px; }
+.sd-king { color: var(--king); font-size: 15px; }
+
+.hintbox .hint-l { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); margin-bottom: 5px; }
+.hintbox p { margin: 0; font-size: 11.5px; line-height: 1.55; color: var(--ink-2); }
+.hintbox b { color: var(--accent-hi); font-weight: 600; }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 132px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--you); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; margin: 14px 0 4px; font-family: var(--display); font-weight: 700; font-size: 24px; color: var(--accent-hi); letter-spacing: 0.03em; }
+.modal-body i { color: var(--accent-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

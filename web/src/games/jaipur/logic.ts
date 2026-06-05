@@ -186,7 +186,7 @@ export function takeCamels(s: JaipurState, side: Side): JaipurState {
   if (n === 0) return s
   const market = s.market.filter(c => c !== 'camel')
   const herd = { ...s.herd, [side]: s.herd[side] + n }
-  let st = Object.assign({}, s, { market, herd })
+  let st: JaipurState = Object.assign({}, s, { market, herd })
   st = refill(st)
   st = Object.assign({}, st, { turn: other(side), log: push(st.log, side === 'you' ? 'you' : 'ai', `${who(side)} took ${n} camel${n > 1 ? 's' : ''}.`) })
   return checkEnd(st)
