@@ -74,4 +74,12 @@ export const PLAYABLE: Record<string, string> = {
   gin_rummy: 'games/gin_rummy.html',
   cribbage: 'games/cribbage.html',
   skull: 'games/skull.html',
+  sushi_go: 'games/sushi_go.html',
+  parade: 'games/parade.html',
+  euchre: 'games/euchre.html',
+  wari: 'games/wari.html',
+  mijnlieff: 'games/mijnlieff.html',
+  hanamikoji: 'games/hanamikoji.html',
+  coup: 'games/coup.html',
+  point_salad: 'games/point_salad.html',
 }

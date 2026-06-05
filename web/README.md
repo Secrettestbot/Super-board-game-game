@@ -5,9 +5,10 @@ a "Game Library" selection screen plus self-contained, playable game pages with 
 opponent. This is the real, compiled app (no CDN React / in-browser Babel) — the
 prototypes in `../design/` remain the visual reference.
 
-The library shell + the framework + **sixty-eight fully-playable games** are done (6 ported
-from the design prototypes + 62 built from scratch on the framework). The latest batch added
-Quixo, Kalah, Hnefatafl, Hearts, Spades, Gin Rummy, Cribbage, and Skull. Before that:
+The library shell + the framework + **seventy-six fully-playable games** are done (6 ported
+from the design prototypes + 70 built from scratch on the framework). The latest batch added
+Sushi Go!, Parade, Euchre, Wari, Mijnlieff, Hanamikoji, Coup, and Point Salad. Before that:
+Quixo, Kalah, Hnefatafl, Hearts, Spades, Gin Rummy, Cribbage, and Skull;
 Lost Cities, Jaipur, The Fox in the Forest, Qwixx, Can't Stop, Carnac, and Dominoes; and
 Backgammon, Love Letter, No Thanks!, Zombie Dice, Royal Game of Ur, Shut the Box,
 Coloretto, and Entropy. Highlights of the
