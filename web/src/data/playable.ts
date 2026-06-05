@@ -7,4 +7,5 @@
 // catalog card but show a "coming soon" notice on launch.
 export const PLAYABLE: Record<string, string> = {
   yahtzee: 'games/yahtzee.html',
+  xiangqi: 'games/xiangqi.html',
 }
