@@ -20,6 +20,7 @@ export default defineConfig({
         library: resolve(__dirname, 'index.html'),
         yahtzee: resolve(__dirname, 'games/yahtzee.html'),
         xiangqi: resolve(__dirname, 'games/xiangqi.html'),
+        skull_king: resolve(__dirname, 'games/skull_king.html'),
       },
     },
   },
