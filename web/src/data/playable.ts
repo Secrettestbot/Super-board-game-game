@@ -90,4 +90,5 @@ export const PLAYABLE: Record<string, string> = {
   cockroach_poker: 'games/cockroach_poker.html',
   battle_line: 'games/battle_line.html',
   port_royal: 'games/port_royal.html',
+  patchwork: 'games/patchwork.html',
 }

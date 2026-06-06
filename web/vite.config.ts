@@ -102,6 +102,7 @@ export default defineConfig({
         cockroach_poker: resolve(__dirname, 'games/cockroach_poker.html'),
         battle_line: resolve(__dirname, 'games/battle_line.html'),
         port_royal: resolve(__dirname, 'games/port_royal.html'),
+        patchwork: resolve(__dirname, 'games/patchwork.html'),
       },
     },
   },
