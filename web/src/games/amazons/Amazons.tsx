@@ -5,10 +5,12 @@
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { amazonsAdapter } from './net'
 import * as AZ from './logic'
-import type { AmazonsState } from './logic'
+import type { Side } from './logic'
 
 const { N } = AZ
 
@@ -37,24 +39,25 @@ function Queen({ side }: { side: AZ.Side }) {
 }
 
 export function Amazons() {
-  const [s, setS] = useState<AmazonsState>(() => AZ.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(amazonsAdapter)
+  const mySide: Side = mySeat === 0 ? 'w' : 'b'   // seat 0 = White, seat 1 = Black
+  const oppSide: Side = mySide === 'w' ? 'b' : 'w'
   const [sel, setSel] = useState<Sel>({ phase: 'pick' })
   const [pickedAmazon, setPickedAmazon] = useState<number | null>(null)
   const [showRules, setShowRules] = useState(false)
 
   function newGame() {
-    setS(AZ.makeGame()); setSel({ phase: 'pick' }); setPickedAmazon(null); setShowRules(false)
+    netNew(); setSel({ phase: 'pick' }); setPickedAmazon(null); setShowRules(false)
   }
   function deselect() { setSel({ phase: 'pick' }); setPickedAmazon(null) }
 
-  useAITurn(!s.winner && s.turn === 'b', () => setS(p => AZ.aiMove(p)), { delayMs: 520 })
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => { if (showRules) setShowRules(false); else deselect() },
   })
 
-  const yourTurn = !s.winner && s.turn === 'w'
+  const yourTurn = !s.winner && isMyTurn
 
   // Highlight sets for the current interaction phase.
   const moveTargets = useMemo(() => {
@@ -67,13 +70,14 @@ export function Amazons() {
     return new Set(AZ.arrowTargets(s.board, sel.from, sel.to))
   }, [yourTurn, sel, s.board])
 
-  const myMob = AZ.mobility(s.board, 'w')
-  const opMob = AZ.mobility(s.board, 'b')
+  const myMob = AZ.mobility(s.board, mySide)
+  const opMob = AZ.mobility(s.board, oppSide)
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
 
   function clickCell(i: number) {
     if (!yourTurn) return
     if (sel.phase === 'pick') {
-      if (s.board[i] === 'w') { setPickedAmazon(i); return }           // (re)select an amazon
+      if (s.board[i] === mySide) { setPickedAmazon(i); return }         // (re)select an amazon
       if (pickedAmazon !== null && moveTargets.has(i)) {               // move it
         setSel({ phase: 'shoot', from: pickedAmazon, to: i })
         setPickedAmazon(null)
@@ -82,9 +86,9 @@ export function Amazons() {
       // click on empty/other -> clear pending selection
       setPickedAmazon(null)
     } else {
-      // shoot phase
+      // shoot phase — dispatch the COMPLETE turn (glide + arrow) as one atomic intent
       if (shootTargets.has(i)) {
-        setS(AZ.playTurn(s, sel.from, sel.to, i, 'w'))
+        dispatch({ from: sel.from, to: sel.to, arrow: i })
         deselect()
       }
     }
@@ -94,10 +98,13 @@ export function Amazons() {
   const ghostFrom = sel.phase === 'shoot' ? sel.from : null
   const ghostTo = sel.phase === 'shoot' ? sel.to : null
 
+  const myWin = s.winner === mySide
   let banner: string, bk = ''
-  if (s.winner === 'w') { bk = 'win'; banner = 'You win — the rival is frozen' }
-  else if (s.winner === 'b') { bk = 'lose'; banner = 'The rival wins — you are frozen' }
-  else if (!yourTurn) { bk = 'foe'; banner = 'The rival is thinking…' }
+  if (s.winner != null) {
+    bk = myWin ? 'win' : 'lose'
+    banner = myWin ? `You win — the ${oppLabel.toLowerCase()} is frozen` : `The ${oppLabel.toLowerCase()} wins — you are frozen`
+  }
+  else if (!yourTurn) { bk = 'foe'; banner = net.online ? 'Waiting for the opponent…' : 'The rival is thinking…' }
   else if (sel.phase === 'shoot') { bk = 'you'; banner = 'Shoot a burning arrow' }
   else if (pickedAmazon !== null) { bk = 'you'; banner = 'Choose where to glide' }
   else { bk = 'you'; banner = 'Your turn — select an amazon' }
@@ -133,7 +140,7 @@ export function Amazons() {
               // The amazon to render here, accounting for the in-progress shoot phase.
               let piece: AZ.Side | null = (v === 'w' || v === 'b') ? v : null
               if (i === ghostFrom) piece = null
-              if (i === ghostTo) piece = 'w'
+              if (i === ghostTo) piece = mySide
               const burned = v === 'x'
               return (
                 <div key={i} className={cls} onClick={() => clickCell(i)}>
@@ -148,12 +155,15 @@ export function Amazons() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel az-score">
-            <div className={'az-row w' + (s.turn === 'w' && !s.winner ? ' on' : '')}>
-              <Queen side="w" /><span className="az-name">You · White</span><span className="az-mob">{myMob}</span>
+            <div className={'az-row ' + mySide + (s.turn === mySide && !s.winner ? ' on' : '')}>
+              <Queen side={mySide} /><span className="az-name">You · {mySide === 'w' ? 'White' : 'Black'}</span><span className="az-mob">{myMob}</span>
             </div>
-            <div className={'az-row b' + (s.turn === 'b' && !s.winner ? ' on' : '')}>
-              <Queen side="b" /><span className="az-name">Rival · Black</span><span className="az-mob">{opMob}</span>
+            <div className={'az-row ' + oppSide + (s.turn === oppSide && !s.winner ? ' on' : '')}>
+              <Queen side={oppSide} /><span className="az-name">{oppLabel} · {oppSide === 'w' ? 'White' : 'Black'}</span><span className="az-mob">{opMob}</span>
             </div>
             <div className="az-readout">
               <span>mobility</span>
@@ -168,24 +178,23 @@ export function Amazons() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {s.winner && <ResultModal won={myWin} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: AmazonsState; onNew: () => void }) {
-  const won = s.winner === 'w'
+function ResultModal({ won, oppLabel, onNew }: { won: boolean; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Territory seized' : 'Stranded'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="modal-body">
         <p>{won
-          ? 'The rival has no amazon that can move — every queen is walled in by ice and fire.'
+          ? `The ${oppLabel.toLowerCase()} has no amazon that can move — every queen is walled in by ice and fire.`
           : 'All four of your amazons are boxed in. Control more open territory next time.'}</p>
       </div>
     </Modal>

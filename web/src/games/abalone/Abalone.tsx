@@ -6,10 +6,12 @@
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { abaloneAdapter } from './net'
 import * as AB from './logic'
-import type { AbaloneState, Key, Hex } from './logic'
+import type { AbaloneState, Key, Hex, Marble } from './logic'
 
 const { key, parseKey, DIRS, DIR_NAMES } = AB
 
@@ -51,25 +53,28 @@ function hexPath(cx: number, cy: number, s: number): string {
   return d + 'Z'
 }
 
+const SEAT: Marble[] = ['b', 'w'] // seat 0 = Black, seat 1 = White
+
 export function Abalone() {
-  const [s, setS] = useState<AbaloneState>(() => AB.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(abaloneAdapter)
+  const myMarble = SEAT[mySeat]                          // your side
+  const oppMarble: Marble = myMarble === 'b' ? 'w' : 'b' // opponent's side
   const [sel, setSel] = useState<Key[]>([])
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(AB.makeGame()); setSel([]); setShowRules(false) }
+  function newGame() { netNew(); setSel([]); setShowRules(false) }
   function clearSel() { setSel([]) }
 
-  useAITurn(!s.winner && s.turn === 'w', () => setS(p => AB.aiMove(p, 2)), { delayMs: 520 })
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => { setShowRules(false); clearSel() } })
 
-  const yourTurn = !s.winner && s.turn === 'b'
+  const yourTurn = !s.winner && isMyTurn
 
   // Which directions are legal for the current selection, and the target cup for each.
   const moveTargets = useMemo(() => {
     const m = new Map<Key, number>()  // target cell key -> dir
     if (!yourTurn || sel.length === 0) return m
     for (let dir = 0; dir < 6; dir++) {
-      if (AB.tryMove(s.board, sel, dir, 'b')) {
+      if (AB.tryMove(s.board, sel, dir, myMarble)) {
         // front cell's destination = nice click target
         const sorted = sel.length === 1 ? sel : sortFront(sel, dir)
         const front = parseKey(sorted[sorted.length - 1])
@@ -78,7 +83,7 @@ export function Abalone() {
       }
     }
     return m
-  }, [yourTurn, sel, s.board])
+  }, [yourTurn, sel, s.board, myMarble])
 
   function sortFront(cells: Key[], dir: number): Key[] {
     const d = DIRS[dir]
@@ -87,8 +92,8 @@ export function Abalone() {
   }
 
   function doMove(dir: number) {
-    if (!yourTurn || !AB.tryMove(s.board, sel, dir, 'b')) return
-    setS(AB.applyMove(s, sel, dir, 'b'))
+    if (!yourTurn || !AB.tryMove(s.board, sel, dir, myMarble)) return
+    dispatch({ cells: sel, dir })
     setSel([])
   }
 
@@ -97,7 +102,7 @@ export function Abalone() {
     const v = s.board[k]
     // clicking a legal target cup performs the move
     if (moveTargets.has(k)) { doMove(moveTargets.get(k)!); return }
-    if (v === 'b') {
+    if (v === myMarble) {
       // toggle / extend selection
       if (sel.includes(k)) { setSel(sel.filter(c => c !== k)); return }
       const next = sel.concat([k])
@@ -112,18 +117,20 @@ export function Abalone() {
   const selSet = new Set(sel)
   const lastSet = new Set(s.last)
 
+  const oppName = net.online ? 'Opponent' : 'Rival'
+  const myWin = s.winner === myMarble
   let banner: string, bk = ''
-  if (s.winner === 'b') { bk = 'win'; banner = 'You win — six rivals off the rim' }
-  else if (s.winner === 'w') { bk = 'lose'; banner = 'The rival wins — six of yours gone' }
+  if (myWin) { bk = 'win'; banner = 'You win — six rivals off the rim' }
+  else if (s.winner) { bk = 'lose'; banner = `${oppName} wins — six of yours gone` }
   else if (yourTurn) { bk = 'you'; banner = sel.length ? `${sel.length} selected — pick a push` : 'Your turn — select marbles' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  else { bk = 'foe'; banner = net.online ? `${oppName} is thinking…` : 'The rival is thinking…' }
 
   // arrow buttons: legal dirs for current selection
   const legalDirs = useMemo(() => {
     const set = new Set<number>()
-    if (yourTurn) for (let d = 0; d < 6; d++) if (AB.tryMove(s.board, sel, d, 'b')) set.add(d)
+    if (yourTurn) for (let d = 0; d < 6; d++) if (AB.tryMove(s.board, sel, d, myMarble)) set.add(d)
     return set
-  }, [yourTurn, sel, s.board])
+  }, [yourTurn, sel, s.board, myMarble])
 
   return (
     <>
@@ -165,14 +172,17 @@ export function Abalone() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel scoreboard">
-            <div className={'sc b' + (s.turn === 'b' && !s.winner ? ' on' : '')}>
-              <span className="sc-marble b" /><span className="sc-name">You · Black</span>
-              <span className="sc-n">{s.off.b}<span className="sc-of">/{AB.WIN_OFF}</span></span>
+            <div className={'sc ' + myMarble + (s.turn === myMarble && !s.winner ? ' on' : '')}>
+              <span className={'sc-marble ' + myMarble} /><span className="sc-name">You · {myMarble === 'b' ? 'Black' : 'White'}</span>
+              <span className="sc-n">{s.off[myMarble]}<span className="sc-of">/{AB.WIN_OFF}</span></span>
             </div>
-            <div className={'sc w' + (s.turn === 'w' && !s.winner ? ' on' : '')}>
-              <span className="sc-marble w" /><span className="sc-name">Rival · White</span>
-              <span className="sc-n">{s.off.w}<span className="sc-of">/{AB.WIN_OFF}</span></span>
+            <div className={'sc ' + oppMarble + (s.turn === oppMarble && !s.winner ? ' on' : '')}>
+              <span className={'sc-marble ' + oppMarble} /><span className="sc-name">{oppName} · {oppMarble === 'b' ? 'Black' : 'White'}</span>
+              <span className="sc-n">{s.off[oppMarble]}<span className="sc-of">/{AB.WIN_OFF}</span></span>
             </div>
             <div className="sc-cap">marbles pushed off · six loses</div>
           </div>
@@ -194,22 +204,22 @@ export function Abalone() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {s.winner && <ResultModal s={s} myMarble={myMarble} oppMarble={oppMarble} oppName={oppName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: AbaloneState; onNew: () => void }) {
-  const won = s.winner === 'b'
+function ResultModal({ s, myMarble, oppMarble, oppName, onNew }: { s: AbaloneState; myMarble: Marble; oppMarble: Marble; oppName: string; onNew: () => void }) {
+  const won = s.winner === myMarble
   return (
     <Modal
       eyebrow={won ? 'Rim master' : 'Shoved off'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {s.off.w} off</span><span className="foe">Rival {s.off.b} off</span></div>
+      <div className="finalsc"><span className="you">You {s.off[oppMarble]} off</span><span className="foe">{oppName} {s.off[myMarble]} off</span></div>
     </Modal>
   )
 }

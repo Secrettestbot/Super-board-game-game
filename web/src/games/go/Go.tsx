@@ -1,14 +1,18 @@
-/* GO — UI (built for this codebase). 9x9 goban on the framework shell, vs a fast
-   capture/influence heuristic White. Stones sit on intersections; last move + ko are marked.
-   You are Black (0) and move first. Two passes end the game; Chinese area scoring + komi. */
+/* GO — UI (built for this codebase). 9x9 goban on the framework shell. Solo: you are
+   Black (0) vs a fast capture/influence heuristic White (1). Online: seat-relative —
+   your stone colour comes from mySeat, the empty seat is driven by the AI via the hook.
+   Stones sit on intersections; last move + ko are marked. Two passes end the game;
+   Chinese area scoring + komi. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { goAdapter } from './net'
 import * as GO from './logic'
-import type { GoState } from './logic'
+import type { GoState, Player } from './logic'
 
 const SIZE = 9
 const COLS = 'ABCDEFGHJ' // Go skips "I"
@@ -29,16 +33,14 @@ const STARS = new Set([
 ])
 
 export function Go() {
-  const [s, setS] = useState<GoState>(() => GO.makeGame(SIZE))
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(goAdapter)
+  const myColor = mySeat as Player // seat 0 = Black, seat 1 = White
+  const oppColor: Player = GO.other(myColor)
   const [showRules, setShowRules] = useState(false)
-  const [moveTick, setMoveTick] = useState(0)
 
-  function newGame() { setS(GO.makeGame(SIZE)); setMoveTick(t => t + 1); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  const aiActive = s.winner == null && s.turn === 1
-  useAITurn(aiActive, () => { setS(p => GO.aiMove(p)); setMoveTick(t => t + 1) }, { delayMs: 460, tick: moveTick })
-
-  const yourTurn = s.winner == null && s.turn === 0
+  const yourTurn = s.winner == null && isMyTurn
   const legal = useMemo(
     () => (yourTurn ? new Set(GO.legalMoves(s)) : new Set<number>()),
     [yourTurn, s],
@@ -46,13 +48,11 @@ export function Go() {
 
   function clickPoint(p: number) {
     if (!yourTurn || !legal.has(p)) return
-    setS(GO.place(s, 0, p))
-    setMoveTick(t => t + 1)
+    dispatch({ kind: 'play', point: p })
   }
   function doPass() {
     if (!yourTurn) return
-    setS(GO.pass(s))
-    setMoveTick(t => t + 1)
+    dispatch({ kind: 'pass' })
   }
 
   useGameKeys({
@@ -63,16 +63,27 @@ export function Go() {
   })
 
   const live = GO.areaScore(s)
-  const bScore = live.black
-  const wScore = live.white
+  const myScore = myColor === 0 ? live.black : live.white
+  const oppScore = myColor === 0 ? live.white : live.black
+
+  // result relative to mySeat
+  const myWin = (s.winner === 'black' && myColor === 0) || (s.winner === 'white' && myColor === 1)
+  const oppName = net.online ? 'Opponent' : oppColor === 1 ? 'White' : 'Black'
+  const myName = myColor === 0 ? 'Black' : 'White'
+  const thinking = net.online ? 'waiting for opponent…' : `${oppName} is thinking…`
 
   let banner = '', bk = ''
-  if (s.winner === 'black') { bk = 'win'; banner = `You win — ${fmt(bScore)} to ${fmt(wScore)}` }
-  else if (s.winner === 'white') { bk = 'lose'; banner = `White wins — ${fmt(wScore)} to ${fmt(bScore)}` }
-  else if (s.winner === 'draw') { bk = ''; banner = `A jigo (tie) — ${fmt(bScore)}` }
-  else if (s.consecutivePasses === 1) { bk = yourTurn ? 'you' : 'foe'; banner = yourTurn ? 'White passed — your move (pass to end)' : 'You passed — White is thinking…' }
-  else if (yourTurn) { bk = 'you'; banner = 'Your turn — place a black stone' }
-  else { bk = 'foe'; banner = 'White is thinking…' }
+  if (s.winner === 'draw') { bk = ''; banner = `A jigo (tie) — ${fmt(myScore)}` }
+  else if (s.winner != null) {
+    bk = myWin ? 'win' : 'lose'
+    banner = myWin ? `You win — ${fmt(myScore)} to ${fmt(oppScore)}` : `${oppName} wins — ${fmt(oppScore)} to ${fmt(myScore)}`
+  }
+  else if (s.consecutivePasses === 1) {
+    bk = yourTurn ? 'you' : 'foe'
+    banner = yourTurn ? `${oppName} passed — your move (pass to end)` : `You passed — ${thinking}`
+  }
+  else if (yourTurn) { bk = 'you'; banner = `Your turn — place a ${myName.toLowerCase()} stone` }
+  else { bk = 'foe'; banner = thinking }
 
   return (
     <>
@@ -80,7 +91,7 @@ export function Go() {
         mark={TITLE_MARK}
         eyebrow="Go · surround &amp; live"
         title="Go"
-        subtitle="9×9 — capture stones, mark territory, and out-score White past the komi"
+        subtitle="9×9 — capture stones, mark territory, and out-score your opponent past the komi"
         onRules={() => setShowRules(true)}
         onNew={newGame}
         modeLeft={`9 × 9 · komi ${s.komi}`}
@@ -117,16 +128,19 @@ export function Go() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel scoreboard">
-            <div className={"sc black" + (s.turn === 0 && s.winner == null ? " on" : "")}>
-              <span className="sc-stone black" />
-              <span className="sc-name">You · Black</span>
-              <span className="sc-n">{fmt(bScore)}</span>
+            <div className={"sc black" + (s.turn === myColor && s.winner == null ? " on" : "")}>
+              <span className={"sc-stone " + (myColor === 0 ? "black" : "white")} />
+              <span className="sc-name">You · {myName}{myColor === 1 ? ` +${s.komi}` : ''}</span>
+              <span className="sc-n">{fmt(myScore)}</span>
             </div>
-            <div className={"sc white" + (s.turn === 1 && s.winner == null ? " on" : "")}>
-              <span className="sc-stone white" />
-              <span className="sc-name">White +{s.komi}</span>
-              <span className="sc-n">{fmt(wScore)}</span>
+            <div className={"sc white" + (s.turn === oppColor && s.winner == null ? " on" : "")}>
+              <span className={"sc-stone " + (oppColor === 0 ? "black" : "white")} />
+              <span className="sc-name">{oppName}{oppColor === 1 ? ` +${s.komi}` : ''}</span>
+              <span className="sc-n">{fmt(oppScore)}</span>
             </div>
             <div className="cap-row">
               <span>Captures</span>
@@ -142,7 +156,7 @@ export function Go() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} b={bScore} w={wScore} onNew={newGame} />}
+      {s.winner != null && <ResultModal myWin={myWin} draw={s.winner === 'draw'} my={myScore} opp={oppScore} oppName={oppName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -152,17 +166,16 @@ function fmt(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(1)
 }
 
-function ResultModal({ s, b, w, onNew }: { s: GoState; b: number; w: number; onNew: () => void }) {
-  const won = s.winner === 'black', draw = s.winner === 'draw'
+function ResultModal({ myWin, draw, my, opp, oppName, onNew }: { myWin: boolean; draw: boolean; my: number; opp: number; oppName: string; onNew: () => void }) {
   return (
     <Modal
-      eyebrow={draw ? 'Dead even' : won ? 'Territory secured' : 'Out-surrounded'}
-      title={draw ? 'A Tie' : won ? 'You Win' : 'White Wins'}
+      eyebrow={draw ? 'Dead even' : myWin ? 'Territory secured' : 'Out-surrounded'}
+      title={draw ? 'A Tie' : myWin ? 'You Win' : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {fmt(b)}</span><span className="foe">White {fmt(w)}</span></div>
-      <div className="modal-body"><p>Final Chinese area score, komi included. Margin: <b>{fmt(Math.abs(b - w))}</b>.</p></div>
+      <div className="finalsc"><span className="you">You {fmt(my)}</span><span className="foe">{oppName} {fmt(opp)}</span></div>
+      <div className="modal-body"><p>Final Chinese area score, komi included. Margin: <b>{fmt(Math.abs(my - opp))}</b>.</p></div>
     </Modal>
   )
 }
@@ -172,7 +185,7 @@ function RulesModal({ onClose }: { onClose: () => void }) {
     <Modal eyebrow="How to play" title="Go (9×9)" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Begin</button>}>
       <div className="modal-body">
-        <p>You are <b>Black</b> and move first. Click an empty intersection to place a stone. White (the AI) answers.</p>
+        <p>Black moves first. Click an empty intersection to place a stone on your turn.</p>
         <p><b>Capture:</b> a group of connected same-colour stones is removed when it has no adjacent empty points (<i>liberties</i>). <b>Suicide</b> — a move leaving your own group with no liberties — is illegal unless it captures first. <b>Ko:</b> you may not immediately recreate the previous board position.</p>
         <p><b>Ending:</b> <i>pass</i> when you have nothing useful to play. <b>Two passes</b> in a row end the game.</p>
         <p><b>Scoring</b> (Chinese / area): your stones on the board plus the empty points your colour alone surrounds. White adds <b>{GO.DEFAULT_KOMI}</b> komi. Highest total wins.</p>

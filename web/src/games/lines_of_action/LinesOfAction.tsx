@@ -6,10 +6,12 @@
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { linesOfActionAdapter } from './net'
 import * as LOA from './logic'
-import type { LoaState } from './logic'
+import type { Side } from './logic'
 
 const { N } = LOA
 
@@ -50,43 +52,49 @@ function groups(board: LOA.Cell[], who: LOA.Side): number {
 }
 
 export function LinesOfAction() {
-  const [s, setS] = useState<LoaState>(() => LOA.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(linesOfActionAdapter)
+  const mySide: Side = mySeat === 0 ? 'b' : 'w' // seat 0 = Black, seat 1 = White
+  const oppSide: Side = LOA.other(mySide)
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number | null>(null)
 
-  function newGame() { setS(LOA.makeGame()); setSel(null); setShowRules(false) }
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
 
-  useAITurn(!s.winner && s.turn === 'w', () => setS(p => LOA.aiMove(p)), { delayMs: 520 })
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => { setSel(null); setShowRules(false) } })
 
-  const yourTurn = !s.winner && s.turn === 'b'
+  const yourTurn = !s.winner && isMyTurn
 
   const dests = useMemo(() => {
     if (sel === null || !yourTurn) return new Map<number, boolean>()
     const m = new Map<number, boolean>()
-    for (const mv of LOA.movesFrom(s.board, sel, 'b')) m.set(mv.to, mv.cap)
+    for (const mv of LOA.movesFrom(s.board, sel, mySide)) m.set(mv.to, mv.cap)
     return m
-  }, [sel, yourTurn, s.board])
+  }, [sel, yourTurn, s.board, mySide])
 
   const { b, w } = LOA.counts(s.board)
-  const bg = groups(s.board, 'b'), wg = groups(s.board, 'w')
+  const myCount = mySide === 'b' ? b : w, oppCount = mySide === 'b' ? w : b
+  const myGroups = groups(s.board, mySide), oppGroups = groups(s.board, oppSide)
+  const myWon = s.winner === mySide
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+  const mySideName = mySide === 'b' ? 'Black' : 'White'
+  const oppSideName = oppSide === 'b' ? 'Black' : 'White'
 
   function clickCell(i: number) {
     if (!yourTurn) return
     if (sel !== null && dests.has(i)) {
-      setS(LOA.play(s, { from: sel, to: i, cap: dests.get(i)! }, 'b'))
+      dispatch({ from: sel, to: i })
       setSel(null)
       return
     }
-    if (s.board[i] === 'b') { setSel(i === sel ? null : i); return }
+    if (s.board[i] === mySide) { setSel(i === sel ? null : i); return }
     setSel(null)
   }
 
   let banner: string, bk = ''
-  if (s.winner === 'b') { bk = 'win'; banner = 'You win — all pieces connected' }
-  else if (s.winner === 'w') { bk = 'lose'; banner = 'The rival wins — they connected first' }
-  else if (yourTurn) { bk = 'you'; banner = sel === null ? 'Your turn — pick a black piece' : 'Choose a destination' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  if (s.winner != null && myWon) { bk = 'win'; banner = 'You win — all pieces connected' }
+  else if (s.winner != null) { bk = 'lose'; banner = `${oppLabel} wins — they connected first` }
+  else if (yourTurn) { bk = 'you'; banner = sel === null ? `Your turn — pick a ${mySideName.toLowerCase()} piece` : 'Choose a destination' }
+  else { bk = 'foe'; banner = net.online ? 'Waiting for opponent…' : 'The rival is thinking…' }
 
   return (
     <>
@@ -124,16 +132,19 @@ export function LinesOfAction() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel scoreboard">
-            <div className={"sc b" + (s.turn === 'b' && !s.winner ? " on" : "")}>
-              <span className="sc-disc b"></span>
-              <span className="sc-name">You · Black</span>
-              <span className="sc-meta">{b} pcs · {bg} grp</span>
+            <div className={"sc " + mySide + (yourTurn ? " on" : "")}>
+              <span className={"sc-disc " + mySide}></span>
+              <span className="sc-name">You · {mySideName}</span>
+              <span className="sc-meta">{myCount} pcs · {myGroups} grp</span>
             </div>
-            <div className={"sc w" + (s.turn === 'w' && !s.winner ? " on" : "")}>
-              <span className="sc-disc w"></span>
-              <span className="sc-name">Rival · White</span>
-              <span className="sc-meta">{w} pcs · {wg} grp</span>
+            <div className={"sc " + oppSide + (!yourTurn && !s.winner ? " on" : "")}>
+              <span className={"sc-disc " + oppSide}></span>
+              <span className="sc-name">{oppLabel} · {oppSideName}</span>
+              <span className="sc-meta">{oppCount} pcs · {oppGroups} grp</span>
             </div>
             <div className="sc-hint">connect all your pieces into <b>one group</b> to win</div>
           </div>
@@ -141,23 +152,22 @@ export function LinesOfAction() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {s.winner && <ResultModal won={myWon} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: LoaState; onNew: () => void }) {
-  const won = s.winner === 'b'
+function ResultModal({ won, oppLabel, onNew }: { won: boolean; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Convergence' : 'Out-connected'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
-        <span className={won ? 'you' : 'foe'}>{won ? 'All your pieces formed one group.' : 'The rival joined all its pieces first.'}</span>
+        <span className={won ? 'you' : 'foe'}>{won ? 'All your pieces formed one group.' : `${oppLabel} joined all its pieces first.`}</span>
       </div>
     </Modal>
   )

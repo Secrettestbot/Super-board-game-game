@@ -1,16 +1,22 @@
 /* QUORIDOR — UI (built for this codebase). A 9x9 agate board with groove slots for walls on the
-   framework shell, vs a BFS-greedy AI. Click a highlighted neighbour to move; toggle wall mode to
-   drop a 2-cell wall into a legal groove (illegal/sealing placements are hidden). */
+   framework shell. Solo: vs a BFS-greedy AI. Online: host is the bottom pawn (seat 0), the guest
+   is the top pawn (seat 1) via useGameSession. Click a highlighted neighbour to move; toggle wall
+   mode to drop a 2-cell wall into a legal groove. The board is oriented so YOUR pawn is at the
+   bottom (seat 1 sees the board rotated 180°). */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { quoridorAdapter } from './net'
 import * as QD from './logic'
-import type { QuoridorState, Wall } from './logic'
+import type { QuoridorState, Wall, Who } from './logic'
 
 const { N, WALL_N } = QD
+
+const SEAT_WHO: Who[] = ['you', 'ai']
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -25,13 +31,16 @@ const TITLE_MARK = (
 const wallKey = (w: Wall) => `${w.o}${w.r}-${w.c}`
 
 export function Quoridor() {
-  const [s, setS] = useState<QuoridorState>(() => QD.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(quoridorAdapter)
+  const me: Who = SEAT_WHO[mySeat] ?? 'you'
+  const opp: Who = me === 'you' ? 'ai' : 'you'
+  const flip = me === 'ai' // seat 1 sees the board rotated so its pawn is at the bottom
+
   const [showRules, setShowRules] = useState(false)
   const [wallMode, setWallMode] = useState(false)
 
-  function newGame() { setS(QD.makeGame()); setShowRules(false); setWallMode(false) }
+  function newGame() { netNew(); setShowRules(false); setWallMode(false) }
 
-  useAITurn(!s.winner && s.turn === 'ai', () => setS(p => QD.aiMove(p)), { delayMs: 520 })
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
@@ -39,33 +48,44 @@ export function Quoridor() {
     extra: (e) => { if (e.key === 'w' || e.key === 'W') { setWallMode(v => !v); return true } },
   })
 
-  const yourTurn = !s.winner && s.turn === 'you'
+  const yourTurn = !s.winner && isMyTurn
+
+  // display <-> logic coordinate transforms (180° rotation when flipped)
+  const dCell = (r: number, c: number): [number, number] => flip ? [N - 1 - r, N - 1 - c] : [r, c]
+  const dWall = (r: number, c: number): [number, number] => flip ? [WALL_N - 1 - r, WALL_N - 1 - c] : [r, c]
 
   const moveTargets = useMemo(
-    () => yourTurn && !wallMode ? new Set(QD.legalMoves(s, 'you').map(([r, c]) => r * N + c)) : new Set<number>(),
-    [yourTurn, wallMode, s],
+    () => yourTurn && !wallMode ? new Set(QD.legalMoves(s, me).map(([r, c]) => r * N + c)) : new Set<number>(),
+    [yourTurn, wallMode, s, me],
   )
   const wallSlots = useMemo(
-    () => yourTurn && wallMode ? QD.legalWalls(s, 'you') : [],
-    [yourTurn, wallMode, s],
+    () => yourTurn && wallMode ? QD.legalWalls(s, me) : [],
+    [yourTurn, wallMode, s, me],
   )
   const wallSlotSet = useMemo(() => new Set(wallSlots.map(wallKey)), [wallSlots])
-  const placed = useMemo(() => new Set(s.walls.map(wallKey)), [s.walls])
 
   function clickCell(r: number, c: number) {
-    if (yourTurn && !wallMode && moveTargets.has(r * N + c)) setS(QD.move(s, r, c, 'you'))
+    if (yourTurn && !wallMode && moveTargets.has(r * N + c)) dispatch({ kind: 'move', r, c })
   }
   function clickWall(w: Wall) {
-    if (yourTurn && wallMode && wallSlotSet.has(wallKey(w))) { setS(QD.placeWall(s, w, 'you')); setWallMode(false) }
+    if (yourTurn && wallMode && wallSlotSet.has(wallKey(w))) { dispatch({ kind: 'wall', r: w.r, c: w.c, o: w.o }); setWallMode(false) }
   }
 
-  let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = 'You reached the top — you win!' }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = 'The rival reached the bottom — it wins' }
-  else if (yourTurn) { bk = 'you'; banner = wallMode ? 'Wall mode — click a groove to place a wall' : 'Your turn — move, or press W for a wall' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  const myWin = s.winner === me
+  const oppName = net.online ? 'Opponent' : 'Rival'
 
-  const py = s.pawns.you, pa = s.pawns.ai
+  let banner: string, bk = ''
+  if (s.winner != null) {
+    if (myWin) { bk = 'win'; banner = 'You reached your far row — you win!' }
+    else { bk = 'lose'; banner = `${oppName} reached its far row — it wins` }
+  } else if (yourTurn) {
+    bk = 'you'; banner = wallMode ? 'Wall mode — click a groove to place a wall' : 'Your turn — move, or press W for a wall'
+  } else {
+    bk = 'foe'; banner = net.online ? `${oppName} is thinking…` : 'The rival is thinking…'
+  }
+
+  const myPawn = s.pawns[me]
+  const oppPawn = s.pawns[opp]
 
   return (
     <>
@@ -86,62 +106,72 @@ export function Quoridor() {
             {/* cells */}
             {Array.from({ length: N * N }, (_, i) => {
               const r = Math.floor(i / N), c = i % N
-              const isYou = py.r === r && py.c === c
-              const isAi = pa.r === r && pa.c === c
+              const [dr, dc] = dCell(r, c)
+              const isMe = myPawn.r === r && myPawn.c === c
+              const isOpp = oppPawn.r === r && oppPawn.c === c
               const target = moveTargets.has(i)
               return (
                 <div
                   key={'cell' + i}
                   className={'qd-cell' + (target ? ' target' : '')}
-                  style={{ gridColumn: c * 2 + 1, gridRow: r * 2 + 1 }}
+                  style={{ gridColumn: dc * 2 + 1, gridRow: dr * 2 + 1 }}
                   onClick={() => clickCell(r, c)}
                 >
-                  {isYou && <div className="qd-pawn you" />}
-                  {isAi && <div className="qd-pawn ai" />}
-                  {target && !isYou && !isAi && <div className="qd-dot" />}
+                  {isMe && <div className="qd-pawn you" />}
+                  {isOpp && <div className="qd-pawn ai" />}
+                  {target && !isMe && !isOpp && <div className="qd-dot" />}
                 </div>
               )
             })}
 
             {/* placed walls */}
-            {s.walls.map((w) => (
-              <div
-                key={'pw' + wallKey(w)}
-                className={'qd-wall ' + w.o}
-                style={w.o === 'h'
-                  ? { gridColumn: w.c * 2 + 1 + ' / ' + (w.c * 2 + 4), gridRow: w.r * 2 + 2 }
-                  : { gridColumn: w.c * 2 + 2, gridRow: w.r * 2 + 1 + ' / ' + (w.r * 2 + 4) }}
-              />
-            ))}
+            {s.walls.map((w) => {
+              const [wr, wc] = dWall(w.r, w.c)
+              return (
+                <div
+                  key={'pw' + wallKey(w)}
+                  className={'qd-wall ' + w.o}
+                  style={w.o === 'h'
+                    ? { gridColumn: wc * 2 + 1 + ' / ' + (wc * 2 + 4), gridRow: wr * 2 + 2 }
+                    : { gridColumn: wc * 2 + 2, gridRow: wr * 2 + 1 + ' / ' + (wr * 2 + 4) }}
+                />
+              )
+            })}
 
             {/* legal wall slots (only in wall mode) */}
-            {wallSlots.map((w) => (
-              <div
-                key={'ws' + wallKey(w)}
-                className={'qd-slot ' + w.o}
-                style={w.o === 'h'
-                  ? { gridColumn: w.c * 2 + 1 + ' / ' + (w.c * 2 + 4), gridRow: w.r * 2 + 2 }
-                  : { gridColumn: w.c * 2 + 2, gridRow: w.r * 2 + 1 + ' / ' + (w.r * 2 + 4) }}
-                onClick={() => clickWall(w)}
-              />
-            ))}
+            {wallSlots.map((w) => {
+              const [wr, wc] = dWall(w.r, w.c)
+              return (
+                <div
+                  key={'ws' + wallKey(w)}
+                  className={'qd-slot ' + w.o}
+                  style={w.o === 'h'
+                    ? { gridColumn: wc * 2 + 1 + ' / ' + (wc * 2 + 4), gridRow: wr * 2 + 2 }
+                    : { gridColumn: wc * 2 + 2, gridRow: wr * 2 + 1 + ' / ' + (wr * 2 + 4) }}
+                  onClick={() => clickWall(w)}
+                />
+              )
+            })}
           </div>
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel scoreboard">
-            <div className={'sc ai' + (s.turn === 'ai' && !s.winner ? ' on' : '')}>
-              <span className="sc-pawn ai" /><span className="sc-name">Rival · top</span>
-              <span className="sc-walls">{'▮'.repeat(s.left.ai) || '—'}</span><span className="sc-n">{s.left.ai}</span>
+            <div className={'sc ai' + (s.turn === opp && !s.winner ? ' on' : '')}>
+              <span className="sc-pawn ai" /><span className="sc-name">{oppName} · {flip ? 'bottom' : 'top'}</span>
+              <span className="sc-walls">{'▮'.repeat(s.left[opp]) || '—'}</span><span className="sc-n">{s.left[opp]}</span>
             </div>
-            <div className={'sc you' + (s.turn === 'you' && !s.winner ? ' on' : '')}>
+            <div className={'sc you' + (s.turn === me && !s.winner ? ' on' : '')}>
               <span className="sc-pawn you" /><span className="sc-name">You · bottom</span>
-              <span className="sc-walls">{'▮'.repeat(s.left.you) || '—'}</span><span className="sc-n">{s.left.you}</span>
+              <span className="sc-walls">{'▮'.repeat(s.left[me]) || '—'}</span><span className="sc-n">{s.left[me]}</span>
             </div>
           </div>
           <button
             className={'qd-wallbtn' + (wallMode ? ' active' : '')}
-            disabled={!yourTurn || s.left.you <= 0}
+            disabled={!yourTurn || s.left[me] <= 0}
             onClick={() => setWallMode(v => !v)}
           >
             {wallMode ? 'Cancel wall' : 'Place wall (W)'}
@@ -150,24 +180,23 @@ export function Quoridor() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={myWin} me={me} opp={opp} left={s.left} oppName={oppName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: QuoridorState; onNew: () => void }) {
-  const won = s.winner === 'you'
+function ResultModal({ won, me, opp, left, oppName, onNew }: { won: boolean; me: Who; opp: Who; left: QuoridorState['left']; oppName: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'First to the far row' : 'Out-raced'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
-        <span className="you">You · {s.left.you} walls left</span>
-        <span className="foe">Rival · {s.left.ai} walls left</span>
+        <span className="you">You · {left[me]} walls left</span>
+        <span className="foe">{oppName} · {left[opp]} walls left</span>
       </div>
     </Modal>
   )
@@ -178,7 +207,7 @@ function RulesModal({ onClose }: { onClose: () => void }) {
     <Modal eyebrow="How to play" title="Quoridor" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Begin</button>}>
       <div className="modal-body">
-        <p>You are the <b>bottom pawn</b>. Reach <b>any cell in the top row</b> before the rival reaches the bottom row. On your turn you either <b>move</b> one step (up/down/left/right) or <b>place a wall</b>.</p>
+        <p>You are the <b>bottom pawn</b>. Reach <b>any cell in the far row</b> before the rival reaches its far row. On your turn you either <b>move</b> one step (up/down/left/right) or <b>place a wall</b>.</p>
         <p>If the rival's pawn is in the square you'd step into, you <i>jump</i> straight over it — or diagonally if a wall or the edge blocks the straight hop.</p>
         <p>Each side has <b>10 walls</b>. A wall is a two-cell fence dropped into the grooves between cells; it blocks movement and can't overlap or cross another. A wall may <b>never</b> completely seal off either pawn from its goal row.</p>
         <p><b>Keys:</b> <kbd>W</kbd> wall mode · <kbd>N</kbd> new game · <kbd>?</kbd> rules · <kbd>Esc</kbd> cancel.</p>

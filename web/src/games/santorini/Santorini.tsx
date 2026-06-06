@@ -1,12 +1,20 @@
 /* SANTORINI — UI (built for this codebase). A sunlit Aegean island: a 5x5 plaza of
-   white-block buildings and blue domes, azure vs terracotta workers, vs an alpha-beta AI.
-   Select a worker -> climb (≤1 up) -> build. Reach level 3 to win. */
+   white-block buildings and blue domes, azure vs terracotta workers, vs an alpha-beta AI
+   or a remote opponent online. Select a worker -> climb (≤1 up) -> build. Reach level 3 to win.
+
+   Online: a full turn (move + build) crosses the wire as ONE intent. So the select-move-build
+   interaction lives as LOCAL UI state here — we hold the pending worker + climb destination
+   until a build cell is chosen, then dispatch the complete { worker, moveTo, buildAt } intent
+   exactly once. Everything is seat-relative: your side comes from mySeat, isMyTurn gates
+   interaction, and banners / panels read from your perspective ("Opponent" when online). */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { santoriniAdapter } from './net'
 import * as ST from './logic'
 import type { SantoriniState, Side } from './logic'
 
@@ -24,20 +32,22 @@ const TITLE_MARK = (
 )
 
 export function Santorini() {
-  const [s, setS] = useState<SantoriniState>(() => ST.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(santoriniAdapter)
+  const mySide: Side = mySeat === 0 ? 'you' : 'ai'   // seat 0 = Azure ('you'), seat 1 = Terracotta ('ai')
+  const oppSide: Side = mySide === 'you' ? 'ai' : 'you'
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(ST.makeGame()); setPhase({ kind: 'idle' }); setShowRules(false) }
+  function newGame() { netNew(); setPhase({ kind: 'idle' }); setShowRules(false) }
 
-  useAITurn(!s.winner && s.turn === 'ai', () => setS(p => ST.aiMove(p)), { delayMs: 520 })
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => { if (showRules) setShowRules(false); else setPhase({ kind: 'idle' }) },
   })
 
-  const yourTurn = !s.winner && s.turn === 'you'
+  const over = s.winner != null
+  const yourTurn = !over && isMyTurn
 
   // highlighted cells for the active phase
   const moveCells = useMemo(() => {
@@ -59,14 +69,14 @@ export function Santorini() {
     if (!yourTurn) return
     if (phase.kind === 'idle' || phase.kind === 'move') {
       const w = ST.workerAt(s, i)
-      if (w && w.side === 'you') {
+      if (w && w.side === mySide) {
         const wi = s.workers.indexOf(w)
         setPhase({ kind: 'move', wi })
         return
       }
       if (phase.kind === 'move' && moveCells.has(i)) {
-        // landing on level 3 is an instant win — applyTurn handles build=-1
-        if (s.levels[i] === 3) { setS(ST.applyTurn(s, phase.wi, i, -1, 'you')); setPhase({ kind: 'idle' }); return }
+        // landing on level 3 is an instant win — dispatch with no build (buildAt omitted)
+        if (s.levels[i] === 3) { dispatch({ worker: phase.wi, moveTo: i }); setPhase({ kind: 'idle' }); return }
         setPhase({ kind: 'build', wi: phase.wi, to: i })
         return
       }
@@ -74,16 +84,20 @@ export function Santorini() {
     }
     if (phase.kind === 'build') {
       if (buildCells.has(i)) {
-        setS(ST.applyTurn(s, phase.wi, phase.to, i, 'you'))
+        // full turn chosen — dispatch the complete intent exactly once
+        dispatch({ worker: phase.wi, moveTo: phase.to, buildAt: i })
         setPhase({ kind: 'idle' })
       }
     }
   }
 
+  const myWin = s.winner === mySide
+  const oppLabel = net.online ? 'Opponent' : 'rival'
+
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = 'You reach the summit — you win' }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = 'The rival reaches the summit — you lose' }
-  else if (!yourTurn) { bk = 'foe'; banner = 'The rival is plotting…' }
+  if (myWin) { bk = 'win'; banner = 'You reach the summit — you win' }
+  else if (s.winner === oppSide) { bk = 'lose'; banner = `The ${oppLabel.toLowerCase()} reaches the summit — you lose` }
+  else if (!yourTurn) { bk = 'foe'; banner = net.online ? 'Waiting for your opponent…' : 'The rival is plotting…' }
   else if (phase.kind === 'move') { bk = 'you'; banner = 'Choose where to climb' }
   else if (phase.kind === 'build') { bk = 'you'; banner = 'Choose where to build' }
   else { bk = 'you'; banner = 'Select a worker to move' }
@@ -110,13 +124,13 @@ export function Santorini() {
               const cls = 'sn-cell'
                 + (moveCells.has(i) ? ' move' : '')
                 + (buildCells.has(i) ? ' build' : '')
-                + (phase.kind === 'move' && w && w.side === 'you' && i === s.workers[phase.wi].pos ? ' sel' : '')
+                + (phase.kind === 'move' && w && w.side === mySide && i === s.workers[phase.wi].pos ? ' sel' : '')
                 + (s.last === i ? ' last' : '')
               return (
                 <div key={i} className={cls} onClick={() => clickCell(i)}>
                   <Tower level={lvl} />
                   {showWorker && <Figure side={w!.side} />}
-                  {i === ghost && <Figure side="you" ghost />}
+                  {i === ghost && <Figure side={mySide} ghost />}
                   {moveCells.has(i) && <div className="sn-hint">{lvl === 3 ? '★' : (s.levels[i] || 0)}</div>}
                   {buildCells.has(i) && <div className="sn-plus">+</div>}
                 </div>
@@ -126,15 +140,16 @@ export function Santorini() {
         </div>
 
         <div className="side">
+          <div className="panel"><OnlineBar net={net} /></div>
           <div className="panel players">
-            <Player side="you" label="You · Azure" on={s.turn === 'you' && !s.winner} s={s} />
-            <Player side="ai" label="Rival · Terracotta" on={s.turn === 'ai' && !s.winner} s={s} />
+            <Player side={mySide} label="You · Azure" on={s.turn === mySide && !over} s={s} />
+            <Player side={oppSide} label={`${net.online ? 'Opponent' : 'Rival'} · Terracotta`} on={s.turn === oppSide && !over} s={s} />
           </div>
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}</div>
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {over && <ResultModal won={myWin} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -174,16 +189,15 @@ function Player({ side, label, on, s }: { side: Side; label: string; on: boolean
   )
 }
 
-function ResultModal({ s, onNew }: { s: SantoriniState; onNew: () => void }) {
-  const won = s.winner === 'you'
+function ResultModal({ won, onNew }: { won: boolean; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Summit reached' : 'Out-climbed'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : 'Opponent Wins'}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalmsg">{won ? 'Your worker stands atop a third-level roof, crowned by the Aegean sun.' : 'The rival reached the rooftops first — or boxed your workers in.'}</div>
+      <div className="finalmsg">{won ? 'Your worker stands atop a third-level roof, crowned by the Aegean sun.' : 'Your opponent reached the rooftops first — or boxed your workers in.'}</div>
     </Modal>
   )
 }

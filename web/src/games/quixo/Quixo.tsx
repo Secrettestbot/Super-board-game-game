@@ -5,10 +5,12 @@
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { quixoAdapter } from './net'
 import * as Q from './logic'
-import type { State, Dir, Move } from './logic'
+import type { Dir, Move, Mark, Player } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -38,20 +40,23 @@ function CubeFace({ v }: { v: Q.Mark }) {
 }
 
 export function Quixo() {
-  const [s, setS] = useState<State>(() => Q.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(quixoAdapter)
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number | null>(null)   // selected cube awaiting a direction
 
-  function newGame() { setS(Q.makeGame()); setSel(null); setShowRules(false) }
+  // seat 0 = 'you' (X, mark 1), seat 1 = 'ai' (O, mark -1)
+  const myPlayer: Player = mySeat === 0 ? 'you' : 'ai'
+  const myMark: Mark = mySeat === 0 ? 1 : -1
+  const oppMark: Mark = mySeat === 0 ? -1 : 1
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
 
-  const yourTurn = s.winner == null && s.turn === 'you'
-  const aiTurn = s.winner == null && s.turn === 'ai'
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
 
-  // one action per AI turn — re-arm on the move count so it fires reliably.
-  const plies = s.log.length
-  useAITurn(aiTurn, () => setS(p => Q.aiTurn(p)), { delayMs: 420, tick: plies })
+  const yourTurn = s.winner == null && isMyTurn
+  const oppTurn = s.winner == null && !isMyTurn
 
-  // legal moves for the current human player, grouped by cube.
+  // legal moves for me when it's my turn, grouped by cube. legalMoves keys off s.turn,
+  // which equals my player whenever it's my turn — so this is exactly my move set.
   const legal: Move[] = yourTurn ? Q.legalMoves(s) : []
   const takeable = new Set(legal.map(m => m.cell))
   const selDirs: Dir[] = sel != null ? legal.filter(m => m.cell === sel).map(m => m.dir) : []
@@ -63,7 +68,7 @@ export function Quixo() {
   }
   function pickDir(d: Dir) {
     if (sel == null) return
-    setS(Q.applyMove(s, { cell: sel, dir: d }))
+    dispatch({ cell: sel, dir: d })
     setSel(null)
   }
 
@@ -73,25 +78,30 @@ export function Quixo() {
     onEscape: () => { if (sel != null) setSel(null); else setShowRules(false) },
   })
 
+  const iWon = s.winner === myPlayer
+
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = 'You win — five in a row!' }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = 'The rival lined up five' }
+  if (s.winner === 'you' || s.winner === 'ai') {
+    if (iWon) { bk = 'win'; banner = 'You win — five in a row!' }
+    else { bk = 'lose'; banner = `${oppLabel} lined up five` }
+  }
   else if (s.winner === 'draw') { bk = 'foe'; banner = 'A draw' }
   else if (yourTurn) {
     bk = 'you'
     banner = sel == null ? 'Take a border cube (blank or yours)' : 'Choose an end to slide it in from'
-  } else { bk = 'foe'; banner = 'The rival is choosing a cube…' }
+  } else { bk = 'foe'; banner = `${oppLabel} is choosing a cube…` }
 
+  // counts from my perspective: "mine" = my mark, "opp" = opponent's mark
   const counts = (() => {
-    let x = 0, o = 0
-    for (const v of s.board) { if (v === 1) x++; else if (v === -1) o++ }
-    return { x, o }
+    let mine = 0, opp = 0
+    for (const v of s.board) { if (v === myMark) mine++; else if (v === oppMark) opp++ }
+    return { mine, opp }
   })()
 
   // winning line (for highlight) once decided
   const winLine = (() => {
     if (s.winner == null || s.winner === 'draw') return new Set<number>()
-    const want: Q.Mark = s.winner === 'you' ? 1 : -1
+    const want: Mark = s.winner === 'you' ? 1 : -1
     for (const line of Q.LINES) if (line.every(i => s.board[i] === want)) return new Set(line)
     return new Set<number>()
   })()
@@ -105,7 +115,7 @@ export function Quixo() {
         subtitle="take a cube from the rim, slide it home, and build an unbroken line of five before the rival does"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={<>You <b>{counts.x}</b> · Rival <b>{counts.o}</b></>}
+        modeLeft={<>You <b>{counts.mine}</b> · {oppLabel} <b>{counts.opp}</b></>}
         banner={banner}
         bannerClass={bk}
         modeRight={<>click cube · pick end &nbsp; Esc · cancel &nbsp; N · new</>}
@@ -135,16 +145,19 @@ export function Quixo() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel qx-score">
             <div className={'qx-row' + (yourTurn ? ' on' : '')}>
-              <span className="qx-chip x"><CubeFace v={1} /></span>
-              <span className="qx-who">You (X)</span>
-              <span className="qx-num">{counts.x}</span>
+              <span className={'qx-chip ' + (myMark === 1 ? 'x' : 'o')}><CubeFace v={myMark} /></span>
+              <span className="qx-who">You ({myMark === 1 ? 'X' : 'O'})</span>
+              <span className="qx-num">{counts.mine}</span>
             </div>
-            <div className={'qx-row' + (aiTurn ? ' on' : '')}>
-              <span className="qx-chip o"><CubeFace v={-1} /></span>
-              <span className="qx-who">Rival (O)</span>
-              <span className="qx-num">{counts.o}</span>
+            <div className={'qx-row' + (oppTurn ? ' on' : '')}>
+              <span className={'qx-chip ' + (oppMark === 1 ? 'x' : 'o')}><CubeFace v={oppMark} /></span>
+              <span className="qx-who">{oppLabel} ({oppMark === 1 ? 'X' : 'O'})</span>
+              <span className="qx-num">{counts.opp}</span>
             </div>
           </div>
 
@@ -153,7 +166,7 @@ export function Quixo() {
             {sel == null ? (
               <div className="qx-hint">
                 {yourTurn ? 'Pick a highlighted cube on the rim, then choose which end it slides in from.'
-                  : aiTurn ? 'Watching the rival think…' : 'Game over — start a new game.'}
+                  : oppTurn ? `Watching ${oppLabel.toLowerCase()}…` : 'Game over — start a new game.'}
               </div>
             ) : (
               <div className="qx-dirs">
@@ -177,26 +190,25 @@ export function Quixo() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal winner={s.winner} onNew={newGame} />}
+      {s.winner != null && <ResultModal winner={s.winner} won={iWon} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ winner, onNew }: { winner: 'you' | 'ai' | 'draw'; onNew: () => void }) {
-  const won = winner === 'you'
+function ResultModal({ winner, won, oppLabel, onNew }: { winner: 'you' | 'ai' | 'draw'; won: boolean; oppLabel: string; onNew: () => void }) {
   const draw = winner === 'draw'
   return (
     <Modal
       eyebrow={draw ? 'No line' : won ? 'Line of five' : 'Out-slid'}
-      title={draw ? 'Draw' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'Draw' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
         {draw ? <span>A rare deadlock — no five in a row.</span>
-          : won ? <span className="you">Five of your X cubes in an unbroken line.</span>
-          : <span className="foe">The rival completed a line of five first.</span>}
+          : won ? <span className="you">Five of your cubes in an unbroken line.</span>
+          : <span className="foe">{oppLabel} completed a line of five first.</span>}
       </div>
     </Modal>
   )

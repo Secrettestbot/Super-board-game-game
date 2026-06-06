@@ -1,14 +1,17 @@
 /* HEX — the connection game (UI, built for this codebase). An 11x11 rhombus of hexagons on the
-   framework shell, vs a shortest-connection-distance AI. You (amber) link top↔bottom; the rival
-   (slate) links left↔right. Click an empty cell to place; the winning chain lights up at game end. */
+   framework shell. Solo: you (amber) link top↔bottom vs a shortest-connection-distance AI (slate,
+   left↔right). Online: seat 0 is amber/top-bottom, seat 1 is slate/left-right, and each side is
+   shown from its own perspective. Click an empty cell to place; the winning chain lights up. */
 
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { hexAdapter } from './net'
 import * as HX from './logic'
-import type { HexState } from './logic'
+import type { Stone } from './logic'
 
 const { N } = HX
 
@@ -21,25 +24,36 @@ const TITLE_MARK = (
   </svg>
 )
 
+/** seat -> Stone (0 = amber/you, 1 = slate). */
+const SEAT_STONE: Stone[] = ['y', 's']
+
 export function Hex() {
-  const [s, setS] = useState<HexState>(() => HX.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(hexAdapter)
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(HX.makeGame()); setShowRules(false) }
+  const myStone = SEAT_STONE[mySeat]              // your colour this seat
+  const oppStone: Stone = myStone === 'y' ? 's' : 'y'
+  const myAmber = myStone === 'y'                  // amber links top↕bottom, slate links left↔right
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
 
-  useAITurn(!s.winner && s.turn === 's', () => setS(p => HX.aiMove(p)), { delayMs: 520, tick: s.last })
+  function newGame() { netNew(); setShowRules(false) }
+
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
 
-  const yourTurn = !s.winner && s.turn === 'y'
+  const yourTurn = !s.winner && isMyTurn
   const winSet = new Set(s.win)
 
-  function clickCell(i: number) { if (yourTurn && !s.board[i]) setS(HX.place(s, i, 'y')) }
+  function clickCell(i: number) { if (yourTurn && !s.board[i]) dispatch({ cell: i }) }
+
+  const iWon = s.winner === myStone
+  const myEdges = myAmber ? 'top ↕ bottom' : 'left ↔ right'
+  const oppEdges = myAmber ? 'left ↔ right' : 'top ↕ bottom'
 
   let banner: string, bk = ''
-  if (s.winner === 'y') { bk = 'win'; banner = 'You connect top to bottom — you win' }
-  else if (s.winner === 's') { bk = 'lose'; banner = 'The rival links left to right — it wins' }
-  else if (yourTurn) { bk = 'you'; banner = 'Your turn — place an amber stone' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  if (s.winner != null && iWon) { bk = 'win'; banner = `You connect ${myEdges} — you win` }
+  else if (s.winner != null) { bk = 'lose'; banner = `${oppLabel} links ${oppEdges} — it wins` }
+  else if (yourTurn) { bk = 'you'; banner = `Your turn — place ${myAmber ? 'an amber' : 'a slate'} stone` }
+  else { bk = 'foe'; banner = net.online ? `${oppLabel} is thinking…` : 'The rival is thinking…' }
 
   const rows = []
   for (let r = 0; r < N; r++) {
@@ -62,6 +76,10 @@ export function Hex() {
     }
     rows.push(<div className="hx-row" key={r}>{cells}</div>)
   }
+
+  // seat-relative turn highlight: is it my / the opponent's move right now?
+  const myOn = !s.winner && isMyTurn
+  const oppOn = !s.winner && !isMyTurn
 
   return (
     <>
@@ -86,37 +104,39 @@ export function Hex() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel players">
-            <div className={'pl y' + (s.turn === 'y' && !s.winner ? ' on' : '')}>
-              <span className="pl-stone y" />
-              <span className="pl-txt"><b>You · Amber</b><i>top ↕ bottom</i></span>
+            <div className={'pl ' + myStone + (myOn ? ' on' : '')}>
+              <span className={'pl-stone ' + myStone} />
+              <span className="pl-txt"><b>You · {myAmber ? 'Amber' : 'Slate'}</b><i>{myEdges}</i></span>
             </div>
-            <div className={'pl s' + (s.turn === 's' && !s.winner ? ' on' : '')}>
-              <span className="pl-stone s" />
-              <span className="pl-txt"><b>Rival · Slate</b><i>left ↔ right</i></span>
+            <div className={'pl ' + oppStone + (oppOn ? ' on' : '')}>
+              <span className={'pl-stone ' + oppStone} />
+              <span className="pl-txt"><b>{oppLabel} · {myAmber ? 'Slate' : 'Amber'}</b><i>{oppEdges}</i></span>
             </div>
           </div>
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}</div>
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {s.winner && <ResultModal iWon={iWon} myEdges={myEdges} oppEdges={oppEdges} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: HexState; onNew: () => void }) {
-  const won = s.winner === 'y'
+function ResultModal({ iWon, myEdges, oppEdges, oppLabel, onNew }: { iWon: boolean; myEdges: string; oppEdges: string; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
-      eyebrow={won ? 'Edges linked' : 'Out-connected'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      eyebrow={iWon ? 'Edges linked' : 'Out-connected'}
+      title={iWon ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
-        <span className={won ? 'you' : 'foe'}>{won ? 'Top ↕ Bottom connected' : 'Left ↔ Right connected'}</span>
+        <span className={iWon ? 'you' : 'foe'}>{iWon ? `${myEdges} connected` : `${oppEdges} connected`}</span>
       </div>
     </Modal>
   )
