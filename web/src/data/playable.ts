@@ -91,4 +91,12 @@ export const PLAYABLE: Record<string, string> = {
   battle_line: 'games/battle_line.html',
   port_royal: 'games/port_royal.html',
   patchwork: 'games/patchwork.html',
+  cartographers: 'games/cartographers.html',
+  welcome_to: 'games/welcome_to.html',
+  thats_pretty_clever: 'games/thats_pretty_clever.html',
+  star_realms: 'games/star_realms.html',
+  machi_koro: 'games/machi_koro.html',
+  cascadia: 'games/cascadia.html',
+  king_of_tokyo: 'games/king_of_tokyo.html',
+  chinese_checkers: 'games/chinese_checkers.html',
 }

@@ -1,0 +1,130 @@
+/* ==========================================================
+   CHINESE CHECKERS — "The star."
+   Theme: deep midnight felt under a brass six-pointed star; teal pegs (you) race
+   coral pegs (rival) across the hexagram. Display: Baloo 2 · Body: Inter · Mono: JetBrains.
+   Shared structural classes live in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #0d1117;
+  --bg-2:    #070a0f;
+  --panel:   #161e29;
+  --panel-2: #111824;
+  --ink:     #eef3f8;
+  --ink-2:   #aebccb;
+  --ink-3:   #6b7b8d;
+  --line:    #233143;
+  --line-2:  #32465e;
+
+  /* token contract -> this theme (warm brass accent; light accent -> dark ink) */
+  --accent:    #e8b34a;  --accent-d: #b3852a;  --accent-hi: #ffd479;  --accent-ink: #1a1304;
+  --trim:      #e8b34a;  --trim-hi:  #ffd479;
+  --you:       #3fd6bf;  --foe:      #f0805f;
+  --good:      #57d39a;  --warn:     #f0a24a;
+
+  /* game-specific */
+  --felt:      #0f1822;  --felt-2:   #0a121b;
+  --slot:      #1d2937;  --slot-line:#2a3a4e;
+  --grid:      #1b2735;
+  --you-d:     #1f9d8c;  --you-hi:   #8af2e3;
+  --foe-d:     #b94c2e;  --foe-hi:   #ffb39a;
+  --homeS:     rgba(63,214,191,0.10);
+  --homeN:     rgba(240,128,95,0.10);
+  --glow:      #ffd479;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(232,179,74,0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.6) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 232px; gap: clamp(16px, 2.4vw, 34px); }
+
+.cc-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.cc-board {
+  width: clamp(320px, min(72vh, 56vw), 620px);
+  height: auto; aspect-ratio: 1 / 1;
+  padding: 14px; box-sizing: border-box;
+  background: radial-gradient(ellipse at 50% 40%, var(--felt), var(--felt-2));
+  border: 2px solid #060b11; border-radius: 18px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.65), inset 0 0 60px rgba(0,0,0,0.45);
+}
+
+.cc-grid line { stroke: var(--grid); stroke-width: 1; }
+
+.cc-hole { cursor: default; }
+.cc-hole.grab { cursor: pointer; }
+.cc-hole.dest { cursor: pointer; }
+
+.cc-slot {
+  fill: var(--slot); stroke: var(--slot-line); stroke-width: 1;
+}
+.cc-slot.south-home { fill: color-mix(in srgb, var(--you) 16%, var(--slot)); stroke: var(--you-d); }
+.cc-slot.north-home { fill: color-mix(in srgb, var(--foe) 16%, var(--slot)); stroke: var(--foe-d); }
+
+.cc-last {
+  fill: none; stroke: var(--glow); stroke-width: 1.4; opacity: 0.7;
+}
+
+.cc-peg {
+  stroke-width: 1.4;
+  filter: drop-shadow(0 2px 2px rgba(0,0,0,0.55));
+  animation: cc-pop 0.18s ease-out;
+}
+.cc-peg.you { fill: var(--you); stroke: var(--you-d); }
+.cc-peg.foe { fill: var(--foe); stroke: var(--foe-d); }
+.cc-peg.you.sel { stroke: var(--you-hi); stroke-width: 2.6; filter: drop-shadow(0 0 6px var(--you-hi)); }
+.cc-hole.grab:hover .cc-peg.you { stroke: var(--you-hi); }
+@keyframes cc-pop { from { transform: scale(0.4); } to { transform: scale(1); } }
+
+.cc-dot {
+  fill: var(--glow); opacity: 0.92;
+  filter: drop-shadow(0 0 5px var(--glow));
+  animation: cc-pulse 1.3s ease-in-out infinite;
+}
+.cc-hole.dest:hover .cc-dot { opacity: 1; }
+.cc-hole.dest:hover .cc-slot { fill: color-mix(in srgb, var(--glow) 30%, var(--slot)); stroke: var(--glow); }
+@keyframes cc-pulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }
+
+/* side panel */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+
+.turnbox { display: flex; flex-direction: column; gap: 9px; }
+.tn {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.tn.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.tn-chip { width: 16px; height: 16px; border-radius: 50%; flex: 0 0 auto; }
+.tn-chip.you { background: var(--you); box-shadow: inset 0 0 0 1.5px var(--you-d); }
+.tn-chip.foe { background: var(--foe); box-shadow: inset 0 0 0 1.5px var(--foe-d); }
+.tn-name { font-family: var(--display); font-weight: 600; font-size: 14px; flex: 1; }
+.tn-tag { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3); }
+.tn.you .tn-tag { color: var(--you-hi); }
+.tn.foe .tn-tag { color: var(--foe-hi); }
+
+.hintbox { font-size: 11.5px; line-height: 1.5; color: var(--ink-2); }
+.hint-l { display: block; font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); margin-bottom: 4px; }
+
+/* overlays */
+.finalsc {
+  display: flex; justify-content: center; margin: 12px 0;
+  font-family: var(--display); font-weight: 600; font-size: 17px; text-align: center;
+}
+.finalsc .you { color: var(--you-hi); }
+.finalsc .foe { color: var(--foe-hi); }
+.modal-body i { color: var(--you-hi); font-style: normal; font-weight: 600; }
+.modal-body kbd {
+  font-family: var(--mono); font-size: 11px; background: var(--panel);
+  border: 1px solid var(--line-2); border-radius: 4px; padding: 1px 5px;
+}
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

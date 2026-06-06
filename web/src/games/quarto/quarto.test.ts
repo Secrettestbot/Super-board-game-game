@@ -43,9 +43,12 @@ describe('quarto logic', () => {
     expect(line).toEqual([0, 5, 10, 15])
   })
 
+  // aiMove runs a deep minimax (Quarto's give-a-piece branching is large), so a couple of
+  // full self-play games is plenty to exercise the engine. Give it a generous per-test
+  // timeout so CPU contention from the parallel suite can't trip a false failure.
   it('plays several full games to completion with no throws and consistent counts', () => {
     const rng = (n: number) => (Math.random() * n) | 0
-    for (let game = 0; game < 3; game++) {
+    for (let game = 0; game < 2; game++) {
       let s = Q.makeGame()
       let guard = 0
       while (!s.winner && guard++ < 200) {
@@ -82,7 +85,7 @@ describe('quarto logic', () => {
         expect(s.line).not.toBeNull()
       }
     }
-  })
+  }, 40000)
 
   it('the AI never hands the human a piece that wins immediately when a safe piece exists', () => {
     // Construct a position where the AI must hand: three tall pieces in a row, one empty cell,

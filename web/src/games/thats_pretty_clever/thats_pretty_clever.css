@@ -1,0 +1,189 @@
+/* ==========================================================
+   THAT'S PRETTY CLEVER! (Ganz schön clever) — "Roll and write, cleverly."
+   Theme: bright board-game tray, six chunky coloured dice on a dark felt table, a
+   silver platter for set-aside dice, five distinct colour tracks per sheet.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #181a22;
+  --bg-2:    #0f1117;
+  --panel:   #222530;
+  --panel-2: #1a1d26;
+  --ink:     #f3f1ec;
+  --ink-2:   #b0b5c2;
+  --ink-3:   #6e7282;
+  --line:    #2c3040;
+  --line-2:  #3d4254;
+
+  /* token contract — teal/clever-purple primary, dark ink on it */
+  --accent:   #7c5cff;  --accent-d:#5a3fd6;  --accent-hi:#a38bff;  --accent-ink:#160c33;
+  --trim:     #7c5cff;  --trim-hi:#a38bff;
+  --you:      #a38bff;  --foe:#b0b5c2;
+  --good:     #2fbd7a;  --warn:#ef5d4e;
+
+  /* the SIX dice / FIVE track colours */
+  --tpc-white:  #f4f1e8;  --tpc-white-d:#cfc9b8;  --tpc-white-ink:#2a2620;
+  --tpc-yellow: #f2c10a;  --tpc-yellow-d:#c79200;
+  --tpc-blue:   #2f86e0;  --tpc-blue-d:#1f63b3;
+  --tpc-green:  #2fbd7a;  --tpc-green-d:#1f8f59;
+  --tpc-orange: #ef7e2e;  --tpc-orange-d:#c45c16;
+  --tpc-purple: #9b5de5;  --tpc-purple-d:#763cc4;
+  --silver:     #c7ccd6;  --silver-d:#9aa0ad;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(124,92,255,0.10) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.5) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 240px; gap: clamp(14px, 2.2vw, 30px); }
+
+.tpc-main { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+
+/* ---- dice tray + platter ---- */
+.tpc-tray {
+  background: linear-gradient(180deg, #20242f, #171a22);
+  border: 1.5px solid var(--line-2); border-radius: 14px;
+  padding: 14px 16px; box-shadow: 0 12px 34px rgba(0,0,0,0.4);
+  display: flex; flex-direction: column; gap: 12px;
+}
+.tpc-tray-head { display: flex; align-items: baseline; gap: 10px; }
+.tpc-tray-title { font-family: var(--display); font-weight: 700; font-size: 15px; color: var(--ink); }
+.tpc-tray-sub { font-size: 11px; color: var(--ink-3); font-family: var(--mono); }
+.tpc-picks { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--accent-hi); }
+
+.tpc-dicerow { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; min-height: 56px; }
+.tpc-platter-wrap { display: flex; flex-direction: column; gap: 6px; }
+.tpc-platter-l { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--silver-d); }
+.tpc-platter {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 50px;
+  background: repeating-linear-gradient(135deg, rgba(199,204,214,0.07) 0 6px, rgba(199,204,214,0.02) 6px 12px);
+  border: 1.5px dashed var(--silver-d); border-radius: 10px; padding: 7px 9px;
+}
+.tpc-platter.empty { opacity: 0.5; }
+
+/* ---- a die ---- */
+.tpc-die {
+  width: 46px; height: 46px; border-radius: 11px;
+  display: grid; place-items: center; position: relative;
+  font-family: var(--display); font-weight: 700; font-size: 22px;
+  border: none; cursor: default; color: #fff;
+  box-shadow: inset 0 -4px 0 rgba(0,0,0,0.22), 0 4px 10px rgba(0,0,0,0.35);
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.tpc-die.small { width: 38px; height: 38px; font-size: 18px; border-radius: 9px; }
+.tpc-die.white  { background: var(--tpc-white);  color: var(--tpc-white-ink); }
+.tpc-die.yellow { background: var(--tpc-yellow); color: #3a2c00; }
+.tpc-die.blue   { background: var(--tpc-blue); }
+.tpc-die.green  { background: var(--tpc-green); }
+.tpc-die.orange { background: var(--tpc-orange); }
+.tpc-die.purple { background: var(--tpc-purple); }
+.tpc-die.pickable { cursor: pointer; outline: 2px solid transparent; }
+.tpc-die.pickable:hover { transform: translateY(-3px); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.22), 0 8px 16px rgba(0,0,0,0.45); }
+.tpc-die.selected { outline: 3px solid var(--accent-hi); outline-offset: 2px; }
+.tpc-die.dim { opacity: 0.42; }
+
+/* white-as colour picker chips */
+.tpc-wild { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 4px 0; }
+.tpc-wild-l { font-size: 12px; color: var(--ink-2); }
+.tpc-chip {
+  font-family: var(--display); font-weight: 600; font-size: 12px; color: #fff;
+  border: none; border-radius: 8px; padding: 5px 11px; cursor: pointer;
+  box-shadow: inset 0 -3px 0 rgba(0,0,0,0.2);
+}
+.tpc-chip.yellow { background: var(--tpc-yellow); color: #3a2c00; }
+.tpc-chip.blue   { background: var(--tpc-blue); }
+.tpc-chip.green  { background: var(--tpc-green); }
+.tpc-chip.orange { background: var(--tpc-orange); }
+.tpc-chip.purple { background: var(--tpc-purple); }
+.tpc-chip:disabled { opacity: 0.32; cursor: not-allowed; }
+
+.tpc-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.tpc-btn {
+  font-family: var(--display); font-weight: 600; font-size: 13px;
+  background: var(--panel); color: var(--ink); border: 1.5px solid var(--line-2);
+  border-radius: 9px; padding: 7px 16px; cursor: pointer; transition: filter 0.12s, background 0.12s;
+}
+.tpc-btn:hover { filter: brightness(1.18); }
+.tpc-btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent-d); }
+.tpc-btn.warn { color: var(--warn); }
+.tpc-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---- sheets ---- */
+.tpc-sheets { display: flex; gap: 16px; flex-wrap: wrap; }
+.tpc-sheet {
+  background: linear-gradient(180deg, #fbf8f0, #f3efe3);
+  border: 2px solid #e2dcc8; border-radius: 14px; padding: 11px 13px 10px;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.4);
+  display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 270px;
+  transition: box-shadow 0.18s, transform 0.18s;
+}
+.tpc-sheet.active { box-shadow: 0 0 0 2px var(--accent), 0 14px 34px rgba(0,0,0,0.45); transform: translateY(-2px); }
+.tpc-sheet-head { display: flex; align-items: center; gap: 8px; }
+.tpc-sheet-name { font-family: var(--display); font-weight: 700; font-size: 16px; color: #2a2620; flex: 1; }
+.tpc-sheet-foxes { font-size: 12px; color: #8a5a14; font-weight: 600; }
+.tpc-sheet-score { font-family: var(--mono); font-weight: 600; font-size: 17px; color: #1c1a16; }
+
+.tpc-track { display: flex; align-items: center; gap: 7px; }
+.tpc-track-lbl { font-family: var(--display); font-weight: 600; font-size: 11px; width: 16px; text-align: center; border-radius: 5px; padding: 1px 0; color: #fff; }
+.tpc-track-lbl.yellow { background: var(--tpc-yellow-d); }
+.tpc-track-lbl.blue   { background: var(--tpc-blue-d); }
+.tpc-track-lbl.green  { background: var(--tpc-green-d); }
+.tpc-track-lbl.orange { background: var(--tpc-orange-d); }
+.tpc-track-lbl.purple { background: var(--tpc-purple-d); }
+.tpc-track-score { margin-left: auto; font-family: var(--mono); font-size: 12px; color: #5b554a; min-width: 22px; text-align: right; }
+
+/* grid tracks (yellow 4x4, blue 3x3) */
+.tpc-grid { display: grid; gap: 3px; }
+.tpc-grid.yellow { grid-template-columns: repeat(4, 1fr); }
+.tpc-grid.blue { grid-template-columns: repeat(3, 1fr); }
+.tpc-cell {
+  width: 20px; height: 20px; border-radius: 5px; display: grid; place-items: center;
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  background: #fff; border: 1.4px solid #d9d2bf; color: #8a8270;
+}
+.tpc-cell.yellow { border-color: var(--tpc-yellow-d); }
+.tpc-cell.blue { border-color: var(--tpc-blue-d); }
+.tpc-cell.on.yellow { background: var(--tpc-yellow); color: #3a2c00; }
+.tpc-cell.on.blue { background: var(--tpc-blue); color: #fff; }
+.tpc-cell.diag { box-shadow: inset 0 0 0 1.5px rgba(0,0,0,0.18); }
+
+/* linear tracks (green / orange / purple) */
+.tpc-line { display: flex; gap: 3px; flex-wrap: wrap; }
+.tpc-pip {
+  min-width: 18px; height: 20px; padding: 0 4px; border-radius: 5px; display: grid; place-items: center;
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  background: #fff; border: 1.4px solid #d9d2bf; color: #8a8270;
+}
+.tpc-pip.green.on { background: var(--tpc-green); color: #fff; border-color: var(--tpc-green-d); }
+.tpc-pip.orange.on { background: var(--tpc-orange); color: #fff; border-color: var(--tpc-orange-d); }
+.tpc-pip.purple.on { background: var(--tpc-purple); color: #fff; border-color: var(--tpc-purple-d); }
+.tpc-pip.mult { box-shadow: inset 0 0 0 1.5px var(--tpc-orange-d); }
+.tpc-pip-mult { font-size: 7px; color: var(--tpc-orange-d); position: absolute; }
+.tpc-mult-badge { font-size: 8px; font-weight: 700; color: var(--tpc-orange-d); margin-left: 1px; }
+
+/* opponent compact summary */
+.tpc-foe-tracks { display: flex; gap: 8px; flex-wrap: wrap; font-size: 11px; }
+.tpc-foe-t { font-family: var(--mono); color: #5b554a; }
+
+.tpc-hint { font-size: 12px; color: var(--ink-2); }
+.tpc-hint b { color: var(--ink); }
+
+/* side scorebox */
+.tpc-scorebox { display: flex; flex-direction: column; gap: 9px; }
+.tpc-score { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 9px; border: 1.5px solid var(--line); }
+.tpc-score.on { border-color: var(--accent); background: rgba(124,92,255,0.08); }
+.tpc-score-name { font-family: var(--display); font-weight: 600; font-size: 13px; color: var(--ink); flex: 1; }
+.tpc-score-fox { font-size: 11px; color: #c79200; }
+.tpc-score-n { font-family: var(--mono); font-weight: 600; font-size: 16px; color: var(--ink); }
+
+.finalsc { display: flex; gap: 16px; justify-content: center; font-family: var(--mono); margin: 6px 0 2px; }
+.finalsc .you { color: var(--you); } .finalsc .foe { color: var(--foe); }
