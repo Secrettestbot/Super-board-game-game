@@ -115,4 +115,12 @@ export const PLAYABLE: Record<string, string> = {
   trax: 'games/trax.html',
   hive: 'games/hive.html',
   ludo: 'games/ludo.html',
+  railroad_ink: 'games/railroad_ink.html',
+  catan_dice: 'games/catan_dice.html',
+  seven_wonders_duel: 'games/seven_wonders_duel.html',
+  quacks: 'games/quacks.html',
+  photosynthesis: 'games/photosynthesis.html',
+  canadian_checkers: 'games/canadian_checkers.html',
+  dvonn: 'games/dvonn.html',
+  havannah: 'games/havannah.html',
 }

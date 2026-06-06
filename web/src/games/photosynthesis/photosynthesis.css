@@ -1,0 +1,160 @@
+/* ==========================================================
+   PHOTOSYNTHESIS — "A forest in the rotating sun."
+   Theme: forest sunrise — deep mossy greens, warm bark, a golden sun and amber light.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #10201a;
+  --bg-2:    #0a160f;
+  --panel:   #18302373;
+  --panel-2: #14271c;
+  --ink:     #f1f7ec;
+  --ink-2:   #b3ccb4;
+  --ink-3:   #6f8c74;
+  --line:    #244a31;
+  --line-2:  #316042;
+
+  /* token contract → forest-sunrise theme (golden accent, dark text on it) */
+  --accent:    #ffce4f;  --accent-d:#d4961f;  --accent-hi:#ffe28a;  --accent-ink:#2c2000;
+  --trim:      #f4a64a;  --trim-hi:#ffc987;
+  --you:       #6fe09a;  --foe:#ff9a6a;
+  --good:      #6fe09a;  --warn:#ff8b6a;
+
+  /* game-specific */
+  --ring-c:   #5fae6b;  --ring-i:#4d9a5a;  --ring-m:#3f8a4e;  --ring-o:#347a43;
+  --hexline:  #1d3a26;
+  --shadow-v: #14241a;
+  --sun:      #ffd45a;  --sun-d:#e2992a;
+  --you-tree: #6fe09a;  --you-tree-d:#2f9c5e;
+  --foe-tree: #ff9a6a;  --foe-tree-d:#cc5a30;
+  --bark:     #6f4a2a;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 70% -10%, rgba(255,206,79,0.12) 0%, transparent 55%),
+    radial-gradient(ellipse at 15% 115%, rgba(47,156,94,0.10) 0%, transparent 50%),
+    radial-gradient(ellipse at 90% 110%, rgba(244,166,74,0.07) 0%, transparent 45%);
+}
+
+.stage { grid-template-columns: auto 248px; gap: clamp(16px, 2.4vw, 34px); }
+
+.ps-wrap { display: contents; }
+
+/* ---- Board ---- */
+.ps-boardbox {
+  display: flex; align-items: center; justify-content: center; min-height: 0;
+  padding: clamp(10px, 1.6vw, 20px);
+  background: radial-gradient(ellipse at 60% 25%, #1c3826, #122017 75%);
+  border: 2px solid var(--line-2); border-radius: 18px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+.ps-svg {
+  width: 100%;
+  max-width: min(60vw, 560px);
+  max-height: 72vh;
+  display: block;
+  overflow: visible;
+}
+
+.ps-cellgrp { cursor: default; }
+.ps-hex {
+  stroke: var(--hexline); stroke-width: 1.4;
+  transition: filter 0.15s ease, opacity 0.15s ease;
+}
+.ps-hex.ring-c { fill: var(--ring-c); }
+.ps-hex.ring-i { fill: var(--ring-i); }
+.ps-hex.ring-m { fill: var(--ring-m); }
+.ps-hex.ring-o { fill: var(--ring-o); }
+.ps-hex.shadow { filter: brightness(0.52) saturate(0.7); }
+
+/* actionable cells get a glow + pointer */
+.ps-cellgrp:has(.plant-ok),
+.ps-cellgrp:has(.grow-ok),
+.ps-cellgrp:has(.collect-ok) { cursor: pointer; }
+.ps-hex.plant-ok   { stroke: var(--accent-hi); stroke-width: 2.4; stroke-dasharray: 4 3; }
+.ps-hex.grow-ok    { stroke: var(--you-tree); stroke-width: 2.6; }
+.ps-hex.collect-ok { stroke: var(--accent); stroke-width: 3; filter: drop-shadow(0 0 6px var(--accent)); }
+.ps-hex.sel        { stroke: var(--accent-hi); stroke-width: 3.2; filter: drop-shadow(0 0 7px var(--accent-hi)); }
+.ps-cellgrp:hover .ps-hex.plant-ok,
+.ps-cellgrp:hover .ps-hex.grow-ok,
+.ps-cellgrp:hover .ps-hex.collect-ok { brightness: 1.1; filter: drop-shadow(0 0 8px var(--accent-hi)); }
+
+/* ---- Trees ---- */
+.tree { pointer-events: none; }
+.tree.you .tree-fill { fill: var(--you-tree); stroke: var(--you-tree-d); stroke-width: 1.4; }
+.tree.foe .tree-fill { fill: var(--foe-tree); stroke: var(--foe-tree-d); stroke-width: 1.4; }
+.tree .trunk { fill: var(--bark); }
+.tree .tree-core { fill: rgba(255,255,255,0.42); }
+.tree.shaded .tree-fill { filter: brightness(0.6) saturate(0.65); }
+.tree.shaded .trunk { filter: brightness(0.6); }
+
+/* ---- Sun ---- */
+.ps-sun { pointer-events: none; transition: transform 0.4s ease; }
+.sun-core { fill: var(--sun); stroke: var(--sun-d); stroke-width: 2; filter: drop-shadow(0 0 10px rgba(255,212,90,0.8)); }
+.sun-ray { stroke: var(--sun); stroke-width: 2.4; stroke-linecap: round; opacity: 0.9; }
+
+/* ---- Side panels ---- */
+.ps-score { display: flex; flex-direction: column; gap: 4px; }
+.ps-prow {
+  display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 8px;
+  padding: 4px 6px; border-radius: 8px;
+}
+.ps-prow.on { background: rgba(255,206,79,0.10); box-shadow: inset 0 0 0 1px var(--line-2); }
+.ps-pawn { width: 13px; height: 13px; border-radius: 50%; }
+.ps-pawn.you { background: var(--you-tree); box-shadow: 0 0 0 2px var(--you-tree-d); }
+.ps-pawn.foe { background: var(--foe-tree); box-shadow: 0 0 0 2px var(--foe-tree-d); }
+.ps-who { font-family: var(--display); font-weight: 600; font-size: 14px; color: var(--ink); }
+.ps-vp { font-family: var(--mono); font-weight: 600; font-size: 16px; color: var(--accent-hi); }
+.ps-vp small { font-size: 9px; color: var(--ink-3); }
+.ps-stat {
+  display: flex; justify-content: space-between; gap: 8px;
+  font-family: var(--mono); font-size: 10px; color: var(--ink-2);
+  padding: 0 6px 6px 30px;
+}
+.ps-light { color: var(--accent-hi); }
+.ps-inv { color: var(--ink-3); letter-spacing: -0.5px; }
+
+.ps-control { display: flex; flex-direction: column; gap: 8px; }
+.ps-actbtns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.ps-btn {
+  font-family: var(--sans); font-weight: 600; font-size: 12px;
+  background: var(--panel-2); color: var(--ink); border: 1.5px solid var(--line-2);
+  border-radius: 8px; padding: 8px 6px; cursor: pointer; line-height: 1.2;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  transition: border-color 0.12s, background 0.12s;
+}
+.ps-btn:hover:not(:disabled) { border-color: var(--accent); background: rgba(255,206,79,0.08); }
+.ps-btn:disabled { opacity: 0.4; cursor: default; }
+.ps-btn .ps-cost { font-family: var(--mono); font-size: 10px; color: var(--accent-hi); }
+.ps-btn.end {
+  flex-direction: row; justify-content: center;
+  background: var(--accent); color: var(--accent-ink); border-color: var(--accent-d);
+}
+.ps-btn.end:hover:not(:disabled) { filter: brightness(1.08); background: var(--accent); }
+.ps-hint { font-size: 11px; line-height: 1.45; color: var(--ink-2); font-style: italic; }
+
+.ps-rings { display: flex; flex-direction: column; gap: 4px; }
+.ps-ringrow {
+  display: grid; grid-template-columns: 14px auto 1fr; align-items: center; gap: 8px;
+  font-size: 11px;
+}
+.ps-ringdot { width: 11px; height: 11px; border-radius: 3px; }
+.ps-ringdot.ring-c { background: var(--ring-c); }
+.ps-ringdot.ring-i { background: var(--ring-i); }
+.ps-ringdot.ring-m { background: var(--ring-m); }
+.ps-ringdot.ring-o { background: var(--ring-o); }
+.ps-ringname { font-family: var(--display); font-weight: 500; color: var(--ink); }
+.ps-ringvals { font-family: var(--mono); font-size: 10px; color: var(--accent-hi); text-align: right; letter-spacing: 0.5px; }
+
+.logbox { max-height: 150px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+
+.ps-final-you { color: var(--you); }
+.ps-final-foe { color: var(--foe); }
