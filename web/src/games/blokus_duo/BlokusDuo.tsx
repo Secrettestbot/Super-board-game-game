@@ -1,16 +1,18 @@
-/* BLOKUS DUO — UI (built for this codebase). A 14x14 corner-to-corner polyomino duel vs a
-   greedy AI. Pick a piece from your tray, rotate/flip it, then click a board cell to drop it
-   (the cell becomes the piece's top-left anchor). Legal anchors light up; an illegal preview
-   shows red. The AI (player 1) places its best move on a timer; it can take several passes in a
-   row when you must pass, so its driver re-arms on s.step (useAITurn tick). */
+/* BLOKUS DUO — UI (built for this codebase). A 14x14 corner-to-corner polyomino duel.
+   Pick a piece from your tray, rotate/flip it, then click a board cell to drop it (the cell
+   becomes the piece's top-left anchor). Legal anchors light up; an illegal preview shows red.
+   Seat-relative: you play `mySeat` (0 solo / vs AI, 0 or 1 online). The opponent seat is
+   driven by the AI (solo) or a remote human (online) through useGameSession. */
 
 import { useMemo, useRef, useState, useEffect } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { blokusDuoAdapter } from './net'
 import * as B from './logic'
-import type { State, Shape } from './logic'
+import type { State, Shape, Player } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -40,7 +42,9 @@ function ShapeGrid({ shape, cell, on, off }: { shape: Shape; cell: string; on: s
 }
 
 export function BlokusDuo() {
-  const [s, setS] = useState<State>(() => B.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(blokusDuoAdapter)
+  const me = mySeat as Player
+  const opp = (1 - me) as Player
   const [showRules, setShowRules] = useState(false)
   // currently selected piece id (null = none) and its orientation index
   const [selPiece, setSelPiece] = useState<number | null>(null)
@@ -49,15 +53,14 @@ export function BlokusDuo() {
   const logRef = useRef<HTMLDivElement>(null)
 
   function newGame() {
-    setS(B.makeGame()); setSelPiece(null); setOrient(0); setHover(null); setShowRules(false)
+    netNew(); setSelPiece(null); setOrient(0); setHover(null); setShowRules(false)
   }
 
-  // AI is player 1; it may take several consecutive turns (passes), so re-arm on s.step.
-  useAITurn(s.winner == null && s.turn === 1, () => setS(p => B.aiTurn(p)), { delayMs: 480, tick: s.step })
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = 0 }, [s.log])
 
-  const yourTurn = s.winner == null && s.turn === 0
-  const myRemaining = s.remaining[0]
+  const yourTurn = s.winner == null && isMyTurn
+  const myRemaining = s.remaining[me]
+  const oppLabel = net.online ? 'Opponent' : 'AI'
 
   // If the selected piece got placed or it's not yours anymore, clear selection.
   useEffect(() => {
@@ -72,22 +75,22 @@ export function BlokusDuo() {
     if (!yourTurn || selShape == null) return set
     for (let r = 0; r < B.N; r++) for (let c = 0; c < B.N; c++) {
       const cells = B.placedCells(selShape, r, c)
-      if (cells && B.isLegal(s, 0, cells)) set.add(r * B.N + c)
+      if (cells && B.isLegal(s, me, cells)) set.add(r * B.N + c)
     }
     return set
-  }, [s, selShape, yourTurn])
+  }, [s, selShape, yourTurn, me])
 
-  // Whether player 0 has any legal move at all (for the auto-pass affordance).
-  const youCanMove = useMemo(() => (yourTurn ? B.canPlaceAny(s, 0) : false), [s, yourTurn])
+  // Whether you have any legal move at all (for the auto-pass affordance).
+  const youCanMove = useMemo(() => (yourTurn ? B.canPlaceAny(s, me) : false), [s, yourTurn, me])
 
   // Preview cells for the current hover (absolute board indices) + whether legal.
   const preview = useMemo(() => {
     if (!yourTurn || selShape == null || !hover) return { cells: new Set<number>(), ok: false }
     const cells = B.placedCells(selShape, hover.r, hover.c)
     if (!cells) return { cells: new Set<number>(), ok: false }
-    const ok = B.isLegal(s, 0, cells)
+    const ok = B.isLegal(s, me, cells)
     return { cells: new Set(cells.map(([r, c]) => r * B.N + c)), ok }
-  }, [s, selShape, hover, yourTurn])
+  }, [s, selShape, hover, yourTurn, me])
 
   function rotateSel() { if (selPiece != null) setOrient(o => (o + 1) % B.ORIENTS[selPiece].length) }
   function flipSel() {
@@ -103,13 +106,13 @@ export function BlokusDuo() {
   function tryPlace(r: number, c: number) {
     if (!yourTurn || selPiece == null || selShape == null) return
     const cells = B.placedCells(selShape, r, c)
-    if (!cells || !B.isLegal(s, 0, cells)) return
-    setS(B.place(s, 0, selPiece, cells))
+    if (!cells || !B.isLegal(s, me, cells)) return
+    dispatch({ pieceId: selPiece, orient, r, c })
     setSelPiece(null); setOrient(0); setHover(null)
   }
 
   function passTurn() {
-    if (yourTurn && !youCanMove) setS(B.pass(s, 0))
+    if (yourTurn && !youCanMove) dispatch({ pieceId: null })
   }
 
   useGameKeys({
@@ -117,7 +120,7 @@ export function BlokusDuo() {
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => { if (showRules) setShowRules(false); else { setSelPiece(null); setOrient(0) } },
     extra: (e) => {
-      if (s.winner != null || s.turn !== 0) return false
+      if (!yourTurn) return false
       if (e.key === 'r' || e.key === 'R') { rotateSel(); return true }
       if (e.key === 'f' || e.key === 'F') { flipSel(); return true }
       if (e.key === 'p' || e.key === 'P') { passTurn(); return true }
@@ -125,17 +128,18 @@ export function BlokusDuo() {
     },
   })
 
-  // Banner
+  // Banner (relative to your seat)
+  const myScore = s.scores[me], oppScore = s.scores[opp]
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = `You win ${s.scores[0]}–${s.scores[1]}!` }
-  else if (s.winner === 1) { bk = 'lose'; banner = `The AI wins ${s.scores[1]}–${s.scores[0]}` }
-  else if (s.winner === -1) { bk = ''; banner = `It's a draw, ${s.scores[0]}–${s.scores[1]}` }
+  if (s.winner === me) { bk = 'win'; banner = `You win ${myScore}–${oppScore}!` }
+  else if (s.winner === opp) { bk = 'lose'; banner = `${oppLabel} wins ${oppScore}–${myScore}` }
+  else if (s.winner === -1) { bk = ''; banner = `It's a draw, ${myScore}–${oppScore}` }
   else if (yourTurn) {
     bk = 'you'
     banner = !youCanMove ? 'No legal move — press Pass'
       : selPiece == null ? 'Select a piece from your tray'
       : 'Click a glowing cell to place it'
-  } else { bk = 'foe'; banner = 'The AI is placing a piece…' }
+  } else { bk = 'foe'; banner = net.online ? 'Waiting for the opponent…' : 'The AI is placing a piece…' }
 
   return (
     <>
@@ -146,7 +150,7 @@ export function BlokusDuo() {
         subtitle="grow your color from one corner, touching only at the diagonals — never edge to edge — and cover more squares than the AI"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`You ${s.scores[0]} · AI ${s.scores[1]} cells`}
+        modeLeft={`You ${myScore} · ${oppLabel} ${oppScore} cells`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>R · rotate &nbsp; F · flip &nbsp; P · pass &nbsp; N · new</>}
@@ -181,16 +185,19 @@ export function BlokusDuo() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel bd-score">
             <div className={'bd-row' + (yourTurn ? ' on' : '')}>
-              <span className="bd-chip p0" />
+              <span className={'bd-chip p' + me} />
               <span className="bd-who">You</span>
-              <span className="bd-cells">{s.scores[0]}<small>/{B.TOTAL_CELLS}</small></span>
+              <span className="bd-cells">{myScore}<small>/{B.TOTAL_CELLS}</small></span>
             </div>
-            <div className={'bd-row' + (s.turn === 1 && s.winner == null ? ' on' : '')}>
-              <span className="bd-chip p1" />
-              <span className="bd-who">AI</span>
-              <span className="bd-cells">{s.scores[1]}<small>/{B.TOTAL_CELLS}</small></span>
+            <div className={'bd-row' + (s.turn === opp && s.winner == null ? ' on' : '')}>
+              <span className={'bd-chip p' + opp} />
+              <span className="bd-who">{oppLabel}</span>
+              <span className="bd-cells">{oppScore}<small>/{B.TOTAL_CELLS}</small></span>
             </div>
           </div>
 
@@ -211,7 +218,7 @@ export function BlokusDuo() {
             <div className="bd-hint">
               {yourTurn
                 ? (selPiece == null ? 'pick a piece, then click a glowing square' : 'R rotate · F flip · click to drop')
-                : (s.winner == null ? 'the AI is thinking…' : 'game over')}
+                : (s.winner == null ? (net.online ? 'waiting for the opponent…' : 'the AI is thinking…') : 'game over')}
             </div>
           </div>
 
@@ -241,25 +248,27 @@ export function BlokusDuo() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && (
+        <ResultModal s={s} me={me} opp={opp} oppLabel={oppLabel} onNew={newGame} />
+      )}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: State; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ s, me, opp, oppLabel, onNew }: { s: State; me: Player; opp: Player; oppLabel: string; onNew: () => void }) {
+  const won = s.winner === me
   const draw = s.winner === -1
   return (
     <Modal
       eyebrow={draw ? 'Dead even' : won ? 'Board claimed' : 'Outplaced'}
-      title={draw ? 'Draw' : won ? 'You Win' : 'AI Wins'}
+      title={draw ? 'Draw' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
-        <span className="you">You {s.scores[0]}</span>
-        <span className="foe">AI {s.scores[1]}</span>
+        <span className="you">You {s.scores[me]}</span>
+        <span className="foe">{oppLabel} {s.scores[opp]}</span>
       </div>
     </Modal>
   )

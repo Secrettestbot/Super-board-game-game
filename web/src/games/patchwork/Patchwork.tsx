@@ -1,16 +1,19 @@
 /* PATCHWORK — UI. A shared time track with two tokens + income markers, two 9x9 quilts,
    the next-3 buyable patches (cost/time/income), your buttons, and a place-with-rotation
-   flow. You are player 0; the AI is player 1. Because turns DON'T alternate, the AI driver
-   re-arms on a tick that changes on every AI action (pos-buttons-neutral-clock). */
+   flow. Seat-relative: you are `mySeat` (0 solo/host, 1 as a guest), the opponent is the
+   other seat. Because turns DON'T alternate, the net hook drives any empty seat's AI off a
+   tickKey that changes on every action; isMyTurn gates all interaction. */
 
 import { useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { patchworkAdapter } from './net'
 import * as P from './logic'
-import type { State, Patch } from './logic'
+import type { State, Patch, Player } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -51,7 +54,9 @@ function ShapeGrid({ shape, color, cell = 13 }: { shape: P.Shape; color: number;
 }
 
 export function Patchwork() {
-  const [s, setS] = useState<State>(() => P.makeGame(Math.floor(Math.random() * 100000)))
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(patchworkAdapter)
+  const me = mySeat as Player          // seat 0 or 1 == player index
+  const oppSeat = (1 - me) as Player
   const [showRules, setShowRules] = useState(false)
   // placement flow state (human)
   const [selPatch, setSelPatch] = useState<number | null>(null)
@@ -59,16 +64,14 @@ export function Patchwork() {
   const [hover, setHover] = useState<{ r: number; c: number } | null>(null)
 
   function newGame() {
-    setS(P.makeGame(Math.floor(Math.random() * 100000)))
+    netNew()
     setShowRules(false); setSelPatch(null); setOrient(0); setHover(null)
   }
 
   const mv = P.toMove(s)
-  const yourTurn = s.winner === null && mv === 0
-  const aiActive = s.winner === null && mv === 1
-  // tick changes on EVERY AI action so consecutive AI turns re-arm the driver
-  const aiTick = `${s.players[1].pos}-${s.players[1].buttons}-${s.neutral}-${s.clock}`
-  useAITurn(aiActive, () => setS(prev => P.aiTurn(prev)), { delayMs: 520, tick: aiTick })
+  const yourTurn = s.winner === null && isMyTurn
+  const oppActive = s.winner === null && mv === oppSeat
+  const oppLabel = net.online ? 'Opponent' : 'AI'
 
   useGameKeys({
     onNew: newGame,
@@ -94,45 +97,50 @@ export function Patchwork() {
   // preview cells for the hovered anchor (valid placement only)
   const previewCells = useMemo(() => {
     if (!yourTurn || !selectedPatch || !selShape || !hover) return null
-    if (P.canPlace(s.players[0].quilt, selShape, hover.r, hover.c)) {
+    if (P.canPlace(s.players[me].quilt, selShape, hover.r, hover.c)) {
       return new Set(P.cellsFor(selShape, hover.r, hover.c) ?? [])
     }
     return null
-  }, [yourTurn, selectedPatch, selShape, hover, s])
+  }, [yourTurn, selectedPatch, selShape, hover, s, me])
 
   function doAdvance() {
     if (!yourTurn) return
     setSelPatch(null); setHover(null)
-    setS(prev => P.advance(prev, 0))
+    dispatch({ kind: 'advance' })
   }
 
   function selectPatch(p: Patch) {
     if (!yourTurn) return
-    if (!P.canBuy(s, 0, p.id)) return
+    if (!P.canBuy(s, me, p.id)) return
     setSelPatch(p.id); setOrient(0); setHover(null)
   }
 
   function clickQuiltCell(r: number, c: number) {
     if (!yourTurn || !selectedPatch || !selShape) return
-    if (!P.canPlace(s.players[0].quilt, selShape, r, c)) return
+    if (!P.canPlace(s.players[me].quilt, selShape, r, c)) return
     const id = selectedPatch.id
     const o = orient % selOrients.length
     setSelPatch(null); setHover(null)
-    setS(prev => P.buyPlace(prev, 0, id, r, c, o))
+    dispatch({ kind: 'buy', patchId: id, cell: r * P.QN + c, orientation: o })
   }
 
-  // banner
+  // banner (relative to mySeat)
+  const myScore = s.scores?.[me]
+  const oppScore = s.scores?.[oppSeat]
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = `You win — ${s.scores?.[0]} to ${s.scores?.[1]}!` }
-  else if (s.winner === 1) { bk = 'lose'; banner = `The AI wins — ${s.scores?.[1]} to ${s.scores?.[0]}.` }
-  else if (s.winner === -1) { bk = ''; banner = `A draw — ${s.scores?.[0]} apiece.` }
+  if (s.winner === me) { bk = 'win'; banner = `You win — ${myScore} to ${oppScore}!` }
+  else if (s.winner === oppSeat) { bk = 'lose'; banner = `${oppLabel === 'AI' ? 'The AI' : oppLabel} wins — ${oppScore} to ${myScore}.` }
+  else if (s.winner === -1) { bk = ''; banner = `A draw — ${myScore} apiece.` }
   else if (yourTurn) {
     bk = 'you'
     banner = selectedPatch ? 'Rotate (R) then click a quilt square to place' : 'Your turn — buy a patch or advance (Space)'
-  } else { bk = 'foe'; banner = 'The AI is stitching its quilt…' }
+  } else {
+    bk = 'foe'
+    banner = net.online ? 'Waiting for your opponent…' : 'The AI is stitching its quilt…'
+  }
 
-  const you = s.players[0]
-  const ai = s.players[1]
+  const you = s.players[me]
+  const ai = s.players[oppSeat]
 
   return (
     <>
@@ -143,14 +151,14 @@ export function Patchwork() {
         subtitle="race the time track, buy polyomino patches, and stitch the fullest 9×9 quilt — empty squares cost you"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`You ${P.scoreOf(s, 0)} · AI ${P.scoreOf(s, 1)}`}
+        modeLeft={`You ${P.scoreOf(s, me)} · ${oppLabel} ${P.scoreOf(s, oppSeat)}`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>space · advance &nbsp; R · rotate &nbsp; N · new</>}
       >
         <div className="pw-wrap">
-          {/* TIME BOARD */}
-          <TimeBoard you={you.pos} ai={ai.pos} mv={mv} />
+          {/* TIME BOARD (seat-relative: `mv` is 0 when it's your token's turn) */}
+          <TimeBoard you={you.pos} ai={ai.pos} mv={mv === null ? null : (mv === me ? 0 : 1)} />
 
           <div className="pw-main">
             {/* YOUR QUILT */}
@@ -177,7 +185,7 @@ export function Patchwork() {
               <div className="pw-mhead">Patch Market — next 3</div>
               <div className="pw-patches">
                 {three.map((p, i) => {
-                  const buyable = yourTurn && P.canBuy(s, 0, p.id)
+                  const buyable = yourTurn && P.canBuy(s, me, p.id)
                   const sel = selPatch === p.id
                   return (
                     <div key={p.id}
@@ -214,13 +222,15 @@ export function Patchwork() {
                   )}
                 </div>
               )}
-              {!yourTurn && s.winner === null && <div className="pw-hint">watching the AI…</div>}
+              {!yourTurn && s.winner === null && (
+                <div className="pw-hint">{net.online ? 'watching your opponent…' : 'watching the AI…'}</div>
+              )}
             </div>
 
-            {/* AI QUILT */}
-            <div className={'pw-quiltbox' + (aiActive ? ' active' : '')}>
+            {/* OPPONENT QUILT */}
+            <div className={'pw-quiltbox' + (oppActive ? ' active' : '')}>
               <div className="pw-qhead">
-                <span className="pw-pawn ai" /> AI
+                <span className="pw-pawn ai" /> {oppLabel}
                 <span className="pw-stat">◉ {ai.buttons}</span>
                 <span className="pw-stat">⊞ {P.emptyCells(ai.quilt)} empty</span>
                 <span className="pw-stat">↑ {ai.income} inc</span>
@@ -229,13 +239,17 @@ export function Patchwork() {
             </div>
           </div>
 
+          <div className="panel pw-online"><OnlineBar net={net} /></div>
+
           <div className="panel pw-log">
             {s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}
           </div>
         </div>
       </GameShell>
 
-      {s.winner !== null && <ResultModal winner={s.winner} scores={s.scores} onNew={newGame} />}
+      {s.winner !== null && (
+        <ResultModal won={s.winner === me} draw={s.winner === -1} myScore={myScore} oppScore={oppScore} oppLabel={oppLabel} onNew={newGame} />
+      )}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -302,20 +316,20 @@ function Quilt({
   )
 }
 
-function ResultModal({ winner, scores, onNew }: { winner: P.Player | -1; scores: [number, number] | null; onNew: () => void }) {
-  const won = winner === 0
-  const draw = winner === -1
+function ResultModal({ won, draw, myScore, oppScore, oppLabel, onNew }: {
+  won: boolean; draw: boolean; myScore?: number; oppScore?: number; oppLabel: string; onNew: () => void
+}) {
   return (
     <Modal
       eyebrow={draw ? 'Even stitches' : won ? 'Cozy victory' : 'Out-quilted'}
-      title={draw ? 'Draw' : won ? 'You Win' : 'AI Wins'}
+      title={draw ? 'Draw' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
-        <span className="you">You {scores?.[0]}</span>
+        <span className="you">You {myScore}</span>
         <span className="sep">vs</span>
-        <span className="foe">AI {scores?.[1]}</span>
+        <span className="foe">{oppLabel} {oppScore}</span>
       </div>
     </Modal>
   )

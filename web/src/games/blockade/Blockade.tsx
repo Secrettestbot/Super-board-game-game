@@ -1,16 +1,21 @@
 /* BLOCKADE — UI (built for this codebase). An 11x11 slate board with two pawns per side and a
-   shared groove network for length-2 walls, vs a BFS-greedy AI. A turn is move-THEN-wall: first
-   click one of YOUR pawns and step it to a highlighted cell, then drop a wall into a legal groove.
-   Player 0 = you (slate-blue, bottom). Player 1 = ai (amber, top). Goals are the rival's two
-   start cells, marked with rings. */
+   shared groove network for length-2 walls. A turn is move-THEN-wall: first click one of YOUR
+   pawns and step it to a highlighted cell, then drop a wall into a legal groove — the two are
+   submitted together as ONE turn (one net intent). Player 0 = you (slate-blue, bottom).
+   Player 1 = ai/opponent (amber, top). Goals are the rival's two start cells, marked with rings.
+
+   Online (useGameSession): the host runs the real logic and the guest plays the other seat;
+   the board and all banners are relative to mySeat, so a guest sees its own pawns as "you". */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { blockadeAdapter } from './net'
 import * as BL from './logic'
-import type { BlockadeState, Wall } from './logic'
+import type { BlockadeState, Wall, Player } from './logic'
 
 const { N, STARTS, goalsOf } = BL
 
@@ -28,68 +33,115 @@ const TITLE_MARK = (
 const wallKey = (w: Wall) => `${w.o}${w.r}-${w.c}`
 const cellKey = (r: number, c: number) => r * N + c
 
-const youGoalSet = new Set(goalsOf(0).map(g => cellKey(g.r, g.c)))   // rival starts (your goal)
-const aiGoalSet = new Set(goalsOf(1).map(g => cellKey(g.r, g.c)))    // your starts (ai goal)
+const youGoalSet = new Set(goalsOf(0).map(g => cellKey(g.r, g.c)))   // rival starts (player-0 goal)
+const aiGoalSet = new Set(goalsOf(1).map(g => cellKey(g.r, g.c)))    // your starts (player-1 goal)
 const youStartSet = new Set(STARTS[0].map(g => cellKey(g.r, g.c)))
 const aiStartSet = new Set(STARTS[1].map(g => cellKey(g.r, g.c)))
 
+/** A pawn move staged locally, awaiting its wall, before the whole turn is dispatched. */
+interface PendingMove { idx: number; r: number; c: number }
+
 export function Blockade() {
-  const [s, setS] = useState<BlockadeState>(() => BL.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(blockadeAdapter)
+  const me = mySeat as Player                 // seat 0 = you (bottom), seat 1 = opponent (top)
+  const opp: Player = me === 0 ? 1 : 0
   const [showRules, setShowRules] = useState(false)
-  const [sel, setSel] = useState<number | null>(null) // selected pawn index for the move phase
+  const [sel, setSel] = useState<number | null>(null)        // selected pawn index (move phase)
+  const [pending, setPending] = useState<PendingMove | null>(null) // staged move (wall phase)
 
-  function newGame() { setS(BL.makeGame()); setShowRules(false); setSel(null) }
+  function newGame() { netNew(); setShowRules(false); setSel(null); setPending(null) }
 
-  // The AI plays its entire move-then-wall turn in one call. Re-arm on the turn flag.
-  useAITurn(s.winner == null && s.turn === 1, () => setS(p => BL.aiTurn(p)), { delayMs: 560 })
-
-  const yourTurn = s.winner == null && s.turn === 0
-  const wallPhase = BL.awaitingWall(s, 0)
-  const movePhase = yourTurn && !wallPhase
+  const over = s.winner != null
+  const yourTurn = !over && isMyTurn
+  // We stage the move locally, so the wall phase is local-state driven (pending != null),
+  // not derived from s — the authority only sees the combined turn.
+  const wallPhase = yourTurn && pending != null
+  const movePhase = yourTurn && pending == null
 
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
-    onEscape: () => { setShowRules(false); setSel(null) },
+    onEscape: () => { setShowRules(false); if (pending) setPending(null); else setSel(null) },
   })
+
+  // The state AFTER the staged move (for showing the moved pawn + legal walls in the wall phase).
+  const staged = useMemo<BlockadeState | null>(() => {
+    if (pending == null) return null
+    return BL.move(s, me, pending.idx, pending.r, pending.c)
+  }, [pending, s, me])
 
   // In the move phase: legal destinations for the currently-selected pawn.
   const moveTargets = useMemo(() => {
     if (!movePhase || sel == null) return new Set<number>()
-    return new Set(BL.legalMoves(s, 0, sel).map(([r, c]) => cellKey(r, c)))
-  }, [movePhase, sel, s])
+    return new Set(BL.legalMoves(s, me, sel).map(([r, c]) => cellKey(r, c)))
+  }, [movePhase, sel, s, me])
 
-  const wallSlots = useMemo(() => (wallPhase ? BL.legalWalls(s, 0) : []), [wallPhase, s])
+  // In the wall phase: legal walls relative to the staged (post-move) state.
+  const wallSlots = useMemo(
+    () => (wallPhase && staged ? BL.legalWalls(staged, me) : []),
+    [wallPhase, staged, me],
+  )
   const wallSlotSet = useMemo(() => new Set(wallSlots.map(wallKey)), [wallSlots])
+
+  // Pawn positions as displayed: in the wall phase the staged move is already shown.
+  const shownPawns = staged ? staged.pawns : s.pawns
   const placed = useMemo(() => new Set(s.walls.map(wallKey)), [s.walls])
 
-  // If we're in the wall phase but no legal wall exists, auto-pass the turn so play continues.
-  if (wallPhase && wallSlots.length === 0 && s.left[0] > 0) {
-    // defer to a microtask to avoid setState-in-render
-    queueMicrotask(() => setS(p => (BL.awaitingWall(p, 0) && BL.legalWalls(p, 0).length === 0
-      ? Object.assign({}, p, { turn: 1, last: { kind: 'wall' as const, who: 0 } })
-      : p)))
+  function commitMove(idx: number, r: number, c: number) {
+    const moved = BL.move(s, me, idx, r, c)
+    if (moved === s) return // illegal (shouldn't happen — target was highlighted)
+    // If the move wins or the mover has no walls left, the move IS the whole turn.
+    if (moved.winner != null || moved.turn !== me) {
+      dispatch({ idx, r, c })
+      setSel(null); setPending(null)
+      return
+    }
+    // Otherwise we must also place a wall — stage the move and enter the wall phase.
+    setSel(null); setPending({ idx, r, c })
   }
 
   function clickPawn(player: number, idx: number) {
-    if (!movePhase) return
-    if (player !== 0) return
-    setSel(idx)
+    if (!movePhase || player !== me) return
+    setSel(idx === sel ? null : idx)
   }
   function clickCell(r: number, c: number) {
     if (!movePhase || sel == null) return
-    if (moveTargets.has(cellKey(r, c))) { setS(BL.move(s, 0, sel, r, c)); setSel(null) }
+    if (moveTargets.has(cellKey(r, c))) commitMove(sel, r, c)
   }
   function clickWall(w: Wall) {
-    if (wallPhase && wallSlotSet.has(wallKey(w))) setS(BL.placeWall(s, w, 0))
+    if (!wallPhase || pending == null || !wallSlotSet.has(wallKey(w))) return
+    dispatch({ idx: pending.idx, r: pending.r, c: pending.c, wall: w })
+    setPending(null)
   }
 
+  const myWin = s.winner === me
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You stormed a rival start — you win!' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'The rival reached your start — it wins' }
-  else if (wallPhase) { bk = 'you'; banner = 'Now place a wall — click a glowing groove' }
-  else if (movePhase) { bk = 'you'; banner = sel == null ? 'Your turn — pick a pawn to move' : 'Step it to a highlighted cell' }
-  else { bk = 'foe'; banner = 'The rival is plotting…' }
+  if (over) {
+    bk = myWin ? 'win' : 'lose'
+    banner = myWin ? 'You stormed a rival start — you win!' : `${oppLabel} reached your start — it wins`
+  } else if (wallPhase) {
+    bk = 'you'; banner = 'Now place a wall — click a glowing groove'
+  } else if (movePhase) {
+    bk = 'you'; banner = sel == null ? 'Your turn — pick a pawn to move' : 'Step it to a highlighted cell'
+  } else {
+    bk = 'foe'; banner = net.online ? `${oppLabel} is moving…` : 'The rival is plotting…'
+  }
+
+  // Orient the board so the local player's pawns sit at the bottom (seat 1 flips).
+  const flip = me === 1
+  const dispR = (r: number) => (flip ? N - 1 - r : r)
+  // Wall anchors (both orients): a vertical wall spans rows r..r+1 and a horizontal wall sits in
+  // the groove below row r — flipping maps the anchor row r to display row WALL_N-1-r in both cases.
+  const dispWallR = (r: number) => (flip ? BL.WALL_N - 1 - r : r)
+
+  // Goal/start tinting is relative to mySeat: where YOU land vs where the opponent lands.
+  const myGoalSet = me === 0 ? youGoalSet : aiGoalSet
+  const oppGoalSet = me === 0 ? aiGoalSet : youGoalSet
+
+  const leftMine = s.left[me]
+  const leftOpp = s.left[opp]
 
   return (
     <>
@@ -113,32 +165,33 @@ export function Blockade() {
               const k = cellKey(r, c)
               const target = moveTargets.has(k)
               let mark = ''
-              if (youGoalSet.has(k)) mark = ' goal-you'      // rival starts = where YOU want to land
-              else if (aiGoalSet.has(k)) mark = ' goal-ai'   // your starts = where AI wants to land
+              if (myGoalSet.has(k)) mark = ' goal-you'     // where YOU want to land
+              else if (oppGoalSet.has(k)) mark = ' goal-ai' // where the opponent wants to land
               return (
                 <div
                   key={'cell' + i}
                   className={'bk-cell' + (target ? ' target' : '') + mark}
-                  style={{ gridColumn: c * 2 + 1, gridRow: r * 2 + 1 }}
+                  style={{ gridColumn: c * 2 + 1, gridRow: dispR(r) * 2 + 1 }}
                   onClick={() => clickCell(r, c)}
                 >
-                  {(youGoalSet.has(k) || aiGoalSet.has(k)) && <div className="bk-ring" />}
+                  {(myGoalSet.has(k) || oppGoalSet.has(k)) && <div className="bk-ring" />}
                   {target && <div className="bk-dot" />}
                 </div>
               )
             })}
 
-            {/* pawns */}
+            {/* pawns (with the staged move already applied during the wall phase) */}
             {([0, 1] as const).flatMap(player =>
-              s.pawns[player].map((p, idx) => {
-                const who = player === 0 ? 'you' : 'ai'
-                const selected = player === 0 && movePhase && sel === idx
-                const clickable = player === 0 && movePhase
+              shownPawns[player].map((p, idx) => {
+                const mine = player === me
+                const who = mine ? 'you' : 'ai'
+                const selected = mine && movePhase && sel === idx
+                const clickable = mine && movePhase
                 return (
                   <div
                     key={'pawn' + player + idx}
                     className={'bk-pawn ' + who + (selected ? ' sel' : '') + (clickable ? ' pick' : '')}
-                    style={{ gridColumn: p.c * 2 + 1, gridRow: p.r * 2 + 1 }}
+                    style={{ gridColumn: p.c * 2 + 1, gridRow: dispR(p.r) * 2 + 1 }}
                     onClick={() => clickPawn(player, idx)}
                   />
                 )
@@ -151,8 +204,8 @@ export function Blockade() {
                 key={'pw' + wallKey(w)}
                 className={'bk-wall ' + w.o}
                 style={w.o === 'h'
-                  ? { gridColumn: w.c * 2 + 1 + ' / ' + (w.c * 2 + 4), gridRow: w.r * 2 + 2 }
-                  : { gridColumn: w.c * 2 + 2, gridRow: w.r * 2 + 1 + ' / ' + (w.r * 2 + 4) }}
+                  ? { gridColumn: w.c * 2 + 1 + ' / ' + (w.c * 2 + 4), gridRow: dispWallR(w.r) * 2 + 2 }
+                  : { gridColumn: w.c * 2 + 2, gridRow: dispWallR(w.r) * 2 + 1 + ' / ' + (dispWallR(w.r) * 2 + 4) }}
               />
             ))}
 
@@ -162,8 +215,8 @@ export function Blockade() {
                 key={'ws' + wallKey(w)}
                 className={'bk-slot ' + w.o}
                 style={w.o === 'h'
-                  ? { gridColumn: w.c * 2 + 1 + ' / ' + (w.c * 2 + 4), gridRow: w.r * 2 + 2 }
-                  : { gridColumn: w.c * 2 + 2, gridRow: w.r * 2 + 1 + ' / ' + (w.r * 2 + 4) }}
+                  ? { gridColumn: w.c * 2 + 1 + ' / ' + (w.c * 2 + 4), gridRow: dispWallR(w.r) * 2 + 2 }
+                  : { gridColumn: w.c * 2 + 2, gridRow: dispWallR(w.r) * 2 + 1 + ' / ' + (dispWallR(w.r) * 2 + 4) }}
                 onClick={() => clickWall(w)}
               />
             ))}
@@ -172,14 +225,15 @@ export function Blockade() {
         </div>
 
         <div className="side">
+          <div className="panel"><OnlineBar net={net} /></div>
           <div className="panel scoreboard">
-            <div className={'sc ai' + (s.turn === 1 && s.winner == null ? ' on' : '')}>
-              <span className="sc-pawn ai" /><span className="sc-name">Rival · top</span>
-              <span className="sc-walls">{'▮'.repeat(s.left[1]) || '—'}</span><span className="sc-n">{s.left[1]}</span>
+            <div className={'sc ai' + (!yourTurn && !over ? ' on' : '')}>
+              <span className="sc-pawn ai" /><span className="sc-name">{oppLabel} · top</span>
+              <span className="sc-walls">{'▮'.repeat(leftOpp) || '—'}</span><span className="sc-n">{leftOpp}</span>
             </div>
-            <div className={'sc you' + (s.turn === 0 && s.winner == null ? ' on' : '')}>
+            <div className={'sc you' + (yourTurn ? ' on' : '')}>
               <span className="sc-pawn you" /><span className="sc-name">You · bottom</span>
-              <span className="sc-walls">{'▮'.repeat(s.left[0]) || '—'}</span><span className="sc-n">{s.left[0]}</span>
+              <span className="sc-walls">{'▮'.repeat(leftMine) || '—'}</span><span className="sc-n">{leftMine}</span>
             </div>
           </div>
           <div className="bk-phase">
@@ -191,35 +245,34 @@ export function Blockade() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
-      {showRules && <RulesModal onClose={() => setShowRules(false)} />}
+      {over && <ResultModal won={myWin} oppLabel={oppLabel} leftMine={leftMine} leftOpp={leftOpp} onNew={newGame} />}
+      {showRules && <RulesModal online={net.online} onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: BlockadeState; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ won, oppLabel, leftMine, leftOpp, onNew }: { won: boolean; oppLabel: string; leftMine: number; leftOpp: number; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Breakthrough' : 'Out-raced'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
-        <span className="you">You · {s.left[0]} walls left</span>
-        <span className="foe">Rival · {s.left[1]} walls left</span>
+        <span className="you">You · {leftMine} walls left</span>
+        <span className="foe">{oppLabel} · {leftOpp} walls left</span>
       </div>
     </Modal>
   )
 }
 
-function RulesModal({ onClose }: { onClose: () => void }) {
+function RulesModal({ online, onClose }: { online: boolean; onClose: () => void }) {
   return (
     <Modal eyebrow="How to play" title="Blockade" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Begin</button>}>
       <div className="modal-body">
-        <p>You command the <b>two slate pawns</b> on the bottom row. Land <b>either</b> pawn on <b>either</b> of the rival's two start cells (the ringed amber cells up top) to win — the rival is racing back to <i>your</i> starts.</p>
+        <p>You command the <b>two slate pawns</b> on the bottom row. Land <b>either</b> pawn on <b>either</b> of the rival's two start cells (the ringed cells across the board) to win — {online ? 'your opponent is' : 'the rival is'} racing back to <i>your</i> starts.</p>
         <p>Every turn is two steps: <b>first move</b> one pawn one square (up/down/left/right), then <b>place one wall</b>. If a pawn sits in the square you'd enter, you <i>jump</i> over it.</p>
         <p>A wall is a two-cell fence dropped into the grooves between cells. It blocks movement and can't overlap or cross another — and may <b>never</b> completely seal off any pawn from all of its goals.</p>
         <p>Each side has <b>{BL.START_WALLS} walls</b>; once you're out, you simply move.</p>

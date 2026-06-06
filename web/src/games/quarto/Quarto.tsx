@@ -1,13 +1,18 @@
 /* QUARTO — UI (built for this codebase). A 4x4 gallery and 16 unique pieces; your rival picks
-   the piece you must place, you pick theirs. Complete a line of four sharing any one trait to win. */
+   the piece you must place, you pick theirs. Complete a line of four sharing any one trait to win.
+   Online-capable via useGameSession: seat 0 = you, seat 1 = the other side (AI in solo). */
 
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { quartoAdapter } from './net'
 import * as Q from './logic'
-import type { QuartoState, Piece } from './logic'
+import type { QuartoState, Piece, Player } from './logic'
+
+const SEAT_PLAYER: Record<number, Player> = { 0: 'you', 1: 'ai' }
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -36,34 +41,37 @@ function PieceView({ p, big }: { p: Piece; big?: boolean }) {
 }
 
 export function Quarto() {
-  const [s, setS] = useState<QuartoState>(() => Q.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(quartoAdapter)
+  const myPlayer = SEAT_PLAYER[mySeat] // seat 0 = 'you', seat 1 = 'ai'
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(Q.makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  // The AI may need two steps on its turn (place, then hand) — re-arm on hand state changes.
-  const aiActive = !s.winner && s.turn === 'ai'
-  useAITurn(aiActive, () => setS(p => Q.aiMove(p)), { delayMs: 520, tick: s.hand })
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
 
-  const yourTurn = !s.winner && s.turn === 'you'
+  const yourTurn = !s.winner && isMyTurn
   const youPlacing = yourTurn && s.hand !== null    // must place the handed piece
-  const youHanding = yourTurn && s.hand === null     // must hand a piece to rival
+  const youHanding = yourTurn && s.hand === null     // must hand a piece to opponent
 
   function clickCell(i: number) {
-    if (youPlacing && s.board[i] === null) setS(Q.place(s, i))
+    if (youPlacing && s.board[i] === null) dispatch({ kind: 'place', cell: i })
   }
   function clickPool(p: Piece) {
-    if (youHanding) setS(Q.hand(s, p))
+    if (youHanding) dispatch({ kind: 'give', piece: p })
   }
 
+  const oppLabel = net.online ? 'opponent' : 'rival'
+  const oppLabelCap = net.online ? 'Opponent' : 'Rival'
+  const iWon = s.winner === myPlayer
+  const oppWon = s.winner != null && s.winner !== 'draw' && s.winner !== myPlayer
+
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = 'Quarto — you win' }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = 'The rival completes a line' }
+  if (iWon) { bk = 'win'; banner = 'Quarto — you win' }
+  else if (oppWon) { bk = 'lose'; banner = `The ${oppLabel} completes a line` }
   else if (s.winner === 'draw') { bk = ''; banner = 'The gallery fills — a draw' }
   else if (youPlacing) { bk = 'you'; banner = 'Place the piece you were handed' }
-  else if (youHanding) { bk = 'you'; banner = 'Now hand a piece to the rival' }
-  else { bk = 'foe'; banner = s.hand !== null ? 'The rival is placing…' : 'The rival is choosing…' }
+  else if (youHanding) { bk = 'you'; banner = `Now hand a piece to the ${oppLabel}` }
+  else { bk = 'foe'; banner = s.hand !== null ? `The ${oppLabel} is placing…` : `The ${oppLabel} is choosing…` }
 
   const pool = Q.poolPieces(s.pool)
   const winSet = new Set(s.line ?? [])
@@ -97,8 +105,12 @@ export function Quarto() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
+
           <div className="panel handbox">
-            <div className="panel-l">{s.hand !== null ? (yourTurn ? 'You must place' : 'Rival must place') : 'No piece in hand'}</div>
+            <div className="panel-l">{s.hand !== null ? (yourTurn ? 'You must place' : `${oppLabelCap} must place`) : 'No piece in hand'}</div>
             <div className="hand-stage">
               {s.hand !== null
                 ? <PieceView p={s.hand} big />
@@ -128,25 +140,24 @@ export function Quarto() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {s.winner && <ResultModal won={iWon} draw={s.winner === 'draw'} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: QuartoState; onNew: () => void }) {
-  const won = s.winner === 'you', draw = s.winner === 'draw'
+function ResultModal({ won, draw, oppLabel, onNew }: { won: boolean; draw: boolean; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={draw ? 'No line found' : won ? 'A line of four' : 'Out-curated'}
-      title={draw ? 'A Draw' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'A Draw' : won ? 'You Win' : `${oppLabel[0].toUpperCase() + oppLabel.slice(1)} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="modal-body">
         {draw
           ? <p>The gallery filled with no row, column, or diagonal of four sharing a single trait. Honours even.</p>
-          : <p>{won ? 'You' : 'The rival'} completed a line of four pieces sharing a common trait — <b>Quarto!</b></p>}
+          : <p>{won ? 'You' : `The ${oppLabel}`} completed a line of four pieces sharing a common trait — <b>Quarto!</b></p>}
       </div>
     </Modal>
   )

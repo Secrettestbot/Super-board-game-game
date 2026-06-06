@@ -6,8 +6,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { photosynthesisAdapter } from './net'
 import * as P from './logic'
 import type { State, Action, Player, Size } from './logic'
 
@@ -39,8 +41,8 @@ function hexPath(cx: number, cy: number, size: number): string {
 
 const RING_FILL = ['ring-c', 'ring-i', 'ring-m', 'ring-o']
 
-function Tree({ owner, size, x, y, shaded }: { owner: Player; size: Size; x: number; y: number; shaded: boolean }) {
-  const cls = 'tree ' + (owner === 0 ? 'you' : 'foe') + (shaded ? ' shaded' : '')
+function Tree({ owner, mySeat, size, x, y, shaded }: { owner: Player; mySeat: Player; size: Size; x: number; y: number; shaded: boolean }) {
+  const cls = 'tree ' + (owner === mySeat ? 'you' : 'foe') + (shaded ? ' shaded' : '')
   if (size === P.SEED) {
     return <g className={cls}><circle cx={x} cy={y} r={4.5} className="tree-fill" /></g>
   }
@@ -57,21 +59,22 @@ function Tree({ owner, size, x, y, shaded }: { owner: Player; size: Size; x: num
 }
 
 export function Photosynthesis() {
-  const [s, setS] = useState<State>(() => P.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(photosynthesisAdapter)
+  const me = mySeat as Player        // seat 0 = original human, seat 1 = rival
+  const opp = (1 - me) as Player
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<string | null>(null) // selected cell key for plant-from / action focus
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(P.makeGame()); setSel(null); setShowRules(false) }
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
 
-  // The AI takes several actions per turn and across rounds → re-arm on s.step.
-  useAITurn(s.phase !== 'over' && s.turn === 1, () => setS(p => P.aiTurn(p)), { delayMs: 460, tick: s.step })
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = 0 }, [s.log])
 
-  const yourTurn = s.phase !== 'over' && s.turn === 0
+  const yourTurn = s.phase !== 'over' && isMyTurn
   const shaded = P.computeShadows(s)
-  const acts = yourTurn ? P.legalActions(s, 0) : []
-  const myLight = s.players[0].lightPoints
+  const acts = yourTurn ? P.legalActions(s, me) : []
+  const myLight = s.players[me].lightPoints
+  const oppName = net.online ? 'Opponent' : 'Rival'
 
   // Action sets keyed for quick lookup of what a cell can do this turn.
   const growKeys = new Set(acts.filter(a => a.type === 'grow').map(a => P.key((a as any).q, (a as any).r)))
@@ -79,13 +82,13 @@ export function Photosynthesis() {
   const plantActs = acts.filter(a => a.type === 'plant') as Extract<Action, { type: 'plant' }>[]
   const plantKeys = new Set(plantActs.map(a => P.key(a.q, a.r)))
 
-  function doAction(a: Action) { setS(P.applyAction(s, a)); setSel(null) }
-  function endTurn() { setS(P.applyAction(s, { type: 'end' })); setSel(null) }
+  function doAction(a: Action) { dispatch(a); setSel(null) }
+  function endTurn() { dispatch({ type: 'end' }); setSel(null) }
 
   function onCellClick(k: string) {
     if (!yourTurn) return
     const c = s.board[k]
-    if (c.tree != null && c.tree.owner === 0) {
+    if (c.tree != null && c.tree.owner === me) {
       if (collectKeys.has(k)) { doAction({ type: 'collect', q: c.q, r: c.r }); return }
       if (growKeys.has(k)) { doAction({ type: 'grow', q: c.q, r: c.r }); return }
       // selecting a small+ tree to plant from
@@ -104,29 +107,29 @@ export function Photosynthesis() {
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => { if (showRules) setShowRules(false); else setSel(null) },
     extra: (e) => {
-      if (s.phase === 'over' || s.turn !== 0) return false
+      if (!yourTurn) return false
       if (e.key === ' ' || e.key === 'Enter') { endTurn(); return true }
       return false
     },
   })
 
-  // banner
+  // banner — relative to mySeat
   let banner: string, bk = ''
   if (s.phase === 'over') {
-    if (s.winner === 0) { bk = 'win'; banner = 'You win — ' + s.players[0].vp + ' to ' + s.players[1].vp + ' VP' }
-    else { bk = 'lose'; banner = 'The rival wins — ' + s.players[1].vp + ' to ' + s.players[0].vp + ' VP' }
+    if (s.winner === me) { bk = 'win'; banner = 'You win — ' + s.players[me].vp + ' to ' + s.players[opp].vp + ' VP' }
+    else { bk = 'lose'; banner = oppName + ' wins — ' + s.players[opp].vp + ' to ' + s.players[me].vp + ' VP' }
   } else if (yourTurn) {
     bk = 'you'
     const has = acts.some(a => a.type !== 'end')
     banner = has ? 'Your turn — spend light, then end (space)' : 'No light to spend — end your turn (space)'
-  } else { bk = 'foe'; banner = 'The rival tends their grove…' }
+  } else { bk = 'foe'; banner = oppName + ' tends their grove…' }
 
   // sun position around the board for the indicator
   const sunDir = P.DIRS[s.sun]
   const sunPt = px(sunDir.q * 4.4, sunDir.r * 4.4)
 
-  const myTrees = P.treeCounts(s, 0)
-  const foeTrees = P.treeCounts(s, 1)
+  const myTrees = P.treeCounts(s, me)
+  const foeTrees = P.treeCounts(s, opp)
   const rev = Math.min(P.REVOLUTIONS, Math.floor((s.round - 1) / 6) + 1)
 
   const W = HEX * SQ3 * 7.6, Hh = HEX * 7.6
@@ -175,7 +178,7 @@ export function Photosynthesis() {
                 return (
                   <g key={k} className="ps-cellgrp" onClick={() => onCellClick(k)}>
                     <path d={hexPath(x, y, HEX - 1.4)} className={cls} />
-                    {c.tree != null && <Tree owner={c.tree.owner} size={c.tree.size} x={x} y={y} shaded={shaded.has(k)} />}
+                    {c.tree != null && <Tree owner={c.tree.owner} mySeat={me} size={c.tree.size} x={x} y={y} shaded={shaded.has(k)} />}
                   </g>
                 )
               })}
@@ -193,23 +196,27 @@ export function Photosynthesis() {
           </div>
 
           <div className="side">
+            <div className="panel">
+              <OnlineBar net={net} />
+            </div>
+
             <div className="panel ps-score">
               <div className={'ps-prow' + (yourTurn ? ' on' : '')}>
                 <span className="ps-pawn you" />
                 <span className="ps-who">You</span>
-                <span className="ps-vp">{s.players[0].vp} <small>VP</small></span>
+                <span className="ps-vp">{s.players[me].vp} <small>VP</small></span>
               </div>
               <div className="ps-stat">
                 <span className="ps-light">☀ {myLight} light</span>
                 <span className="ps-inv">{invStr(myTrees)}</span>
               </div>
-              <div className={'ps-prow' + (s.turn === 1 && s.phase !== 'over' ? ' on' : '')}>
+              <div className={'ps-prow' + (s.turn === opp && s.phase !== 'over' ? ' on' : '')}>
                 <span className="ps-pawn foe" />
-                <span className="ps-who">Rival</span>
-                <span className="ps-vp">{s.players[1].vp} <small>VP</small></span>
+                <span className="ps-who">{oppName}</span>
+                <span className="ps-vp">{s.players[opp].vp} <small>VP</small></span>
               </div>
               <div className="ps-stat">
-                <span className="ps-light">☀ {s.players[1].lightPoints} light</span>
+                <span className="ps-light">☀ {s.players[opp].lightPoints} light</span>
                 <span className="ps-inv">{invStr(foeTrees)}</span>
               </div>
             </div>
@@ -231,7 +238,7 @@ export function Photosynthesis() {
               <div className="ps-hint">
                 {yourTurn
                   ? (sel != null ? 'Now click a glowing empty cell to plant a seed.' : 'Click a highlighted tree or cell. Trees in shadow earn no light.')
-                  : s.phase === 'over' ? 'The sun has set.' : 'Watching the rival…'}
+                  : s.phase === 'over' ? 'The sun has set.' : (net.online ? 'Watching the opponent…' : 'Watching the rival…')}
               </div>
             </div>
 
@@ -253,7 +260,7 @@ export function Photosynthesis() {
         </div>
       </GameShell>
 
-      {s.phase === 'over' && s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.phase === 'over' && s.winner != null && <ResultModal s={s} me={me} opp={opp} oppName={oppName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -269,22 +276,22 @@ function cellInShadow(s: State, q: number, r: number): boolean {
   return (map[P.key(q, r)] ?? 0) > 0
 }
 
-function ResultModal({ s, onNew }: { s: State; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ s, me, opp, oppName, onNew }: { s: State; me: Player; opp: Player; oppName: string; onNew: () => void }) {
+  const won = s.winner === me
   return (
     <Modal
       eyebrow={won ? 'The forest thrives' : 'Out-grown'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Plant again</button>}
     >
       <div className="modal-body" style={{ textAlign: 'center' }}>
         <p>
-          <b className={won ? 'ps-final-you' : ''}>You {s.players[0].vp} VP</b>
+          <b className={won ? 'ps-final-you' : ''}>You {s.players[me].vp} VP</b>
           {'  ·  '}
-          <b className={!won ? 'ps-final-foe' : ''}>Rival {s.players[1].vp} VP</b>
+          <b className={!won ? 'ps-final-foe' : ''}>{oppName} {s.players[opp].vp} VP</b>
         </p>
-        <p>{won ? 'Your canopy caught the most sun and crowned the richest rings.' : 'The rival harvested the richest rings before you. Try guarding the center.'}</p>
+        <p>{won ? 'Your canopy caught the most sun and crowned the richest rings.' : `${oppName} harvested the richest rings before you. Try guarding the center.`}</p>
       </div>
     </Modal>
   )

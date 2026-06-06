@@ -1,16 +1,18 @@
 /* CATHEDRAL — UI. A 10x10 stone field with one neutral cathedral and two rival building sets.
    Select a piece from your tray, rotate it (R / click), then click a board cell to drop its
    anchor. Enclose empty ground with your own walls to claim territory and raze a trapped rival
-   building. The rival (AI) answers greedily. The driver re-arms on s.step (useAITurn tick),
-   since the engine may auto-pass a stuck player and the AI can move again. */
+   building. In solo play seat 1 is a greedy AI; online, seat 1 is a remote opponent. The hook
+   (useGameSession) drives the AI for any unfilled seat and keeps host/guest in sync. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { cathedralAdapter } from './net'
 import * as C from './logic'
-import type { CathedralState, Player, Cell } from './logic'
+import type { Player, Cell } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -26,27 +28,23 @@ const TITLE_MARK = (
 const N = C.N
 
 export function Cathedral() {
-  const [s, setS] = useState<CathedralState>(() => C.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(cathedralAdapter)
+  const me = mySeat as Player // seat 0 = you, seat 1 = rival/opponent
+  const opp = (1 - me) as Player
   const [showRules, setShowRules] = useState(false)
   const [selPiece, setSelPiece] = useState<string | null>(null)
   const [ori, setOri] = useState(0)
   const [hover, setHover] = useState<number | null>(null)
 
   function newGame() {
-    setS(C.makeGame())
+    netNew()
     setSelPiece(null)
     setOri(0)
     setHover(null)
     setShowRules(false)
   }
 
-  const yourTurn = s.winner == null && s.turn === 0
-
-  // AI driver — re-arm on step so consecutive AI moves / auto-passes don't stall.
-  useAITurn(s.winner == null && s.turn === 1, () => setS((p) => C.aiTurn(p)), {
-    delayMs: 560,
-    tick: s.step,
-  })
+  const yourTurn = s.winner == null && isMyTurn
 
   const oris = useMemo(() => (selPiece ? C.orientations(selPiece) : []), [selPiece])
   const curOri = oris.length ? oris[ori % oris.length] : null
@@ -103,35 +101,39 @@ export function Cathedral() {
     const cells = cellsAt(hover)
     if (!cells) return { cells: new Set<number>(), legal: false }
     const sorted = [...cells].sort((a, b) => a - b)
-    const legal = C.placementsForPiece(s, 0, selPiece).some(
+    const legal = C.placementsForPiece(s, me, selPiece).some(
       (pl) => pl.cells.length === sorted.length && [...pl.cells].sort((a, b) => a - b).every((v, i) => v === sorted[i]),
     )
     return { cells: new Set(cells), legal }
-  }, [yourTurn, hover, selPiece, ori, s, oris])
+  }, [yourTurn, hover, selPiece, ori, s, oris, me])
 
   function clickCell(i: number) {
     if (!yourTurn || !selPiece) return
     const cells = cellsAt(i)
     if (!cells) return
-    const next = C.place(s, 0, selPiece, cells)
-    if (next === s) return // illegal — no change
-    setS(next)
-    // keep selection if the piece type still in hand? It's consumed — clear or pick next.
-    if (!next.remaining[0].includes(selPiece)) {
-      setSelPiece(null)
-    }
+    // validate locally so we don't clear selection on an illegal drop
+    const sorted = [...cells].sort((a, b) => a - b)
+    const legal = C.placementsForPiece(s, me, selPiece).some(
+      (pl) => pl.cells.length === sorted.length && [...pl.cells].sort((a, b) => a - b).every((v, k) => v === sorted[k]),
+    )
+    if (!legal) return
+    dispatch({ piece: selPiece, cell: i, orientation: ori % (oris.length || 1) })
+    // the piece is consumed — clear selection.
+    setSelPiece(null)
     setHover(null)
   }
 
-  // ----- banner -----
+  const oppLabel = net.online ? 'The opponent' : 'The rival'
+
+  // ----- banner (relative to your seat) -----
   let banner: string
   let bk = ''
-  if (s.winner === 0) {
+  if (s.winner === me) {
     bk = 'win'
     banner = 'You win — the most ground built'
-  } else if (s.winner === 1) {
+  } else if (s.winner === opp) {
     bk = 'lose'
-    banner = 'The rival builds the most — you lose'
+    banner = `${oppLabel} builds the most — you lose`
   } else if (s.winner === 'tie') {
     bk = ''
     banner = 'A draw — equal ground held'
@@ -140,11 +142,11 @@ export function Cathedral() {
     banner = selPiece ? 'Place your building — click the board' : 'Your move — pick a building'
   } else {
     bk = 'foe'
-    banner = 'The rival is building…'
+    banner = `${oppLabel} is building…`
   }
 
-  const youLeft = C.leftoverSquares(s, 0)
-  const aiLeft = C.leftoverSquares(s, 1)
+  const youLeft = C.leftoverSquares(s, me)
+  const aiLeft = C.leftoverSquares(s, opp)
 
   return (
     <>
@@ -176,6 +178,7 @@ export function Cathedral() {
                   <CellView
                     key={i}
                     cell={cell}
+                    me={me}
                     inPreview={inPrev}
                     previewLegal={preview.legal}
                     selectable={yourTurn && selPiece != null}
@@ -188,19 +191,23 @@ export function Cathedral() {
           </div>
 
           <div className="side">
+            <div className="panel">
+              <OnlineBar net={net} />
+            </div>
+
             <div className="panel ca-score">
               <div className={'ca-srow' + (yourTurn ? ' on' : '')}>
                 <span className="ca-chip you" />
                 <span className="ca-who">You</span>
-                <span className="ca-left">{C.placedSquares(s, 0)} built</span>
+                <span className="ca-left">{C.placedSquares(s, me)} built</span>
               </div>
-              <div className={'ca-srow' + (s.turn === 1 && s.winner == null ? ' on' : '')}>
+              <div className={'ca-srow' + (s.turn === opp && s.winner == null ? ' on' : '')}>
                 <span className="ca-chip foe" />
-                <span className="ca-who">Rival</span>
-                <span className="ca-left">{C.placedSquares(s, 1)} built</span>
+                <span className="ca-who">{net.online ? 'Opponent' : 'Rival'}</span>
+                <span className="ca-left">{C.placedSquares(s, opp)} built</span>
               </div>
               <div className="ca-leftnote">
-                fewest leftover squares wins · you {youLeft} · rival {aiLeft}
+                fewest leftover squares wins · you {youLeft} · {net.online ? 'opponent' : 'rival'} {aiLeft}
               </div>
             </div>
 
@@ -208,7 +215,7 @@ export function Cathedral() {
               <div className="panel-l">your buildings</div>
               <div className="ca-pieces">
                 {C.PIECES.map((pc) => {
-                  const have = s.remaining[0].includes(pc.id)
+                  const have = s.remaining[me].includes(pc.id)
                   if (!have) return null
                   const sel = selPiece === pc.id
                   const shape = sel && curOri ? curOri : pc.cells
@@ -225,7 +232,7 @@ export function Cathedral() {
                     </button>
                   )
                 })}
-                {s.remaining[0].length === 0 && <div className="ca-empty">all built</div>}
+                {s.remaining[me].length === 0 && <div className="ca-empty">all built</div>}
               </div>
               {selPiece && (
                 <button className="ca-rotate" onClick={rotateSel} disabled={!yourTurn}>
@@ -248,7 +255,9 @@ export function Cathedral() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal winner={s.winner} you={youLeft} ai={aiLeft} onNew={newGame} />}
+      {s.winner != null && (
+        <ResultModal won={s.winner === me} tie={s.winner === 'tie'} you={youLeft} ai={aiLeft} online={net.online} onNew={newGame} />
+      )}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -256,6 +265,7 @@ export function Cathedral() {
 
 function CellView({
   cell,
+  me,
   inPreview,
   previewLegal,
   selectable,
@@ -263,18 +273,21 @@ function CellView({
   onClick,
 }: {
   cell: Cell
+  me: Player
   inPreview: boolean
   previewLegal: boolean
   selectable: boolean
   onEnter: () => void
   onClick: () => void
 }) {
+  const myTerr = me === 0 ? 't0' : 't1'
+  const oppTerr = me === 0 ? 't1' : 't0'
   let cls = 'ca-cell'
-  if (cell === 0) cls += ' you'
-  else if (cell === 1) cls += ' foe'
+  if (cell === me) cls += ' you'
+  else if (cell === (1 - me)) cls += ' foe'
   else if (cell === 'cath') cls += ' cath'
-  else if (cell === 't0') cls += ' terr-you'
-  else if (cell === 't1') cls += ' terr-foe'
+  else if (cell === myTerr) cls += ' terr-you'
+  else if (cell === oppTerr) cls += ' terr-foe'
   if (inPreview) cls += previewLegal ? ' prev-ok' : ' prev-bad'
   if (selectable) cls += ' pickable'
   return <div className={cls} onMouseEnter={onEnter} onClick={onClick} />
@@ -300,36 +313,39 @@ function PieceGlyph({ cells }: { cells: [number, number][] }) {
 }
 
 function ResultModal({
-  winner,
+  won,
+  tie,
   you,
   ai,
+  online,
   onNew,
 }: {
-  winner: Player | 'tie'
+  won: boolean
+  tie: boolean
   you: number
   ai: number
+  online: boolean
   onNew: () => void
 }) {
-  const won = winner === 0
-  const tie = winner === 'tie'
+  const oppName = online ? 'Opponent' : 'Rival'
   return (
     <Modal
       eyebrow={tie ? 'Even ground' : won ? 'Ground held' : 'Outbuilt'}
-      title={tie ? 'A Draw' : won ? 'You Win' : 'Rival Wins'}
+      title={tie ? 'A Draw' : won ? 'You Win' : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Build again</button>}
     >
       <div className="ca-final">
         <div className="ca-fscore">
           <span className="you">You · {you} leftover</span>
-          <span className="foe">Rival · {ai} leftover</span>
+          <span className="foe">{oppName} · {ai} leftover</span>
         </div>
         <p className="ca-fnote">
           {tie
             ? 'Both of you left the same ground unbuilt.'
             : won
               ? 'You squeezed the most buildings onto the field.'
-              : 'The rival fit more of its set onto the board.'}
+              : `The ${oppName.toLowerCase()} fit more of its set onto the board.`}
         </p>
       </div>
     </Modal>
