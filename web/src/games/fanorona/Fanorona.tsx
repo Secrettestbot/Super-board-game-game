@@ -1,15 +1,19 @@
 /* FANORONA (Fanoron-Tsivy) — UI (built for this codebase). A 5x9 Malagasy line board on the
-   framework shell, vs an alpha-beta AI. Click your piece to see its legal destinations (only
-   captures when a capture exists — it's mandatory); click a destination; if a move can capture
-   by both approach and withdrawal you choose; continue or end a capture chain. Capture all to win. */
+   framework shell, vs an alpha-beta AI or a remote opponent. Click your piece to see its legal
+   destinations (only captures when a capture exists — it's mandatory); click a destination; if a
+   move can capture by both approach and withdrawal you choose; continue or end a capture chain.
+   Capture all to win. Online play is host-authoritative via useGameSession — you sit on your seat
+   (White = seat 0, Black = seat 1) and everything renders relative to it. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { fanoronaAdapter, SEAT_PIECE } from './net'
 import * as FN from './logic'
-import type { FanoronaState, Move } from './logic'
+import type { Move, Piece } from './logic'
 
 const { ROWS, COLS, rc, isStrong, neighbours } = FN
 const CELL = 64                       // svg layout unit (board scales via viewBox)
@@ -44,27 +48,30 @@ const SEGMENTS: [number, number][] = (() => {
 })()
 
 export function Fanorona() {
-  const [s, setS] = useState<FanoronaState>(() => FN.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(fanoronaAdapter)
+  const myPiece: Piece = SEAT_PIECE[mySeat]            // seat 0 = white, seat 1 = black
+  const oppPiece: Piece = FN.other(myPiece)
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number | null>(null)
   const [pending, setPending] = useState<{ from: number; to: number; opts: Move[] } | null>(null)
 
-  function newGame() { setS(FN.makeGame()); setSel(null); setPending(null); setShowRules(false) }
+  function newGame() { netNew(); setSel(null); setPending(null); setShowRules(false) }
 
-  useAITurn(!s.winner && s.turn === 'b', () => setS(p => FN.aiMove(p)), { delayMs: 520, tick: s.last })
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => { if (pending) setPending(null); else if (sel !== null) setSel(null); else setShowRules(false) },
   })
 
-  const yourTurn = !s.winner && s.turn === 'w'
+  const yourTurn = !s.winner && isMyTurn
   const legal = useMemo(() => yourTurn ? FN.legalMoves(s) : [], [yourTurn, s])
   const movablePieces = useMemo(() => new Set(legal.map(m => m.from)), [legal])
   const { w, b } = FN.counts(s.board)
+  const myCount = myPiece === 'w' ? w : b
+  const oppCount = myPiece === 'w' ? b : w
 
-  // when a chain is in progress the active piece is forced-selected
-  const activeSel = s.chainAt !== null ? s.chainAt : sel
+  // when a chain is in progress (and it's mine) the active piece is forced-selected
+  const activeSel = (yourTurn && s.chainAt !== null) ? s.chainAt : sel
   const destsFor = useMemo(() => {
     const map = new Map<number, Move[]>()
     if (activeSel === null) return map
@@ -72,7 +79,7 @@ export function Fanorona() {
     return map
   }, [legal, activeSel])
 
-  const inChain = !s.winner && s.chainAt !== null && s.turn === 'w'
+  const inChain = yourTurn && s.chainAt !== null
 
   function clickPiece(i: number) {
     if (!yourTurn || pending) return
@@ -91,17 +98,24 @@ export function Fanorona() {
   function commit(m: Move) {
     setPending(null)
     setSel(null)
-    setS(prev => FN.applyMove(prev, m))
+    dispatch({ kind: 'move', from: m.from, to: m.to, cap: m.kind })
   }
 
-  function endChain() { setS(prev => FN.stopChain(prev)) }
+  function endChain() { dispatch({ kind: 'stop' }) }
+
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+  const myWin = s.winner === myPiece
+  const oppWin = s.winner === oppPiece
 
   let banner: string, bk = ''
-  if (s.winner === 'w') { bk = 'win'; banner = 'You win — every rival piece captured' }
-  else if (s.winner === 'b') { bk = 'lose'; banner = 'The rival wins — you were wiped out' }
+  if (myWin) { bk = 'win'; banner = 'You win — every rival piece captured' }
+  else if (oppWin) { bk = 'lose'; banner = `${oppLabel} wins — you were wiped out` }
   else if (inChain) { bk = 'you'; banner = 'Capture chain — continue or end your turn' }
   else if (yourTurn) { bk = 'you'; banner = legal.some(m => m.kind) ? 'Your turn — a capture is forced' : 'Your turn — slide a piece' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  else { bk = 'foe'; banner = net.online ? `${oppLabel} is moving…` : 'The rival is thinking…' }
+
+  const myToMove = s.turn === myPiece && !s.winner
+  const oppToMove = s.turn === oppPiece && !s.winner
 
   return (
     <>
@@ -154,14 +168,18 @@ export function Fanorona() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
+
           <div className="panel scoreboard">
-            <div className={'sc w' + (s.turn === 'w' && !s.winner ? ' on' : '')}>
-              <span className="sc-disc w"></span><span className="sc-name">You · White</span><span className="sc-n">{w}</span>
+            <div className={'sc ' + myPiece + (myToMove ? ' on' : '')}>
+              <span className={'sc-disc ' + myPiece}></span><span className="sc-name">You · {myPiece === 'w' ? 'White' : 'Black'}</span><span className="sc-n">{myCount}</span>
             </div>
-            <div className={'sc b' + (s.turn === 'b' && !s.winner ? ' on' : '')}>
-              <span className="sc-disc b"></span><span className="sc-name">Rival · Black</span><span className="sc-n">{b}</span>
+            <div className={'sc ' + oppPiece + (oppToMove ? ' on' : '')}>
+              <span className={'sc-disc ' + oppPiece}></span><span className="sc-name">{oppLabel} · {oppPiece === 'w' ? 'White' : 'Black'}</span><span className="sc-n">{oppCount}</span>
             </div>
-            <div className="sc-bar"><div className="sc-bar-w" style={{ width: `${(w / (w + b || 1)) * 100}%` }} /></div>
+            <div className="sc-bar"><div className="sc-bar-w" style={{ width: `${(myCount / (myCount + oppCount || 1)) * 100}%` }} /></div>
           </div>
 
           {inChain && (
@@ -198,22 +216,21 @@ export function Fanorona() {
         </Modal>
       )}
 
-      {s.winner && <ResultModal s={s} w={w} b={b} onNew={newGame} />}
+      {s.winner && <ResultModal won={myWin} oppLabel={oppLabel} myCount={myCount} oppCount={oppCount} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, w, b, onNew }: { s: FanoronaState; w: number; b: number; onNew: () => void }) {
-  const won = s.winner === 'w'
+function ResultModal({ won, oppLabel, myCount, oppCount, onNew }: { won: boolean; oppLabel: string; myCount: number; oppCount: number; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Total capture' : 'Swept off the board'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {w}</span><span className="foe">Rival {b}</span></div>
+      <div className="finalsc"><span className="you">You {myCount}</span><span className="foe">{oppLabel} {oppCount}</span></div>
     </Modal>
   )
 }

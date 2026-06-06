@@ -1,16 +1,21 @@
 /* ALQUERQUE — UI (built for this codebase). The ancient incised-stone 5x5 lattice on the framework
-   shell, vs an alpha-beta AI. Click a piece to see its steps and capture jumps along the lattice
-   lines; capturing is mandatory and multi-jumps chain. Capture every rival piece to win. */
+   shell, vs an alpha-beta AI or a remote opponent. Click a piece to see its steps and capture jumps
+   along the lattice lines; capturing is mandatory and multi-jumps chain. Capture every rival piece to
+   win. Online play is seat-relative: seat 0 = White (Bone), seat 1 = Black (Obsidian). */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { alquerqueAdapter } from './net'
 import * as AQ from './logic'
-import type { AlquerqueState, Move } from './logic'
+import type { AlquerqueState, Move, Side } from './logic'
 
 const { N } = AQ
+
+const SIDE: Side[] = ['w', 'b'] // seat 0 -> White, seat 1 -> Black
 
 // Lattice geometry in an N×N unit field, points at integer coords 0..N-1.
 const STEP = 100 / (N - 1)
@@ -47,23 +52,24 @@ const TITLE_MARK = (
 )
 
 export function Alquerque() {
-  const [s, setS] = useState<AlquerqueState>(() => AQ.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(alquerqueAdapter)
+  const mySide = SIDE[mySeat]                      // your colour
+  const oppSide: Side = mySide === 'w' ? 'b' : 'w' // your opponent's colour
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number | null>(null)
 
-  function newGame() { setS(AQ.makeGame()); setSel(null); setShowRules(false) }
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
 
-  useAITurn(!s.winner && s.turn === 'b', () => setS(p => AQ.aiMove(p)), { delayMs: 520, tick: s.chain })
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => { if (showRules) setShowRules(false); else setSel(null) },
   })
 
-  const yourTurn = !s.winner && s.turn === 'w'
+  const yourTurn = !s.winner && isMyTurn
 
-  // When mid-chain, the chaining piece is auto-selected.
-  const effSel = s.chain !== null ? s.chain : sel
+  // When mid-chain (and it's your turn), the chaining piece is auto-selected.
+  const effSel = (yourTurn && s.chain !== null) ? s.chain : sel
   const moves: Move[] = useMemo(
     () => (yourTurn && effSel !== null) ? AQ.movesFor(s, effSel) : [],
     [yourTurn, effSel, s],
@@ -76,35 +82,40 @@ export function Alquerque() {
 
   // Which of your pieces can legally move right now (for the click hint).
   const movable = useMemo(() => {
-    if (!yourTurn) return new Set<number>()
+    if (!yourTurn || s.turn === null) return new Set<number>()
     if (s.chain !== null) return new Set<number>([s.chain])
-    return new Set(AQ.legalMoves(s.board, 'w').map(m => m.from))
+    return new Set(AQ.legalMoves(s.board, s.turn).map(m => m.from))
   }, [yourTurn, s])
 
-  const mustCapture = yourTurn && s.chain === null && AQ.allCaptures(s.board, 'w').length > 0
+  const mustCapture = yourTurn && s.chain === null && s.turn !== null && AQ.allCaptures(s.board, s.turn).length > 0
   const { w, b } = AQ.counts(s.board)
+  const myCount = mySide === 'w' ? w : b
+  const oppCount = mySide === 'w' ? b : w
 
   function clickPoint(i: number) {
     if (!yourTurn) return
     if (effSel !== null && destOf.has(i)) {
       const mv = destOf.get(i)!
-      const next = AQ.makeMove(s, mv, 'w')
-      setS(next)
-      setSel(next.chain !== null ? next.chain : null)
+      dispatch({ from: mv.from, to: mv.to, cap: mv.cap })
+      setSel(null) // chain auto-selects via effSel after the host applies the move
       return
     }
     if (s.chain !== null) return // locked to the chaining piece
-    if (s.board[i] === 'w' && movable.has(i)) { setSel(i); return }
+    if (s.board[i] === mySide && movable.has(i)) { setSel(i); return }
     setSel(null)
   }
 
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+  const myWin = s.winner === mySide
+  const oppWin = s.winner === oppSide
+
   let banner: string, bk = ''
-  if (s.winner === 'w') { bk = 'win'; banner = `You win — ${w} to ${b}` }
-  else if (s.winner === 'b') { bk = 'lose'; banner = `The rival wins — ${b} to ${w}` }
-  else if (s.chain !== null && s.turn === 'w') { bk = 'you'; banner = 'Keep jumping — multi-capture' }
+  if (myWin) { bk = 'win'; banner = `You win — ${myCount} to ${oppCount}` }
+  else if (oppWin) { bk = 'lose'; banner = `${oppLabel} wins — ${oppCount} to ${myCount}` }
+  else if (yourTurn && s.chain !== null) { bk = 'you'; banner = 'Keep jumping — multi-capture' }
   else if (mustCapture) { bk = 'you'; banner = 'You must capture — jump a rival' }
   else if (yourTurn) { bk = 'you'; banner = 'Your turn — move a bone piece' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  else { bk = 'foe'; banner = net.online ? `${oppLabel} is moving…` : 'The rival is thinking…' }
 
   return (
     <>
@@ -132,7 +143,7 @@ export function Alquerque() {
               const isSel = effSel === i
               const isDest = destOf.has(i)
               const isCapDest = isDest && destOf.get(i)!.cap !== null
-              const canPick = movable.has(i) && s.board[i] === 'w'
+              const canPick = movable.has(i) && s.board[i] === mySide
               const cls = [
                 'aq-node',
                 AQ.hasDiag(i) ? 'cross' : 'plus',
@@ -156,14 +167,21 @@ export function Alquerque() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel scoreboard">
-            <div className={'sc w' + (s.turn === 'w' && !s.winner ? ' on' : '')}>
-              <span className="sc-pc w" /><span className="sc-name">You · Bone</span><span className="sc-n">{w}</span>
+            <div className={'sc ' + mySide + (s.turn === mySide && !s.winner ? ' on' : '')}>
+              <span className={'sc-pc ' + mySide} />
+              <span className="sc-name">You · {mySide === 'w' ? 'Bone' : 'Obsidian'}</span>
+              <span className="sc-n">{myCount}</span>
             </div>
-            <div className={'sc b' + (s.turn === 'b' && !s.winner ? ' on' : '')}>
-              <span className="sc-pc b" /><span className="sc-name">Rival · Obsidian</span><span className="sc-n">{b}</span>
+            <div className={'sc ' + oppSide + (s.turn === oppSide && !s.winner ? ' on' : '')}>
+              <span className={'sc-pc ' + oppSide} />
+              <span className="sc-name">{oppLabel} · {oppSide === 'w' ? 'Bone' : 'Obsidian'}</span>
+              <span className="sc-n">{oppCount}</span>
             </div>
-            <div className="sc-bar"><div className="sc-bar-w" style={{ width: `${(w / (w + b)) * 100}%` }} /></div>
+            <div className="sc-bar"><div className="sc-bar-w" style={{ width: `${(myCount / (myCount + oppCount)) * 100}%` }} /></div>
           </div>
           <div className="panel logbox">
             {s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}
@@ -171,22 +189,21 @@ export function Alquerque() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} w={w} b={b} onNew={newGame} />}
+      {s.winner && <ResultModal won={myWin} myCount={myCount} oppCount={oppCount} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, w, b, onNew }: { s: AlquerqueState; w: number; b: number; onNew: () => void }) {
-  const won = s.winner === 'w'
+function ResultModal({ won, myCount, oppCount, oppLabel, onNew }: { won: boolean; myCount: number; oppCount: number; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Board swept' : 'Out-jumped'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {w}</span><span className="foe">Rival {b}</span></div>
+      <div className="finalsc"><span className="you">You {myCount}</span><span className="foe">{oppLabel} {oppCount}</span></div>
     </Modal>
   )
 }

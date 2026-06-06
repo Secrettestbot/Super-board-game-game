@@ -1,16 +1,19 @@
 /* MINISHOGI (5x5) — UI.
-   Renders through the shared GameShell + Modal. You are Sente (player 0, bottom);
-   the AI is Gote (player 1, top) and replies via useAITurn. Click a piece → its legal
-   targets light up (board moves AND drops). Captured pieces flow to each side's HAND;
-   click a hand piece to arm a drop. Promotion offers a prompt when optional. */
+   Renders through the shared GameShell + Modal. Online-capable via useGameSession:
+   seat 0 = Sente (bottom), seat 1 = Gote (top). You play your own seat; the other
+   seat is an AI (solo) or a remote human (online). Click a piece → its legal targets
+   light up (board moves AND drops). Captured pieces flow to each side's HAND; click a
+   hand piece to arm a drop. Promotion offers a prompt when optional. */
 
 import { useEffect, useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { shogiAdapter } from './net'
 import * as SH from './logic'
-import type { Move, Piece, PieceType, State } from './logic'
+import type { Move, Piece, PieceType, Player, State } from './logic'
 
 const ORDER: PieceType[] = ['R', 'B', 'G', 'S', 'P']
 
@@ -37,18 +40,17 @@ type Sel =
   | null
 
 export function Shogi() {
-  const [s, setS] = useState<State>(() => SH.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(shogiAdapter)
+  const me = mySeat as Player // seat 0 = Sente, seat 1 = Gote
+  const opp: Player = me === 0 ? 1 : 0
   const [sel, setSel] = useState<Sel>(null)
   const [showRules, setShowRules] = useState(false)
   const [promo, setPromo] = useState<{ from: number; to: number } | null>(null)
-  const [tick, setTick] = useState(0)
 
   function newGame() {
-    setS(SH.makeGame()); setSel(null); setShowRules(false); setPromo(null); setTick(t => t + 1)
+    netNew(); setSel(null); setShowRules(false); setPromo(null)
   }
 
-  // AI (Gote, player 1) replies after a short pause.
-  useAITurn(s.winner == null && s.turn === 1, () => { setS(p => SH.aiMove(p)); setTick(t => t + 1) }, { delayMs: 300, tick })
   // clear selection whenever the turn flips
   useEffect(() => { setSel(null) }, [s.turn])
 
@@ -58,7 +60,7 @@ export function Shogi() {
     onEscape: () => { setShowRules(false); setSel(null); setPromo(null) },
   })
 
-  const yourTurn = s.winner == null && s.turn === 0
+  const yourTurn = s.winner == null && isMyTurn
 
   const myMoves = useMemo(
     () => (yourTurn ? SH.legalMoves(s) : []),
@@ -78,9 +80,9 @@ export function Shogi() {
   }, [sel, myMoves, yourTurn])
 
   function commit(move: Move) {
-    setS(prev => SH.applyMove(prev, move))
+    if (move.drop != null) dispatch({ drop: move.drop, to: move.to })
+    else dispatch({ from: move.from, to: move.to, promote: move.promote })
     setSel(null)
-    setTick(t => t + 1)
   }
 
   function clickSquare(i: number) {
@@ -100,13 +102,13 @@ export function Shogi() {
       return
     }
     // selecting your own piece
-    if (p && p.owner === 0) setSel(sel && sel.kind === 'square' && sel.i === i ? null : { kind: 'square', i })
+    if (p && p.owner === me) setSel(sel && sel.kind === 'square' && sel.i === i ? null : { kind: 'square', i })
     else setSel(null)
   }
 
-  function clickHand(owner: 0 | 1, t: PieceType) {
-    if (!yourTurn || owner !== 0) return
-    if (s.hands[0][t] <= 0) return
+  function clickHand(owner: Player, t: PieceType) {
+    if (!yourTurn || owner !== me) return
+    if (s.hands[me][t] <= 0) return
     setSel(sel && sel.kind === 'drop' && sel.t === t ? null : { kind: 'drop', t })
   }
 
@@ -116,14 +118,29 @@ export function Shogi() {
     setPromo(null)
   }
 
+  const oppLabel = net.online ? 'Opponent' : 'Gote'
+  const thinking = net.online ? 'waiting for opponent…' : 'thinking…'
+  const myWin = (s.winner === 'you' && me === 0) || (s.winner === 'ai' && me === 1)
+  const oppWin = s.winner != null && s.winner !== 'draw' && !myWin
+
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = 'Checkmate — you win' }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = 'Checkmate — Gote wins' }
-  else if (yourTurn) { bk = 'you'; banner = s.check ? 'You are in check!' : 'Your move · Sente 先手' }
-  else { bk = 'foe'; banner = s.check ? 'Gote in check…' : 'Gote is thinking…' }
+  if (s.winner === 'draw') { bk = 'foe'; banner = 'Draw' }
+  else if (myWin) { bk = 'win'; banner = 'Checkmate — you win' }
+  else if (oppWin) { bk = 'lose'; banner = `Checkmate — ${oppLabel} wins` }
+  else if (yourTurn) { bk = 'you'; banner = s.check ? 'You are in check!' : 'Your move' }
+  else { bk = 'foe'; banner = s.check ? `${oppLabel} in check…` : `${oppLabel} is ${thinking}` }
 
   const lastFrom = s.last && s.last.from >= 0 ? s.last.from : -1
   const lastTo = s.last ? s.last.to : -1
+
+  // Flip the board when you sit at seat 1 so your pieces are nearest you.
+  const flip = me === 1
+  const order = flip
+    ? Array.from({ length: SH.SIZE }, (_, k) => SH.SIZE - 1 - k)
+    : Array.from({ length: SH.SIZE }, (_, k) => k)
+
+  const myName = me === 0 ? 'Sente · 先手' : 'Gote · 後手'
+  const oppName = opp === 0 ? 'Sente · 先手' : 'Gote · 後手'
 
   return (
     <>
@@ -141,16 +158,18 @@ export function Shogi() {
       >
         <div className="boardwrap">
           <Hand
-            owner={1}
-            hand={s.hands[1]}
+            owner={opp}
+            hand={s.hands[opp]}
             sel={sel}
+            mySeat={me}
             active={false}
             onClick={() => {}}
-            label="Gote · 後手 (AI)"
+            label={`${oppName} (${net.online ? 'Opponent' : 'AI'})`}
           />
 
           <div className="board">
-            {s.board.map((p, i) => {
+            {order.map((i) => {
+              const p = s.board[i]
               const [r, c] = SH.rc(i)
               const isT = targets.has(i)
               const cls = ['cell']
@@ -160,7 +179,7 @@ export function Shogi() {
               return (
                 <div key={i} className={cls.join(' ')} onClick={() => clickSquare(i)}>
                   {p && (
-                    <div className={'pc' + (p.owner === 0 ? ' p0' : ' p1') + (selected ? ' sel' : '') + (p.promoted ? ' promo' : '')}>
+                    <div className={'pc' + (p.owner === me ? ' p0' : ' p1') + (selected ? ' sel' : '') + (p.promoted ? ' promo' : '')}>
                       <span className="g">{glyph(p)}</span>
                     </div>
                   )}
@@ -171,13 +190,20 @@ export function Shogi() {
           </div>
 
           <Hand
-            owner={0}
-            hand={s.hands[0]}
+            owner={me}
+            hand={s.hands[me]}
             sel={sel}
+            mySeat={me}
             active={yourTurn}
-            onClick={t => clickHand(0, t)}
-            label="Sente · 先手 (You)"
+            onClick={t => clickHand(me, t)}
+            label={`${myName} (You)`}
           />
+        </div>
+
+        <div className="ch-side">
+          <div className="ch-panel">
+            <OnlineBar net={net} />
+          </div>
         </div>
       </GameShell>
 
@@ -199,32 +225,33 @@ export function Shogi() {
         </Modal>
       )}
 
-      {s.winner != null && <WinModal s={s} onNew={newGame} />}
+      {s.winner != null && <WinModal won={myWin} draw={s.winner === 'draw'} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
 function Hand({
-  owner, hand, sel, active, onClick, label,
+  owner, hand, sel, mySeat, active, onClick, label,
 }: {
-  owner: 0 | 1
+  owner: Player
   hand: SH.State['hands'][0]
   sel: Sel
+  mySeat: Player
   active: boolean
   onClick: (t: PieceType) => void
   label: string
 }) {
   const total = ORDER.reduce((n, t) => n + hand[t], 0)
   return (
-    <div className={'hand' + (owner === 0 ? ' mine' : ' foe')}>
+    <div className={'hand' + (owner === mySeat ? ' mine' : ' foe')}>
       <div className="hand-label">{label}</div>
       <div className="hand-pieces">
         {total === 0 && <span className="hand-empty">— empty —</span>}
         {ORDER.map(t => {
           const n = hand[t]
           if (n <= 0) return null
-          const armed = sel && sel.kind === 'drop' && sel.t === t && owner === 0
+          const armed = sel && sel.kind === 'drop' && sel.t === t && owner === mySeat
           return (
             <button
               key={t}
@@ -243,19 +270,20 @@ function Hand({
   )
 }
 
-function WinModal({ s, onNew }: { s: State; onNew: () => void }) {
-  const won = s.winner === 'you'
+function WinModal({ won, draw, oppLabel, onNew }: { won: boolean; draw: boolean; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
-      eyebrow={won ? '詰み · Checkmate' : 'Checkmated'}
-      title={won ? 'You Win' : 'Gote Wins'}
+      eyebrow={draw ? 'Draw' : won ? '詰み · Checkmate' : 'Checkmated'}
+      title={draw ? 'Draw' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="modal-body">
-        <p>{won
-          ? 'You cornered Gote’s king with no legal escape. Well played.'
-          : 'Your king has no legal escape from check. Try again — mind the drops.'}</p>
+        <p>{draw
+          ? 'The game is drawn.'
+          : won
+            ? `You cornered ${oppLabel}’s king with no legal escape. Well played.`
+            : 'Your king has no legal escape from check. Try again — mind the drops.'}</p>
       </div>
     </Modal>
   )
@@ -270,7 +298,7 @@ function RulesModal({ onClose }: { onClose: () => void }) {
       actions={<button className="btn-modal" onClick={onClose}>Begin</button>}
     >
       <div className="modal-body">
-        <p>You are <b>Sente 先手</b> (bottom) and move first. Each side has a <b>King 玉</b>, <b>Gold 金</b>, <b>Silver 銀</b>, <b>Bishop 角</b>, <b>Rook 飛</b> and one <b>Pawn 歩</b>.</p>
+        <p>Each side has a <b>King 玉</b>, <b>Gold 金</b>, <b>Silver 銀</b>, <b>Bishop 角</b>, <b>Rook 飛</b> and one <b>Pawn 歩</b>. <b>Sente 先手</b> (bottom) moves first.</p>
         <p><b>Gold</b> steps one square orthogonally or forward-diagonally (6 ways). <b>Silver</b> steps one diagonally or straight forward (5 ways). <b>Bishop</b> slides diagonally, <b>Rook</b> orthogonally. <b>Pawn</b> steps one straight forward (and captures the same). The <b>King</b> moves one square any direction.</p>
         <p><b>Promotion:</b> moving into the far rank promotes — Rook→<b>Dragon 龍</b>, Bishop→<b>Horse 馬</b>, Silver→<b>全</b> and Pawn→<b>と</b> (both then move as Gold). A pawn entering the last rank must promote.</p>
         <p><b>Drops:</b> capture a piece and it flips to your <b>hand</b>. Instead of a move you may drop a hand piece (unpromoted) onto any empty square. No two unpromoted pawns may share a file, and you can’t drop a piece where it has no move.</p>

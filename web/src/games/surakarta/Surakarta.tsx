@@ -6,10 +6,12 @@
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { surakartaAdapter } from './net'
 import * as SK from './logic'
-import type { SurakartaState, Move } from './logic'
+import type { SurakartaState, Move, Player } from './logic'
 
 const { N } = SK
 
@@ -31,50 +33,56 @@ const STEP = VB / SPAN             // px per cell unit
 const px = (coord: number) => (coord + M) * STEP   // grid coord -> svg px
 
 function Surakarta() {
-  const [s, setS] = useState<SurakartaState>(() => SK.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(surakartaAdapter)
+  const me: Player = mySeat === 0 ? 'r' : 'b'   // seat 0 = Red, seat 1 = Black
+  const foe: Player = SK.other(me)
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number | null>(null)
 
-  function newGame() { setS(SK.makeGame()); setShowRules(false); setSel(null) }
+  function newGame() { netNew(); setShowRules(false); setSel(null) }
 
-  const aiActive = !s.winner && s.turn === 'b'
-  useAITurn(aiActive, () => setS(p => SK.aiMove(p)), { delayMs: 520 })
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => { setShowRules(false); setSel(null) } })
 
-  const yourTurn = !s.winner && s.turn === 'r'
-  const { r, b } = SK.counts(s.board)
+  const yourTurn = !s.winner && isMyTurn
+  // counts relative to the seated player: `mine` = your discs, `theirs` = opponent's
+  const cnt = SK.counts(s.board)
+  const mine = me === 'r' ? cnt.r : cnt.b
+  const theirs = me === 'r' ? cnt.b : cnt.r
 
-  // legal moves from the selected piece
+  // legal moves from the selected piece (always for the side you control)
   const selMoves = useMemo<Move[]>(
-    () => (sel != null && yourTurn && s.board[sel] === 'r') ? SK.movesFrom(s.board, sel, 'r') : [],
-    [sel, yourTurn, s.board],
+    () => (sel != null && yourTurn && s.board[sel] === me) ? SK.movesFrom(s.board, sel, me) : [],
+    [sel, yourTurn, s.board, me],
   )
   const stepTargets = useMemo(() => new Set(selMoves.filter(m => !m.cap).map(m => m.to)), [selMoves])
   const capTargets = useMemo(() => new Set(selMoves.filter(m => m.cap).map(m => m.to)), [selMoves])
   const movablePieces = useMemo(() => {
     if (!yourTurn) return new Set<number>()
     const set = new Set<number>()
-    for (const m of SK.allMoves(s.board, 'r')) set.add(m.from)
+    for (const m of SK.allMoves(s.board, me)) set.add(m.from)
     return set
-  }, [yourTurn, s.board])
+  }, [yourTurn, s.board, me])
 
   function clickPoint(i: number) {
     if (!yourTurn) return
     if (sel != null && (stepTargets.has(i) || capTargets.has(i))) {
-      setS(SK.move(s, sel, i, 'r')); setSel(null); return
+      dispatch({ from: sel, to: i }); setSel(null); return
     }
-    if (s.board[i] === 'r' && movablePieces.has(i)) { setSel(i === sel ? null : i); return }
+    if (s.board[i] === me && movablePieces.has(i)) { setSel(i === sel ? null : i); return }
     setSel(null)
   }
 
   // path of the hovered/selected capture (first available) to draw an arc trail
   const capPaths = useMemo(() => selMoves.filter(m => m.cap && m.path).map(m => m.path!), [selMoves])
 
+  const oppLabel = net.online ? 'Opponent' : 'The rival'
+  const thinking = net.online ? 'waiting for opponent…' : 'is thinking…'
+
   let banner: string, bk = ''
-  if (s.winner === 'r') { bk = 'win'; banner = `You win — ${r} to ${b}` }
-  else if (s.winner === 'b') { bk = 'lose'; banner = `The rival wins — ${b} to ${r}` }
-  else if (yourTurn) { bk = 'you'; banner = sel != null ? 'Pick a destination or a loop target' : 'Your turn — pick a red disc' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  if (s.winner === me) { bk = 'win'; banner = `You win — ${mine} to ${theirs}` }
+  else if (s.winner === foe) { bk = 'lose'; banner = `${oppLabel} wins — ${theirs} to ${mine}` }
+  else if (yourTurn) { bk = 'you'; banner = sel != null ? 'Pick a destination or a loop target' : 'Your turn — pick a disc' }
+  else { bk = 'foe'; banner = `${oppLabel} ${thinking}` }
 
   return (
     <>
@@ -93,6 +101,7 @@ function Surakarta() {
         <div className="sk-wrap">
           <BoardSVG
             s={s}
+            me={me}
             sel={sel}
             stepTargets={stepTargets}
             capTargets={capTargets}
@@ -103,20 +112,21 @@ function Surakarta() {
         </div>
 
         <div className="side">
+          <div className="panel"><OnlineBar net={net} /></div>
           <div className="panel scoreboard">
-            <div className={"sc r" + (s.turn === 'r' && !s.winner ? " on" : "")}>
-              <span className="sc-disc r"></span><span className="sc-name">You · Red</span><span className="sc-n">{r}</span>
+            <div className={"sc " + me + (s.turn === me && !s.winner ? " on" : "")}>
+              <span className={"sc-disc " + me}></span><span className="sc-name">You · {me === 'r' ? 'Red' : 'Black'}</span><span className="sc-n">{mine}</span>
             </div>
-            <div className={"sc b" + (s.turn === 'b' && !s.winner ? " on" : "")}>
-              <span className="sc-disc b"></span><span className="sc-name">Rival · Black</span><span className="sc-n">{b}</span>
+            <div className={"sc " + foe + (s.turn === foe && !s.winner ? " on" : "")}>
+              <span className={"sc-disc " + foe}></span><span className="sc-name">{net.online ? 'Opponent' : 'Rival'} · {foe === 'r' ? 'Red' : 'Black'}</span><span className="sc-n">{theirs}</span>
             </div>
-            <div className="sc-bar"><div className="sc-bar-r" style={{ width: `${(r / (r + b || 1)) * 100}%` }} /></div>
+            <div className="sc-bar"><div className="sc-bar-r" style={{ width: `${(mine / (mine + theirs || 1)) * 100}%` }} /></div>
           </div>
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={"log-line " + l.t}>{l.x}</div>)}</div>
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} r={r} b={b} onNew={newGame} />}
+      {s.winner && <ResultModal won={s.winner === me} mine={mine} theirs={theirs} online={net.online} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -124,6 +134,7 @@ function Surakarta() {
 
 interface BoardProps {
   s: SurakartaState
+  me: Player
   sel: number | null
   stepTargets: Set<number>
   capTargets: Set<number>
@@ -132,7 +143,7 @@ interface BoardProps {
   onPoint: (i: number) => void
 }
 
-function BoardSVG({ s, sel, stepTargets, capTargets, movable, capPaths, onPoint }: BoardProps) {
+function BoardSVG({ s, me, sel, stepTargets, capTargets, movable, capPaths, onPoint }: BoardProps) {
   const points: number[] = []
   for (let i = 0; i < N * N; i++) points.push(i)
 
@@ -188,7 +199,7 @@ function BoardSVG({ s, sel, stepTargets, capTargets, movable, capPaths, onPoint 
         const isStep = stepTargets.has(i)
         const isCap = capTargets.has(i)
         const isSel = sel === i
-        const canPick = v === 'r' && movable.has(i)
+        const canPick = v === me && movable.has(i)
         return (
           <g key={i} className="sk-pt" onClick={() => onPoint(i)} style={{ cursor: (isStep || isCap || canPick) ? 'pointer' : 'default' }}>
             <circle cx={cx} cy={cy} r={STEP * 0.46} className="sk-hit" />
@@ -208,16 +219,16 @@ function BoardSVG({ s, sel, stepTargets, capTargets, movable, capPaths, onPoint 
   )
 }
 
-function ResultModal({ s, r, b, onNew }: { s: SurakartaState; r: number; b: number; onNew: () => void }) {
-  const won = s.winner === 'r'
+function ResultModal({ won, mine, theirs, online, onNew }: { won: boolean; mine: number; theirs: number; online: boolean; onNew: () => void }) {
+  const foeName = online ? 'Opponent' : 'Rival'
   return (
     <Modal
       eyebrow={won ? 'Board swept' : 'Out-looped'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${foeName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {r}</span><span className="foe">Rival {b}</span></div>
+      <div className="finalsc"><span className="you">You {mine}</span><span className="foe">{foeName} {theirs}</span></div>
     </Modal>
   )
 }

@@ -1,17 +1,22 @@
-/* TABLUT — UI (built for this codebase). 9x9 carved-wood tafl board on the framework shell,
-   vs an alpha-beta attacker AI. You command the King + Swedes; click a piece to see its rook
-   moves, click a square to move. Marked throne + corners; a crowned king. */
+/* TABLUT — UI (built for this codebase). 9x9 carved-wood tafl board on the framework shell.
+   Solo: you command the King + Swedes (defenders) vs an alpha-beta attacker AI that moves
+   first. Online: you command whichever army your seat holds — seat 0 = defenders, seat 1 =
+   attackers — and the remote human plays the other side. Click a piece to see its rook moves,
+   click a square to move. Marked throne + corners; a crowned king. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { tablutAdapter } from './net'
 import * as TB from './logic'
-import type { TablutState } from './logic'
+import type { Side } from './logic'
 
 const { N, THRONE } = TB
 const CORNER_SET = new Set(TB.CORNERS)
+const SIDE: Side[] = ['def', 'att'] // seat 0 = defenders, seat 1 = attackers
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -26,20 +31,21 @@ const TITLE_MARK = (
 )
 
 export function Tablut() {
-  const [s, setS] = useState<TablutState>(() => TB.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(tablutAdapter)
+  const mySide = SIDE[mySeat] // the army this client commands
+  const oppSide: Side = mySide === 'def' ? 'att' : 'def'
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number | null>(null)
 
-  function newGame() { setS(TB.makeGame()); setSel(null); setShowRules(false) }
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
 
-  useAITurn(!s.winner && s.turn === 'att', () => setS(p => TB.aiMove(p)), { delayMs: 520 })
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => { if (showRules) setShowRules(false); else setSel(null) },
   })
 
-  const yourTurn = !s.winner && s.turn === 'def'
+  const yourTurn = !s.winner && isMyTurn
   const targets = useMemo(
     () => (yourTurn && sel !== null) ? new Set(TB.movesFrom(s.board, sel)) : new Set<number>(),
     [yourTurn, sel, s.board],
@@ -50,19 +56,32 @@ export function Tablut() {
     if (!yourTurn) return
     const p = s.board[i]
     if (sel !== null && targets.has(i)) {
-      setS(TB.move(s, { from: sel, to: i }, 'def'))
+      dispatch({ from: sel, to: i })
       setSel(null)
       return
     }
-    if (TB.sideOf(p) === 'def') { setSel(sel === i ? null : i); return }
+    if (TB.sideOf(p) === mySide) { setSel(sel === i ? null : i); return }
     setSel(null)
   }
 
+  const myWin = s.winner != null && s.winner === mySide
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+  const myArmy = mySide === 'def' ? 'Defenders' : 'Attackers'
+  const oppArmy = oppSide === 'def' ? 'Defenders' : 'Attackers'
+
   let banner: string, bk = ''
-  if (s.winner === 'def') { bk = 'win'; banner = 'The King escapes — you win' }
-  else if (s.winner === 'att') { bk = 'lose'; banner = 'The King is captured — the rival wins' }
-  else if (yourTurn) { bk = 'you'; banner = sel === null ? 'Your move — select a Swede or the King' : 'Choose a square to move to' }
-  else { bk = 'foe'; banner = 'The attackers are scheming…' }
+  if (s.winner != null) {
+    bk = myWin ? 'win' : 'lose'
+    banner = s.winner === 'def'
+      ? (myWin ? 'The King escapes — you win' : `The King escapes — ${oppLabel} wins`)
+      : (myWin ? 'The King is captured — you win' : `The King is captured — ${oppLabel} wins`)
+  } else if (yourTurn) {
+    bk = 'you'; banner = sel === null
+      ? (mySide === 'def' ? 'Your move — select a Swede or the King' : 'Your move — select an attacker')
+      : 'Choose a square to move to'
+  } else {
+    bk = 'foe'; banner = net.online ? `Waiting for ${oppLabel}…` : 'The attackers are scheming…'
+  }
 
   return (
     <>
@@ -108,42 +127,46 @@ export function Tablut() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel sideboard">
             <div className={'sd att' + (s.turn === 'att' && !s.winner ? ' on' : '')}>
               <span className="sd-chip att" />
-              <span className="sd-name">Rival · Attackers</span>
+              <span className="sd-name">{mySide === 'att' ? 'You' : oppLabel} · Attackers</span>
               <span className="sd-n">{att}</span>
             </div>
             <div className={'sd def' + (s.turn === 'def' && !s.winner ? ' on' : '')}>
               <span className="sd-chip def" />
-              <span className="sd-name">You · Defenders</span>
+              <span className="sd-name">{mySide === 'def' ? 'You' : oppLabel} · Defenders</span>
               <span className="sd-n">{def}<span className="sd-king">♚</span></span>
             </div>
           </div>
           <div className="panel hintbox">
             <div className="hint-l">Objective</div>
-            <p>Escort the <b>King</b> to any <b>corner</b>. Sandwich an attacker between two of your pieces to capture it. Lose if the King is boxed in on all four sides.</p>
+            <p>{mySide === 'def'
+              ? <>Escort the <b>King</b> to any <b>corner</b>. Sandwich an attacker between two of your pieces to capture it. Lose if the King is boxed in on all four sides.</>
+              : <>Capture the <b>King</b> by boxing him in on all four sides. Sandwich a Swede between two attackers to remove it. Lose if the King reaches a corner.</>}</p>
           </div>
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}</div>
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {s.winner && <ResultModal won={myWin} myArmy={myArmy} oppArmy={oppArmy} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: TablutState; onNew: () => void }) {
-  const won = s.winner === 'def'
+function ResultModal({ won, myArmy, oppArmy, onNew }: { won: boolean; myArmy: string; oppArmy: string; onNew: () => void }) {
   return (
     <Modal
-      eyebrow={won ? 'The King is free' : 'The siege holds'}
-      title={won ? 'Defenders Win' : 'Attackers Win'}
+      eyebrow={won ? 'Victory' : 'Defeat'}
+      title={won ? `${myArmy} Win` : `${oppArmy} Win`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc">{won ? 'King Escaped' : 'King Captured'}</div>
+      <div className="finalsc">{won ? 'You prevail' : 'You are bested'}</div>
     </Modal>
   )
 }
@@ -153,10 +176,10 @@ function RulesModal({ onClose }: { onClose: () => void }) {
     <Modal eyebrow="How to play" title="Tablut" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Begin</button>}>
       <div className="modal-body">
-        <p>You command the <b>King</b> and his eight <b>Swedes</b>, clustered on the central <b>throne</b>. The rival's sixteen <b>attackers</b> ring the board and <i>move first</i>.</p>
+        <p>The <b>defenders</b> command the <b>King</b> and his eight <b>Swedes</b>, clustered on the central <b>throne</b>. The <b>attackers</b> field sixteen pieces ringing the board and <i>move first</i>.</p>
         <p>Every piece moves like a chess <b>rook</b> — any number of empty squares straight along a row or column, never jumping. Only the King may stop on the throne or the four corners.</p>
-        <p><b>Capture</b> an attacker by flanking it on opposite sides with your move; the throne and corners count as a wall. The <b>King</b> falls only when surrounded on all four sides.</p>
-        <p><b>You win</b> when the King reaches a <i>corner</i>. You lose if he is captured.</p>
+        <p><b>Capture</b> an enemy by flanking it on opposite sides with your move; the throne and corners count as a wall. The <b>King</b> falls only when surrounded on all four sides.</p>
+        <p>The <b>defenders win</b> when the King reaches a <i>corner</i>; the <b>attackers win</b> if they capture him.</p>
         <p><b>Keys:</b> <kbd>N</kbd> new game · <kbd>?</kbd> rules · <kbd>Esc</kbd> deselect / close.</p>
       </div>
     </Modal>

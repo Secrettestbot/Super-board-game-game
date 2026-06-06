@@ -1,18 +1,20 @@
-/* XIANGQI — UI.
-   Ported from design/examples/strategy_xiangqi/xiangqi.jsx. Renders through the shared
-   GameShell + Modal; the AI runs via useAITurn and shortcuts via useGameKeys; logic comes
-   from ./logic instead of window.XiangqiLogic. This is the framework's first board game —
-   it exercises click-to-select, legal-move highlighting, and click-to-move. */
+/* XIANGQI — UI (seat-relative, online-capable).
+   Renders through the shared GameShell + Modal. Online play is driven by useGameSession
+   over the xiangqiAdapter: seat 0 = Red (the original human side), seat 1 = Black. Empty
+   seats are played by the AI (aiMove) inside the hook, so this component no longer calls
+   useAITurn. All banners / panels / results are relative to mySeat, and the board flips so
+   the local player's pieces sit nearest them. Logic comes from ./logic (never edited). */
 
 import { useEffect, useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { xiangqiAdapter, SIDE } from './net'
 import * as XQ from './logic'
 import type { Side, XiangqiState } from './logic'
 
-const W = XQ.W
 const GLYPH: Record<Side, Record<string, string>> = {
   r: { K: "帥", A: "仕", E: "相", H: "傌", R: "俥", C: "炮", S: "兵" },
   b: { K: "將", A: "士", E: "象", H: "馬", R: "車", C: "砲", S: "卒" },
@@ -27,14 +29,16 @@ const TITLE_MARK = (
 )
 
 export function Xiangqi() {
-  const [s, setS] = useState<XiangqiState>(() => XQ.makeInitial())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(xiangqiAdapter)
+  const mySide: Side = SIDE[mySeat] // seat 0 = Red, seat 1 = Black
+  const oppSide: Side = mySide === 'r' ? 'b' : 'r'
+  const flip = mySide === 'b' // Red plays from the bottom; flip the board for Black
+
   const [sel, setSel] = useState<number | null>(null)
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(XQ.makeInitial()); setSel(null); setShowRules(false) }
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
 
-  // AI (Black) replies after a short pause
-  useAITurn(!s.winner && s.turn === "b", () => setS(p => XQ.aiMove(p)), { delayMs: 250, tick: s.moveNo })
   // clear any selection when the turn flips
   useEffect(() => { setSel(null) }, [s.turn])
 
@@ -44,25 +48,27 @@ export function Xiangqi() {
     onEscape: () => { setShowRules(false); setSel(null) },
   })
 
-  const yourTurn = !s.winner && s.turn === "r"
+  const yourTurn = s.winner == null && isMyTurn
   const targets = useMemo(
-    () => (sel != null && yourTurn ? new Set(XQ.legalMoves(s.board, "r").filter(m => m.from === sel).map(m => m.to)) : new Set<number>()),
-    [sel, s.board, yourTurn],
+    () => (sel != null && yourTurn ? new Set(XQ.legalMoves(s.board, mySide).filter(m => m.from === sel).map(m => m.to)) : new Set<number>()),
+    [sel, s.board, yourTurn, mySide],
   )
 
   function clickPoint(i: number) {
     if (!yourTurn) return
     const p = s.board[i]
-    if (sel != null && targets.has(i)) { setS(XQ.applyMove(s, sel, i)); setSel(null); return }
-    if (p && p.s === "r") setSel(i === sel ? null : i)
+    if (sel != null && targets.has(i)) { dispatch({ from: sel, to: i }); setSel(null); return }
+    if (p && p.s === mySide) setSel(i === sel ? null : i)
     else setSel(null)
   }
 
+  const myWin = s.winner != null && s.winner === mySide
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+
   let banner: string, bk = ""
-  if (s.winner === "r") { bk = "win"; banner = "Checkmate — you win" }
-  else if (s.winner === "b") { bk = "lose"; banner = "Checkmate — the rival wins" }
-  else if (yourTurn) { bk = "you"; banner = s.check ? "You're in check!" : "Red to move" }
-  else { bk = "foe"; banner = s.check ? "Rival in check…" : "The rival is calculating…" }
+  if (s.winner != null) { bk = myWin ? "win" : "lose"; banner = myWin ? "Checkmate — you win" : `Checkmate — ${oppLabel} wins` }
+  else if (yourTurn) { bk = "you"; banner = s.check ? "You're in check!" : "Your move" }
+  else { bk = "foe"; banner = s.check ? `${oppLabel} in check…` : net.online ? `${oppLabel} is thinking…` : "The rival is calculating…" }
 
   // geometry: 9 cols x 10 rows of intersections, padding
   const PAD = 6, GAP = (100 - PAD * 2) / 8 // % per col
@@ -102,7 +108,9 @@ export function Xiangqi() {
             </svg>
             <div className="points">
               {s.board.map((p, i) => {
-                const [r, c] = XQ.rc(i)
+                const [r0, c0] = XQ.rc(i)
+                const r = flip ? XQ.H - 1 - r0 : r0
+                const c = flip ? XQ.W - 1 - c0 : c0
                 const isT = targets.has(i)
                 const cls = ["pt"]
                 if (i === lastFrom || i === lastTo) cls.push("lastpt")
@@ -118,26 +126,32 @@ export function Xiangqi() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel players">
-            <div className={"pl b" + (s.turn === "b" && !s.winner ? " on" : "")}><span className="pl-dot b"></span>Rival · Black</div>
-            <div className={"pl r" + (s.turn === "r" && !s.winner ? " on" : "")}><span className="pl-dot r"></span>You · Red</div>
+            <div className={"pl " + oppSide + (s.turn === oppSide && s.winner == null ? " on" : "")}>
+              <span className={"pl-dot " + oppSide}></span>{oppLabel} · {oppSide === 'r' ? 'Red' : 'Black'}
+            </div>
+            <div className={"pl " + mySide + (s.turn === mySide && s.winner == null ? " on" : "")}>
+              <span className={"pl-dot " + mySide}></span>You · {mySide === 'r' ? 'Red' : 'Black'}
+            </div>
           </div>
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={"log-line " + l.t}>{l.x}</div>)}</div>
         </div>
       </GameShell>
 
-      {s.winner && <WinModal s={s} onNew={newGame} />}
+      {s.winner != null && <WinModal won={myWin} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function WinModal({ s, onNew }: { s: XiangqiState; onNew: () => void }) {
-  const won = s.winner === "r"
+function WinModal({ won, oppLabel, onNew }: { won: boolean; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? "将死" : "Checkmated"}
-      title={won ? "You Win" : "Rival Wins"}
+      title={won ? "You Win" : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     />
