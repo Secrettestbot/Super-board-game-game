@@ -7,8 +7,10 @@
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { chessAdapter } from './net'
 import * as C from './logic'
 import type { ChessState, Move, PieceType, Color } from './logic'
 
@@ -36,20 +38,20 @@ function materialBalance(s: ChessState): number {
 }
 
 export function Chess() {
-  const [s, setS] = useState<ChessState>(() => C.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(chessAdapter)
+  const myColor = mySeat as Color // seat 0 = White, seat 1 = Black
   const [sel, setSel] = useState<number | null>(null)
   const [pending, setPending] = useState<{ from: number; to: number } | null>(null) // awaiting promotion choice
   const [showRules, setShowRules] = useState(false)
-  const [ply, setPly] = useState(0)
 
   function newGame() {
-    setS(C.makeGame()); setSel(null); setPending(null); setShowRules(false); setPly(0)
+    netNew(); setSel(null); setPending(null); setShowRules(false)
   }
 
-  const yourTurn = s.result == null && s.turn === C.WHITE
-  const aiTurn = s.result == null && s.turn === C.BLACK
+  const yourTurn = s.result == null && isMyTurn
+  const flip = myColor === C.BLACK
 
-  // legal moves for the human, grouped by origin square
+  // legal moves for the human (the side to move when it's your turn), grouped by origin
   const legal = useMemo(() => (yourTurn ? C.legalMoves(s) : []), [s, yourTurn])
   const targets = useMemo(() => {
     const map = new Map<number, Move>() // to-square -> a representative move
@@ -58,26 +60,16 @@ export function Chess() {
     return map
   }, [legal, sel])
 
-  // AI driver: one move per turn, re-armed on the ply counter.
-  useAITurn(aiTurn, () => {
-    setS(prev => {
-      if (prev.result != null || prev.turn !== C.BLACK) return prev
-      return C.aiMove(prev)
-    })
-    setPly(p => p + 1)
-  }, { delayMs: 480, tick: ply })
-
   function commitMove(m: Move) {
-    setS(prev => C.applyMove(prev, m))
+    dispatch({ from: m.from, to: m.to, promo: m.promo })
     setSel(null); setPending(null)
-    setPly(p => p + 1)
   }
 
   function onSquare(idx: number) {
     if (!yourTurn || pending) return
     const piece = s.board[idx]
     // selecting one of your own pieces
-    if (piece && piece.color === C.WHITE) {
+    if (piece && piece.color === myColor) {
       setSel(idx === sel ? null : idx)
       return
     }
@@ -104,9 +96,12 @@ export function Chess() {
 
   const checked = s.result == null && C.inCheck(s, s.turn)
 
+  const myWin = (s.result === 'white' && myColor === C.WHITE) || (s.result === 'black' && myColor === C.BLACK)
+  const oppLabel = net.online ? 'Opponent' : 'Black' // engine in solo; remote human online
+  const thinking = net.online ? 'waiting for opponent…' : 'thinking…'
+
   let banner: string, bk = ''
-  if (s.result === 'white') { bk = 'win'; banner = 'Checkmate — you win!' }
-  else if (s.result === 'black') { bk = 'lose'; banner = 'Checkmate — Black wins' }
+  if (s.result === 'white' || s.result === 'black') { bk = myWin ? 'win' : 'lose'; banner = myWin ? 'Checkmate — you win!' : `Checkmate — ${oppLabel} wins` }
   else if (s.result === 'draw') {
     bk = 'foe'
     const why = s.reason === 'stalemate' ? 'Stalemate' : s.reason === 'fifty' ? 'Draw — 50-move rule'
@@ -115,11 +110,17 @@ export function Chess() {
   } else if (yourTurn) {
     bk = 'you'; banner = checked ? 'You are in check — defend the king' : 'Your move'
   } else {
-    bk = 'foe'; banner = checked ? 'Black is in check…' : 'Black is thinking…'
+    bk = 'foe'; banner = checked ? `${oppLabel} is in check…` : `${oppLabel} is ${thinking}`
   }
 
-  const bal = materialBalance(s)
+  // material balance from YOUR perspective (positive = you're ahead)
+  const rawBal = materialBalance(s)
+  const bal = myColor === C.WHITE ? rawBal : -rawBal
   const kingInCheckSq = checked ? findKing(s, s.turn) : -1
+  const order = flip ? Array.from({ length: 64 }, (_, i) => 63 - i) : Array.from({ length: 64 }, (_, i) => i)
+  const oppColor: Color = myColor === C.WHITE ? C.BLACK : C.WHITE
+  const oppName = oppColor === C.WHITE ? 'White' : 'Black'
+  const myName = myColor === C.WHITE ? 'White' : 'Black'
 
   return (
     <>
@@ -130,7 +131,7 @@ export function Chess() {
         subtitle="the royal game — castle, capture en passant, promote your pawns, and mate the king before the engine mates yours"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`Move ${s.fullmove} · ${bal === 0 ? 'even' : bal > 0 ? `you +${bal}` : `Black +${-bal}`}`}
+        modeLeft={`Move ${s.fullmove} · ${bal === 0 ? 'even' : bal > 0 ? `you +${bal}` : `${oppName} +${-bal}`}`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>click · move &nbsp; N · new &nbsp; ? · rules</>}
@@ -138,14 +139,14 @@ export function Chess() {
         <div className="ch-boardwrap">
           <div className="ch-frame">
             <div className="ch-board">
-              {Array.from({ length: 64 }, (_, idx) => {
+              {order.map((idx) => {
                 const rank = C.rankOf(idx), file = C.fileOf(idx)
                 const isDark = (rank + file) % 2 === 1
                 const piece = s.board[idx]
                 const isTarget = targets.has(idx)
                 const isLast = s.last != null && (s.last.from === idx || s.last.to === idx)
                 const isSel = sel === idx
-                const clickable = yourTurn && !pending && ((piece && piece.color === C.WHITE) || isTarget)
+                const clickable = yourTurn && !pending && ((piece && piece.color === myColor) || isTarget)
                 const cls = ['ch-sq', isDark ? 'dark' : 'light']
                 if (isSel) cls.push('selected')
                 if (isLast) cls.push('last')
@@ -166,22 +167,25 @@ export function Chess() {
 
         <div className="ch-side">
           <div className="ch-panel">
+            <OnlineBar net={net} />
+          </div>
+          <div className="ch-panel">
             <h3>Match</h3>
-            <div className={'ch-player' + (aiTurn ? ' on' : '')}>
-              <span className="ch-disc b" />
-              <span className="ch-pname">Black · Engine</span>
+            <div className={'ch-player' + (!yourTurn && s.result == null ? ' on' : '')}>
+              <span className={'ch-disc ' + (oppColor === C.WHITE ? 'w' : 'b')} />
+              <span className="ch-pname">{oppName} · {net.online ? 'Opponent' : 'Engine'}</span>
               <span className={'ch-material' + (bal < 0 ? '' : ' neg')}>{bal < 0 ? `+${-bal}` : ''}</span>
             </div>
-            <div className="ch-captured b">
-              {s.captured[1].length ? s.captured[1].map((t, i) => <span key={i}>{GLYPH[C.WHITE][t]}</span>) : <span className="none">— no captures —</span>}
+            <div className={'ch-captured ' + (oppColor === C.WHITE ? 'w' : 'b')}>
+              {s.captured[oppColor].length ? s.captured[oppColor].map((t, i) => <span key={i}>{GLYPH[myColor][t]}</span>) : <span className="none">— no captures —</span>}
             </div>
             <div className={'ch-player' + (yourTurn ? ' on' : '')}>
-              <span className="ch-disc w" />
-              <span className="ch-pname">You · White</span>
+              <span className={'ch-disc ' + (myColor === C.WHITE ? 'w' : 'b')} />
+              <span className="ch-pname">You · {myName}</span>
               <span className={'ch-material' + (bal < 0 ? ' neg' : '')}>{bal > 0 ? `+${bal}` : ''}</span>
             </div>
-            <div className="ch-captured w">
-              {s.captured[0].length ? s.captured[0].map((t, i) => <span key={i}>{GLYPH[C.BLACK][t]}</span>) : <span className="none">— no captures —</span>}
+            <div className={'ch-captured ' + (myColor === C.WHITE ? 'w' : 'b')}>
+              {s.captured[myColor].length ? s.captured[myColor].map((t, i) => <span key={i}>{GLYPH[oppColor][t]}</span>) : <span className="none">— no captures —</span>}
             </div>
           </div>
 
@@ -190,7 +194,7 @@ export function Chess() {
             <div className="ch-status">
               {s.result == null ? (
                 <>
-                  <div>To move: <b>{s.turn === C.WHITE ? 'White (you)' : 'Black'}</b></div>
+                  <div>To move: <b>{s.turn === myColor ? `${myName} (you)` : oppName}</b></div>
                   {checked && <div className="chk">Check!</div>}
                   <div>Halfmove clock: <b>{s.halfmove}</b> / 100</div>
                   {s.last && <div>Last: <b>{C.squareName(s.last.from)}→{C.squareName(s.last.to)}</b></div>}
@@ -221,7 +225,7 @@ export function Chess() {
       )}
 
       {s.result != null && (
-        <ResultModal result={s.result} reason={s.reason} onNew={newGame} />
+        <ResultModal result={s.result} won={myWin} oppName={oppName} online={net.online} reason={s.reason} onNew={newGame} />
       )}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
@@ -233,17 +237,16 @@ function findKing(s: ChessState, color: Color): number {
   return -1
 }
 
-function ResultModal({ result, reason, onNew }: { result: Exclude<C.Result, null>; reason: string | null; onNew: () => void }) {
-  const won = result === 'white'
+function ResultModal({ result, won, oppName, online, reason, onNew }: { result: Exclude<C.Result, null>; won: boolean; oppName: string; online: boolean; reason: string | null; onNew: () => void }) {
   const draw = result === 'draw'
-  const eyebrow = draw ? 'Drawn game' : won ? 'Checkmate' : 'Checkmate'
-  const title = draw ? 'Draw' : won ? 'You Win' : 'Black Wins'
+  const eyebrow = draw ? 'Drawn game' : 'Checkmate'
+  const title = draw ? 'Draw' : won ? 'You Win' : `${oppName} Wins`
   const detail = draw
     ? (reason === 'stalemate' ? 'Stalemate — the side to move has no legal move and is not in check.'
       : reason === 'fifty' ? 'Fifty moves passed with no capture or pawn move.'
       : reason === 'repetition' ? 'The same position arose three times.'
       : 'Neither side has the material to force mate.')
-    : won ? 'You delivered checkmate. Long live the queen.' : 'The engine cornered your king.'
+    : won ? 'You delivered checkmate. Long live the queen.' : (online ? 'Your opponent cornered your king.' : 'The engine cornered your king.')
   return (
     <Modal
       eyebrow={eyebrow}
