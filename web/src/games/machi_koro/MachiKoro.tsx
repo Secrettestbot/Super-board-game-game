@@ -1,17 +1,20 @@
-/* MACHI KORO — UI. You (player 0) + two greedy AIs build a town by rolling dice,
-   earning color-coded income, and raising four landmarks. The two AIs each take a
-   FULL turn (roll → income → build) and may chain extra turns on doubles, so useAITurn
-   re-arms on a tick that changes on every AI mutation (turn · phase · a state hash). */
+/* MACHI KORO — UI. Build a town by rolling dice, earning color-coded income, and raising
+   four landmarks. Solo: you (player 0) play two greedy AIs. Online: useGameSession runs
+   the real logic on the host, the AI fills empty seats, and each decision is sent as an
+   intent (roll / reroll / income / buy / pass). The view is seat-relative: "you" is the
+   local mySeat, and banners / panels / result are all from that seat's perspective. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { machiKoroAdapter } from './net'
 import * as MK from './logic'
 import type { State, Player, CardDef, Color } from './logic'
 
-const { CARDS, LANDMARKS, makeGame } = MK
+const { CARDS, LANDMARKS } = MK
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -34,40 +37,25 @@ function rollsLabel(c: CardDef): string {
 }
 
 export function MachiKoro() {
-  const [s, setS] = useState<State>(() => makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(machiKoroAdapter)
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  const you = s.players[0]
-  const yourTurn = s.winner == null && s.turn === 0
+  const you = s.players[mySeat]
+  const yourTurn = s.winner == null && isMyTurn
   const canRoll = yourTurn && s.phase === 'roll'
   const canTwo = canRoll && you.landmarks.train
   // reroll is only legal right after a roll, before income is applied, with a Radio Tower
   const canReroll = yourTurn && s.phase === 'build' && !s.incomeDone && !s.rerolled && you.landmarks.radio
   const inBuild = yourTurn && s.phase === 'build' && s.incomeDone
 
-  function roll(count: number) {
-    setS(p => {
-      if (p.turn !== 0 || p.phase !== 'roll' || p.winner != null) return p
-      const rolled = MK.rollDice(p, count)
-      // auto-apply income immediately unless the player owns a Radio Tower (then they
-      // may choose to re-roll first).
-      return rolled.players[0].landmarks.radio ? rolled : MK.applyIncome(rolled)
-    })
-  }
-  function reroll(count: number) { setS(p => MK.reroll(p, count)) }
-  function takeIncome() { setS(p => MK.applyIncome(p)) }
-  function buyId(id: string) { setS(p => (inBuildNow(p) ? MK.buy(p, 0, id) : p)) }
-  function pass() { setS(p => (inBuildNow(p) ? MK.endTurn(p) : p)) }
-
-  function inBuildNow(p: State) { return p.turn === 0 && p.phase === 'build' && p.incomeDone && p.winner == null }
-
-  // AI driver: tick changes on every AI mutation so multi-step / extra turns don't stall.
-  const aiActive = s.winner == null && s.turn !== 0
-  const tick = `${s.turn}-${s.phase}-${s.players.map(p => p.coins).join('.')}-${s.players.map(p => MK.landmarksBuilt(p)).join('.')}-${s.dice.length}-${s.log.length}`
-  useAITurn(aiActive, () => setS(p => (p.turn !== 0 && p.winner == null ? MK.aiTurn(p) : p)), { delayMs: 650, tick })
+  function roll(count: number) { if (canRoll) dispatch({ kind: 'roll', n: count }) }
+  function reroll(count: number) { if (canReroll) dispatch({ kind: 'reroll', n: count }) }
+  function takeIncome() { if (yourTurn && s.phase === 'build' && !s.incomeDone) dispatch({ kind: 'income' }) }
+  function buyId(id: string) { if (inBuild) dispatch({ kind: 'buy', card: id }) }
+  function pass() { if (inBuild) dispatch({ kind: 'pass' }) }
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
   useGameKeys({
@@ -85,15 +73,18 @@ export function MachiKoro() {
     },
   })
 
+  const oppName = (id: number): string => (net.online ? `Player ${id + 1}` : s.players[id].name)
+  const activeName = (): string => (s.turn === mySeat ? 'You' : oppName(s.turn))
+
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You completed all four landmarks — your town wins!' }
-  else if (s.winner != null) { bk = 'lose'; banner = `${s.players[s.winner].name} raised every landmark first — you lose.` }
+  if (s.winner === mySeat) { bk = 'win'; banner = 'You completed all four landmarks — your town wins!' }
+  else if (s.winner != null) { bk = 'lose'; banner = `${oppName(s.winner)} raised every landmark first — you lose.` }
   else if (yourTurn) {
     bk = 'you'
     if (s.phase === 'roll') banner = you.landmarks.train ? 'Your turn — roll 1 or 2 dice' : 'Your turn — roll the die'
     else if (!s.incomeDone) banner = `Rolled ${s.roll} — re-roll with the Radio Tower, or take income`
     else banner = `Rolled ${s.roll} — build one thing, or pass`
-  } else { bk = 'foe'; banner = `${s.players[s.turn].name} is taking their turn…` }
+  } else { bk = 'foe'; banner = `${activeName()} is taking their turn…` }
 
   return (
     <>
@@ -159,13 +150,16 @@ export function MachiKoro() {
         </div>
 
         <div className="side">
+          <div className="panel"><OnlineBar net={net} /></div>
+
           {s.players.map(p => (
             <PlayerCard
               key={p.id}
               p={p}
+              name={p.id === mySeat ? 'You' : oppName(p.id)}
               active={s.turn === p.id && s.winner == null}
-              you={p.id === 0}
-              canBuildLm={p.id === 0 && inBuild}
+              you={p.id === mySeat}
+              canBuildLm={p.id === mySeat && inBuild}
               coins={p.coins}
               onBuyLm={(id) => buyId(id)}
             />
@@ -177,16 +171,16 @@ export function MachiKoro() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal s={s} mySeat={mySeat} oppName={oppName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
 function PlayerCard({
-  p, active, you, canBuildLm, coins, onBuyLm,
+  p, name, active, you, canBuildLm, coins, onBuyLm,
 }: {
-  p: Player; active: boolean; you: boolean; canBuildLm: boolean; coins: number; onBuyLm: (id: string) => void
+  p: Player; name: string; active: boolean; you: boolean; canBuildLm: boolean; coins: number; onBuyLm: (id: string) => void
 }) {
   const owned = CARDS
     .map(c => ({ c, n: p.est[c.id] ?? 0 }))
@@ -194,7 +188,7 @@ function PlayerCard({
   return (
     <div className={`mk-player ${you ? 'you-p' : ''} ${active ? 'active' : ''}`}>
       <div className="mk-p-head">
-        <span className={'mk-p-name ' + (you ? 'you' : 'foe')}>{p.name}</span>
+        <span className={'mk-p-name ' + (you ? 'you' : 'foe')}>{name}</span>
         <span className="mk-p-coins">{p.coins}</span>
       </div>
 
@@ -245,12 +239,12 @@ function PlayerCard({
   )
 }
 
-function ResultModal({ s, onNew }: { s: State; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ s, mySeat, oppName, onNew }: { s: State; mySeat: number; oppName: (id: number) => string; onNew: () => void }) {
+  const won = s.winner === mySeat
   return (
     <Modal
       eyebrow={won ? 'Boomtown' : 'Out-built'}
-      title={won ? 'You Win' : `${s.winner != null ? s.players[s.winner].name : ''} Wins`}
+      title={won ? 'You Win' : `${s.winner != null ? oppName(s.winner) : ''} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
@@ -261,7 +255,7 @@ function ResultModal({ s, onNew }: { s: State; onNew: () => void }) {
       </div>
       <div className="finalsc">
         {s.players.map(p => (
-          <span key={p.id} className={p.id === 0 ? 'you' : 'foe'}>{p.name} {MK.landmarksBuilt(p)}/4</span>
+          <span key={p.id} className={p.id === mySeat ? 'you' : 'foe'}>{p.id === mySeat ? 'You' : oppName(p.id)} {MK.landmarksBuilt(p)}/4</span>
         ))}
       </div>
     </Modal>

@@ -2,16 +2,19 @@
    habitat tiles vs a greedy AI (player 1). Draft one of four tile+token pairs, place the
    habitat tile in an empty hex adjacent to your tableau, then seat the wildlife token on a
    tile whose slot allows it (or set it aside). Live score breakdown on the right. The game
-   runs a fixed number of placements so it always ends. The AI takes one placement per turn,
-   so its driver re-arms on s.step (useAITurn tick). */
+   runs a fixed number of placements so it always ends. Online-capable via useGameSession:
+   the session drives the AI for empty seats (re-armed by the adapter tickKey), and the UI
+   is seat-relative so a guest can play seat 1. Solo play (seat 0 vs AI) is unchanged. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { cascadiaAdapter } from './net'
 import * as C from './logic'
-import type { CascadiaState, Tableau, Animal, Terrain, Hex, Player } from './logic'
+import type { Tableau, Animal, Terrain, Hex, Player } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -147,7 +150,9 @@ function MiniHex({ terrains, slots }: { terrains: Terrain[]; slots: Animal[] }) 
 type Phase = 'pick' | 'place' | 'animal'
 
 export function Cascadia() {
-  const [s, setS] = useState<CascadiaState>(() => C.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(cascadiaAdapter)
+  const me = mySeat as Player          // seat 0 = player 0, seat 1 = player 1
+  const foe = (me === 0 ? 1 : 0) as Player
   const [showRules, setShowRules] = useState(false)
   // human turn sub-state
   const [phase, setPhase] = useState<Phase>('pick')
@@ -156,12 +161,11 @@ export function Cascadia() {
   const logRef = useRef<HTMLDivElement>(null)
 
   function newGame() {
-    setS(C.makeGame()); setShowRules(false); setPhase('pick'); setMarketIdx(null); setTileHex(null)
+    netNew(); setShowRules(false); setPhase('pick'); setMarketIdx(null); setTileHex(null)
   }
   function resetTurn() { setPhase('pick'); setMarketIdx(null); setTileHex(null) }
 
-  // AI takes one placement per turn; re-arm on s.step.
-  useAITurn(s.winner == null && s.turn === 1, () => setS(p => C.aiTurn(p)), { delayMs: 620, tick: s.step })
+  // The session drives the AI for empty seats; re-arm is handled by the adapter tickKey.
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = 0 }, [s.log])
 
   useGameKeys({
@@ -170,19 +174,19 @@ export function Cascadia() {
     onEscape: () => { if (showRules) setShowRules(false); else resetTurn() },
   })
 
-  const yourTurn = s.winner == null && s.turn === 0
+  const yourTurn = s.winner == null && isMyTurn
 
-  // derived placement options
-  const yourSlots = yourTurn && phase === 'place' ? C.legalTilePlacements(s.tableaus[0]) : []
+  // derived placement options (always relative to my own tableau)
+  const yourSlots = yourTurn && phase === 'place' ? C.legalTilePlacements(s.tableaus[me]) : []
   // For the animal phase: simulate the tile already placed so legal spots include it.
   const pendingToken: Animal | null = marketIdx != null ? s.market[marketIdx].token : null
   let animTargets: Hex[] = []
-  let projectedTab: Tableau = s.tableaus[0]
+  let projectedTab: Tableau = s.tableaus[me]
   if (yourTurn && phase === 'animal' && marketIdx != null && tileHex != null) {
     const pair = s.market[marketIdx]
     const k = C.hexKey(tileHex.q, tileHex.r)
     projectedTab = {
-      ...s.tableaus[0],
+      ...s.tableaus[me],
       [k]: { terrains: pair.tile.terrains.slice(), slots: pair.tile.slots.slice(), rotation: 0, placedAnimal: null },
     }
     if (pendingToken != null) animTargets = C.legalAnimalSpots(projectedTab, pendingToken)
@@ -198,29 +202,34 @@ export function Cascadia() {
   }
   function pickAnimal(h: Hex) {
     if (!yourTurn || phase !== 'animal' || marketIdx == null || tileHex == null) return
-    setS(C.placePair(s, 0, marketIdx, tileHex, 0, h))
+    dispatch({ marketIndex: marketIdx, hex: tileHex, rotation: 0, animalCoord: h })
     resetTurn()
   }
   function setAside() {
     if (!yourTurn || phase !== 'animal' || marketIdx == null || tileHex == null) return
-    setS(C.placePair(s, 0, marketIdx, tileHex, 0, null))
+    dispatch({ marketIndex: marketIdx, hex: tileHex, rotation: 0, animalCoord: null })
     resetTurn()
   }
 
-  // banner
+  const foeLabel = net.online ? 'Opponent' : 'Rival'
+  const myWin = s.winner === me
+  const myScore = s.scores[me]
+  const foeScore = s.scores[foe]
+
+  // banner (relative to mySeat)
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = `You win — ${s.scores[0]} to ${s.scores[1]}!` }
-  else if (s.winner === 1) { bk = 'lose'; banner = `Rival wins — ${s.scores[1]} to ${s.scores[0]}` }
+  if (s.winner != null && myWin) { bk = 'win'; banner = `You win — ${myScore} to ${foeScore}!` }
+  else if (s.winner != null) { bk = 'lose'; banner = `${foeLabel} wins — ${foeScore} to ${myScore}` }
   else if (yourTurn) {
     bk = 'you'
     banner = phase === 'pick' ? 'Draft a tile + token pair'
       : phase === 'place' ? 'Place the habitat tile on a highlighted hex'
       : 'Seat the wildlife token — or set it aside'
-  } else { bk = 'foe'; banner = 'The rival is building their wilderness…' }
+  } else { bk = 'foe'; banner = `${foeLabel} is building their wilderness…` }
 
   const round = Math.ceil((C.TILES_EACH * 2 - s.turnsLeft + 1) / 2)
-  const youBd = C.scoreBreakdown(s.tableaus[0])
-  const foeBd = C.scoreBreakdown(s.tableaus[1])
+  const youBd = C.scoreBreakdown(s.tableaus[me])
+  const foeBd = C.scoreBreakdown(s.tableaus[foe])
 
   return (
     <>
@@ -231,7 +240,7 @@ export function Cascadia() {
         subtitle="draft paired habitat tiles and wildlife tokens, weave the longest corridors, and place animals where they thrive"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`Round ${Math.min(round, C.TILES_EACH)} / ${C.TILES_EACH} · You ${youBd.total} · Rival ${foeBd.total}`}
+        modeLeft={`Round ${Math.min(round, C.TILES_EACH)} / ${C.TILES_EACH} · You ${youBd.total} · ${foeLabel} ${foeBd.total}`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>click · draft &amp; place &nbsp; Esc · cancel &nbsp; N · new</>}
@@ -272,14 +281,18 @@ export function Cascadia() {
           </div>
 
           <div>
-            <div className="cs-secthead">Rival's tableau</div>
+            <div className="cs-secthead">{foeLabel}'s tableau</div>
             <div className="cs-tabwrap foe">
-              <TableauView tab={s.tableaus[1]} foe hw={34} />
+              <TableauView tab={s.tableaus[foe]} foe hw={34} />
             </div>
           </div>
         </div>
 
         <div className="cs-side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
+
           {yourTurn && phase === 'animal' && (
             <div className="cs-asidebar">
               {pendingToken != null && <span className={'cs-tok-disc ' + pendingToken}>{ANIMAL_GLYPH[pendingToken]}</span>}
@@ -289,7 +302,7 @@ export function Cascadia() {
           )}
 
           <ScorePanel name="You" cls="you" bd={youBd} active={yourTurn} />
-          <ScorePanel name="Rival" cls="foe" bd={foeBd} active={s.turn === 1 && s.winner == null} />
+          <ScorePanel name={foeLabel} cls="foe" bd={foeBd} active={s.turn === foe && s.winner == null} />
 
           <div className="panel logbox" ref={logRef}>
             {s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}
@@ -297,7 +310,7 @@ export function Cascadia() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal winner={s.winner} scores={s.scores} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={myWin} myScore={myScore} foeScore={foeScore} foeLabel={foeLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -333,18 +346,17 @@ function ScorePanel({ name, cls, bd, active }: {
   )
 }
 
-function ResultModal({ winner, scores, onNew }: { winner: Player; scores: [number, number]; onNew: () => void }) {
-  const won = winner === 0
+function ResultModal({ won, myScore, foeScore, foeLabel, onNew }: { won: boolean; myScore: number; foeScore: number; foeLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Wilderness thrives' : 'Outbuilt'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${foeLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
-        <span className="you">You {scores[0]}</span>
-        <span className="foe">Rival {scores[1]}</span>
+        <span className="you">You {myScore}</span>
+        <span className="foe">{foeLabel} {foeScore}</span>
       </div>
     </Modal>
   )

@@ -7,8 +7,10 @@
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { kingdominoAdapter } from './net'
 import * as KD from './logic'
 import type { KingdomState, Cell, Tile, Terrain, Placement, Player } from './logic'
 
@@ -68,30 +70,30 @@ function ghostCells(p: Placement | null): Set<number> {
 }
 
 export function Kingdomino() {
-  const [s, setS] = useState<KingdomState>(() => KD.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(kingdominoAdapter)
+  const me = mySeat as Player // seat 0 / 1 == player index
+  const oppSeat = (1 - me) as Player
   const [orient, setOrient] = useState(0)
   const [hover, setHover] = useState<number | null>(null)
   const [showRules, setShowRules] = useState(false)
   const [showResult, setShowResult] = useState(true)
 
   function newGame() {
-    setS(KD.makeGame())
+    netNew()
     setOrient(0)
     setHover(null)
     setShowRules(false)
     setShowResult(true)
   }
 
-  // AI is player 1. It places + claims across many rounds, so re-arm on s.tick.
-  useAITurn(KD.isAITurn(s), () => setS((p) => KD.aiTurn(p)), { delayMs: 520, tick: s.tick })
-
-  const yourTurn = s.phase !== 'over' && s.order[s.turnPos] === 0
+  const yourTurn = s.phase !== 'over' && isMyTurn
   const placing = yourTurn && s.phase === 'place'
   const claiming = yourTurn && s.phase === 'claim'
   const finalRound = s.lineup.length === 0
 
-  const you = s.players[0]
-  const foe = s.players[1]
+  const you = s.players[me]
+  const foe = s.players[oppSeat]
+  const oppLabel = net.online ? `Player ${oppSeat + 1}` : 'Rival'
 
   // legal placements for the human's claimed tile, mapped to anchors by orientation
   const legal: Placement[] = placing && you.claimed != null ? KD.legalPlacements(you.grid, you.claimed) : []
@@ -112,14 +114,14 @@ export function Kingdomino() {
     if (!placing || you.claimed == null) return
     const p = legalForOrient.get(i)
     if (p == null) return
-    setS(finalRound ? KD.finalPlace(s, p) : KD.placeTile(s, p))
+    dispatch({ kind: 'place', placement: p })
     setOrient(0)
     setHover(null)
   }
 
   function discard() {
     if (!placing) return
-    setS(finalRound ? KD.finalPlace(s, null) : KD.placeTile(s, null))
+    dispatch({ kind: 'place', placement: null })
     setOrient(0)
     setHover(null)
   }
@@ -128,7 +130,7 @@ export function Kingdomino() {
     if (!claiming) return
     const entry = s.lineup[lineIndex]
     if (entry == null || entry.claimedBy != null) return
-    setS(KD.claimTile(s, lineIndex))
+    dispatch({ kind: 'claim', lineIndex })
   }
 
   useGameKeys({
@@ -148,8 +150,8 @@ export function Kingdomino() {
   let bk = ''
   if (s.phase === 'over') {
     if (s.tie) { bk = ''; banner = `A draw — ${you.score} all` }
-    else if (s.winner === 0) { bk = 'win'; banner = `You win — ${you.score} to ${foe.score}` }
-    else { bk = 'lose'; banner = `Rival wins — ${foe.score} to ${you.score}` }
+    else if (s.winner === me) { bk = 'win'; banner = `You win — ${you.score} to ${foe.score}` }
+    else { bk = 'lose'; banner = `${oppLabel} wins — ${foe.score} to ${you.score}` }
   } else if (placing) {
     bk = 'you'
     banner = anyLegal ? 'Place your domino — tap a highlighted square (R to rotate)' : 'No legal spot — discard your domino'
@@ -158,7 +160,7 @@ export function Kingdomino() {
     banner = 'Claim a tile for next round — lower numbers play first'
   } else {
     bk = 'foe'
-    banner = s.phase === 'place' ? 'Rival is placing…' : 'Rival is claiming…'
+    banner = s.phase === 'place' ? `${oppLabel} is placing…` : `${oppLabel} is claiming…`
   }
 
   const roundsLeft = Math.ceil(s.deck.length / 4) + (finalRound ? 0 : 1)
@@ -191,7 +193,7 @@ export function Kingdomino() {
           />
           <Realm
             who="foe"
-            name="Rival Kingdom"
+            name={net.online ? `${oppLabel}'s Kingdom` : 'Rival Kingdom'}
             grid={foe.grid}
             score={foe.score}
             interactive={false}
@@ -203,6 +205,9 @@ export function Kingdomino() {
         </div>
 
         <div className="kd-side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel">
             <div className="panel-l">Your tile to place</div>
             {you.claimed != null ? (
@@ -232,14 +237,14 @@ export function Kingdomino() {
                 const cls =
                   'kd-draft-row' +
                   (claiming && tag == null ? ' claimable' : '') +
-                  (tag === 0 ? ' claimed-you' : '') +
-                  (tag === 1 ? ' claimed-foe' : '')
+                  (tag === me ? ' claimed-you' : '') +
+                  (tag === oppSeat ? ' claimed-foe' : '')
                 return (
                   <div key={entry.tile.id} className={cls} onClick={() => claim(i)}>
                     <span className="kd-draft-num">{entry.tile.num}</span>
                     <DominoTile tile={entry.tile} />
-                    {tag === 0 && <span className="kd-draft-tag you">You</span>}
-                    {tag === 1 && <span className="kd-draft-tag foe">Rival</span>}
+                    {tag === me && <span className="kd-draft-tag you">You</span>}
+                    {tag === oppSeat && <span className="kd-draft-tag foe">{oppLabel}</span>}
                   </div>
                 )
               })}
@@ -255,7 +260,7 @@ export function Kingdomino() {
       </GameShell>
 
       {s.phase === 'over' && showResult && (
-        <ResultModal s={s} onNew={newGame} onClose={() => setShowResult(false)} />
+        <ResultModal s={s} me={me} oppSeat={oppSeat} oppLabel={oppLabel} onNew={newGame} onClose={() => setShowResult(false)} />
       )}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
@@ -323,10 +328,10 @@ function ClaimedPreview({ tile, orient }: { tile: Tile; orient: number }) {
   )
 }
 
-function ResultModal({ s, onNew, onClose }: { s: KingdomState; onNew: () => void; onClose: () => void }) {
-  const you = s.players[0].score
-  const foe = s.players[1].score
-  const title = s.tie ? 'A draw' : (s.winner as Player) === 0 ? 'You win!' : 'Rival wins'
+function ResultModal({ s, me, oppSeat, oppLabel, onNew, onClose }: { s: KingdomState; me: Player; oppSeat: Player; oppLabel: string; onNew: () => void; onClose: () => void }) {
+  const you = s.players[me].score
+  const foe = s.players[oppSeat].score
+  const title = s.tie ? 'A draw' : s.winner === me ? 'You win!' : `${oppLabel} wins`
   return (
     <Modal
       eyebrow="Final tally"
@@ -338,7 +343,7 @@ function ResultModal({ s, onNew, onClose }: { s: KingdomState; onNew: () => void
       <div className="modal-body">
         <div className="kd-scoretable">
           <div className="kd-st-row kd-st-you"><span>Your kingdom</span><b>{you}</b></div>
-          <div className="kd-st-row kd-st-foe"><span>Rival kingdom</span><b>{foe}</b></div>
+          <div className="kd-st-row kd-st-foe"><span>{oppLabel}'s kingdom</span><b>{foe}</b></div>
         </div>
         <p>Each single-terrain region scored its <b>size × crowns</b>; a full 5×5 adds +10 and the centered castle +5.</p>
       </div>

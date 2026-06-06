@@ -1,16 +1,22 @@
 /* PARKS — UI (built for this codebase). A trail of 8 sites laid on the framework shell, walked by
-   your two hikers vs a greedy AI. Click a hiker (or use its move buttons) then a glowing site to
-   walk forward and take its action; gather wilderness icons, snap photos, and buy park cards at
-   season's end. The AI walks + claims over many turns and seasons, so its driver re-arms on
-   s.step (useAITurn tick). Four seasons; most VP wins. */
+   your two hikers vs an opponent. Click a hiker (or use its move buttons) then a glowing site to
+   walk forward and take its action; gather wilderness icons, snap photos, and buy park cards when
+   the season closes. Online-capable via useGameSession: the host runs the real logic, empty seats
+   are filled by the greedy AI, and a guest plays the other seat seat-relative to itself.
+
+   Seat-relative: "you" is always s.players[mySeat]; the opponent is the other seat. Banners, score
+   and the result modal are all from mySeat's perspective. When net.online the opponent is a remote
+   human ("Opponent"); offline it's the AI ("Rival"). Four seasons; most VP wins. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { parksAdapter } from './net'
 import * as P from './logic'
-import type { ParksState, Resource, Pool, Site, ParkCard } from './logic'
+import type { Player, Resource, Pool, Site } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -51,49 +57,53 @@ function siteSummary(site: Site): string {
 }
 
 export function Parks() {
-  const [s, setS] = useState<ParksState>(() => P.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(parksAdapter)
+  const me = mySeat as Player
+  const foe = (1 - me) as Player
   const [showRules, setShowRules] = useState(false)
   const [selHiker, setSelHiker] = useState<0 | 1 | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(P.makeGame()); setSelHiker(null); setShowRules(false) }
+  function newGame() { netNew(); setSelHiker(null); setShowRules(false) }
 
-  const yourTurn = s.winner == null && s.turn === 0 && !s.players[0].doneSeason && !P.bothFinished(s)
   const seasonClosing = s.winner == null && P.bothFinished(s)
-
-  // The AI walks/claims across many turns + seasons; re-arm on s.step so it keeps stepping.
-  useAITurn(
-    s.winner == null && (s.turn === 1 || seasonClosing) && !yourTurn,
-    () => setS(p => P.aiTurn(p)),
-    { delayMs: 620, tick: s.step },
-  )
+  // Your interactive turn to walk a hiker (normal play, your seat, not finished).
+  const yourMoveTurn = s.winner == null && isMyTurn && !seasonClosing && !s.players[me].doneSeason
+  // Your season-closing window: it's your turn during closing — buy parks then finish.
+  const yourCloseTurn = seasonClosing && isMyTurn
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = 0 }, [s.log])
 
-  // Clear an invalid hiker selection if the turn changes.
-  useEffect(() => { if (!yourTurn) setSelHiker(null) }, [yourTurn])
+  // Clear an invalid hiker selection if it's no longer your move.
+  useEffect(() => { if (!yourMoveTurn) setSelHiker(null) }, [yourMoveTurn])
 
-  const legal = yourTurn ? P.legalMoves(s, 0) : []
+  const legal = yourMoveTurn ? P.legalMoves(s, me) : []
   const legalSitesForSel = selHiker != null
     ? new Set(legal.filter(m => m.hiker === selHiker).map(m => m.site))
     : new Set<number>()
 
   function pickHiker(h: 0 | 1) {
-    if (!yourTurn) return
-    if (s.players[0].hikers[h] === P.END) return // finished hiker can't move
+    if (!yourMoveTurn) return
+    if (s.players[me].hikers[h] === P.END) return // finished hiker can't move
     setSelHiker(prev => (prev === h ? null : h))
   }
 
   function walkTo(site: number) {
     if (selHiker == null) return
     if (!legalSitesForSel.has(site)) return
-    setS(p => P.moveHiker(p, 0, selHiker, site))
+    dispatch({ kind: 'move', hiker: selHiker, site })
     setSelHiker(null)
   }
 
   function buy(parkId: number) {
-    if (!P.canBuyPark(s, 0, parkId)) return
-    setS(p => P.buyPark(p, 0, parkId))
+    if (!yourCloseTurn) return
+    if (!P.canBuyPark(s, me, parkId)) return
+    dispatch({ kind: 'buy', parkId })
+  }
+
+  function finishSeason() {
+    if (!yourCloseTurn) return
+    dispatch({ kind: 'endTurn' })
   }
 
   useGameKeys({
@@ -101,31 +111,39 @@ export function Parks() {
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => { setShowRules(false); setSelHiker(null) },
     extra: (e) => {
-      if (!yourTurn) return false
+      if (!yourMoveTurn) return false
       if (e.key === '1') { pickHiker(0); return true }
       if (e.key === '2') { pickHiker(1); return true }
       return false
     },
   })
 
+  const foeLabel = net.online ? `Player ${foe + 1}` : 'Rival'
+  const foeNoun = net.online ? 'opponent' : 'rival ranger'
+
   // ---- banner ----
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You win — the most parks explored!' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'The ranger rival explored more parks' }
+  if (s.winner === me) { bk = 'win'; banner = 'You win — the most parks explored!' }
+  else if (s.winner === foe) { bk = 'lose'; banner = `The ${foeNoun} explored more parks` }
   else if (s.winner === 'tie') { bk = ''; banner = 'A tie on the trail' }
-  else if (seasonClosing) { bk = 'foe'; banner = 'Season closing — claims are settled…' }
-  else if (yourTurn) {
+  else if (yourCloseTurn) {
+    bk = 'you'
+    banner = 'Season closing — claim parks, then finish your turn'
+  } else if (seasonClosing) {
+    bk = 'foe'; banner = `Season closing — the ${foeNoun} is settling claims…`
+  } else if (yourMoveTurn) {
     bk = 'you'
     banner = selHiker != null ? 'Choose a site ahead to walk to' : 'Your turn — pick a hiker, then a site'
-  } else { bk = 'foe'; banner = 'The rival ranger is on the trail…' }
+  } else { bk = 'foe'; banner = `The ${foeNoun} is on the trail…` }
 
-  const p0 = s.players[0]
-  const p1 = s.players[1]
+  const myP = s.players[me]
+  const foeP = s.players[foe]
+  // Occupants of a site, classified relative to YOU (your hikers vs the opponent's).
   const occ = (site: number) => {
     const out: { who: 'you' | 'foe'; idx: 0 | 1 }[] = []
-    for (let pl = 0 as 0 | 1; pl <= 1; pl = (pl + 1) as 0 | 1) {
+    for (const pl of [me, foe] as Player[]) {
       for (let h = 0 as 0 | 1; h <= 1; h = (h + 1) as 0 | 1) {
-        if (s.players[pl].hikers[h] === site) out.push({ who: pl === 0 ? 'you' : 'foe', idx: h })
+        if (s.players[pl].hikers[h] === site) out.push({ who: pl === me ? 'you' : 'foe', idx: h })
       }
     }
     return out
@@ -135,39 +153,39 @@ export function Parks() {
     return (
       <>
         {occ(site).map((o, i) => (
-          <span key={i} className={'pk-hiker ' + o.who + (o.who === 'you' && s.players[0].hikers[o.idx] === P.END ? ' done' : '')} />
+          <span key={i} className={'pk-hiker ' + o.who + (o.who === 'you' && myP.hikers[o.idx] === P.END ? ' done' : '')} />
         ))}
       </>
     )
   }
 
-  // Player 0 hiker tokens at trailhead (for picking).
+  // Your hiker tokens at the trailhead (for picking) + the opponent's resting there.
   function TrailheadHikers() {
     return (
       <div className="pk-hikers">
         {([0, 1] as const).map(h => {
-          const here = p0.hikers[h] === P.TRAILHEAD
-          const foeHere = p1.hikers[h] === P.TRAILHEAD
+          const here = myP.hikers[h] === P.TRAILHEAD
+          const foeHere = foeP.hikers[h] === P.TRAILHEAD
           return (
             <span key={'y' + h} style={{ display: here || foeHere ? 'inline-flex' : 'none', gap: 3 }}>
               {here && (
                 <span
-                  className={'pk-hiker you' + (yourTurn ? ' pick' : '') + (selHiker === h ? ' sel' : '')}
+                  className={'pk-hiker you' + (yourMoveTurn ? ' pick' : '') + (selHiker === h ? ' sel' : '')}
                   onClick={() => pickHiker(h)}
                 />
               )}
             </span>
           )
         })}
-        {/* foe hikers resting at trailhead */}
-        {([0, 1] as const).filter(h => p1.hikers[h] === P.TRAILHEAD).map(h => (
+        {/* opponent hikers resting at trailhead */}
+        {([0, 1] as const).filter(h => foeP.hikers[h] === P.TRAILHEAD).map(h => (
           <span key={'f' + h} className="pk-hiker foe" />
         ))}
       </div>
     )
   }
 
-  const canBuyAny = !P.bothFinished(s) && s.market.some(c => P.canBuyPark(s, 0, c.id))
+  const canBuyAny = yourCloseTurn && s.market.some(c => P.canBuyPark(s, me, c.id))
 
   return (
     <>
@@ -178,7 +196,7 @@ export function Parks() {
         subtitle="walk the trail with two hikers, gather the four wilderness icons, snap photos, and claim the great parks across four seasons"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`Season ${s.season}/${P.SEASONS} · You ${P.finalScore(p0)} VP · Rival ${P.finalScore(p1)} VP`}
+        modeLeft={`Season ${s.season}/${P.SEASONS} · You ${P.finalScore(myP)} VP · ${foeLabel} ${P.finalScore(foeP)} VP`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>1·2 · pick hiker &nbsp; N · new &nbsp; ? · rules</>}
@@ -232,12 +250,12 @@ export function Parks() {
             <div className="pk-market-head">
               <span>Park Market</span>
               <span style={{ color: 'var(--ink-3)', fontSize: '0.62rem' }}>
-                {seasonClosing ? 'season end — buying allowed' : 'buy a park you can afford'}
+                {yourCloseTurn ? 'season end — buying allowed' : 'claim parks when your season closes'}
               </span>
             </div>
             <div className="pk-cards">
               {s.market.map(card => {
-                const buyable = yourTurn || seasonClosing ? P.canBuyPark(s, 0, card.id) : false
+                const buyable = yourCloseTurn && P.canBuyPark(s, me, card.id)
                 return (
                   <div
                     key={card.id}
@@ -264,27 +282,36 @@ export function Parks() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
+
           <div className="panel pk-score">
-            <PlayerRow who="you" name="You" p={p0} on={yourTurn} />
-            <PlayerRow who="foe" name="Rival" p={p1} on={s.turn === 1 && s.winner == null && !seasonClosing} />
+            <PlayerRow who="you" name="You" p={myP} on={yourMoveTurn || yourCloseTurn} />
+            <PlayerRow who="foe" name={foeLabel} p={foeP} on={s.winner == null && !isMyTurn} />
           </div>
 
           <div className="panel pk-controls">
-            {yourTurn && (
+            {yourMoveTurn && (
               <div className="pk-hint">
                 {selHiker == null
                   ? 'Pick one of your hikers (the amber dots), then click a glowing site ahead to walk and take its action.'
                   : `Hiker ${selHiker + 1} selected — click a glowing site forward of it.`}
               </div>
             )}
-            {!yourTurn && s.winner == null && !seasonClosing && (
-              <div className="pk-hint">The rival ranger is walking the trail…</div>
+            {s.winner == null && !isMyTurn && (
+              <div className="pk-hint">The {foeNoun} is taking their turn…</div>
             )}
-            {seasonClosing && <div className="pk-hint">Both finished — claims are settled and the next season is laid.</div>}
-            {(yourTurn || seasonClosing) && canBuyAny && (
+            {yourCloseTurn && (
+              <div className="pk-hint">Your season is over — claim any parks you can afford, then finish your turn.</div>
+            )}
+            {canBuyAny && (
               <div className="pk-hint" style={{ color: 'var(--accent-hi)' }}>
                 You can claim a glowing park in the market.
               </div>
+            )}
+            {yourCloseTurn && (
+              <button className="pk-btn" onClick={finishSeason}>Finish my turn</button>
             )}
             {selHiker != null && (
               <button className="pk-btn" onClick={() => setSelHiker(null)}>Cancel selection</button>
@@ -299,7 +326,7 @@ export function Parks() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal winner={s.winner} me={me} foe={foe} foeLabel={foeLabel} myP={myP} foeP={foeP} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -322,27 +349,30 @@ function PlayerRow({ who, name, p, on }: { who: 'you' | 'foe'; name: string; p: 
   )
 }
 
-function ResultModal({ s, onNew }: { s: ParksState; onNew: () => void }) {
-  const a = P.finalScore(s.players[0])
-  const b = P.finalScore(s.players[1])
-  const won = s.winner === 0
-  const tie = s.winner === 'tie'
+function ResultModal(
+  { winner, me, foe, foeLabel, myP, foeP, onNew }:
+  { winner: Player | 'tie'; me: Player; foe: Player; foeLabel: string; myP: P.PlayerState; foeP: P.PlayerState; onNew: () => void },
+) {
+  const a = P.finalScore(myP)
+  const b = P.finalScore(foeP)
+  const won = winner === me
+  const tie = winner === 'tie'
   return (
     <Modal
-      eyebrow={tie ? 'Trail shared' : won ? 'Summit reached' : 'Rival ahead'}
-      title={tie ? "It's a Tie" : won ? 'You Win' : 'Rival Wins'}
+      eyebrow={tie ? 'Trail shared' : won ? 'Summit reached' : `${foeLabel} ahead`}
+      title={tie ? "It's a Tie" : won ? 'You Win' : `${foeLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
         {tie ? <span className="tie">Tied at {a} VP</span>
-          : won ? <span className="you">You {a} — Rival {b}</span>
-            : <span className="foe">Rival {b} — You {a}</span>}
+          : won ? <span className="you">You {a} — {foeLabel} {b}</span>
+            : <span className="foe">{foeLabel} {b} — You {a}</span>}
       </div>
       <div className="modal-body">
         <p style={{ textAlign: 'center', color: 'var(--ink-2)' }}>
-          Parks claimed: you {s.players[0].parks.length}, rival {s.players[1].parks.length} ·
-          {' '}photos: you {s.players[0].photos}, rival {s.players[1].photos}
+          Parks claimed: you {myP.parks.length}, {foeLabel.toLowerCase()} {foeP.parks.length} ·
+          {' '}photos: you {myP.photos}, {foeLabel.toLowerCase()} {foeP.photos}
         </p>
       </div>
     </Modal>
@@ -354,10 +384,11 @@ function RulesModal({ onClose }: { onClose: () => void }) {
     <Modal eyebrow="How to play" title="Parks" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Hit the trail</button>}>
       <div className="modal-body">
-        <p>Each season an <b>8-site trail</b> is laid. You and the rival each have <b>two hikers</b> that start at the trailhead and walk <b>forward only</b>.</p>
+        <p>Each season an <b>8-site trail</b> is laid. You and your opponent each have <b>two hikers</b> that start at the trailhead and walk <b>forward only</b>.</p>
         <p>On your turn, <b>pick a hiker</b> (the amber dots) then click a <b>glowing site</b> ahead of it. You can't land on a site another hiker already occupies. Taking a site grants its action: gather <b>wilderness icons</b> (sun, mountain, forest, water), snap a <b>photo</b> (+VP), or fill a <b>canteen</b> (a wild resource).</p>
-        <p>When <b>both your hikers reach the trail's end</b>, your season is over. You may <b>claim parks</b> from the market by paying their resource cost for <b>VP</b> — do it whenever you can afford one.</p>
+        <p>When <b>both your hikers reach the trail's end</b>, your season is over. In the closing window you may <b>claim parks</b> from the market by paying their resource cost for <b>VP</b>, then <b>finish your turn</b>.</p>
         <p>After both players finish, the <b>season advances</b> with a fresh trail and hikers reset. Play <b>4 seasons</b>. Leftover resources give a small end bonus (1 VP per 3). <b>Most VP wins.</b></p>
+        <p>Play solo against a greedy AI, or use the <b>online bar</b> to host or join a live two-player match.</p>
         <p><b>Keys:</b> <kbd>1</kbd>/<kbd>2</kbd> pick hiker · <kbd>N</kbd> new · <kbd>?</kbd> rules · <kbd>Esc</kbd> cancel.</p>
       </div>
     </Modal>

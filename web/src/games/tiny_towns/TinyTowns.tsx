@@ -1,14 +1,20 @@
 /* TINY TOWNS — UI.
-   Ported from design/examples/builder_tiny_towns/tinytowns.jsx onto the framework shell.
-   A solitaire pattern-builder: no AI, so no useAITurn — just place resources and raise
-   buildings. Exercises the framework shell + Modal + keyboard hook on a single-player game. */
+   Ported from design/examples/builder_tiny_towns/tinytowns.jsx onto the framework shell,
+   now wired to the netplay layer via useGameSession. Tiny Towns (this build) is a solitaire
+   pattern-builder: a single 4x4 town, no AI and no opponent. It still goes through the
+   uniform session so it shares the OnlineBar / host machinery; with one seat, the local
+   player is always seat 0 (mySeat) and on the move, and a would-be guest of a 1-seat table
+   is rejected by the session. Place resources and raise buildings; everything is public. */
 
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { tinyTownsAdapter } from './net'
 import * as TN from './logic'
-import type { BuildingKey, Res, TinyState } from './logic'
+import type { BuildingKey, Res } from './logic'
 
 const RES_NAME: Record<Res, string> = { wood: "Wood", brick: "Brick", glass: "Glass", wheat: "Wheat", stone: "Stone" }
 const B_ICON: Record<BuildingKey, string> = { cottage: "⌂", farm: "≋", well: "○", chapel: "✚", tavern: "⚑" }
@@ -34,11 +40,11 @@ function Pattern({ pattern }: { pattern: [number, number, Res][] }) {
 }
 
 export function TinyTowns() {
-  const [g, setG] = useState<TinyState>(() => TN.makeGame())
+  const { state: g, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(tinyTownsAdapter)
   const [buildMode, setBuildMode] = useState<BuildingKey | null>(null)
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setG(TN.makeGame()); setBuildMode(null); setShowRules(false) }
+  function newGame() { netNew(); setBuildMode(null); setShowRules(false) }
 
   useGameKeys({
     onNew: newGame,
@@ -47,24 +53,26 @@ export function TinyTowns() {
   })
 
   const playing = g.status === "playing"
+  const yourTurn = playing && isMyTurn // gates all interaction
   const buildable = playing ? TN.buildableKeys(g.grid) : []
   const candidates = buildMode ? new Set<number>(([] as number[]).concat(...TN.matches(g.grid, buildMode))) : new Set<number>()
 
   function clickCell(i: number) {
-    if (!playing) return
+    if (!yourTurn) return
     if (buildMode) {
-      if (candidates.has(i)) { setG(TN.build(g, buildMode, i)); setBuildMode(null) }
+      if (candidates.has(i)) { dispatch({ kind: 'build', key: buildMode, cell: i }); setBuildMode(null) }
       return
     }
-    if (g.resource && g.grid[i] === null) setG(TN.place(g, i))
+    if (g.resource && g.grid[i] === null) dispatch({ kind: 'place', cell: i })
   }
   function pickBuild(key: string) {
-    if (!buildable.includes(key)) return
+    if (!yourTurn || !buildable.includes(key)) return
     setBuildMode(m => m === key ? null : (key as BuildingKey))
   }
 
   let banner: string, bk = ""
   if (g.status === "over") { bk = "win"; banner = `Town complete — ${g.score!.total} point${Math.abs(g.score!.total) === 1 ? "" : "s"}` }
+  else if (!yourTurn) { bk = "foe"; banner = net.online ? "Opponent's town…" : "Waiting…" }
   else if (buildMode) { bk = "you"; banner = `Place your ${TN.BUILDINGS[buildMode].name} — tap a highlighted square` }
   else if (g.resource) { bk = "you"; banner = `Place the ${RES_NAME[g.resource]}` }
   else { bk = "you"; banner = "Town full — build to free a square, or end the town" }
@@ -93,7 +101,7 @@ export function TinyTowns() {
               const cls = ["tcell"]
               if (!v) cls.push("empty")
               if (buildMode && candidates.has(i)) cls.push("candidate")
-              if (!buildMode && g.resource && !v) cls.push("placeable")
+              if (!buildMode && yourTurn && g.resource && !v) cls.push("placeable")
               return (
                 <div key={i} className={cls.join(" ")} onClick={() => clickCell(i)}>
                   {v && v.t === "r" && <div className={"restile r-" + v.r}><span>{RES_NAME[v.r]}</span></div>}
@@ -106,11 +114,14 @@ export function TinyTowns() {
 
         <div className="side">
           <div className="panel">
+            <OnlineBar net={net} />
+          </div>
+          <div className="panel">
             <div className="panel-l">Buildings</div>
             <div className="blist">
               {(Object.keys(TN.BUILDINGS) as BuildingKey[]).map(k => {
                 const B = TN.BUILDINGS[k]
-                const can = buildable.includes(k)
+                const can = yourTurn && buildable.includes(k)
                 return (
                   <div key={k} className={"brow" + (can ? " can" : "") + (buildMode === k ? " active" : "")} onClick={() => pickBuild(k)}>
                     <Pattern pattern={B.pattern} />
@@ -121,24 +132,24 @@ export function TinyTowns() {
               })}
             </div>
           </div>
-          {playing && <button className="endbtn" onClick={() => setG(TN.endTown(g))}>End town &amp; score</button>}
+          {playing && yourTurn && <button className="endbtn" onClick={() => dispatch({ kind: 'end' })}>End town &amp; score</button>}
         </div>
       </GameShell>
 
-      {g.status === "over" && <ScoreModal g={g} onNew={newGame} />}
+      {g.status === "over" && <ScoreModal score={g.score!} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ScoreModal({ g, onNew }: { g: TinyState; onNew: () => void }) {
-  const b = g.score!.breakdown, bc = g.score!.bcount
+function ScoreModal({ score, onNew }: { score: NonNullable<TN.TinyState['score']>; onNew: () => void }) {
+  const b = score.breakdown, bc = score.bcount
   const rows: [string, number, number][] = [
     ["Cottages", bc.cottage, b.cottage], ["Farms", bc.farm, b.farm], ["Chapels", bc.chapel, b.chapel],
-    ["Wells", bc.well, b.well], ["Taverns", bc.tavern, b.tavern], ["Empty squares", g.score!.empties, b.empty],
+    ["Wells", bc.well, b.well], ["Taverns", bc.tavern, b.tavern], ["Empty squares", score.empties, b.empty],
   ].filter(r => r[1] || r[2]) as [string, number, number][]
   return (
-    <Modal eyebrow="Final tally" title={`${g.score!.total} points`} closeOnOverlay={false}
+    <Modal eyebrow="Final tally" title={`${score.total} points`} closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Build another</button>}>
       <div className="scoretable">
         {rows.map((r, i) => <div key={i} className="st-row"><span>{r[0]}</span><span className="st-n">{r[1]}</span><span className={"st-p" + (r[2] < 0 ? " neg" : "")}>{r[2] >= 0 ? "+" : ""}{r[2]}</span></div>)}

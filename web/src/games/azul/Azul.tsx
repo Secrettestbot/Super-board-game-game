@@ -6,10 +6,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { azulAdapter } from './net'
 import * as A from './logic'
-import type { State, Color, Winner } from './logic'
+import type { Color, Winner } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -36,16 +38,14 @@ function Tile({ c, sel, onClick, small }: { c: Color; sel?: boolean; onClick?: (
 }
 
 export function Azul() {
-  const [s, setS] = useState<State>(() => A.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(azulAdapter)
   const [showRules, setShowRules] = useState(false)
   // Drafting selection: a source + color chosen, awaiting a destination line.
   const [pick, setPick] = useState<{ source: number | 'center'; color: Color } | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(A.makeGame()); setPick(null); setShowRules(false) }
+  function newGame() { netNew(); setPick(null); setShowRules(false) }
 
-  // The AI takes one draft per turn but rounds chain — re-arm on s.step (monotonic), not just turn.
-  useAITurn(s.winner == null && s.turn === 1, () => setS(p => A.aiTurn(p)), { delayMs: 620, tick: s.step })
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = 0 }, [s.log])
   useEffect(() => { setPick(null) }, [s.step]) // clear stale selection whenever the board changes
 
@@ -55,18 +55,24 @@ export function Azul() {
     onEscape: () => { if (pick) setPick(null); else setShowRules(false) },
   })
 
-  const yourTurn = s.winner == null && s.turn === 0
-  const myBoard = s.boards[0]
+  // Seat-relative perspective: "you" = mySeat, the opponent = the other seat.
+  const oppSeat = (mySeat === 0 ? 1 : 0) as 0 | 1
+  const yourTurn = s.winner == null && isMyTurn
+  const myBoard = s.boards[mySeat as 0 | 1]
+  const myScore = myBoard.score
+  const oppScore = s.boards[oppSeat].score
+  const oppLabel = net.online ? `Player ${oppSeat + 1}` : 'Rival'
+  const youWon = s.winner === mySeat
 
-  // Banner.
+  // Banner (relative to mySeat).
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = `You win — ${s.boards[0].score} to ${s.boards[1].score}!` }
-  else if (s.winner === 1) { bk = 'lose'; banner = `The rival wins — ${s.boards[1].score} to ${s.boards[0].score}.` }
-  else if (s.winner === 'tie') { bk = ''; banner = `A tie — ${s.boards[0].score} all.` }
+  if (s.winner === mySeat) { bk = 'win'; banner = `You win — ${myScore} to ${oppScore}!` }
+  else if (s.winner === oppSeat) { bk = 'lose'; banner = `${oppLabel} wins — ${oppScore} to ${myScore}.` }
+  else if (s.winner === 'tie') { bk = ''; banner = `A tie — ${myScore} all.` }
   else if (yourTurn) {
     bk = 'you'
     banner = pick ? `Place ${A.COLOR_NAMES[pick.color]} — choose a pattern line or the floor` : 'Your turn — pick a color from a factory or the center'
-  } else { bk = 'foe'; banner = 'The rival is drafting…' }
+  } else { bk = 'foe'; banner = net.online ? `${oppLabel} is drafting…` : 'The rival is drafting…' }
 
   // --- Interaction ---
   function pickColor(source: number | 'center', color: Color) {
@@ -76,7 +82,7 @@ export function Azul() {
   function placeAt(line: number | 'floor') {
     if (!yourTurn || !pick) return
     if (line !== 'floor' && !A.canPlaceOnLine(myBoard, line, pick.color)) return
-    setS(A.applyMove(s, { source: pick.source, color: pick.color, line }))
+    dispatch({ source: pick.source, color: pick.color, line })
     setPick(null)
   }
 
@@ -164,13 +170,13 @@ export function Azul() {
 
   function Board({ player }: { player: 0 | 1 }) {
     const board = s.boards[player]
-    const mine = player === 0
+    const mine = player === mySeat
     const active = s.winner == null && s.turn === player
     return (
       <div className={'az-board panel' + (mine ? ' mine' : ' foe') + (active ? ' active' : '')}>
         <div className="az-board-head">
           <span className={'az-dot ' + (mine ? 'you' : 'foe')} />
-          <span className="az-who">{mine ? 'You' : 'Rival'}</span>
+          <span className="az-who">{mine ? 'You' : oppLabel}</span>
           <span className="az-score">{board.score}</span>
         </div>
         <div className="az-board-body">
@@ -191,7 +197,7 @@ export function Azul() {
         subtitle="draft azulejo tiles from the factories, fill your pattern lines, and tile a wall of contiguous color before the rival"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`Round ${s.round} · You ${myBoard.score} · Rival ${s.boards[1].score}`}
+        modeLeft={`Round ${s.round} · You ${myScore} · ${oppLabel} ${oppScore}`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>click · pick + place &nbsp; Esc · cancel &nbsp; N · new</>}
@@ -219,37 +225,39 @@ export function Azul() {
           </div>
 
           <div className="az-boards">
-            <Board player={0} />
-            <Board player={1} />
+            <Board player={mySeat as 0 | 1} />
+            <Board player={oppSeat} />
           </div>
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel logbox" ref={logRef}>
             {s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}
           </div>
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal winner={s.winner} you={s.boards[0].score} foe={s.boards[1].score} onNew={newGame} />}
+      {s.winner != null && <ResultModal winner={s.winner} won={youWon} you={myScore} foe={oppScore} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ winner, you, foe, onNew }: { winner: Winner; you: number; foe: number; onNew: () => void }) {
-  const won = winner === 0
+function ResultModal({ winner, won, you, foe, oppLabel, onNew }: { winner: Winner; won: boolean; you: number; foe: number; oppLabel: string; onNew: () => void }) {
   const tie = winner === 'tie'
   return (
     <Modal
       eyebrow={tie ? 'Dead heat' : won ? 'Wall complete' : 'Outdrafted'}
-      title={tie ? 'A Tie' : won ? 'You Win' : 'Rival Wins'}
+      title={tie ? 'A Tie' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
         <span className="you">You {you}</span>
-        <span className="foe">Rival {foe}</span>
+        <span className="foe">{oppLabel} {foe}</span>
       </div>
     </Modal>
   )

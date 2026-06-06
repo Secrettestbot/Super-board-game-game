@@ -1,18 +1,22 @@
 /* CALICO — UI (built for this codebase). A cozy quilt-building duel on the framework shell.
-   You fill your own 5×5 hex quilt; the AI fills its own. Place a patch from your 2-tile hand
-   onto an empty hex, then the hand refills from the shared market. Group colors for buttons
-   and surround the design goals correctly. Highest score when both quilts are full wins.
+   You fill your own 5×5 hex quilt; your rival fills theirs. Place a patch from your 2-tile
+   hand onto an empty hex, then the hand refills from the shared market. Group colors for
+   buttons and surround the design goals correctly. Highest score when both quilts are full.
 
-   The AI places one patch per turn (its board fills over many turns), so its driver re-arms
-   on s.step (the useAITurn tick), not just the turn flip. */
+   Online-capable via useGameSession(calicoAdapter): the hook drives the AI for any empty
+   seat (no local useAITurn) and, when online, redacts the opponent's private hand so it
+   never reaches you. Everything below is rendered relative to mySeat — your quilt, hand,
+   score and the result banner are always "yours", and the other seat is the rival. */
 
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { calicoAdapter } from './net'
 import * as C from './logic'
-import type { CalicoState, Player, Patch, Board } from './logic'
+import type { Patch, Board } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -43,43 +47,44 @@ function patchClass(p: Patch | null): string {
 }
 
 export function Calico() {
-  const [s, setS] = useState<CalicoState>(() => C.makeGame())
-  const [sel, setSel] = useState<number>(0) // selected hand index
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(calicoAdapter)
+  const oppSeat = 1 - mySeat // 2-player game: the other quilt
+  const [sel, setSel] = useState<number>(0) // selected hand index (into YOUR hand)
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(C.makeGame()); setSel(0); setShowRules(false) }
+  function newGame() { netNew(); setSel(0); setShowRules(false) }
 
-  // The AI places one patch per turn over many turns — re-arm on s.step.
-  useAITurn(s.winner == null && s.turn === 1, () => setS(p => C.aiTurn(p)), { delayMs: 480, tick: s.step })
+  const yourTurn = s.winner == null && isMyTurn
+  const myHand = s.hands[mySeat] ?? []
+  const myBoard = s.boards[mySeat]
+  const oppBoard = s.boards[oppSeat]
+  const scMine = C.scoreBoard(myBoard)
+  const scOpp = C.scoreBoard(oppBoard)
+  const goalsMine = C.goalResults(myBoard)
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
 
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => setShowRules(false),
     extra: (e) => {
-      if (s.winner != null || s.turn !== 0) return false
+      if (!yourTurn) return false
       if (e.key === '1') { setSel(0); return true }
       if (e.key === '2') { setSel(1); return true }
       return false
     },
   })
 
-  const yourTurn = s.winner == null && s.turn === 0
-  const sc0 = C.scoreBoard(s.boards[0])
-  const sc1 = C.scoreBoard(s.boards[1])
-  const goals0 = C.goalResults(s.boards[0])
-
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = `You win — ${s.scores[0]} to ${s.scores[1]}!` }
-  else if (s.winner === 1) { bk = 'lose'; banner = `Rival wins — ${s.scores[1]} to ${s.scores[0]}` }
+  if (s.winner === mySeat) { bk = 'win'; banner = `You win — ${scMine.total} to ${scOpp.total}!` }
+  else if (s.winner === oppSeat) { bk = 'lose'; banner = `${oppLabel} wins — ${scOpp.total} to ${scMine.total}` }
   else if (yourTurn) { bk = 'you'; banner = 'Your turn — pick a hand tile, then place it on an empty hex' }
-  else { bk = 'foe'; banner = 'The rival is stitching their quilt…' }
+  else { bk = 'foe'; banner = net.online ? 'Waiting for the opponent…' : 'The rival is stitching their quilt…' }
 
   function place(hex: { q: number; r: number }) {
     if (!yourTurn) return
-    if (s.hands[0][sel] == null) return
-    const next = C.placeTile(s, 0, sel, hex)
-    setS(next)
+    if (myHand[sel] == null) return
+    dispatch({ handIndex: sel, hex })
     // keep selection valid (hand may have shifted); default back to 0
     setSel(0)
   }
@@ -93,44 +98,48 @@ export function Calico() {
         subtitle="stitch a cozy quilt — cluster colors into buttons and ring the design goals just right before your quilt fills"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={<>You {sc0.total} · Rival {sc1.total}</>}
+        modeLeft={<>You {scMine.total} · {oppLabel} {scOpp.total}</>}
         banner={banner}
         bannerClass={bk}
         modeRight={<>click hex · place &nbsp; 1/2 · pick &nbsp; N · new</>}
       >
         <div className="cal-wrap">
           <div className="cal-board">
-            <Quilt board={s.boards[0]} interactive={yourTurn} onPlace={place} previewColor={yourTurn ? s.hands[0][sel]?.color ?? null : null} />
+            <Quilt board={myBoard} interactive={yourTurn} onPlace={place} previewColor={yourTurn ? myHand[sel]?.color ?? null : null} />
           </div>
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
+
           <div className="panel cal-score">
             <div className={'cal-srow' + (yourTurn ? ' on' : '')}>
               <span className="cal-swatch you" />
               <span className="cal-who">You</span>
-              <span className="cal-total">{sc0.total}</span>
+              <span className="cal-total">{scMine.total}</span>
             </div>
-            <div className="cal-break">buttons {sc0.buttons} · goals {sc0.goals}</div>
-            <div className={'cal-srow' + (s.turn === 1 && s.winner == null ? ' on' : '')}>
+            <div className="cal-break">buttons {scMine.buttons} · goals {scMine.goals}</div>
+            <div className={'cal-srow' + (s.winner == null && !isMyTurn ? ' on' : '')}>
               <span className="cal-swatch foe" />
-              <span className="cal-who">Rival</span>
-              <span className="cal-total">{sc1.total}</span>
+              <span className="cal-who">{oppLabel}</span>
+              <span className="cal-total">{scOpp.total}</span>
             </div>
-            <div className="cal-break">buttons {sc1.buttons} · goals {sc1.goals}</div>
+            <div className="cal-break">buttons {scOpp.buttons} · goals {scOpp.goals}</div>
           </div>
 
           <div className="panel cal-hand-wrap">
             <div className="cal-pl">your hand — click a tile to select</div>
             <div className="cal-tiles">
-              {s.hands[0].map((t, i) => (
+              {myHand.map((t, i) => (
                 <div key={i}
                   className={'cal-tile c' + t.color + (sel === i ? ' sel' : '')}
                   onClick={() => yourTurn && setSel(i)}>
                   <span className="cal-glyph">{GLYPHS[t.pattern]}</span>
                 </div>
               ))}
-              {s.hands[0].length === 0 && <div className="cal-hint">no tiles</div>}
+              {myHand.length === 0 && <div className="cal-hint">no tiles</div>}
             </div>
             <div className="cal-pl">market (refills your hand)</div>
             <div className="cal-tiles">
@@ -141,13 +150,13 @@ export function Calico() {
               ))}
             </div>
             <div className="cal-hint">
-              {yourTurn ? 'select a tile, then click an empty hex on your quilt' : 'watching the rival stitch…'}
+              {yourTurn ? 'select a tile, then click an empty hex on your quilt' : `watching ${oppLabel.toLowerCase()} stitch…`}
             </div>
           </div>
 
           <div className="panel cal-goals">
             <div className="cal-glabel">design goals (your quilt)</div>
-            {goals0.map((g, i) => (
+            {goalsMine.map((g, i) => (
               <div key={i} className={'cal-goal-row' + (g.satisfied ? ' met' : '')}>
                 <span className="pts">{g.def.points}</span>
                 <span>{g.def.label}{g.satisfied ? ' ✓' : ''}</span>
@@ -156,13 +165,13 @@ export function Calico() {
           </div>
 
           <div className="panel cal-mini">
-            <div className="cal-glabel">rival's quilt</div>
-            <MiniQuilt board={s.boards[1]} />
+            <div className="cal-glabel">{oppLabel.toLowerCase()}'s quilt</div>
+            <MiniQuilt board={oppBoard} />
           </div>
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal winner={s.winner} you={s.scores[0]} foe={s.scores[1]} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={s.winner === mySeat} you={scMine.total} foe={scOpp.total} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -229,18 +238,17 @@ function MiniQuilt({ board }: { board: Board }) {
   )
 }
 
-function ResultModal({ winner, you, foe, onNew }: { winner: Player; you: number; foe: number; onNew: () => void }) {
-  const won = winner === 0
+function ResultModal({ won, you, foe, oppLabel, onNew }: { won: boolean; you: number; foe: number; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
-      eyebrow={won ? 'Beautifully stitched' : 'A tidy rival quilt'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      eyebrow={won ? 'Beautifully stitched' : `A tidy ${oppLabel.toLowerCase()} quilt`}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
         <span className="you">You {you}</span>
-        <span className="foe">Rival {foe}</span>
+        <span className="foe">{oppLabel} {foe}</span>
       </div>
     </Modal>
   )

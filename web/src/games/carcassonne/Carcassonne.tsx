@@ -1,15 +1,21 @@
-/* CARCASSONNE — UI. A growing tile tableau you build vs a greedy AI.
+/* CARCASSONNE — UI. A growing tile tableau you build vs a greedy AI — or, online,
+   against a remote opponent in the rival seat.
    Your turn: a tile is drawn; rotate it (R), then click a highlighted legal slot to
    place it. If the just-placed tile has a free feature, optionally drop one of your
    meeples on it (or skip). Completed cities/roads/cloisters score and free their
-   meeples. The AI (player 1) takes a full place+meeple turn; its driver re-arms on
-   s.tick (a monotonic counter that changes on every AI action). */
+   meeples. Empty seats are filled by the AI via useGameSession's driver.
+
+   Seat-relative: "you" is mySeat (0 host / 1 guest); your tile, score, meeples and the
+   result are read from that seat, and the opponent is the other one. Solo play is
+   unchanged (mySeat is 0, the rival seat is AI). */
 
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { carcassonneAdapter } from './net'
 import * as CC from './logic'
 import type { CarcassonneState, TileDef, PlacedTile, Segment, Placement, Player } from './logic'
 
@@ -97,7 +103,9 @@ function segCentroid(seg: Segment, rotation: number): { x: number; y: number } {
 }
 
 export function Carcassonne() {
-  const [s, setS] = useState<CarcassonneState>(() => CC.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(carcassonneAdapter)
+  const me = mySeat as Player // seat 0 = player 0, seat 1 = player 1
+  const opp = (me === 0 ? 1 : 0) as Player
   const [rotation, setRotation] = useState(0)
   // a pending placement awaiting the meeple decision (your turn only)
   const [pending, setPending] = useState<Placement | null>(null)
@@ -106,7 +114,7 @@ export function Carcassonne() {
   const [showResult, setShowResult] = useState(true)
 
   function newGame() {
-    setS(CC.makeGame())
+    netNew()
     setRotation(0)
     setPending(null)
     setHover(null)
@@ -114,16 +122,13 @@ export function Carcassonne() {
     setShowResult(true)
   }
 
-  // AI is player 1. It takes a full place+meeple turn, then it's your turn again,
-  // and after your move it's the AI's turn once more — re-arm on s.tick.
-  const aiActive = s.winner == null && s.turn === 1 && s.current != null
-  useAITurn(aiActive, () => setS((p) => CC.aiTurn(p)), { delayMs: 600, tick: s.tick })
-
-  const yourTurn = s.winner == null && s.turn === 0 && s.current != null
+  // The AI driver for any empty seat lives inside useGameSession; no useAITurn here.
+  const yourTurn = s.winner == null && isMyTurn && s.current != null
   const choosingMeeple = yourTurn && pending != null
 
-  const you = s.players[0]
-  const foe = s.players[1]
+  const you = s.players[me]
+  const foe = s.players[opp]
+  const oppName = net.online ? 'Opponent' : 'Rival'
 
   // legal placements for the current rotation (only while choosing a position)
   const legal: Placement[] = yourTurn && s.current != null && pending == null ? CC.legalPlacements(s, s.current) : []
@@ -158,7 +163,7 @@ export function Carcassonne() {
 
   function placeWithMeeple(segId: number | null) {
     if (s.current == null || pending == null) return
-    setS(CC.placeTile(s, pending.x, pending.y, pending.rotation, segId))
+    dispatch({ x: pending.x, y: pending.y, rotation: pending.rotation, meepleSegId: segId })
     setPending(null)
     setRotation(0)
     setHover(null)
@@ -191,8 +196,8 @@ export function Carcassonne() {
   let bk = ''
   if (s.winner != null) {
     if (s.winner === 'tie') { bk = ''; banner = `A draw — ${you.score} all` }
-    else if (s.winner === 0) { bk = 'win'; banner = `You win — ${you.score} to ${foe.score}` }
-    else { bk = 'lose'; banner = `The rival wins — ${foe.score} to ${you.score}` }
+    else if (s.winner === me) { bk = 'win'; banner = `You win — ${you.score} to ${foe.score}` }
+    else { bk = 'lose'; banner = `${oppName === 'Opponent' ? 'Your opponent' : 'The rival'} wins — ${foe.score} to ${you.score}` }
   } else if (choosingMeeple) {
     bk = 'you'
     const free = freeSegments()
@@ -204,7 +209,7 @@ export function Carcassonne() {
       : anyLegalAny ? 'Rotate (R) — no legal slot at this angle' : 'No legal placement — tile will be discarded'
   } else {
     bk = 'foe'
-    banner = 'The rival is laying a tile…'
+    banner = net.online ? 'Your opponent is laying a tile…' : 'The rival is laying a tile…'
   }
 
   const tilesLeft = s.deck.length + (s.current != null ? 1 : 0)
@@ -309,10 +314,14 @@ export function Carcassonne() {
           </div>
 
           <div className="cc-panel">
+            <OnlineBar net={net} />
+          </div>
+
+          <div className="cc-panel">
             <div className="cc-panel-l">Scores</div>
             <div className="cc-scores">
-              <ScoreRow who="you" name="You" p={you} active={s.turn === 0 && s.winner == null} player={0} />
-              <ScoreRow who="foe" name="Rival" p={foe} active={s.turn === 1 && s.winner == null} player={1} />
+              <ScoreRow who="you" name="You" p={you} active={s.turn === me && s.winner == null} player={me} />
+              <ScoreRow who="foe" name={oppName} p={foe} active={s.turn === opp && s.winner == null} player={opp} />
             </div>
           </div>
 
@@ -325,7 +334,7 @@ export function Carcassonne() {
       </GameShell>
 
       {s.winner != null && showResult && (
-        <ResultModal s={s} onNew={newGame} onClose={() => setShowResult(false)} />
+        <ResultModal s={s} me={me} opp={opp} oppName={oppName} onNew={newGame} onClose={() => setShowResult(false)} />
       )}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
@@ -359,10 +368,10 @@ function ScoreRow({ who, name, p, active, player }: { who: 'you' | 'foe'; name: 
   )
 }
 
-function ResultModal({ s, onNew, onClose }: { s: CarcassonneState; onNew: () => void; onClose: () => void }) {
-  const you = s.players[0].score
-  const foe = s.players[1].score
-  const title = s.winner === 'tie' ? 'A draw' : s.winner === 0 ? 'You win!' : 'The rival wins'
+function ResultModal({ s, me, opp, oppName, onNew, onClose }: { s: CarcassonneState; me: Player; opp: Player; oppName: string; onNew: () => void; onClose: () => void }) {
+  const you = s.players[me].score
+  const foe = s.players[opp].score
+  const title = s.winner === 'tie' ? 'A draw' : s.winner === me ? 'You win!' : `${oppName} wins`
   return (
     <Modal
       eyebrow="Final tally"
@@ -374,7 +383,7 @@ function ResultModal({ s, onNew, onClose }: { s: CarcassonneState; onNew: () => 
       <div className="modal-body">
         <div className="cc-scoretable">
           <div className="cc-st-row cc-st-you"><span>You</span><b>{you}</b></div>
-          <div className="cc-st-row cc-st-foe"><span>Rival</span><b>{foe}</b></div>
+          <div className="cc-st-row cc-st-foe"><span>{oppName}</span><b>{foe}</b></div>
         </div>
         <p>Incomplete cities, roads and cloisters were scored at reduced value, and every meeple came home.</p>
       </div>
