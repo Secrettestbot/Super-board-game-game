@@ -6,10 +6,12 @@
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { twixtAdapter } from './net'
 import * as TW from './logic'
-import type { State } from './logic'
+import type { State, Owner } from './logic'
 
 const { N, idx, rowOf, colOf } = TW
 
@@ -32,27 +34,33 @@ const TITLE_MARK = (
 )
 
 export function Twixt() {
-  const [s, setS] = useState<State>(() => TW.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(twixtAdapter)
+  const mine = mySeat as Owner          // seat 0 = You (top↕bottom), seat 1 = Rival (left↔right)
+  const foe = (mine === 0 ? 1 : 0) as Owner
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(TW.makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  useAITurn(s.winner == null && s.turn === 1, () => setS(p => TW.aiTurn(p)), { delayMs: 540, tick: s.last })
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
 
-  const yourTurn = s.winner == null && s.turn === 0
-  const legal = new Set(yourTurn ? TW.legalHoles(s, 0) : [])
+  const yourTurn = s.winner == null && isMyTurn
+  const legal = new Set(yourTurn ? TW.legalHoles(s, mine) : [])
   const winSet = new Set(s.win)
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
 
   function clickHole(i: number) {
-    if (yourTurn && legal.has(i)) setS(TW.place(s, 0, i))
+    if (yourTurn && legal.has(i)) dispatch({ cell: i })
   }
 
+  // Banners/result are relative to MY seat. Your goal depends on which side you hold.
+  const myGoal = mine === 0 ? 'top to bottom' : 'left to right'
+  const foeGoal = mine === 0 ? 'left to right' : 'top to bottom'
+  const thinking = net.online ? 'waiting for opponent…' : `${oppLabel} is thinking…`
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You connect top to bottom — you win' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'The rival links left to right — it wins' }
-  else if (yourTurn) { bk = 'you'; banner = 'Your turn — drop a coral peg' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  if (s.winner === mine) { bk = 'win'; banner = `You connect ${myGoal} — you win` }
+  else if (s.winner === foe) { bk = 'lose'; banner = `${oppLabel} links ${foeGoal} — it wins` }
+  else if (yourTurn) { bk = 'you'; banner = 'Your turn — drop a peg' }
+  else { bk = 'foe'; banner = thinking }
 
   // Build hole nodes. Corners are rendered as voids; opponent-border holes are dimmed/blocked.
   const holes = []
@@ -62,8 +70,11 @@ export function Twixt() {
     if (corner) continue
     const owner = s.pegs[i]
     const isLegal = legal.has(i)
-    const yourBorder = r === 0 || r === N - 1            // top/bottom — yours
-    const foeBorder = c === 0 || c === N - 1             // left/right — rival's
+    // Borders relative to MY seat: top/bottom belong to seat 0, left/right to seat 1.
+    const topBottom = r === 0 || r === N - 1
+    const leftRight = c === 0 || c === N - 1
+    const yourBorder = mine === 0 ? topBottom : leftRight
+    const foeBorder = mine === 0 ? leftRight : topBottom
     let cls = 'tw-hole'
     if (yourBorder) cls += ' brd-you'
     else if (foeBorder) cls += ' brd-foe'
@@ -74,7 +85,7 @@ export function Twixt() {
         <circle className="tw-slot" cx={cx(i)} cy={cy(i)} r={5.5} />
         {owner != null && (
           <circle
-            className={'tw-peg ' + (owner === 0 ? 'you' : 'foe') + (winSet.has(i) ? ' win' : '') + (s.last === i ? ' last' : '')}
+            className={'tw-peg ' + (owner === mine ? 'you' : 'foe') + (winSet.has(i) ? ' win' : '') + (s.last === i ? ' last' : '')}
             cx={cx(i)} cy={cy(i)} r={9}
           />
         )}
@@ -88,7 +99,7 @@ export function Twixt() {
     return (
       <line
         key={k}
-        className={'tw-link ' + (l.owner === 0 ? 'you' : 'foe') + (onWin ? ' win' : '')}
+        className={'tw-link ' + (l.owner === mine ? 'you' : 'foe') + (onWin ? ' win' : '')}
         x1={cx(l.a)} y1={cy(l.a)} x2={cx(l.b)} y2={cy(l.b)}
       />
     )
@@ -120,14 +131,17 @@ export function Twixt() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel players">
-            <div className={'pl you' + (s.turn === 0 && s.winner == null ? ' on' : '')}>
+            <div className={'pl you' + (s.turn === mine && s.winner == null ? ' on' : '')}>
               <span className="pl-peg you" />
-              <span className="pl-txt"><b>You · Coral</b><i>top ↕ bottom</i></span>
+              <span className="pl-txt"><b>You · {mine === 0 ? 'Coral' : 'Teal'}</b><i>{mine === 0 ? 'top ↕ bottom' : 'left ↔ right'}</i></span>
             </div>
-            <div className={'pl foe' + (s.turn === 1 && s.winner == null ? ' on' : '')}>
+            <div className={'pl foe' + (s.turn === foe && s.winner == null ? ' on' : '')}>
               <span className="pl-peg foe" />
-              <span className="pl-txt"><b>Rival · Teal</b><i>left ↔ right</i></span>
+              <span className="pl-txt"><b>{oppLabel} · {foe === 0 ? 'Coral' : 'Teal'}</b><i>{foe === 0 ? 'top ↕ bottom' : 'left ↔ right'}</i></span>
             </div>
           </div>
           <div className="panel logbox">
@@ -136,23 +150,24 @@ export function Twixt() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal s={s} mine={mine} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: State; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ s, mine, oppLabel, onNew }: { s: State; mine: Owner; oppLabel: string; onNew: () => void }) {
+  const won = s.winner === mine
+  const winnerLinks = s.winner === 0 ? 'Top ↕ Bottom connected' : 'Left ↔ Right connected'
   return (
     <Modal
       eyebrow={won ? 'Borders linked' : 'Out-connected'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
-        <span className={won ? 'you' : 'foe'}>{won ? 'Top ↕ Bottom connected' : 'Left ↔ Right connected'}</span>
+        <span className={won ? 'you' : 'foe'}>{winnerLinks}</span>
       </div>
     </Modal>
   )

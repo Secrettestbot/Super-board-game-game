@@ -7,10 +7,12 @@ import { useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { traxAdapter, boardOf } from './net'
 import * as TX from './logic'
-import type { State, Tile, Cell, Placement } from './logic'
+import type { State, Tile, Cell, Color, Placement } from './logic'
 
 const { DIRS } = TX
 
@@ -71,16 +73,21 @@ function sharedCorner(a: number, b: number): [number, number] {
 }
 
 export function Trax() {
-  const [s, setS] = useState<State>(() => TX.makeGame())
+  const { state: raw, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(traxAdapter)
+  // The wire flattens State.board to entries; re-hydrate a live-Map state for logic/render.
+  const s = useMemo<State>(() => ({ ...raw, board: boardOf(raw) }), [raw])
   const [showRules, setShowRules] = useState(false)
   const [selCell, setSelCell] = useState<Cell | null>(null)
   const [orient, setOrient] = useState(0) // index into the fitting tiles for selCell
 
+  const myColor: Color = mySeat === 0 ? 'W' : 'R'
+  const oppColor: Color = mySeat === 0 ? 'R' : 'W'
+
   function newGame() {
-    setS(TX.makeGame()); setShowRules(false); setSelCell(null); setOrient(0)
+    netNew(); setShowRules(false); setSelCell(null); setOrient(0)
   }
 
-  const yourTurn = s.winner == null && s.turn === 0
+  const yourTurn = s.winner == null && isMyTurn
   const placements = useMemo(() => (yourTurn ? TX.legalPlacements(s) : []), [s, yourTurn])
 
   // group placements by cell
@@ -96,10 +103,6 @@ export function Trax() {
   const fittingTiles = selCell ? (byCell.get(selCell) ?? []) : []
   const safeOrient = fittingTiles.length ? Math.min(orient, fittingTiles.length - 1) : 0
 
-  useAITurn(s.winner == null && s.turn === 1, () => setS(p => TX.aiTurn(p)), {
-    delayMs: 560, tick: s.moves,
-  })
-
   function selectCell(cell: Cell) {
     if (!yourTurn) return
     if (!byCell.has(cell)) return
@@ -111,7 +114,7 @@ export function Trax() {
     const opts = byCell.get(selCell)
     if (!opts || !opts.length) return
     const pick = opts[safeOrient]
-    setS(TX.place(s, pick.cell, pick.tile))
+    dispatch({ cell: pick.cell, ti: pick.ti })
     setSelCell(null); setOrient(0)
   }
 
@@ -194,13 +197,18 @@ export function Trax() {
     }
   }
 
+  const myWin = s.winner != null && s.winner === mySeat
+  const oppLabel = net.online ? 'Opponent' : 'AI'
+  const oppName = oppColor === 'W' ? 'White' : 'Red'
+  const myName = myColor === 'W' ? 'White' : 'Red'
+
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You win — your white track is complete!' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'Red wins — the AI completed its track.' }
+  if (s.winner != null && myWin) { bk = 'win'; banner = `You win — your ${myName.toLowerCase()} track is complete!` }
+  else if (s.winner != null) { bk = 'lose'; banner = `${oppName} wins — ${oppLabel} completed its track.` }
   else if (yourTurn) {
     bk = 'you'
     banner = selCell ? 'Choose an orientation, then place' : 'Your turn — pick a highlighted cell'
-  } else { bk = 'foe'; banner = 'Red is plotting its track…' }
+  } else { bk = 'foe'; banner = net.online ? 'Opponent is plotting their track…' : 'Red is plotting its track…' }
 
   return (
     <>
@@ -224,15 +232,18 @@ export function Trax() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel tx-turn">
             <div className={'tx-who you' + (yourTurn ? ' on' : '')}>
-              <span className="tx-dot you" />
-              <span className="tx-name">You · White</span>
+              <span className={'tx-dot ' + (myColor === 'W' ? 'you' : 'foe')} />
+              <span className="tx-name">You · {myName}</span>
               <span className="tx-goal">loop / 8-span</span>
             </div>
-            <div className={'tx-who foe' + (s.turn === 1 && s.winner == null ? ' on' : '')}>
-              <span className="tx-dot foe" />
-              <span className="tx-name">AI · Red</span>
+            <div className={'tx-who foe' + (!yourTurn && s.winner == null ? ' on' : '')}>
+              <span className={'tx-dot ' + (oppColor === 'W' ? 'you' : 'foe')} />
+              <span className="tx-name">{oppLabel} · {oppName}</span>
               <span className="tx-goal">loop / 8-span</span>
             </div>
           </div>
@@ -257,7 +268,7 @@ export function Trax() {
               <div className="tx-hint">
                 {yourTurn
                   ? <>Click a <b>highlighted</b> empty cell on the board to see the tiles that fit there.</>
-                  : <>Waiting for Red…</>}
+                  : <>Waiting for {oppLabel}…</>}
               </div>
             )}
             <div className="tx-controls">
@@ -275,25 +286,26 @@ export function Trax() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={myWin} oppName={oppName} online={net.online} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: State; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ won, oppName, online, onNew }: { won: boolean; oppName: string; online: boolean; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Track complete' : 'Outplayed'}
-      title={won ? 'You Win' : 'Red Wins'}
+      title={won ? 'You Win' : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="modal-body">
         <p>{won
-          ? 'Your white track closed a loop or ran the full span of the board. The line is yours.'
-          : 'The red track completed first — a loop or an eight-cell run across the board.'}</p>
+          ? 'Your track closed a loop or ran the full span of the board. The line is yours.'
+          : online
+            ? 'Your opponent’s track completed first — a loop or an eight-cell run across the board.'
+            : 'The red track completed first — a loop or an eight-cell run across the board.'}</p>
       </div>
     </Modal>
   )

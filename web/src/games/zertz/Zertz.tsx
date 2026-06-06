@@ -1,13 +1,16 @@
 /* ZÈRTZ — UI (built for this codebase). The shrinking hex ring-board with neutral
    marbles, a forced capture-jump flow, a place-then-remove flow, the shared colour
-   supply, and both players' captured sets. You are player 0; the AI is player 1.
-   The AI resolves a whole turn at once, so useAITurn re-arms on a move counter. */
+   supply, and both players' captured sets. Seat-relative: you play `mySeat` (0 local,
+   0 or 1 online); the other seat is the AI (solo) or a remote opponent (online).
+   useGameSession drives AI for empty seats and syncs online play. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { zertzAdapter } from './net'
 import * as Z from './logic'
 import type { ZertzState, Color, Player, Jump, Key } from './logic'
 
@@ -36,31 +39,34 @@ function pixel(q: number, r: number): { x: number; y: number } {
 interface Pending { color: Color; place: Key }
 
 export function Zertz() {
-  const [s, setS] = useState<ZertzState>(() => Z.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(zertzAdapter)
+  const me = mySeat as Player          // seat 0/1 == player 0/1
+  const opp: Player = me === 0 ? 1 : 0
+  const oppName = net.online ? 'Opponent' : 'Rival'
+
   const [showRules, setShowRules] = useState(false)
   const [pickColor, setPickColor] = useState<Color>('w')
   const [pending, setPending] = useState<Pending | null>(null)  // placed, awaiting ring removal
   const [jumpSrc, setJumpSrc] = useState<Key | null>(null)      // chosen jumping marble
-  const [moveCount, setMoveCount] = useState(0)
   const logRef = useRef<HTMLDivElement>(null)
 
   function newGame() {
-    setS(Z.makeGame()); setShowRules(false); setPending(null); setJumpSrc(null); setPickColor('w'); setMoveCount(0)
+    netNew(); setShowRules(false); setPending(null); setJumpSrc(null); setPickColor('w')
   }
 
-  const yourTurn = s.winner == null && s.turn === s.you
+  const yourTurn = s.winner == null && isMyTurn
   const forced = yourTurn && Z.mustCapture(s)
-
-  // AI plays one whole turn; re-arm on the move counter.
-  useAITurn(s.winner == null && s.turn !== s.you, () => {
-    setS(p => Z.aiTurn(p)); setMoveCount(c => c + 1)
-  }, { delayMs: 640, tick: moveCount })
 
   // keep a valid pick color
   useEffect(() => {
     const avail = Z.availableColors(s)
     if (avail.length && !avail.includes(pickColor)) setPickColor(avail[0])
   }, [s, pickColor])
+
+  // clear stale interaction when it stops being our turn (e.g. opponent's view sync)
+  useEffect(() => {
+    if (!yourTurn) { setPending(null); setJumpSrc(null) }
+  }, [yourTurn])
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = 0 }, [s.log])
 
@@ -71,7 +77,7 @@ export function Zertz() {
   })
 
   // ----- interaction helpers -----
-  const captures = forced ? Z.legalCaptures(s, s.you) : []
+  const captures = forced ? Z.legalCaptures(s, me) : []
   const jumpSources = new Set(captures.map(j => j.from))
   const activeJumps = jumpSrc != null ? Z.jumpsFrom(s, jumpSrc) : []
   const jumpDsts = new Map<Key, Jump>()  // landing space -> the jump
@@ -96,14 +102,12 @@ export function Zertz() {
       // choosing a landing space for the current jumping marble
       const j = jumpDsts.get(k)
       if (j) {
-        const ns = Z.applyCapture(s, [j])
-        setMoveCount(c => c + 1)
-        // does the SAME marble (now at j.to) still have jumps? then continue the chain.
-        if (ns.winner == null && ns.turn === s.turn && Z.jumpsFrom(ns, j.to).length > 0) {
-          setS(ns); setJumpSrc(j.to)
-        } else {
-          setS(ns); setJumpSrc(null)
-        }
+        // dispatch ONE leap; the adapter keeps the turn here if the chain continues.
+        dispatch({ kind: 'capture', from: j.from, to: j.to })
+        // continue the chain on the same marble if more jumps remain after this leap
+        const after = Z.applyCapture(s, [j])
+        if (after.winner == null && Z.jumpsFrom(after, j.to).length > 0) setJumpSrc(j.to)
+        else setJumpSrc(null)
         return
       }
       // re-pick a different source marble
@@ -119,7 +123,7 @@ export function Zertz() {
         // if no ring can be removed after placing, resolve immediately (place-only)
         const tmp: ZertzState = { ...s, board: { ...s.board, [k]: pickColor } }
         if (Z.removableCells(tmp).length === 0) {
-          setS(Z.applyPlaceRemove(s, pickColor, k, null)); setMoveCount(c => c + 1); setJumpSrc(null)
+          dispatch({ kind: 'placeRemove', color: pickColor, place: k, remove: null })
         } else {
           setPending({ color: pickColor, place: k })
         }
@@ -129,8 +133,7 @@ export function Zertz() {
     // remove: a free edge ring (after the pending placement)
     if (k === pending.place) return
     if (removablesNow.has(k)) {
-      setS(Z.applyPlaceRemove(s, pending.color, pending.place, k))
-      setMoveCount(c => c + 1)
+      dispatch({ kind: 'placeRemove', color: pending.color, place: pending.place, remove: k })
       setPending(null)
     }
   }
@@ -140,14 +143,14 @@ export function Zertz() {
 
   // ----- banner -----
   let banner: string, bk = ''
-  if (s.winner === s.you) { bk = 'win'; banner = 'You win — your captured set is complete!' }
-  else if (s.winner != null) { bk = 'lose'; banner = 'The rival completed a set first' }
+  if (s.winner === me) { bk = 'win'; banner = 'You win — your captured set is complete!' }
+  else if (s.winner != null) { bk = 'lose'; banner = `${oppName} completed a set first` }
   else if (yourTurn) {
     bk = 'you'
     if (forced) banner = jumpSrc == null ? 'A jump is open — you MUST capture. Pick a glowing marble.' : 'Choose a landing space to leap.'
     else if (pending) banner = canRemoveAny ? 'Now slide a dashed edge ring off the board.' : 'No ring can be removed — placing only.'
     else banner = 'Place a marble, then remove an edge ring.'
-  } else { bk = 'foe'; banner = 'The rival is plotting…' }
+  } else { bk = 'foe'; banner = net.online ? 'Waiting for the opponent…' : 'The rival is plotting…' }
 
   // ----- render board -----
   const cells = Z.allCells()
@@ -185,7 +188,7 @@ export function Zertz() {
         subtitle="capture neutral marbles on a board that shrinks every turn — win 3 of a colour, or 1 of each"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={<>Rings: {Z.liveCells(s).length} &nbsp;·&nbsp; You {Z.total(s.captured[s.you])} · Rival {Z.total(s.captured[1 - s.you as Player])}</>}
+        modeLeft={<>Rings: {Z.liveCells(s).length} &nbsp;·&nbsp; You {Z.total(s.captured[me])} · {oppName} {Z.total(s.captured[opp])}</>}
         banner={banner}
         bannerClass={bk}
         modeRight={<>click · play &nbsp; Esc · cancel &nbsp; N · new</>}
@@ -226,6 +229,10 @@ export function Zertz() {
 
         <div className="side">
           <div className="panel">
+            <OnlineBar net={net} />
+          </div>
+
+          <div className="panel">
             <div className="panel-l">marble supply · click to pick</div>
             <div className="zt-supply">
               {Z.COLORS.map(c => {
@@ -248,8 +255,8 @@ export function Zertz() {
           <div className="panel">
             <div className="panel-l">captured sets · 3-of-a-colour or 1-of-each wins</div>
             <div className="zt-scores">
-              <PlayerSet label="You" who="you" on={yourTurn} c={s.captured[s.you]} />
-              <PlayerSet label="Rival" who="foe" on={s.winner == null && s.turn !== s.you} c={s.captured[1 - s.you as Player]} />
+              <PlayerSet label="You" who="you" on={yourTurn} c={s.captured[me]} />
+              <PlayerSet label={oppName} who="foe" on={s.winner == null && !isMyTurn} c={s.captured[opp]} />
             </div>
           </div>
 
@@ -264,13 +271,13 @@ export function Zertz() {
             {yourTurn && pending && (
               <div className="zt-step">{canRemoveAny ? <>Click a <b>dashed</b> edge ring to slide it off the board.</> : <>No ring is removable.</>}</div>
             )}
-            {!yourTurn && s.winner == null && <div className="zt-step">Watching the rival…</div>}
-            {s.winner != null && <div className="zt-step">{s.winner === s.you ? 'You completed a set.' : 'The rival completed a set.'}</div>}
+            {!yourTurn && s.winner == null && <div className="zt-step">{net.online ? `Waiting for ${oppName.toLowerCase()}…` : 'Watching the rival…'}</div>}
+            {s.winner != null && <div className="zt-step">{s.winner === me ? 'You completed a set.' : `${oppName} completed a set.`}</div>}
 
             <div className="zt-btnrow">
               {pending && <button className="zt-btn" onClick={cancelPending}>Undo place</button>}
               {forced && jumpSrc != null && <button className="zt-btn" onClick={cancelJump}>Pick other</button>}
-              {pending && !canRemoveAny && <button className="zt-btn go" onClick={() => { setS(Z.applyPlaceRemove(s, pending.color, pending.place, null)); setMoveCount(c => c + 1); setPending(null) }}>Confirm place</button>}
+              {pending && !canRemoveAny && <button className="zt-btn go" onClick={() => { dispatch({ kind: 'placeRemove', color: pending.color, place: pending.place, remove: null }); setPending(null) }}>Confirm place</button>}
             </div>
           </div>
 
@@ -280,7 +287,7 @@ export function Zertz() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal won={s.winner === s.you} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={s.winner === me} oppName={oppName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -305,15 +312,15 @@ function PlayerSet({ label, who, on, c }: { label: string; who: 'you' | 'foe'; o
   )
 }
 
-function ResultModal({ won, onNew }: { won: boolean; onNew: () => void }) {
+function ResultModal({ won, oppName, onNew }: { won: boolean; oppName: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Set complete' : 'Outmanoeuvred'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc">{won ? <span className="you">You captured a winning set first</span> : <span className="foe">The rival captured a winning set first</span>}</div>
+      <div className="finalsc">{won ? <span className="you">You captured a winning set first</span> : <span className="foe">{oppName} captured a winning set first</span>}</div>
     </Modal>
   )
 }

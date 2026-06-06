@@ -1,16 +1,22 @@
 /* YINSH — UI.
    Ported from design/examples/connection_yinsh/yinsh.jsx onto the framework shell. A
    multi-step board game: place rings, then drop-marker + slide-ring (flipping markers),
-   claim 5-in-a-row runs, remove rings. The AI takes several sub-steps while it stays
-   Black's turn, so useAITurn re-arms on a tick covering all the pending sub-state. */
+   claim 5-in-a-row runs, remove rings.
+
+   Online-capable via useGameSession(yinshAdapter): seat 0 = White, seat 1 = Black. The
+   hook drives the AI for any empty seat, so there is no local useAITurn. Everything the
+   player sees (your rings/markers, clickability, banners, players panel, result) is
+   relative to mySeat; the opponent is "Opponent" when playing online. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { yinshAdapter } from './net'
 import * as YI from './logic'
-import type { YinshState } from './logic'
+import type { Side, YinshState } from './logic'
 
 // layout: map (c,r) to pixel. columns vertical; offset alternate columns by half.
 const SX = 52, SY = 46
@@ -26,58 +32,61 @@ const TITLE_MARK = (
 )
 
 export function Yinsh() {
-  const [s, setS] = useState<YinshState>(() => YI.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(yinshAdapter)
+  const me: Side = mySeat === 0 ? 'w' : 'b' // seat 0 = White, seat 1 = Black
+  const opp: Side = me === 'w' ? 'b' : 'w'
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(YI.makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  const aiActing = !s.winner && ((s.phase === "place" && s.turn === "b") || (s.phase === "play" && s.turn === "b" && !s.pendingRing) || (!!s.pendingRows && s.pendingRows.who === "b") || s.removingRing === "b")
-  useAITurn(aiActing, () => setS(p => YI.aiTurn(p)), {
-    delayMs: 480,
-    tick: `${s.turn}|${s.pendingRing}|${s.pendingRows ? s.pendingRows.who : ''}|${s.removingRing}|${s.score.w}-${s.score.b}|${s.placed.w}-${s.placed.b}`,
-  })
+  // isMyTurn gates ALL interaction — placement, drop, slide, and run/ring removals.
+  const active = !s.winner && isMyTurn
+  const pend = s.pendingRing
+  const moveTargets = useMemo(() => {
+    if (!pend || !active) return new Set<string>()
+    const [c, r] = pend.split(",").map(Number)
+    return new Set(YI.ringMoves(s, c, r))
+  }, [pend, s, active])
+
+  function clickPoint(k: string) {
+    if (s.winner || !isMyTurn) return
+    if (s.removingRing === me) { if (s.rings[k] === me) dispatch({ kind: 'removeRing', cell: k }); return }
+    if (s.pendingRows && s.pendingRows.who === me) return // handled via run buttons
+    if (s.phase === "place") { dispatch({ kind: 'placeRing', cell: k }); return }
+    if (pend) { if (moveTargets.has(k)) dispatch({ kind: 'moveRing', to: k }); else if (k === pend) dispatch({ kind: 'cancelDrop' }); return }
+    if (s.rings[k] === me) dispatch({ kind: 'dropMarker', cell: k })
+  }
+
+  const myRuns = s.pendingRows && s.pendingRows.who === me && isMyTurn ? s.pendingRows.runs : null
+  function clickRun(run: string[]) { dispatch({ kind: 'removeRow', run }) }
 
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
-    onEscape: () => { setShowRules(false); if (s.pendingRing) setS(YI.cancelDrop(s)) },
+    onEscape: () => { setShowRules(false); if (pend && isMyTurn) dispatch({ kind: 'cancelDrop' }) },
   })
 
-  const yourTurn = !s.winner && s.turn === "w"
-  const pend = s.pendingRing
-  const moveTargets = useMemo(() => {
-    if (!pend) return new Set<string>()
-    const [c, r] = pend.split(",").map(Number)
-    return new Set(YI.ringMoves(s, c, r))
-  }, [pend, s])
-
-  function clickPoint(k: string) {
-    if (s.winner) return
-    if (s.removingRing === "w") { if (s.rings[k] === "w") setS(YI.removeRing(s, k)); return }
-    if (s.pendingRows && s.pendingRows.who === "w") return // handled via run buttons
-    if (!yourTurn) return
-    if (s.phase === "place") { setS(YI.placeRing(s, k)); return }
-    if (pend) { if (moveTargets.has(k)) setS(YI.moveRing(s, k)); else if (k === pend) setS(YI.cancelDrop(s)); return }
-    if (s.rings[k] === "w") setS(YI.dropMarker(s, k))
-  }
-
-  const myRuns = s.pendingRows && s.pendingRows.who === "w" ? s.pendingRows.runs : null
-  function clickRun(run: string[]) { setS(YI.removeRun(s, run)) }
+  const oppName = net.online ? 'Opponent' : 'Rival'
+  const myWon = s.winner === me
+  const oppActing = !s.winner && !isMyTurn
 
   let banner: string, bk = ""
-  if (s.winner === "w") { bk = "win"; banner = "Three rings — you win" }
-  else if (s.winner === "b") { bk = "lose"; banner = "The rival claims three rings" }
-  else if (s.phase === "place") { bk = yourTurn ? "you" : "foe"; banner = yourTurn ? `Place a ring (${s.placed.w}/5)` : "Rival is placing…" }
-  else if (s.removingRing === "w") { bk = "you"; banner = "Row complete! Remove one of your rings" }
-  else if (s.pendingRows && s.pendingRows.who === "w") { bk = "you"; banner = "Choose a row to claim" }
-  else if (s.removingRing === "b" || (s.pendingRows && s.pendingRows.who === "b")) { bk = "foe"; banner = "Rival scores a row…" }
-  else if (pend && yourTurn) { bk = "you"; banner = "Slide the ring — it flips every marker it jumps" }
-  else if (yourTurn) { bk = "you"; banner = "Drop a marker in one of your rings" }
-  else { bk = "foe"; banner = "The rival is moving…" }
+  if (myWon) { bk = "win"; banner = "Three rings — you win" }
+  else if (s.winner === opp) { bk = "lose"; banner = `${oppName} claims three rings` }
+  else if (s.phase === "place") { bk = active ? "you" : "foe"; banner = active ? `Place a ring (${s.placed[me]}/5)` : `${oppName} is placing…` }
+  else if (s.removingRing === me) { bk = "you"; banner = "Row complete! Remove one of your rings" }
+  else if (s.pendingRows && s.pendingRows.who === me) { bk = "you"; banner = "Choose a row to claim" }
+  else if (s.removingRing === opp || (s.pendingRows && s.pendingRows.who === opp)) { bk = "foe"; banner = `${oppName} scores a row…` }
+  else if (pend && active) { bk = "you"; banner = "Slide the ring — it flips every marker it jumps" }
+  else if (active) { bk = "you"; banner = "Drop a marker in one of your rings" }
+  else { bk = "foe"; banner = `${oppName} is moving…` }
 
   const lastSet = new Set<string>()
   if (s.last) { if (s.last.from) lastSet.add(s.last.from); if (s.last.to) lastSet.add(s.last.to); if (s.last.place) lastSet.add(s.last.place); if (s.last.drop) lastSet.add(s.last.drop) }
   const runHi = myRuns ? new Set<string>(([] as string[]).concat(...myRuns)) : new Set<string>()
+
+  const myTurnOn = !s.winner && isMyTurn
+  const oppTurnOn = oppActing
 
   return (
     <>
@@ -110,7 +119,7 @@ export function Yinsh() {
               {/* markers */}
               {Object.keys(s.markers).map(k => { const [c, r] = k.split(",").map(Number); const [x, y] = pos(c, r); return <circle key={"m" + k} cx={x} cy={y} r="13" className={"marker " + s.markers[k] + (runHi.has(k) ? " runhi" : "")} /> })}
               {/* rings */}
-              {Object.keys(s.rings).map(k => { const [c, r] = k.split(",").map(Number); const [x, y] = pos(c, r); const removable = (s.removingRing === "w" && s.rings[k] === "w"); return <circle key={"r" + k} cx={x} cy={y} r="17" className={"ring " + s.rings[k] + (pend === k ? " pend" : "") + (lastSet.has(k) ? " last" : "") + (removable ? " removable" : "")} /> })}
+              {Object.keys(s.rings).map(k => { const [c, r] = k.split(",").map(Number); const [x, y] = pos(c, r); const removable = (s.removingRing === me && isMyTurn && s.rings[k] === me); return <circle key={"r" + k} cx={x} cy={y} r="17" className={"ring " + s.rings[k] + (pend === k ? " pend" : "") + (lastSet.has(k) ? " last" : "") + (removable ? " removable" : "")} /> })}
               {/* move targets */}
               {[...moveTargets].map(k => { const [c, r] = k.split(",").map(Number); const [x, y] = pos(c, r); return <circle key={"t" + k} cx={x} cy={y} r="9" className="movedot" /> })}
               {/* click layer */}
@@ -121,12 +130,15 @@ export function Yinsh() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel players">
-            <div className={"pl w" + (s.turn === "w" && !s.winner ? " on" : "")}>
-              <span className="pl-ring w"></span><span className="pl-name">You · White</span><span className="pl-sc">{s.score.w}<i>/3</i></span>
+            <div className={"pl " + me + (myTurnOn ? " on" : "")}>
+              <span className={"pl-ring " + me}></span><span className="pl-name">You · {me === 'w' ? 'White' : 'Black'}</span><span className="pl-sc">{s.score[me]}<i>/3</i></span>
             </div>
-            <div className={"pl b" + (s.turn === "b" && !s.winner ? " on" : "")}>
-              <span className="pl-ring b"></span><span className="pl-name">Rival · Black</span><span className="pl-sc">{s.score.b}<i>/3</i></span>
+            <div className={"pl " + opp + (oppTurnOn ? " on" : "")}>
+              <span className={"pl-ring " + opp}></span><span className="pl-name">{oppName} · {opp === 'w' ? 'White' : 'Black'}</span><span className="pl-sc">{s.score[opp]}<i>/3</i></span>
             </div>
           </div>
           <div className="panel hint">
@@ -137,22 +149,21 @@ export function Yinsh() {
         </div>
       </GameShell>
 
-      {s.winner && <WinModal s={s} onNew={newGame} />}
+      {s.winner && <WinModal won={myWon} myScore={s.score[me]} oppScore={s.score[opp]} oppName={oppName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function WinModal({ s, onNew }: { s: YinshState; onNew: () => void }) {
-  const won = s.winner === "w"
+function WinModal({ won, myScore, oppScore, oppName, onNew }: { won: boolean; myScore: number; oppScore: number; oppName: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? "Three claimed" : "Outflipped"}
-      title={won ? "You Win" : "Rival Wins"}
+      title={won ? "You Win" : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {s.score.w}</span><span className="foe">Rival {s.score.b}</span></div>
+      <div className="finalsc"><span className="you">You {myScore}</span><span className="foe">{oppName} {oppScore}</span></div>
     </Modal>
   )
 }

@@ -6,10 +6,12 @@
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { havannahAdapter } from './net'
 import * as HV from './logic'
-import type { State } from './logic'
+import type { State, Player } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -44,15 +46,16 @@ function hexPoints(cx: number, cy: number): string {
 }
 
 export function Havannah() {
-  const [s, setS] = useState<State>(() => HV.makeGame(6))
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(havannahAdapter)
+  const myColor = mySeat as Player // seat 0 = Ember (0), seat 1 = Frost (1)
+  const oppColor: Player = myColor === 0 ? 1 : 0
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(HV.makeGame(6)); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  useAITurn(s.winner == null && s.turn === 1, () => setS(p => HV.aiTurn(p)), { delayMs: 480, tick: s.last })
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
 
-  const yourTurn = s.winner == null && s.turn === 0
+  const yourTurn = s.winner == null && isMyTurn
   const winSet = useMemo(() => new Set(s.winGroup), [s.winGroup])
 
   // Precompute geometry + bounds for the viewBox.
@@ -71,14 +74,18 @@ export function Havannah() {
     return { items, vb: `${minX - pad} ${minY - pad} ${maxX - minX + 2 * pad} ${maxY - minY + 2 * pad}` }
   }, [s.cells])
 
-  function clickCell(k: string) { if (yourTurn && s.board[k] == null) setS(HV.place(s, 0, k)) }
+  function clickCell(k: string) { if (yourTurn && s.board[k] == null) dispatch({ cell: k }) }
+
+  const myWin = s.winner === myColor
+  const oppLabel = net.online ? 'Opponent' : 'Frost'
+  const thinking = net.online ? 'Opponent is thinking…' : 'Frost is thinking…'
 
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = winLabel(s, 'You') }
-  else if (s.winner === 1) { bk = 'lose'; banner = winLabel(s, 'Frost') }
+  if (s.winner === myColor) { bk = 'win'; banner = winLabel(s, 'You') }
+  else if (s.winner === oppColor) { bk = 'lose'; banner = winLabel(s, oppLabel) }
   else if (HV.legalMoves(s).length === 0) { bk = ''; banner = 'The board is full — a draw' }
   else if (yourTurn) { bk = 'you'; banner = 'Your turn — place an ember stone' }
-  else { bk = 'foe'; banner = 'Frost is thinking…' }
+  else { bk = 'foe'; banner = thinking }
 
   return (
     <>
@@ -137,14 +144,15 @@ export function Havannah() {
         </div>
 
         <div className="side">
+          <div className="panel"><OnlineBar net={net} /></div>
           <div className="panel players">
-            <div className={'pl p0' + (s.turn === 0 && s.winner == null ? ' on' : '')}>
-              <span className="pl-stone p0" />
-              <span className="pl-txt"><b>You · Ember</b><i>warm · first</i></span>
+            <div className={'pl p' + myColor + (s.turn === myColor && s.winner == null ? ' on' : '')}>
+              <span className={'pl-stone p' + myColor} />
+              <span className="pl-txt"><b>You · {myColor === 0 ? 'Ember' : 'Frost'}</b><i>{myColor === 0 ? 'warm · first' : 'cool · second'}</i></span>
             </div>
-            <div className={'pl p1' + (s.turn === 1 && s.winner == null ? ' on' : '')}>
-              <span className="pl-stone p1" />
-              <span className="pl-txt"><b>Frost · AI</b><i>cool · second</i></span>
+            <div className={'pl p' + oppColor + (s.turn === oppColor && s.winner == null ? ' on' : '')}>
+              <span className={'pl-stone p' + oppColor} />
+              <span className="pl-txt"><b>{oppLabel} · {oppColor === 0 ? 'Ember' : 'Frost'}</b><i>{oppColor === 0 ? 'warm · first' : 'cool · second'}</i></span>
             </div>
           </div>
           <div className="panel goals">
@@ -156,7 +164,7 @@ export function Havannah() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal s={s} won={myWin} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -169,18 +177,17 @@ function winLabel(s: State, who: string): string {
   return `${who} ${who === 'You' ? 'complete' : 'completes'} ${structureWord(s.winType)} — ${who === 'You' ? 'you win' : 'it wins'}`
 }
 
-function ResultModal({ s, onNew }: { s: State; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ s, won, oppLabel, onNew }: { s: State; won: boolean; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? structureWord(s.winType) + ' complete' : 'Out-connected'}
-      title={won ? 'You Win' : 'Frost Wins'}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
         <span className={won ? 'you' : 'foe'}>
-          {(won ? 'Ember' : 'Frost') + ' completes ' + structureWord(s.winType)}
+          {(won ? 'You complete ' : oppLabel + ' completes ') + structureWord(s.winType)}
         </span>
       </div>
     </Modal>

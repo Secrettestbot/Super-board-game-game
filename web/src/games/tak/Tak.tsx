@@ -1,15 +1,18 @@
-/* TAK — UI (built for this codebase). A 5x5 wooden board of stone stacks vs a road-seeking AI.
-   You place flats, walls and your capstone — or pick up a stack you control and slide it,
-   dropping pieces along a straight line — racing to link two opposite edges with a road of
-   flats/capstone. Single-call AI (one move per turn) driven on s.moveCount. */
+/* TAK — UI (built for this codebase). A 5x5 wooden board of stone stacks. Place flats,
+   walls and your capstone — or pick up a stack you control and slide it, dropping pieces
+   along a straight line — racing to link two opposite edges with a road of flats/capstone.
+   Seat-relative for online play: you are mySeat (0 solo), the AI/remote human is the other
+   seat. The AI for any empty seat is driven by useGameSession. */
 
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { takAdapter } from './net'
 import * as T from './logic'
-import type { TakState, PieceType, Move, Owner } from './logic'
+import type { PieceType, Move, Owner } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -24,19 +27,18 @@ const TITLE_MARK = (
 type PendingMove = { from: number; carried: number; dir: number | null; drops: number[] }
 
 export function Tak() {
-  const [s, setS] = useState<TakState>(() => T.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(takAdapter)
+  const me = mySeat as Owner // seat 0 = player 0, seat 1 = player 1
+  const opp = (me === 0 ? 1 : 0) as Owner
   const [showRules, setShowRules] = useState(false)
   const [placeType, setPlaceType] = useState<PieceType>('flat')
   const [pending, setPending] = useState<PendingMove | null>(null)
 
   function newGame() {
-    setS(T.makeGame()); setShowRules(false); setPlaceType('flat'); setPending(null)
+    netNew(); setShowRules(false); setPlaceType('flat'); setPending(null)
   }
 
-  // Single-call AI: one move per turn, re-armed on the move counter.
-  useAITurn(s.winner == null && s.turn === 1, () => setS(p => T.aiTurn(p)), { delayMs: 620, tick: s.moveCount })
-
-  const yourTurn = s.winner == null && s.turn === 0
+  const yourTurn = s.winner == null && isMyTurn
 
   useGameKeys({
     onNew: newGame,
@@ -46,7 +48,7 @@ export function Tak() {
       if (!yourTurn) return false
       if (e.key === 'f' || e.key === 'F') { setPlaceType('flat'); return true }
       if (e.key === 'w' || e.key === 'W') { setPlaceType('wall'); return true }
-      if (e.key === 'c' || e.key === 'C') { if (s.supply[0].capstone > 0) setPlaceType('cap'); return true }
+      if (e.key === 'c' || e.key === 'C') { if (s.supply[me].capstone > 0) setPlaceType('cap'); return true }
       return false
     },
   })
@@ -55,7 +57,7 @@ export function Tak() {
   const carryLeft = pending ? pending.carried - pending.drops.reduce((a, b) => a + b, 0) : 0
 
   function doPlace(at: number, piece: PieceType) {
-    setS(p => T.applyMove(p, { kind: 'place', at, piece }))
+    dispatch({ kind: 'place', at, piece })
   }
 
   // Click handler for a board square.
@@ -83,12 +85,12 @@ export function Tak() {
 
     // No pending move: either place, or begin a stack move if we control this square.
     if (s.board[i].length === 0) {
-      if (placeType === 'cap' && sup[0].capstone <= 0) return
-      if (placeType !== 'cap' && sup[0].stones <= 0) return
+      if (placeType === 'cap' && sup[me].capstone <= 0) return
+      if (placeType !== 'cap' && sup[me].stones <= 0) return
       doPlace(i, placeType)
       return
     }
-    if (T.controls(s, i, 0)) {
+    if (T.controls(s, i, me)) {
       const max = Math.min(s.board[i].length, T.CARRY)
       setPending({ from: i, carried: max, dir: null, drops: [] })
     }
@@ -108,7 +110,7 @@ export function Tak() {
     if (!pending || pending.dir == null) return
     if (carryLeft !== 0) return
     const m: Move = { kind: 'move', from: pending.from, dir: pending.dir, drops: pending.drops }
-    setS(p => T.applyMove(p, m))
+    dispatch(m)
     setPending(null)
   }
 
@@ -117,9 +119,13 @@ export function Tak() {
     setPending(prev => (prev && prev.dir == null ? { ...prev, carried: n } : prev))
   }
 
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+  const myWin = s.winner === me
+  const oppWin = s.winner === opp
+
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You complete a road — you win!' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'The rival completes a road' }
+  if (myWin) { bk = 'win'; banner = 'You complete a road — you win!' }
+  else if (oppWin) { bk = 'lose'; banner = `${oppLabel} completes a road` }
   else if (s.winner === 'draw') { bk = ''; banner = 'Board full — a tie on flats' }
   else if (pending) {
     bk = 'you'
@@ -129,7 +135,7 @@ export function Tak() {
         ? `Dropping ${T.DIR_NAME[pending.dir]} — ${carryLeft} left to place`
         : 'Stack placed — confirm the move'
   } else if (yourTurn) { bk = 'you'; banner = 'Your turn — place a piece, or pick up a stack you control' }
-  else { bk = 'foe'; banner = 'The rival is plotting a road…' }
+  else { bk = 'foe'; banner = net.online ? `${oppLabel} is plotting a road…` : 'The rival is plotting a road…' }
 
   const winSet = new Set(s.winRoad)
   const lastSet = new Set(s.last)
@@ -141,7 +147,7 @@ export function Tak() {
     const st = s.board[i]
     const tp = st.length ? st[st.length - 1] : null
     const isFrom = pending?.from === i
-    const canStartMove = !pending && yourTurn && T.controls(s, i, 0)
+    const canStartMove = !pending && yourTurn && T.controls(s, i, me)
     const canPlace = !pending && yourTurn && st.length === 0
     const dropTarget = i === nextDropSquare
     const adjForDir = pending && pending.dir == null && adjDir(pending.from, i) != null
@@ -161,7 +167,7 @@ export function Tak() {
         {tp == null ? (
           <span className="tk-empty" />
         ) : (
-          <span className={'tk-piece ' + ownerCls(tp.owner) + ' ' + tp.type}>
+          <span className={'tk-piece ' + ownerCls(tp.owner, me) + ' ' + tp.type}>
             {tp.type === 'cap' ? <span className="tk-cap-dot" /> : null}
           </span>
         )}
@@ -169,7 +175,7 @@ export function Tak() {
         {st.length > 1 && (
           <span className="tk-stackbar">
             {st.slice(0, st.length - 1).slice(-6).map((p, k) => (
-              <span key={k} className={'tk-seg ' + ownerCls(p.owner)} />
+              <span key={k} className={'tk-seg ' + ownerCls(p.owner, me)} />
             ))}
           </span>
         )}
@@ -177,8 +183,9 @@ export function Tak() {
     )
   }
 
-  const capAvail = sup[0].capstone > 0
-  const stonesAvail = sup[0].stones > 0
+  const capAvail = sup[me].capstone > 0
+  const stonesAvail = sup[me].stones > 0
+  const oppTurn = s.winner == null && !isMyTurn
 
   return (
     <>
@@ -189,7 +196,7 @@ export function Tak() {
         subtitle="a beautiful game — stack stones, raise walls, and carry your capstone to link two opposite edges with an unbroken road"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`You ${T.flatCount(s, 0)} flats · Rival ${T.flatCount(s, 1)} flats`}
+        modeLeft={`You ${T.flatCount(s, me)} flats · ${oppLabel} ${T.flatCount(s, opp)} flats`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>F · flat &nbsp; W · wall &nbsp; C · cap &nbsp; N · new</>}
@@ -203,19 +210,23 @@ export function Tak() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
+
           <div className="panel tk-supply">
             <div className="panel-l">supply</div>
             <div className={'tk-srow' + (yourTurn ? ' on' : '')}>
               <span className="tk-pawn you" />
               <span className="tk-who">You</span>
-              <span className="tk-cnt">{sup[0].stones}<span className="tk-cl">stones</span></span>
-              <span className="tk-cnt">{sup[0].capstone}<span className="tk-cl">cap</span></span>
+              <span className="tk-cnt">{sup[me].stones}<span className="tk-cl">stones</span></span>
+              <span className="tk-cnt">{sup[me].capstone}<span className="tk-cl">cap</span></span>
             </div>
-            <div className={'tk-srow' + (s.turn === 1 && s.winner == null ? ' on' : '')}>
+            <div className={'tk-srow' + (oppTurn ? ' on' : '')}>
               <span className="tk-pawn foe" />
-              <span className="tk-who">Rival</span>
-              <span className="tk-cnt">{sup[1].stones}<span className="tk-cl">stones</span></span>
-              <span className="tk-cnt">{sup[1].capstone}<span className="tk-cl">cap</span></span>
+              <span className="tk-who">{oppLabel}</span>
+              <span className="tk-cnt">{sup[opp].stones}<span className="tk-cl">stones</span></span>
+              <span className="tk-cnt">{sup[opp].capstone}<span className="tk-cl">cap</span></span>
             </div>
           </div>
 
@@ -278,7 +289,7 @@ export function Tak() {
               <div className="tk-hint">
                 {yourTurn
                   ? 'Click an empty square to place the selected piece, or click a stack you control (your piece on top) to carry it.'
-                  : 'Waiting for the rival.'}
+                  : `Waiting for the ${oppLabel.toLowerCase()}.`}
               </div>
             )}
           </div>
@@ -289,14 +300,24 @@ export function Tak() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal winner={s.winner} flat0={T.flatCount(s, 0)} flat1={T.flatCount(s, 1)} onNew={newGame} />}
+      {s.winner != null && (
+        <ResultModal
+          won={myWin}
+          draw={s.winner === 'draw'}
+          flatMe={T.flatCount(s, me)}
+          flatOpp={T.flatCount(s, opp)}
+          oppLabel={oppLabel}
+          onNew={newGame}
+        />
+      )}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ownerCls(o: Owner): string {
-  return o === 0 ? 'you' : 'foe'
+/** Map a piece owner to a UI class relative to the local seat (you vs foe). */
+function ownerCls(o: Owner, me: Owner): string {
+  return o === me ? 'you' : 'foe'
 }
 
 // Direction index (0 up,1 right,2 down,3 left) from a -> b if orthogonally adjacent, else null.
@@ -319,24 +340,22 @@ function squareAlong(from: number, dir: number, step: number): number {
   return r * T.SIZE + c
 }
 
-function ResultModal({ winner, flat0, flat1, onNew }: { winner: Owner | 'draw'; flat0: number; flat1: number; onNew: () => void }) {
-  const won = winner === 0
-  const draw = winner === 'draw'
+function ResultModal({ won, draw, flatMe, flatOpp, oppLabel, onNew }: { won: boolean; draw: boolean; flatMe: number; flatOpp: number; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={draw ? 'A balanced board' : won ? 'Road complete' : 'Outpaced'}
-      title={draw ? 'Tie Game' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'Tie Game' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
         {draw
-          ? <span>Equal flats — {flat0} each.</span>
+          ? <span>Equal flats — {flatMe} each.</span>
           : won
             ? <span className="you">You linked two opposite edges.</span>
-            : <span className="foe">The rival linked its edges first.</span>}
+            : <span className="foe">The {oppLabel.toLowerCase()} linked its edges first.</span>}
       </div>
-      <div className="tk-final-flats">Flats — You {flat0} · Rival {flat1}</div>
+      <div className="tk-final-flats">Flats — You {flatMe} · {oppLabel} {flatOpp}</div>
     </Modal>
   )
 }

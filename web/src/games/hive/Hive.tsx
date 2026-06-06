@@ -5,8 +5,10 @@
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { hiveAdapter } from './net'
 import * as H from './logic'
 import type { HiveState, PieceType, Player, Hex } from './logic'
 
@@ -31,21 +33,21 @@ function px(q: number, r: number): [number, number] {
 }
 
 export function Hive() {
-  const [s, setS] = useState<HiveState>(() => H.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(hiveAdapter)
+  const you = mySeat as Player // seat 0 = first swarm, seat 1 = second swarm
+  const foe = H.other(you)
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<{ kind: 'hand'; type: PieceType } | { kind: 'piece'; from: Hex } | null>(null)
 
-  function newGame() { setS(H.makeGame()); setSel(null); setShowRules(false) }
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
 
-  useAITurn(s.winner == null && s.turn === 1, () => setS(p => H.aiTurn(p)), { delayMs: 650, tick: s.last })
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => { setSel(null); setShowRules(false) },
   })
 
-  const yourTurn = s.winner == null && s.turn === 0
-  const you: Player = 0
+  const yourTurn = s.winner == null && isMyTurn
 
   // compute legal targets for the current selection
   let targets: Hex[] = []
@@ -70,8 +72,8 @@ export function Hive() {
   }
   function playTarget(h: Hex) {
     if (!yourTurn || !sel || !targetSet.has(h)) return
-    if (sel.kind === 'hand') setS(H.applyMove(s, { kind: 'place', type: sel.type, to: h }))
-    else setS(H.applyMove(s, { kind: 'move', type: H.topPiece(s, sel.from)!.type, from: sel.from, to: h }))
+    if (sel.kind === 'hand') dispatch({ kind: 'place', bug: sel.type, to: h })
+    else dispatch({ kind: 'move', from: sel.from, to: h })
     setSel(null)
   }
 
@@ -98,33 +100,30 @@ export function Hive() {
   const hw = Math.sqrt(3) * SIZE, hh = 2 * SIZE
   const hexPoly = `polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)`
 
+  const myWin = s.winner === you
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You surrounded the rival queen — you win!' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'Your queen is surrounded — you lose' }
+  if (s.winner === you) { bk = 'win'; banner = `You surrounded the ${net.online ? 'opponent' : 'rival'} queen — you win!` }
+  else if (s.winner === foe) { bk = 'lose'; banner = 'Your queen is surrounded — you lose' }
   else if (s.winner === 'draw') { bk = 'lose'; banner = 'Both queens surrounded — a draw' }
   else if (yourTurn) {
     bk = 'you'
     const mustQ = H.placeableTypes(s, you).length === 1 && H.placeableTypes(s, you)[0] === 'Q' && !H.queenPlaced(s, you)
     banner = mustQ ? 'You must place your Queen this turn'
       : sel ? 'Choose a highlighted hex' : 'Your turn — place a tile or move a piece'
-  } else { bk = 'foe'; banner = 'The rival is plotting…' }
+  } else { bk = 'foe'; banner = net.online ? 'Waiting for the opponent…' : 'The rival is plotting…' }
 
   const myHand = s.hands[you]
   const placeable = new Set(H.placeableTypes(s, you))
-  const enemySurround = (() => {
+  const surroundOf = (owner: Player): number | null => {
     let q: Hex | null = null
-    for (const h of H.allHexes(s)) for (const pc of s.cells[h]) if (pc.owner === 1 && pc.type === 'Q') q = h
+    for (const h of H.allHexes(s)) for (const pc of s.cells[h]) if (pc.owner === owner && pc.type === 'Q') q = h
     if (!q) return null
     let n = 0; for (const nb of H.neighbors(q)) if (H.occupied(s, nb)) n++
     return n
-  })()
-  const mySurround = (() => {
-    let q: Hex | null = null
-    for (const h of H.allHexes(s)) for (const pc of s.cells[h]) if (pc.owner === 0 && pc.type === 'Q') q = h
-    if (!q) return null
-    let n = 0; for (const nb of H.neighbors(q)) if (H.occupied(s, nb)) n++
-    return n
-  })()
+  }
+  const enemySurround = surroundOf(foe)
+  const mySurround = surroundOf(you)
 
   return (
     <>
@@ -154,7 +153,7 @@ export function Hive() {
               if (isTarget) cls.push('target')
               if (selectedHere) cls.push('sel')
               if (s.last === h) cls.push('last')
-              const ownCls = top ? (top.owner === 0 ? 'you' : 'foe') : ''
+              const ownCls = top ? (top.owner === you ? 'you' : 'foe') : ''
               return (
                 <div
                   key={h}
@@ -182,10 +181,14 @@ export function Hive() {
               <span className="hv-chip you" />
               <span className="hv-who"><b>You</b><i>amber swarm</i></span>
             </div>
-            <div className={'hv-pl' + (s.turn === 1 && s.winner == null ? ' on' : '')}>
+            <div className={'hv-pl' + (s.turn === foe && s.winner == null ? ' on' : '')}>
               <span className="hv-chip foe" />
-              <span className="hv-who"><b>Rival</b><i>charcoal swarm</i></span>
+              <span className="hv-who"><b>{oppLabel}</b><i>charcoal swarm</i></span>
             </div>
+          </div>
+
+          <div className="panel">
+            <OnlineBar net={net} />
           </div>
 
           <div className="panel hv-hand">
@@ -218,25 +221,23 @@ export function Hive() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal winner={s.winner} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={myWin} draw={s.winner === 'draw'} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ winner, onNew }: { winner: Player | 'draw'; onNew: () => void }) {
-  const won = winner === 0
-  const draw = winner === 'draw'
+function ResultModal({ won, draw, oppLabel, onNew }: { won: boolean; draw: boolean; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={draw ? 'Stalemate' : won ? 'Queen encircled' : 'Queen lost'}
-      title={draw ? 'Draw' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'Draw' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
         {draw ? <span className="foe">Both queens surrounded at once</span>
-          : won ? <span className="you">The rival's queen is fully surrounded</span>
+          : won ? <span className="you">The {oppLabel.toLowerCase()}'s queen is fully surrounded</span>
             : <span className="foe">Your queen is fully surrounded</span>}
       </div>
     </Modal>

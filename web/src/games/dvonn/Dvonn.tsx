@@ -1,18 +1,22 @@
 /* DVONN — UI (built for this codebase). A 7x7 axial-rhombus hex board of 49 cells on
-   the framework shell, vs a heuristic AI. Phase 1: click empty cells to place (3 red
-   anchors first, then your 23 white discs alternating with the rival's black). Phase 2:
-   click a stack you control (ivory top), then a highlighted landing cell exactly its
+   the framework shell, vs a heuristic AI or a remote opponent. Phase 1: click empty
+   cells to place (3 red anchors first, then your discs alternating with the rival's).
+   Phase 2: click a stack you control, then a highlighted landing cell exactly its
    height away. Stacks cut off from the red DVONN pieces vanish. Most controlled pieces
-   wins. The AI places many pieces / makes many moves while it's "its turn", so its
-   driver re-arms on s.tick (useAITurn tick). */
+   wins.
+
+   Online: useGameSession drives AI for empty seats and relays a remote opponent's
+   intents. Everything (your discs, banners, score) is rendered relative to mySeat. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { dvonnAdapter } from './net'
 import * as D from './logic'
-import type { DvonnState, Move } from './logic'
+import type { Move, Player } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -25,21 +29,14 @@ const TITLE_MARK = (
 )
 
 export function Dvonn() {
-  const [s, setS] = useState<DvonnState>(() => D.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(dvonnAdapter)
+  const me = mySeat as Player           // seat 0 = white (you), seat 1 = black
+  const foe = (me === 0 ? 1 : 0) as Player
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number | null>(null)   // selected stack (phase 2)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(D.makeGame()); setSel(null); setShowRules(false) }
-
-  // It's the AI's action when: placing a black piece on its slot (turn 1, no reds left),
-  // OR placing one of the 3 reds — we alternate reds too but colour is red regardless;
-  // OR moving on its move-turn. To keep both sides progressing during placement, the AI
-  // owns every placement where it's player 1's slot OR a red is due on player 1's slot.
-  const aiPlacing = s.phase === 'place' && s.turn === 1
-  const aiMoving = s.phase === 'move' && s.turn === 1
-  const aiActive = s.winner == null && (aiPlacing || aiMoving)
-  useAITurn(aiActive, () => setS(p => D.aiTurn(p)), { delayMs: 420, tick: s.tick })
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
   useGameKeys({
@@ -48,26 +45,28 @@ export function Dvonn() {
     onEscape: () => { setSel(null); setShowRules(false) },
   })
 
-  const yourPlace = s.phase === 'place' && s.turn === 0
-  const yourMove = s.phase === 'move' && s.turn === 0
+  const over = s.phase === 'done' || s.winner != null
+  const yourTurn = !over && isMyTurn
+  const yourPlace = yourTurn && s.phase === 'place'
+  const yourMove = yourTurn && s.phase === 'move'
 
-  // precompute legal landings for the selected stack
-  const myMoves: Move[] = yourMove ? D.legalMoves(s, 0) : []
+  // precompute legal landings for the selected stack (movement, my seat)
+  const myMoves: Move[] = yourMove ? D.legalMoves(s, me) : []
   const targets = new Set<number>(sel == null ? [] : myMoves.filter(m => m.from === sel).map(m => m.to))
   const movableFrom = new Set<number>(myMoves.map(m => m.from))
 
   function clickCell(i: number) {
-    if (s.winner != null) return
+    if (over || !isMyTurn) return
     if (yourPlace) {
-      if (s.board[i] == null) setS(D.placePiece(s, i))
+      if (s.board[i] == null) dispatch({ cell: i })
       return
     }
     if (yourMove) {
       const st = s.board[i]
       if (sel != null && targets.has(i)) {        // confirm a move
-        setS(D.applyMove(s, sel, i)); setSel(null); return
+        dispatch({ from: sel, to: i }); setSel(null); return
       }
-      if (st != null && D.controllerOf(st) === 0 && movableFrom.has(i)) {
+      if (st != null && D.controllerOf(st) === me && movableFrom.has(i)) {
         setSel(prev => (prev === i ? null : i))    // (de)select your stack
         return
       }
@@ -75,28 +74,32 @@ export function Dvonn() {
     }
   }
 
-  const youPts = D.controlledCount(s, 0)
-  const foePts = D.controlledCount(s, 1)
+  const youPts = D.controlledCount(s, me)
+  const foePts = D.controlledCount(s, foe)
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+  const iWon = s.winner === me
+  const oppWon = s.winner === foe
+  const tie = over && s.winner == null
 
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = `You win — ${youPts} pieces to ${foePts}!` }
-  else if (s.winner === 1) { bk = 'lose'; banner = `Rival wins — ${foePts} pieces to ${youPts}.` }
+  if (iWon) { bk = 'win'; banner = `You win — ${youPts} pieces to ${foePts}!` }
+  else if (oppWon) { bk = 'lose'; banner = `${oppLabel} wins — ${foePts} pieces to ${youPts}.` }
   else if (s.phase === 'done') { bk = ''; banner = `Tie — ${youPts}–${foePts}.` }
   else if (s.phase === 'place') {
     if (yourPlace) {
       bk = 'you'
-      banner = s.redLeft > 0 ? `Place a red DVONN anchor — ${s.redLeft} left` : `Place a white disc — ${s.place[0]} left`
+      banner = s.redLeft > 0 ? `Place a red DVONN anchor — ${s.redLeft} left` : `Place a disc — ${s.place[me]} left`
     }
-    else { bk = 'foe'; banner = `Rival is placing… (${s.place[1]} left)` }
+    else { bk = 'foe'; banner = `${oppLabel} is placing… (${s.place[foe]} left)` }
   } else { // move
     if (yourMove) { bk = 'you'; banner = sel == null ? 'Pick a stack you control' : 'Pick a glowing landing cell' }
-    else { bk = 'foe'; banner = 'Rival is moving…' }
+    else { bk = 'foe'; banner = `${oppLabel} is moving…` }
   }
 
   const placeLeft = s.phase === 'place'
   const modeLeft = placeLeft
-    ? `Placement · red ${s.redLeft} · you ${s.place[0]} · foe ${s.place[1]}`
-    : `You ${youPts} · Rival ${foePts}`
+    ? `Placement · red ${s.redLeft} · you ${s.place[me]} · foe ${s.place[foe]}`
+    : `You ${youPts} · ${oppLabel} ${foePts}`
 
   function Cell({ i }: { i: number }) {
     const st = s.board[i]
@@ -104,11 +107,11 @@ export function Dvonn() {
     let cls = 'dv-cell'
     if (empty) cls += ' empty'
     if (yourPlace && empty) cls += ' place-ok'
-    if (yourMove && !empty && st != null && D.controllerOf(st) === 0 && movableFrom.has(i)) cls += ' movable'
+    if (yourMove && !empty && st != null && D.controllerOf(st) === me && movableFrom.has(i)) cls += ' movable'
     if (sel === i) cls += ' selected'
     if (targets.has(i)) cls += ' target'
     if (s.last && (s.last.from === i || s.last.to === i)) cls += ' lastmv'
-    const clickable = (yourPlace && empty) || (yourMove && (targets.has(i) || (st != null && D.controllerOf(st) === 0 && movableFrom.has(i))))
+    const clickable = (yourPlace && empty) || (yourMove && (targets.has(i) || (st != null && D.controllerOf(st) === me && movableFrom.has(i))))
     if (clickable) cls += ' click'
 
     return (
@@ -131,6 +134,11 @@ export function Dvonn() {
       </div>
     )
   }
+
+  // my disc colour for the legend / score pawns (seat 0 = white, seat 1 = black)
+  const myColor = D.colorOf(me)
+  const foeColor = D.colorOf(foe)
+  const oppTurnActive = !over && s.turn === foe
 
   return (
     <>
@@ -159,14 +167,18 @@ export function Dvonn() {
 
           <div className="dv-side">
             <div className="panel">
-              <div className={'dv-score-row you-row' + ((yourMove || yourPlace) ? ' on' : '')}>
-                <span className="dv-pawn w" />
+              <OnlineBar net={net} />
+            </div>
+
+            <div className="panel">
+              <div className={'dv-score-row you-row' + (yourTurn ? ' on' : '')}>
+                <span className={'dv-pawn ' + myColor} />
                 <span className="dv-who">You</span>
                 <span className="dv-pts">{youPts}</span>
               </div>
-              <div className={'dv-score-row foe-row' + ((s.turn === 1 && s.winner == null && s.phase !== 'done') ? ' on' : '')}>
-                <span className="dv-pawn b" />
-                <span className="dv-who">Rival</span>
+              <div className={'dv-score-row foe-row' + (oppTurnActive ? ' on' : '')}>
+                <span className={'dv-pawn ' + foeColor} />
+                <span className="dv-who">{oppLabel}</span>
                 <span className="dv-pts">{foePts}</span>
               </div>
             </div>
@@ -182,13 +194,13 @@ export function Dvonn() {
                   ? 'Click an empty cell to drop a disc. The 3 red DVONN pieces go down first.'
                   : s.phase === 'move'
                   ? 'Click a stack you control, then a highlighted cell exactly its height away. Stacks cut off from a red piece are removed.'
-                  : (s.winner === 0 ? 'You controlled the most pieces.' : s.winner === 1 ? 'The rival controlled more pieces.' : 'Even split.')}
+                  : (iWon ? 'You controlled the most pieces.' : oppWon ? `${oppLabel} controlled more pieces.` : 'Even split.')}
               </div>
             </div>
 
             <div className="panel dv-legend">
-              <div className="dv-leg-row"><span className="dv-leg-dot w" /> Your discs (white)</div>
-              <div className="dv-leg-row"><span className="dv-leg-dot b" /> Rival discs (black)</div>
+              <div className="dv-leg-row"><span className={'dv-leg-dot ' + myColor} /> Your discs ({myColor === 'w' ? 'white' : 'black'})</div>
+              <div className="dv-leg-row"><span className={'dv-leg-dot ' + foeColor} /> {oppLabel} discs ({foeColor === 'w' ? 'white' : 'black'})</div>
               <div className="dv-leg-row"><span className="dv-leg-dot r" /> DVONN anchor (red) — keeps stacks alive</div>
             </div>
 
@@ -199,19 +211,17 @@ export function Dvonn() {
         </div>
       </GameShell>
 
-      {(s.phase === 'done') && <ResultModal winner={s.winner} you={youPts} foe={foePts} onNew={newGame} />}
+      {over && <ResultModal won={iWon} tie={tie} you={youPts} foe={foePts} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ winner, you, foe, onNew }: { winner: D.Player | null; you: number; foe: number; onNew: () => void }) {
-  const won = winner === 0
-  const tie = winner == null
+function ResultModal({ won, tie, you, foe, oppLabel, onNew }: { won: boolean; tie: boolean; you: number; foe: number; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={tie ? 'Dead heat' : won ? 'Anchored & ahead' : 'Swept aside'}
-      title={tie ? 'Tie Game' : won ? 'You Win' : 'Rival Wins'}
+      title={tie ? 'Tie Game' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
@@ -229,7 +239,7 @@ function RulesModal({ onClose }: { onClose: () => void }) {
     <Modal eyebrow="How to play" title="DVONN" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Got it</button>}>
       <div className="modal-body">
-        <p>A 49-cell hex rhombus. <b>Phase 1 — placement:</b> the <b>3 red DVONN anchors</b> are dropped first, then you (white) and the rival (black) alternate placing your <b>23 discs</b> each until the board is full.</p>
+        <p>A 49-cell hex rhombus. <b>Phase 1 — placement:</b> the <b>3 red DVONN anchors</b> are dropped first, then you and the rival alternate placing your <b>23 discs</b> each until the board is full.</p>
         <p><b>Phase 2 — movement:</b> every cell holds a <b>stack</b>; its <b>top disc's colour</b> controls it. Move a stack you control in one of the six straight hex directions a number of cells <b>exactly equal to its height</b>, landing <b>on top of another stack</b> (never onto an empty cell). A stack with no occupied neighbour at all cannot move.</p>
         <p>After every move, any stack <b>no longer connected</b> (through chains of occupied cells) to a <b>red DVONN piece</b> is <b>removed</b> from the board.</p>
         <p>If you can't move you pass; when neither side can move the game ends. <b>Score = pieces in stacks you control.</b> Most pieces wins. A red dot on a disc means a DVONN anchor is buried in that stack.</p>
