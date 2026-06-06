@@ -1,0 +1,176 @@
+/* ==========================================================
+   BLOKUS DUO — "Corner to corner."
+   Theme: cool ink-blue gallery — slate board with a subtle grid, teal "you" tiles,
+   coral "foe" tiles, amber accents. Display: Baloo 2 · Body: Inter · Mono: JetBrains.
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #11161f;
+  --bg-2:    #0b0f16;
+  --panel:   #1a212e;
+  --panel-2: #141a25;
+  --ink:     #eef3fb;
+  --ink-2:   #aab6c9;
+  --ink-3:   #6b7689;
+  --line:    #28303f;
+  --line-2:  #3a4557;
+
+  /* token contract -> amber primary on dark ink */
+  --accent:    #f2b13c;  --accent-d:#c4861a;  --accent-hi:#ffce72;  --accent-ink:#2a1c00;
+  --trim:      #7fd1c4;  --trim-hi:#a8e6db;
+  --you:       #46cfb4;  --foe:#ff8266;
+  --good:      #5fd6a0;  --warn:#ff7d7d;
+
+  /* game-specific */
+  --board:     #1d2533;  --board-2:#161d28;
+  --grid-line: #283143;
+  --you-tile:  #3fd0b3;  --you-tile-d:#1f8f7a;  --you-tile-hi:#9af2e2;
+  --foe-tile:  #ff855f;  --foe-tile-d:#c54d2c;  --foe-tile-hi:#ffb59c;
+  --start-you: rgba(63,208,179,0.16);
+  --start-foe: rgba(255,133,95,0.16);
+  --hint:      rgba(242,177,60,0.55);
+  --hint-fill: rgba(242,177,60,0.18);
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 18% -6%, rgba(63,208,179,0.08) 0%, transparent 48%),
+    radial-gradient(ellipse at 86% 110%, rgba(255,133,95,0.07) 0%, transparent 46%),
+    radial-gradient(ellipse at 50% 50%, rgba(242,177,60,0.03) 0%, transparent 60%);
+}
+
+.stage { grid-template-columns: auto 250px; gap: clamp(16px, 2.4vw, 34px); }
+
+/* ---- Board ---- */
+.bd-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.bd-board {
+  --cell: clamp(20px, min(3.1vw, 4.4vh), 38px);
+  display: grid;
+  grid-template-columns: repeat(14, var(--cell));
+  grid-template-rows: repeat(14, var(--cell));
+  gap: 0;
+  padding: clamp(8px, 1vw, 14px);
+  background: linear-gradient(160deg, var(--board), var(--board-2));
+  border: 2px solid var(--line-2); border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.bd-cell {
+  width: var(--cell); height: var(--cell);
+  border: 1px solid var(--grid-line);
+  position: relative;
+  box-sizing: border-box;
+}
+/* faint start-cell glows */
+.bd-cell.start0 { background: var(--start-you); }
+.bd-cell.start1 { background: var(--start-foe); }
+.bd-cell.start0::after, .bd-cell.start1::after {
+  content: ""; position: absolute; inset: 30%; border-radius: 50%;
+  border: 1.5px solid currentColor; opacity: 0.5;
+}
+.bd-cell.start0::after { color: var(--you-tile); }
+.bd-cell.start1::after { color: var(--foe-tile); }
+
+/* placed tiles */
+.bd-tile {
+  position: absolute; inset: 1px; border-radius: 4px;
+}
+.bd-tile.p0 {
+  background: linear-gradient(150deg, var(--you-tile-hi), var(--you-tile));
+  border: 1px solid var(--you-tile-d);
+  box-shadow: inset 0 -2px 3px rgba(0,0,0,0.25), inset 0 1px 1px rgba(255,255,255,0.35);
+}
+.bd-tile.p1 {
+  background: linear-gradient(150deg, var(--foe-tile-hi), var(--foe-tile));
+  border: 1px solid var(--foe-tile-d);
+  box-shadow: inset 0 -2px 3px rgba(0,0,0,0.25), inset 0 1px 1px rgba(255,255,255,0.3);
+}
+
+/* legal anchor highlights / hover preview */
+.bd-cell.legal::before {
+  content: ""; position: absolute; inset: 30%; border-radius: 50%;
+  background: var(--hint); box-shadow: 0 0 6px var(--hint);
+}
+.bd-cell.preview-ok { background: var(--hint-fill); }
+.bd-cell.preview-ok::before {
+  content: ""; position: absolute; inset: 2px; border-radius: 4px;
+  border: 1.5px dashed var(--accent-hi); background: rgba(242,177,60,0.22);
+}
+.bd-cell.preview-bad::before {
+  content: ""; position: absolute; inset: 2px; border-radius: 4px;
+  border: 1.5px dashed var(--warn); background: rgba(255,125,125,0.18);
+}
+.bd-cell.clickable { cursor: pointer; }
+
+/* ---- Side panel ---- */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: stretch; min-height: 0; }
+
+.bd-score { display: flex; flex-direction: column; gap: 8px; }
+.bd-row { display: flex; align-items: center; gap: 9px; padding: 8px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.bd-row.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.bd-chip { width: 16px; height: 16px; border-radius: 4px; flex: 0 0 auto; }
+.bd-chip.p0 { background: linear-gradient(150deg, var(--you-tile-hi), var(--you-tile)); border: 1px solid var(--you-tile-d); }
+.bd-chip.p1 { background: linear-gradient(150deg, var(--foe-tile-hi), var(--foe-tile)); border: 1px solid var(--foe-tile-d); }
+.bd-who { font-family: var(--display); font-weight: 600; font-size: 14px; flex: 1; }
+.bd-cells { font-family: var(--display); font-weight: 700; font-size: 22px; line-height: 1; }
+.bd-cells small { font-family: var(--mono); font-size: 10px; color: var(--ink-3); font-weight: 500; margin-left: 3px; }
+
+/* ---- Selected-piece controls ---- */
+.bd-control { display: flex; flex-direction: column; gap: 9px; }
+.bd-ctitle { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); }
+.bd-preview { display: flex; justify-content: center; align-items: center; min-height: 56px; }
+.bd-pgrid { display: grid; gap: 2px; }
+.bd-pcell { width: 13px; height: 13px; border-radius: 3px; }
+.bd-pcell.on { background: linear-gradient(150deg, var(--you-tile-hi), var(--you-tile)); border: 1px solid var(--you-tile-d); }
+.bd-pcell.off { background: transparent; }
+.bd-ctrls { display: flex; gap: 6px; }
+.bd-cbtn {
+  flex: 1; font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; padding: 8px 6px; border-radius: 8px; cursor: pointer;
+  background: var(--panel); color: var(--ink); border: 1.5px solid var(--line-2);
+  transition: all 0.12s;
+}
+.bd-cbtn:hover { border-color: var(--accent); color: var(--accent-hi); }
+.bd-cbtn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent-d); }
+.bd-cbtn.primary:hover { filter: brightness(1.08); color: var(--accent-ink); }
+.bd-cbtn:disabled { opacity: 0.35; cursor: default; }
+
+/* ---- Tray ---- */
+.bd-tray-wrap { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 0; }
+.bd-tray {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+  overflow-y: auto; padding: 2px; align-content: start;
+}
+.bd-piece {
+  display: flex; align-items: center; justify-content: center;
+  padding: 6px; border-radius: 9px; cursor: pointer;
+  background: var(--panel-2); border: 1.5px solid var(--line);
+  transition: all 0.12s; min-height: 42px;
+}
+.bd-piece:hover { border-color: var(--you-tile-d); transform: translateY(-1px); }
+.bd-piece.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--panel); }
+.bd-piece.dim { opacity: 0.32; }
+.bd-mini { display: grid; gap: 1px; }
+.bd-mcell { width: 7px; height: 7px; border-radius: 2px; }
+.bd-mcell.on { background: var(--you-tile); }
+.bd-mcell.off { background: transparent; }
+
+.bd-hint { font-family: var(--sans); font-size: 11px; font-style: italic; color: var(--ink-2); text-align: center; min-height: 15px; }
+
+.logbox { flex: 0 0 auto; min-height: 36px; max-height: 96px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.5; color: var(--ink-2); }
+.log-line.you { color: var(--you); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- Overlays ---- */
+.finalsc { display: flex; justify-content: center; gap: 30px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 22px; }
+.finalsc .you { color: var(--you); } .finalsc .foe { color: var(--foe); }
+.modal-body i { color: var(--trim-hi); font-style: normal; font-weight: 600; }
+.modal-body b { color: var(--accent-hi); font-weight: 700; }
+
+@media (max-height: 740px) { .title-main { font-size: 23px; } .bd-board { --cell: clamp(18px, 2.6vh, 30px); } }

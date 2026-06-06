@@ -107,4 +107,12 @@ export const PLAYABLE: Record<string, string> = {
   air_land_sea: 'games/air_land_sea.html',
   jotto: 'games/jotto.html',
   deep_sea_adventure: 'games/deep_sea_adventure.html',
+  blokus_duo: 'games/blokus_duo.html',
+  cathedral: 'games/cathedral.html',
+  blockade: 'games/blockade.html',
+  tak: 'games/tak.html',
+  shobu: 'games/shobu.html',
+  trax: 'games/trax.html',
+  hive: 'games/hive.html',
+  ludo: 'games/ludo.html',
 }
