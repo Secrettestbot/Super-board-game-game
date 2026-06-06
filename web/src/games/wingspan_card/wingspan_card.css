@@ -1,0 +1,213 @@
+/* ==========================================================
+   WINGSPAN (card engine) — "Build the best aviary."
+   Theme: naturalist field-guide — warm cream paper, deep forest ink, with
+   forest-green / wheat-gold / teal-water habitat bands and brass food tokens.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   ========================================================== */
+
+:root {
+  --bg:      #25342b;
+  --bg-2:    #1c2922;
+  --panel:   #324438;
+  --panel-2: #29382f;
+  --ink:     #f4efe1;
+  --ink-2:   #cdd6c6;
+  --ink-3:   #8ea08c;
+  --line:    #3e5345;
+  --line-2:  #557057;
+
+  /* token contract -> field-guide palette (wheat-gold primary, dark ink on it) */
+  --accent:    #e7b24a;  --accent-d:#b9842a;  --accent-hi:#f6d489;  --accent-ink:#33240a;
+  --trim:      #6fb6a6;  --trim-hi:#a9ddd1;
+  --you:       #8fe0b0;  --foe:#f0a472;
+  --good:      #84dca0;  --warn:#f08a72;
+
+  /* habitat colors */
+  --forest:    #5fae6b;  --forest-d:#3a7a46;  --forest-hi:#aee3b6;
+  --grass:     #d7b552;  --grass-d:#a8842f;   --grass-hi:#f1dd96;
+  --water:     #58b0c9;  --water-d:#347c95;   --water-hi:#a6dcea;
+
+  --food:      #e7b24a;  --food-d:#b9842a;
+  --egg:       #f6f1e4;  --egg-d:#cdbf9e;
+  --card-bg:   #34473a;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -12%, rgba(231,178,74,0.10) 0%, transparent 50%),
+    radial-gradient(ellipse at 8% 110%, rgba(95,174,107,0.08) 0%, transparent 46%),
+    radial-gradient(ellipse at 92% 114%, rgba(88,176,201,0.08) 0%, transparent 46%);
+}
+
+.stage { grid-template-columns: minmax(0, 1fr) 286px; gap: clamp(14px, 2vw, 28px); align-items: start; }
+
+/* ---------- main column ---------- */
+.ws-main { display: flex; flex-direction: column; gap: 13px; min-width: 0; }
+
+/* habitat board */
+.ws-board { display: flex; flex-direction: column; gap: 10px; }
+.ws-habitat {
+  background: linear-gradient(165deg, var(--panel), var(--panel-2));
+  border: 1.5px solid var(--h-line, var(--line-2));
+  border-left: 5px solid var(--h, var(--line-2));
+  border-radius: 13px; padding: 10px 12px;
+  box-shadow: 0 8px 22px rgba(0,0,0,0.3);
+}
+.ws-habitat.forest    { --h:var(--forest); --h-line:var(--forest-d); --h-hi:var(--forest-hi); }
+.ws-habitat.grassland { --h:var(--grass);  --h-line:var(--grass-d);  --h-hi:var(--grass-hi); }
+.ws-habitat.wetland   { --h:var(--water);  --h-line:var(--water-d);  --h-hi:var(--water-hi); }
+
+.ws-h-head { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+.ws-h-name { font-family: var(--display); font-weight: 700; font-size: 14px; color: var(--h-hi); }
+.ws-h-act {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ws-h-btn {
+  margin-left: auto;
+  font-family: var(--display); font-weight: 600; font-size: 12.5px;
+  padding: 6px 13px; border-radius: 9px; cursor: pointer;
+  background: var(--h); color: #10201a; border: 1px solid var(--h-line);
+  box-shadow: 0 3px 0 var(--h-line); transition: transform .08s, filter .12s;
+}
+.ws-h-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.ws-h-btn:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 0 0 var(--h-line); }
+.ws-h-btn:disabled { opacity: .35; cursor: not-allowed; box-shadow: none; }
+.ws-h-gain { font-family: var(--mono); font-size: 10px; color: var(--h-hi); margin-left: 8px; }
+
+/* bird row */
+.ws-row { display: flex; gap: 7px; }
+.ws-slot {
+  flex: 1; min-height: 74px; border-radius: 10px;
+  border: 1.5px dashed var(--line); background: rgba(0,0,0,0.14);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  position: relative;
+}
+.ws-slot.filled { border-style: solid; border-color: var(--h-line); background: var(--card-bg); }
+.ws-slot-idx {
+  position: absolute; top: 4px; left: 6px;
+  font-family: var(--mono); font-size: 8px; color: var(--ink-3);
+}
+.ws-bird-glyph { font-size: 24px; line-height: 1; }
+.ws-bird-name { font-family: var(--display); font-weight: 600; font-size: 9.5px; color: var(--ink); text-align: center; line-height: 1.05; margin-top: 2px; padding: 0 3px; }
+.ws-bird-stats { display: flex; gap: 5px; margin-top: 3px; align-items: center; }
+.ws-bird-pts { font-family: var(--mono); font-size: 9px; font-weight: 600; color: var(--accent-hi); }
+.ws-bird-pts::after { content: "pt"; font-size: 7px; opacity: .7; margin-left: 1px; }
+.ws-bird-eggs { font-family: var(--mono); font-size: 9px; color: var(--egg); }
+.ws-bird-eggs::before { content: "🥚"; font-size: 8px; margin-right: 1px; }
+.ws-bird-pw { font-size: 9px; opacity: .85; }
+.ws-slot-empty { font-family: var(--mono); font-size: 8px; color: var(--ink-3); letter-spacing: .1em; text-transform: uppercase; opacity: .6; }
+
+/* ---------- resource bar ---------- */
+.ws-resbar {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  background: linear-gradient(165deg, var(--panel), var(--panel-2));
+  border: 1.5px solid var(--line-2); border-radius: 12px; padding: 10px 16px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.28);
+}
+.ws-stat { display: flex; align-items: baseline; gap: 5px; }
+.ws-stat-v { font-family: var(--display); font-weight: 700; font-size: 19px; color: var(--accent-hi); }
+.ws-stat-l { font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.ws-cubes { display: flex; gap: 3px; margin-left: auto; }
+.ws-cube { width: 11px; height: 11px; border-radius: 3px; background: var(--you); box-shadow: 0 1px 2px rgba(0,0,0,.4); }
+.ws-cube.spent { background: var(--line); box-shadow: none; }
+
+/* ---------- hand ---------- */
+.ws-hand-l { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: .16em; color: var(--ink-3); margin-bottom: 7px; }
+.ws-hand { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
+.ws-card {
+  position: relative; text-align: left;
+  border-radius: 11px; padding: 7px 9px 8px;
+  background: var(--card-bg);
+  border: 1.5px solid var(--c-line, var(--line));
+  border-top: 4px solid var(--c, var(--line-2));
+  cursor: pointer; transition: transform .08s, box-shadow .12s, filter .12s;
+  box-shadow: 0 4px 11px rgba(0,0,0,0.26);
+  font-family: var(--sans); color: var(--ink);
+}
+.ws-card.forest    { --c:var(--forest); --c-line:var(--forest-d); --c-hi:var(--forest-hi); }
+.ws-card.grassland { --c:var(--grass);  --c-line:var(--grass-d);  --c-hi:var(--grass-hi); }
+.ws-card.wetland   { --c:var(--water);  --c-line:var(--water-d);  --c-hi:var(--water-hi); }
+.ws-card.playable:hover { transform: translateY(-3px); box-shadow: 0 9px 20px rgba(0,0,0,0.4); filter: brightness(1.05); }
+.ws-card.locked { opacity: .5; cursor: not-allowed; }
+.ws-card-top { display: flex; align-items: center; gap: 6px; }
+.ws-card-glyph { font-size: 18px; line-height: 1; }
+.ws-card-name { font-family: var(--display); font-weight: 600; font-size: 12px; line-height: 1.1; flex: 1; }
+.ws-card-hab {
+  font-family: var(--mono); font-weight: 600; font-size: 8px; text-transform: uppercase; letter-spacing: .05em;
+  background: var(--c); color: #0e1c16; border-radius: 5px; padding: 1px 5px;
+}
+.ws-card-stats { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-family: var(--mono); font-size: 10px; }
+.ws-card-cost { color: var(--food); font-weight: 600; }
+.ws-card-cost::before { content: "🌰"; margin-right: 2px; }
+.ws-card-pts { color: var(--accent-hi); font-weight: 600; }
+.ws-card-pts::after { content: " pt"; font-size: 8px; opacity: .7; }
+.ws-card-cap { color: var(--egg); }
+.ws-card-cap::before { content: "🥚"; font-size: 8px; margin-right: 1px; }
+.ws-card-pw { font-size: 9px; color: var(--ink-2); margin-top: 4px; font-style: italic; min-height: 13px; }
+.ws-hand-empty { font-size: 11px; color: var(--ink-3); font-style: italic; }
+
+/* ---------- tray ---------- */
+.ws-tray { display: flex; gap: 8px; flex-wrap: wrap; }
+.ws-tray-card {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--card-bg); border: 1.5px solid var(--ct, var(--line));
+  border-radius: 9px; padding: 5px 9px; font-family: var(--sans);
+}
+.ws-tray-card.forest    { --ct:var(--forest-d); }
+.ws-tray-card.grassland { --ct:var(--grass-d); }
+.ws-tray-card.wetland   { --ct:var(--water-d); }
+.ws-tray-glyph { font-size: 16px; }
+.ws-tray-name { font-family: var(--display); font-weight: 600; font-size: 11px; color: var(--ink); }
+.ws-tray-pts { font-family: var(--mono); font-size: 9px; color: var(--accent-hi); }
+
+/* ---------- right side ---------- */
+.side { display: flex; flex-direction: column; gap: 12px; }
+.ws-foe {
+  background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 12px; padding: 11px 12px;
+}
+.ws-foe.active { border-color: var(--foe); box-shadow: 0 0 0 1px var(--foe), 0 8px 22px rgba(240,164,114,0.12); }
+.ws-foe-head { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+.ws-foe-name { font-family: var(--display); font-weight: 700; font-size: 13px; color: var(--foe); flex: 1; }
+.ws-foe-score { font-family: var(--mono); font-weight: 600; font-size: 13px; color: var(--accent-hi); }
+.ws-foe-res { display: flex; gap: 12px; font-family: var(--mono); font-size: 10px; color: var(--ink-2); margin-bottom: 8px; }
+.ws-foe-res b { color: var(--ink); }
+.ws-foe-rows { display: flex; flex-direction: column; gap: 5px; }
+.ws-foe-rowline { display: flex; align-items: center; gap: 5px; }
+.ws-foe-rowtag { font-family: var(--mono); font-size: 8px; text-transform: uppercase; color: var(--ink-3); width: 16px; }
+.ws-foe-chip {
+  display: inline-flex; align-items: center; gap: 2px;
+  font-size: 13px; padding: 1px 4px; border-radius: 6px;
+  background: var(--card-bg); border: 1px solid var(--fc, var(--line));
+}
+.ws-foe-chip.forest    { --fc:var(--forest-d); }
+.ws-foe-chip.grassland { --fc:var(--grass-d); }
+.ws-foe-chip.wetland   { --fc:var(--water-d); }
+.ws-foe-chip small { font-family: var(--mono); font-size: 8px; color: var(--egg); }
+.ws-foe-empty { font-family: var(--mono); font-size: 9px; color: var(--ink-3); font-style: italic; }
+
+.ws-scorebox { display: flex; gap: 10px; }
+.ws-sc {
+  flex: 1; text-align: center; border-radius: 10px; padding: 8px;
+  background: var(--panel-2); border: 1.5px solid var(--line);
+}
+.ws-sc.you { border-color: var(--you); }
+.ws-sc.foe { border-color: var(--foe); }
+.ws-sc-v { font-family: var(--display); font-weight: 700; font-size: 22px; }
+.ws-sc.you .ws-sc-v { color: var(--you); }
+.ws-sc.foe .ws-sc-v { color: var(--foe); }
+.ws-sc-l { font-family: var(--mono); font-size: 8px; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-3); }
+
+.logbox { display: flex; flex-direction: column; gap: 3px; max-height: 150px; overflow-y: auto; }
+.log-line.you { color: var(--you); }
+.log-line.ai  { color: var(--foe); }
+.log-line.sys { color: var(--ink-3); font-style: italic; }
+
+.finalsc { display: flex; gap: 18px; justify-content: center; margin-top: 4px; }
+.finalsc .you { color: var(--you); font-family: var(--display); font-weight: 700; }
+.finalsc .foe { color: var(--foe); font-family: var(--display); font-weight: 700; }

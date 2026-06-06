@@ -5,9 +5,11 @@ a "Game Library" selection screen plus self-contained, playable game pages with 
 opponent. This is the real, compiled app (no CDN React / in-browser Babel) — the
 prototypes in `../design/` remain the visual reference.
 
-The library shell + the framework + **one hundred and twenty-five fully-playable games** are done
-(6 ported from the design prototypes + 119 built from scratch on the framework). The latest batch
-added Calico, Alhambra, PARKS, Senet, Rummikub, Parcheesi, Boggle, and Mille Bornes. Before that:
+The library shell + the framework + **one hundred and thirty-three fully-playable games** are done
+(6 ported from the design prototypes + 127 built from scratch on the framework). The latest batch
+added ZÈRTZ, Hanabi, The Mind, Mahjong Solitaire, Perudo, BANG! The Dice Game, Wingspan, and
+Stone Age. Before that:
+Calico, Alhambra, PARKS, Senet, Rummikub, Parcheesi, Boggle, and Mille Bornes;
 Railroad Ink, Catan Dice, Seven Wonders Duel, Quacks of Quedlinburg, Photosynthesis,
 Canadian Checkers, DVONN, and Havannah;
 Blokus Duo, Cathedral, Blockade, Tak, Shobu, Trax, Hive, and Ludo; Sequence,

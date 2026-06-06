@@ -131,4 +131,12 @@ export const PLAYABLE: Record<string, string> = {
   parcheesi: 'games/parcheesi.html',
   boggle: 'games/boggle.html',
   mille_bornes: 'games/mille_bornes.html',
+  zertz: 'games/zertz.html',
+  hanabi: 'games/hanabi.html',
+  the_mind: 'games/the_mind.html',
+  mahjong_solitaire: 'games/mahjong_solitaire.html',
+  perudo: 'games/perudo.html',
+  bang_dice: 'games/bang_dice.html',
+  wingspan_card: 'games/wingspan_card.html',
+  stone_age: 'games/stone_age.html',
 }
