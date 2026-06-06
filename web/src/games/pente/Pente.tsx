@@ -1,14 +1,17 @@
 /* PENTE — UI (built for this codebase). 13x13 wood goban on the framework shell, vs a
-   threat/capture heuristic AI. Two paths to victory: five in a row, or five captured pairs.
-   Captured pairs are removed; the last move and the winning five are highlighted. */
+   threat/capture heuristic AI or a remote opponent. Two paths to victory: five in a row,
+   or five captured pairs. Captured pairs are removed; the last move and the winning five
+   are highlighted. Seat-relative: seat 0 = Black, seat 1 = White. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { penteAdapter } from './net'
 import * as PT from './logic'
-import type { PenteState } from './logic'
+import type { Stone } from './logic'
 
 const { N } = PT
 // star points (handicap dots) for the 13x13 goban
@@ -24,25 +27,35 @@ const TITLE_MARK = (
 )
 
 export function Pente() {
-  const [s, setS] = useState<PenteState>(() => PT.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(penteAdapter)
+  const myStone: Stone = mySeat === 1 ? 'w' : 'b' // seat 0 = Black, seat 1 = White
+  const oppStone: Stone = myStone === 'b' ? 'w' : 'b'
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(PT.makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  useAITurn(!s.winner && s.turn === 'w', () => setS(p => PT.aiMove(p)), { delayMs: 460 })
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
 
-  const yourTurn = !s.winner && s.turn === 'b'
+  const yourTurn = !s.winner && isMyTurn
   const winSet = useMemo(() => new Set(s.win ?? []), [s.win])
 
-  function clickPt(i: number) { if (yourTurn && !s.board[i]) setS(PT.place(s, i, 'b')) }
+  function clickPt(i: number) { if (yourTurn && !s.board[i]) dispatch({ cell: i }) }
+
+  const myColorName = myStone === 'b' ? 'Black' : 'White'
+  const oppColorName = oppStone === 'b' ? 'Black' : 'White'
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+  const myWon = s.winner === myStone
+  const oppWon = s.winner === oppStone
 
   let banner: string, bk = ''
-  if (s.winner === 'b') { bk = 'win'; banner = 'You win' }
-  else if (s.winner === 'w') { bk = 'lose'; banner = 'The rival wins' }
+  if (myWon) { bk = 'win'; banner = 'You win' }
+  else if (oppWon) { bk = 'lose'; banner = `The ${oppLabel.toLowerCase()} wins` }
   else if (s.winner === 'draw') { bk = ''; banner = 'The board is full — a tie' }
-  else if (yourTurn) { bk = 'you'; banner = 'Your turn — place a black stone' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  else if (yourTurn) { bk = 'you'; banner = `Your turn — place a ${myColorName.toLowerCase()} stone` }
+  else { bk = 'foe'; banner = net.online ? `Waiting for the ${oppLabel.toLowerCase()}…` : 'The rival is thinking…' }
+
+  const myPairs = s.pairs[myStone]
+  const oppPairs = s.pairs[oppStone]
 
   return (
     <>
@@ -77,14 +90,15 @@ export function Pente() {
         </div>
 
         <div className="side">
+          <div className="panel"><OnlineBar net={net} /></div>
           <div className="panel scoreboard">
-            <div className={"sc b" + (s.turn === 'b' && !s.winner ? " on" : "")}>
-              <span className="sc-stone b"></span><span className="sc-name">You · Black</span>
-              <span className="sc-n">{s.pairs.b}<span className="sc-cap">/5</span></span>
+            <div className={"sc " + myStone + (s.turn === myStone && !s.winner ? " on" : "")}>
+              <span className={"sc-stone " + myStone}></span><span className="sc-name">You · {myColorName}</span>
+              <span className="sc-n">{myPairs}<span className="sc-cap">/5</span></span>
             </div>
-            <div className={"sc w" + (s.turn === 'w' && !s.winner ? " on" : "")}>
-              <span className="sc-stone w"></span><span className="sc-name">Rival · White</span>
-              <span className="sc-n">{s.pairs.w}<span className="sc-cap">/5</span></span>
+            <div className={"sc " + oppStone + (s.turn === oppStone && !s.winner ? " on" : "")}>
+              <span className={"sc-stone " + oppStone}></span><span className="sc-name">{oppLabel} · {oppColorName}</span>
+              <span className="sc-n">{oppPairs}<span className="sc-cap">/5</span></span>
             </div>
             <div className="sc-legend">pairs captured · five wins</div>
           </div>
@@ -92,22 +106,21 @@ export function Pente() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {s.winner && <ResultModal won={myWon} draw={s.winner === 'draw'} myPairs={myPairs} oppPairs={oppPairs} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: PenteState; onNew: () => void }) {
-  const won = s.winner === 'b', draw = s.winner === 'draw'
+function ResultModal({ won, draw, myPairs, oppPairs, oppLabel, onNew }: { won: boolean; draw: boolean; myPairs: number; oppPairs: number; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={draw ? 'Stalemate' : won ? 'Line or capture' : 'Out-played'}
-      title={draw ? 'A Tie' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'A Tie' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {s.pairs.b} pairs</span><span className="foe">Rival {s.pairs.w} pairs</span></div>
+      <div className="finalsc"><span className="you">You {myPairs} pairs</span><span className="foe">{oppLabel} {oppPairs} pairs</span></div>
     </Modal>
   )
 }
@@ -117,7 +130,7 @@ function RulesModal({ onClose }: { onClose: () => void }) {
     <Modal eyebrow="How to play" title="Pente" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Begin</button>}>
       <div className="modal-body">
-        <p>You are <b>Black</b> and move first. Click an empty intersection to place a stone. Win in one of two ways: get <b>five in a row</b> (horizontal, vertical, or diagonal), <i>or</i> <b>capture five pairs</b> of the rival's stones.</p>
+        <p><b>Black</b> moves first. Click an empty intersection to place a stone. Win in one of two ways: get <b>five in a row</b> (horizontal, vertical, or diagonal), <i>or</i> <b>capture five pairs</b> of the rival's stones.</p>
         <p><b>Custodial capture:</b> when you place a stone so that exactly <b>two</b> rival stones are flanked between your new stone and another of yours — the pattern <i>YOU · OPP · OPP · YOU</i> along any line — those two stones are <b>captured</b> and removed. Only exact pairs are taken (never a single stone or three).</p>
         <p>You may safely move <i>into</i> a bracket: capture only triggers from the side that <i>completes</i> the bracket by placing.</p>
         <p><b>Keys:</b> <kbd>N</kbd> new game · <kbd>?</kbd> rules · <kbd>Esc</kbd> close.</p>

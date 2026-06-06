@@ -1,14 +1,18 @@
-/* DARA — UI (built for this codebase). A 5×6 sahel board on the framework shell, vs a
-   depth-limited alpha-beta AI. Drop your 12 stones (no early threes), then slide one step
-   orthogonally to form an exactly-three "dara" and capture. Reduce the rival below 3 to win. */
+/* DARA — UI (built for this codebase). A 5×6 sahel board on the framework shell. Drop your
+   12 stones (no early threes), then slide one step orthogonally to form an exactly-three
+   "dara" and capture. Reduce the rival below 3 to win. Online-capable via useGameSession
+   (host-authoritative): empty seats are filled by the alpha-beta AI; a remote guest plays
+   the other side. Everything is rendered relative to mySeat (seat 0 = Sand, seat 1 = Slate). */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { daraAdapter } from './net'
 import * as DA from './logic'
-import type { DaraState } from './logic'
+import type { Stone } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -20,28 +24,28 @@ const TITLE_MARK = (
 )
 
 export function Dara() {
-  const [s, setS] = useState<DaraState>(() => DA.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(daraAdapter)
+  const myStone: Stone = mySeat === 1 ? 'a' : 's'   // seat 0 = Sand, seat 1 = Slate
+  const oppStone: Stone = myStone === 's' ? 'a' : 's'
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number | null>(null)   // selected own stone (phase 2)
 
-  function newGame() { setS(DA.makeGame()); setShowRules(false); setSel(null) }
+  function newGame() { netNew(); setShowRules(false); setSel(null) }
 
-  const aiActive = !s.winner && s.turn === 'a'
-  useAITurn(aiActive, () => setS(p => DA.aiMove(p)), { delayMs: 460, tick: s.pendingCapture })
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => { if (showRules) setShowRules(false); else setSel(null) },
   })
 
-  const yourTurn = !s.winner && s.turn === 's'
-  const youCapturing = yourTurn && s.pendingCapture === 'a'
+  const yourTurn = !s.winner && isMyTurn
+  const youCapturing = yourTurn && s.pendingCapture === oppStone
   const cnt = DA.counts(s.board)
 
-  // legal target sets for the current interaction
+  // legal target sets for the current interaction (relative to mySeat)
   const dropOk = useMemo(
-    () => (yourTurn && s.phase === 'drop' && !s.pendingCapture ? new Set(DA.dropCells(s.board, 's')) : new Set<number>()),
-    [yourTurn, s.phase, s.pendingCapture, s.board],
+    () => (yourTurn && s.phase === 'drop' && !s.pendingCapture ? new Set(DA.dropCells(s.board, myStone)) : new Set<number>()),
+    [yourTurn, s.phase, s.pendingCapture, s.board, myStone],
   )
   const moveTargets = useMemo(
     () => (yourTurn && s.phase === 'move' && sel !== null && !s.pendingCapture
@@ -50,31 +54,45 @@ export function Dara() {
     [yourTurn, s.phase, sel, s.pendingCapture, s.board],
   )
   const capTargets = useMemo(
-    () => (youCapturing ? new Set(DA.captureTargets(s.board, 's')) : new Set<number>()),
-    [youCapturing, s.board],
+    () => (youCapturing ? new Set(DA.captureTargets(s.board, myStone)) : new Set<number>()),
+    [youCapturing, s.board, myStone],
   )
 
   function clickCell(i: number) {
     if (!yourTurn) return
-    if (youCapturing) { if (capTargets.has(i)) { setS(DA.capture(s, i, 's')); setSel(null) } return }
-    if (s.phase === 'drop') { if (dropOk.has(i)) setS(DA.drop(s, i, 's')); return }
+    if (youCapturing) { if (capTargets.has(i)) { dispatch({ kind: 'remove', cell: i }); setSel(null) } return }
+    if (s.phase === 'drop') { if (dropOk.has(i)) dispatch({ kind: 'place', cell: i }); return }
     // move phase
-    if (s.board[i] === 's') { setSel(i === sel ? null : i); return }
+    if (s.board[i] === myStone) { setSel(i === sel ? null : i); return }
     if (sel !== null && moveTargets.has(i)) {
-      setS(DA.move(s, sel, i, 's'))
+      dispatch({ kind: 'move', from: sel, to: i })
       setSel(null)
     }
   }
 
+  const myHand = s.hand[myStone]
+  const oppHand = s.hand[oppStone]
+  const myOnBoard = myStone === 's' ? cnt.s : cnt.a
+  const oppOnBoard = oppStone === 's' ? cnt.s : cnt.a
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+  const thinking = net.online ? 'The opponent is thinking…' : 'The rival is thinking…'
+
+  const iWin = s.winner === myStone
+  const oppWin = s.winner === oppStone
+
   let banner: string, bk = ''
-  if (s.winner === 's') { bk = 'win'; banner = 'You win — the rival can no longer make three' }
-  else if (s.winner === 'a') { bk = 'lose'; banner = 'The rival wins' }
+  if (iWin) { bk = 'win'; banner = 'You win — the rival can no longer make three' }
+  else if (oppWin) { bk = 'lose'; banner = `${oppLabel} wins` }
   else if (youCapturing) { bk = 'you'; banner = 'A dara! Capture a rival stone' }
-  else if (yourTurn && s.phase === 'drop') { bk = 'you'; banner = `Your turn — drop a stone (${s.hand.s} in hand)` }
+  else if (yourTurn && s.phase === 'drop') { bk = 'you'; banner = `Your turn — drop a stone (${myHand} in hand)` }
   else if (yourTurn) { bk = 'you'; banner = sel === null ? 'Your turn — pick a stone to slide' : 'Slide to an adjacent empty cell' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  else { bk = 'foe'; banner = thinking }
 
   const modeLeft = s.phase === 'drop' ? 'Drop · 5 × 6' : 'Move · 5 × 6'
+  const myName = myStone === 's' ? 'Sand' : 'Slate'
+  const oppName = oppStone === 's' ? 'Sand' : 'Slate'
+  const myOn = s.turn === myStone && !s.winner
+  const oppOn = s.turn === oppStone && !s.winner
 
   return (
     <>
@@ -110,18 +128,19 @@ export function Dara() {
         </div>
 
         <div className="side">
+          <div className="panel"><OnlineBar net={net} /></div>
           <div className="panel players">
-            <div className={'pl s' + (s.turn === 's' && !s.winner ? ' on' : '')}>
-              <span className="pl-chip s" />
-              <span className="pl-name">You · Sand</span>
-              <span className="pl-stats"><b>{cnt.s}</b><i>on board</i></span>
-              {s.phase === 'drop' && <span className="pl-hand">{s.hand.s} <small>in hand</small></span>}
+            <div className={'pl ' + myStone + (myOn ? ' on' : '')}>
+              <span className={'pl-chip ' + myStone} />
+              <span className="pl-name">You · {myName}</span>
+              <span className="pl-stats"><b>{myOnBoard}</b><i>on board</i></span>
+              {s.phase === 'drop' && <span className="pl-hand">{myHand} <small>in hand</small></span>}
             </div>
-            <div className={'pl a' + (s.turn === 'a' && !s.winner ? ' on' : '')}>
-              <span className="pl-chip a" />
-              <span className="pl-name">Rival · Slate</span>
-              <span className="pl-stats"><b>{cnt.a}</b><i>on board</i></span>
-              {s.phase === 'drop' && <span className="pl-hand">{s.hand.a} <small>in hand</small></span>}
+            <div className={'pl ' + oppStone + (oppOn ? ' on' : '')}>
+              <span className={'pl-chip ' + oppStone} />
+              <span className="pl-name">{oppLabel} · {oppName}</span>
+              <span className="pl-stats"><b>{oppOnBoard}</b><i>on board</i></span>
+              {s.phase === 'drop' && <span className="pl-hand">{oppHand} <small>in hand</small></span>}
             </div>
           </div>
           <div className="panel logbox">
@@ -130,22 +149,21 @@ export function Dara() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} cnt={cnt} onNew={newGame} />}
+      {s.winner && <ResultModal won={iWin} oppLabel={oppLabel} myOnBoard={myOnBoard} oppOnBoard={oppOnBoard} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, cnt, onNew }: { s: DaraState; cnt: { s: number; a: number }; onNew: () => void }) {
-  const won = s.winner === 's'
+function ResultModal({ won, oppLabel, myOnBoard, oppOnBoard, onNew }: { won: boolean; oppLabel: string; myOnBoard: number; oppOnBoard: number; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Three in a row' : 'Outmanoeuvred'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {cnt.s}</span><span className="foe">Rival {cnt.a}</span></div>
+      <div className="finalsc"><span className="you">You {myOnBoard}</span><span className="foe">{oppLabel} {oppOnBoard}</span></div>
     </Modal>
   )
 }

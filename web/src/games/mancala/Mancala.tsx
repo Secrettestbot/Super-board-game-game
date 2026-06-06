@@ -1,15 +1,23 @@
 /* MANCALA — Kalah (6/4) UI on the framework shell. A carved-timber board: two rows of six
    rounded pits plus a big end store each. You sow your bottom row counterclockwise into your
-   right store; landing your last seed in your store earns another turn — so the alpha-beta AI
-   may sow several times in a row. The AI turn re-arms on `${moveCount}-${turn}` (useAITurn tick). */
+   right store; landing your last seed in your store earns another turn — so a single side
+   may sow several times in a row.
+
+   Online-capable via useGameSession(mancalaAdapter): seat 0 = the original human side,
+   seat 1 = the opponent (AI locally, a remote human online). Everything is rendered
+   relative to mySeat — your pits/store sit at the bottom, the opponent at the top. */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { mancalaAdapter } from './net'
 import * as MC from './logic'
-import type { MancalaState } from './logic'
+import type { MancalaState, Side } from './logic'
+
+const SEAT_TO_SIDE: Side[] = ['you', 'ai']
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -36,65 +44,80 @@ function Seeds({ n }: { n: number }) {
 }
 
 export function Mancala() {
-  const [s, setS] = useState<MancalaState>(() => MC.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(mancalaAdapter)
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(MC.makeGame()); setShowRules(false) }
+  // Seat-relative sides: mySide is whichever side this seat controls, oppSide the other.
+  const mySide = SEAT_TO_SIDE[mySeat] // seat 0 -> 'you', seat 1 -> 'ai'
+  const oppSide: Side = mySide === 'you' ? 'ai' : 'you'
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
 
-  // Extra turns: landing in your own store keeps it the same player's turn, so the AI may
-  // sow several times. Re-arm the timer on each sub-move via the moveCount/turn tick.
-  useAITurn(!s.winner && s.turn === 'ai', () => setS(p => MC.aiMove(p)), { delayMs: 620, tick: `${s.moveCount}-${s.turn}` })
+  function newGame() { netNew(); setShowRules(false) }
+
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = 0 }, [s.log])
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
 
-  const yourTurn = !s.winner && s.turn === 'you'
+  const yourTurn = !s.winner && isMyTurn
   const legal = useMemo(
-    () => (yourTurn ? new Set(MC.legalMoves(s.pits, 'you')) : new Set<number>()),
-    [yourTurn, s.pits],
+    () => (yourTurn ? new Set(MC.legalMoves(s.pits, mySide)) : new Set<number>()),
+    [yourTurn, s.pits, mySide],
   )
-  const { you, ai } = MC.storeCounts(s.pits)
+  const counts = MC.storeCounts(s.pits)
+  const myScore = mySide === 'you' ? counts.you : counts.ai
+  const oppScore = mySide === 'you' ? counts.ai : counts.you
 
-  function clickPit(i: number) { if (yourTurn && legal.has(i)) setS(MC.move(s, i, 'you')) }
+  function clickPit(i: number) { if (yourTurn && legal.has(i)) dispatch({ pit: i }) }
+
+  // Did MY seat win? (s.winner is a Side or 'draw')
+  const iWon = s.winner === mySide
+  const oppWon = s.winner === oppSide
 
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = `You win — ${you} to ${ai}` }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = `The rival wins — ${ai} to ${you}` }
-  else if (s.winner === 'draw') { bk = ''; banner = `A tie — ${you}–${ai}` }
+  if (iWon) { bk = 'win'; banner = `You win — ${myScore} to ${oppScore}` }
+  else if (oppWon) { bk = 'lose'; banner = `${oppLabel} wins — ${oppScore} to ${myScore}` }
+  else if (s.winner === 'draw') { bk = ''; banner = `A tie — ${myScore}–${oppScore}` }
   else if (yourTurn) { bk = 'you'; banner = 'Your turn — sow one of your pits' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  else { bk = 'foe'; banner = net.online ? `${oppLabel} is thinking…` : 'The rival is thinking…' }
 
-  // AI pits are drawn right→left over indices 12..7 so the board reads counterclockwise
-  const aiRow = [12, 11, 10, 9, 8, 7]
-  const youRow = [0, 1, 2, 3, 4, 5]
+  // Board is always drawn relative to YOU at the bottom: your six pits read left→right in
+  // your own sowing order, the opponent's pits read right→left across the top so the board
+  // reads counterclockwise from your perspective.
+  const myRow = mySide === 'you' ? [0, 1, 2, 3, 4, 5] : [12, 11, 10, 9, 8, 7]
+  const oppRow = mySide === 'you' ? [12, 11, 10, 9, 8, 7] : [0, 1, 2, 3, 4, 5]
 
-  function Pit({ i, owner }: { i: number; owner: 'you' | 'ai' }) {
-    const playable = owner === 'you' && legal.has(i)
+  function Pit({ i, mine }: { i: number; mine: boolean }) {
+    const side: Side = mine ? mySide : oppSide
+    const playable = mine && legal.has(i)
     return (
       <button
         type="button"
-        className={'pit ' + owner + (playable ? ' playable' : '') + (s.last === i ? ' last' : '') + (s.pits[i] === 0 ? ' empty' : '')}
+        className={'pit ' + (mine ? 'you' : 'ai') + (playable ? ' playable' : '') + (s.last === i ? ' last' : '') + (s.pits[i] === 0 ? ' empty' : '')}
         onClick={() => clickPit(i)}
         disabled={!playable}
-        aria-label={`${owner === 'you' ? 'Your' : 'Rival'} pit ${MC.pitLabel(owner, i)}, ${s.pits[i]} seeds`}
+        aria-label={`${mine ? 'Your' : oppLabel} pit ${MC.pitLabel(side, i)}, ${s.pits[i]} seeds`}
       >
         <Seeds n={s.pits[i]} />
         <span className="pit-count">{s.pits[i]}</span>
-        <span className="pit-num">{MC.pitLabel(owner, i)}</span>
+        <span className="pit-num">{MC.pitLabel(side, i)}</span>
       </button>
     )
   }
 
-  function Store({ side, n }: { side: 'you' | 'ai'; n: number }) {
+  function Store({ mine, n }: { mine: boolean; n: number }) {
+    const side: Side = mine ? mySide : oppSide
     const on = !s.winner && s.turn === side
     return (
-      <div className={'store ' + side + (on ? ' on' : '')}>
+      <div className={'store ' + (mine ? 'you' : 'ai') + (on ? ' on' : '')}>
         <Seeds n={n} />
         <span className="store-count">{n}</span>
-        <span className="store-label">{side === 'you' ? 'You' : 'Rival'}</span>
+        <span className="store-label">{mine ? 'You' : oppLabel}</span>
       </div>
     )
   }
+
+  const myTurnNow = !s.winner && s.turn === mySide
+  const oppTurnNow = !s.winner && s.turn === oppSide
 
   return (
     <>
@@ -112,24 +135,27 @@ export function Mancala() {
       >
         <div className="mc-wrap">
           <div className="mc-board">
-            <Store side="ai" n={ai} />
+            <Store mine={false} n={oppScore} />
             <div className="mc-pits">
-              <div className="mc-row ai">{aiRow.map(i => <Pit key={i} i={i} owner="ai" />)}</div>
-              <div className="mc-row you">{youRow.map(i => <Pit key={i} i={i} owner="you" />)}</div>
+              <div className="mc-row ai">{oppRow.map(i => <Pit key={i} i={i} mine={false} />)}</div>
+              <div className="mc-row you">{myRow.map(i => <Pit key={i} i={i} mine={true} />)}</div>
             </div>
-            <Store side="you" n={you} />
+            <Store mine={true} n={myScore} />
           </div>
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel scoreboard">
-            <div className={'sc ai' + (s.turn === 'ai' && !s.winner ? ' on' : '')}>
-              <span className="sc-dot ai" /><span className="sc-name">Rival</span><span className="sc-n">{ai}</span>
+            <div className={'sc ai' + (oppTurnNow ? ' on' : '')}>
+              <span className="sc-dot ai" /><span className="sc-name">{oppLabel}</span><span className="sc-n">{oppScore}</span>
             </div>
-            <div className={'sc you' + (s.turn === 'you' && !s.winner ? ' on' : '')}>
-              <span className="sc-dot you" /><span className="sc-name">You</span><span className="sc-n">{you}</span>
+            <div className={'sc you' + (myTurnNow ? ' on' : '')}>
+              <span className="sc-dot you" /><span className="sc-name">You</span><span className="sc-n">{myScore}</span>
             </div>
-            <div className="sc-bar"><div className="sc-bar-you" style={{ width: `${(you / Math.max(1, you + ai)) * 100}%` }} /></div>
+            <div className="sc-bar"><div className="sc-bar-you" style={{ width: `${(myScore / Math.max(1, myScore + oppScore)) * 100}%` }} /></div>
           </div>
           <div className="panel logbox" ref={logRef}>
             {s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}
@@ -137,22 +163,21 @@ export function Mancala() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} you={you} ai={ai} onNew={newGame} />}
+      {s.winner && <ResultModal iWon={iWon} draw={s.winner === 'draw'} oppLabel={oppLabel} you={myScore} opp={oppScore} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, you, ai, onNew }: { s: MancalaState; you: number; ai: number; onNew: () => void }) {
-  const won = s.winner === 'you', draw = s.winner === 'draw'
+function ResultModal({ iWon, draw, oppLabel, you, opp, onNew }: { iWon: boolean; draw: boolean; oppLabel: string; you: number; opp: number; onNew: () => void }) {
   return (
     <Modal
-      eyebrow={draw ? 'Dead even' : won ? 'Seeds banked' : 'Out-sown'}
-      title={draw ? 'A Tie' : won ? 'You Win' : 'Rival Wins'}
+      eyebrow={draw ? 'Dead even' : iWon ? 'Seeds banked' : 'Out-sown'}
+      title={draw ? 'A Tie' : iWon ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {you}</span><span className="foe">Rival {ai}</span></div>
+      <div className="finalsc"><span className="you">You {you}</span><span className="foe">{oppLabel} {opp}</span></div>
     </Modal>
   )
 }

@@ -1,15 +1,18 @@
 /* CANADIAN / INTERNATIONAL CHECKERS — UI (built for this codebase). A cool slate-and-teal
    12x12 draughts board on the framework shell, ivory & onyx flying discs, gold king rings.
    Click a piece to see its landings; captures are forced, you must take the longest, and
-   multi-jumps resolve as a single highlighted move vs a minimax alpha-beta AI. */
+   multi-jumps resolve as a single highlighted move. Solo vs a minimax alpha-beta AI, or
+   online host/guest via useGameSession (seat-relative: your discs are always nearest you). */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { canadianCheckersAdapter } from './net'
 import * as CC from './logic'
-import type { State, Move } from './logic'
+import type { Player, Move } from './logic'
 
 const { N } = CC
 
@@ -27,24 +30,21 @@ const TITLE_MARK = (
 )
 
 export function CanadianCheckers() {
-  const [s, setS] = useState<State>(() => CC.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(canadianCheckersAdapter)
+  const me = mySeat as Player           // seat 0 = Ivory (player 0), seat 1 = Onyx (player 1)
+  const opp = (1 - me) as Player
   const [sel, setSel] = useState<number | null>(null)
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(CC.makeGame()); setSel(null); setShowRules(false) }
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
 
-  // AI is player 1; one move per turn — re-arm the timer on each board change.
-  useAITurn(s.winner == null && s.turn === 1, () => setS(p => CC.aiTurn(p)), {
-    delayMs: 460,
-    tick: s.board,
-  })
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => { if (showRules) setShowRules(false); else setSel(null) },
   })
 
-  const yourTurn = s.winner == null && s.turn === 0
+  const yourTurn = s.winner == null && isMyTurn
 
   const legal = useMemo<Move[]>(() => (yourTurn ? CC.legalMoves(s) : []), [yourTurn, s])
   const movableFrom = useMemo(() => new Set(legal.map(m => m.from)), [legal])
@@ -63,28 +63,49 @@ export function CanadianCheckers() {
   function clickCell(i: number) {
     if (!yourTurn) return
     const p = s.board[i]
-    if (CC.ownerOf(p) === 0 && movableFrom.has(i)) {
+    if (CC.ownerOf(p) === me && movableFrom.has(i)) {
       setSel(i === sel ? null : i)
       return
     }
     if (sel != null && targets.has(i)) {
       const m = selMoves.find(mv => mv.to === i)!
-      setS(CC.applyMove(s, m))
+      dispatch({ from: m.from, to: m.to })
       setSel(null)
     }
   }
 
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+  const myWin = s.winner === me
+  const oppWin = s.winner === opp
+
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You win — the board is yours' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'The rival wins this one' }
+  if (myWin) { bk = 'win'; banner = 'You win — the board is yours' }
+  else if (oppWin) { bk = 'lose'; banner = `The ${oppLabel.toLowerCase()} wins this one` }
   else if (yourTurn) {
     bk = 'you'
     banner = !movableFrom.size ? 'Your turn'
       : mustCapture ? 'Capture is forced — take the longest jump'
         : 'Your turn — advance a disc'
-  } else { bk = 'foe'; banner = 'The rival is thinking…' }
+  } else { bk = 'foe'; banner = net.online ? `The ${oppLabel.toLowerCase()} is moving…` : 'The rival is thinking…' }
 
   const lastSet = s.last ? new Set([s.last.from, s.last.to]) : new Set<number>()
+
+  // seat-relative render: when you sit as seat 1 (top), flip the board so your discs are
+  // nearest you. Each visual cell maps back to the real board index via `order`.
+  const flip = me !== 0
+  const order = useMemo(
+    () => (flip ? Array.from({ length: N * N }, (_, i) => N * N - 1 - i) : Array.from({ length: N * N }, (_, i) => i)),
+    [flip],
+  )
+
+  const myCount = me === 0 ? c.p0 : c.p1
+  const oppCount = me === 0 ? c.p1 : c.p0
+  const myKings = me === 0 ? c.k0 : c.k1
+  const oppKings = me === 0 ? c.k1 : c.k0
+  const myDisc = me === 0 ? 'p0' : 'p1'
+  const oppDisc = me === 0 ? 'p1' : 'p0'
+  const myColorName = me === 0 ? 'Ivory' : 'Onyx'
+  const oppColorName = me === 0 ? 'Onyx' : 'Ivory'
 
   return (
     <>
@@ -102,7 +123,8 @@ export function CanadianCheckers() {
       >
         <div className="cc-wrap">
           <div className="cc-board">
-            {s.board.map((p, i) => {
+            {order.map((i) => {
+              const p = s.board[i]
               const dark = (Math.floor(i / N) + (i % N)) % 2 === 1
               const isTarget = targets.has(i)
               const cls =
@@ -112,7 +134,7 @@ export function CanadianCheckers() {
                 (chainSquares.has(i) && i !== sel ? ' chain' : '') +
                 (lastSet.has(i) ? ' last' : '')
               const owner = CC.ownerOf(p)
-              const pickable = yourTurn && ((owner === 0 && movableFrom.has(i)) || isTarget)
+              const pickable = yourTurn && ((owner === me && movableFrom.has(i)) || isTarget)
               return (
                 <div key={i} className={cls + (pickable ? ' pick' : '')} onClick={() => clickCell(i)}>
                   {p != null && (
@@ -128,20 +150,23 @@ export function CanadianCheckers() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel scoreboard">
-            <div className={'sc p0' + (s.turn === 0 && s.winner == null ? ' on' : '')}>
-              <span className="sc-disc p0" />
-              <span className="sc-name">You · Ivory</span>
-              <span className="sc-n">{c.p0}</span>
+            <div className={'sc ' + myDisc + (yourTurn ? ' on' : '')}>
+              <span className={'sc-disc ' + myDisc} />
+              <span className="sc-name">You · {myColorName}</span>
+              <span className="sc-n">{myCount}</span>
             </div>
-            <div className={'sc p1' + (s.turn === 1 && s.winner == null ? ' on' : '')}>
-              <span className="sc-disc p1" />
-              <span className="sc-name">Rival · Onyx</span>
-              <span className="sc-n">{c.p1}</span>
+            <div className={'sc ' + oppDisc + (s.winner == null && !isMyTurn ? ' on' : '')}>
+              <span className={'sc-disc ' + oppDisc} />
+              <span className="sc-name">{oppLabel} · {oppColorName}</span>
+              <span className="sc-n">{oppCount}</span>
             </div>
             <div className="sc-kings">
-              <span>{c.k0} king{c.k0 === 1 ? '' : 's'}</span>
-              <span>{c.k1} king{c.k1 === 1 ? '' : 's'}</span>
+              <span>{myKings} king{myKings === 1 ? '' : 's'}</span>
+              <span>{oppKings} king{oppKings === 1 ? '' : 's'}</span>
             </div>
           </div>
           <div className="panel logbox">
@@ -150,22 +175,23 @@ export function CanadianCheckers() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} c={c} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={myWin} myCount={myCount} oppCount={oppCount} myColorName={myColorName} oppColorName={oppColorName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, c, onNew }: { s: State; c: ReturnType<typeof CC.counts>; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ won, myCount, oppCount, myColorName, oppColorName, onNew }: {
+  won: boolean; myCount: number; oppCount: number; myColorName: string; oppColorName: string; onNew: () => void
+}) {
   return (
     <Modal
       eyebrow={won ? 'Cleared the board' : 'Boxed in'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : 'Opponent Wins'}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">Ivory {c.p0}</span><span className="foe">Onyx {c.p1}</span></div>
+      <div className="finalsc"><span className="you">{myColorName} {myCount}</span><span className="foe">{oppColorName} {oppCount}</span></div>
     </Modal>
   )
 }
@@ -175,10 +201,10 @@ function RulesModal({ onClose }: { onClose: () => void }) {
     <Modal eyebrow="How to play" title="Canadian Checkers" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Begin</button>}>
       <div className="modal-body">
-        <p>International draughts on a <b>12 × 12</b> board — 72 dark squares, <b>30 men</b> a side. You are <b>Ivory</b> at the bottom and move first. Men step <b>one diagonal forward</b> onto an empty dark square.</p>
+        <p>International draughts on a <b>12 × 12</b> board — 72 dark squares, <b>30 men</b> a side. You start with the men nearest you and move first. Men step <b>one diagonal forward</b> onto an empty dark square.</p>
         <p>To <b>capture</b>, jump an adjacent enemy — <b>forward or backward</b> — into the empty square beyond; further jumps <b>chain</b> into one move. <i>Captures are forced, and you must take the move that captures the most pieces.</i></p>
         <p>Reach the far row and <b>end your move there</b> to be crowned a <b>King</b> — kings <b>fly</b>: gliding any distance along an empty diagonal and capturing an enemy at range, landing anywhere beyond.</p>
-        <p>Capture every enemy disc — or leave the rival with no legal move — to win. Click a piece for its landings, then a square to move.</p>
+        <p>Capture every enemy disc — or leave the opponent with no legal move — to win. Click a piece for its landings, then a square to move.</p>
         <p><b>Keys:</b> <kbd>N</kbd> new game · <kbd>?</kbd> rules · <kbd>Esc</kbd> deselect.</p>
       </div>
     </Modal>

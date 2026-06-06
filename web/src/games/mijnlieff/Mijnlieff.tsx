@@ -5,10 +5,12 @@
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { mijnlieffAdapter } from './net'
 import * as M from './logic'
-import type { State, PieceType } from './logic'
+import type { PieceType, Player } from './logic'
 
 const TYPE_LABEL: Record<PieceType, string> = {
   straight: 'Straight',
@@ -47,46 +49,49 @@ const TITLE_MARK = (
 )
 
 export function Mijnlieff() {
-  const [s, setS] = useState<State>(() => M.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(mijnlieffAdapter)
+  const mySide = mySeat as Player // seat 0 = first player, seat 1 = second
+  const oppSide: Player = mySide === 0 ? 1 : 0
+  const oppLabel = net.online ? 'Opponent' : 'AI'
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<PieceType | null>(null)
-  // changes on every AI action so useAITurn re-arms for consecutive passes
-  const [tick, setTick] = useState(0)
 
   function newGame() {
-    setS(M.makeGame())
+    netNew()
     setSel(null)
     setShowRules(false)
   }
 
-  const yourTurn = s.winner == null && s.turn === 0
-  const aiTurn = s.winner == null && s.turn === 1
+  const yourTurn = s.winner == null && isMyTurn
+  const oppTurn = s.winner == null && s.turn === oppSide
 
-  useAITurn(aiTurn, () => { setS(p => M.aiTurn(p)); setTick(t => t + 1) }, { delayMs: 560, tick })
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => { setShowRules(false); setSel(null) } })
 
   const legal = useMemo(() => new Set(yourTurn ? M.legalPlacements(s) : []), [s, yourTurn])
   const winSet = useMemo(() => new Set((s.lines ?? []).flat()), [s.lines])
 
   // auto-pick a usable type if the current selection is empty/unset
-  const myHand = s.hands[0]
+  const myHand = s.hands[mySide]
   const ownedTypes = M.TYPES.filter(t => myHand[t] > 0)
   const effSel: PieceType | null = sel && myHand[sel] > 0 ? sel : (ownedTypes[0] ?? null)
 
   function clickCell(i: number) {
     if (!yourTurn || !legal.has(i) || effSel == null) return
-    setS(prev => M.place(prev, i, effSel))
+    dispatch({ pieceType: effSel, cell: i })
     setSel(null)
   }
 
+  const myWin = s.winner === mySide
+  const myScore = s.scores[mySide]
+  const oppScore = s.scores[oppSide]
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = `You win — ${s.scores[0]} to ${s.scores[1]}` }
-  else if (s.winner === 1) { bk = 'lose'; banner = `AI wins — ${s.scores[1]} to ${s.scores[0]}` }
-  else if (s.winner === 'draw') { bk = ''; banner = `A draw — ${s.scores[0]} apiece` }
+  if (s.winner === mySide) { bk = 'win'; banner = `You win — ${myScore} to ${oppScore}` }
+  else if (s.winner === oppSide) { bk = 'lose'; banner = `${oppLabel} wins — ${oppScore} to ${myScore}` }
+  else if (s.winner === 'draw') { bk = ''; banner = `A draw — ${myScore} apiece` }
   else if (yourTurn) {
     bk = 'you'
     banner = legal.size === 0 ? 'No legal square — you must pass' : (effSel ? `Place a ${TYPE_LABEL[effSel].toLowerCase()} piece` : 'Your turn')
-  } else { bk = 'foe'; banner = 'The AI is thinking…' }
+  } else { bk = 'foe'; banner = net.online ? 'Waiting for opponent…' : 'The AI is thinking…' }
 
   return (
     <>
@@ -127,12 +132,15 @@ export function Mijnlieff() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel scoreboard">
             <div className={'sc' + (yourTurn ? ' on' : '')}>
-              <span className="sc-dot p0" /><span className="sc-name">You</span><span className="sc-n">{s.scores[0]}</span>
+              <span className={'sc-dot p' + mySide} /><span className="sc-name">You</span><span className="sc-n">{myScore}</span>
             </div>
-            <div className={'sc' + (aiTurn ? ' on' : '')}>
-              <span className="sc-dot p1" /><span className="sc-name">AI</span><span className="sc-n">{s.scores[1]}</span>
+            <div className={'sc' + (oppTurn ? ' on' : '')}>
+              <span className={'sc-dot p' + oppSide} /><span className="sc-name">{oppLabel}</span><span className="sc-n">{oppScore}</span>
             </div>
           </div>
 
@@ -165,29 +173,28 @@ export function Mijnlieff() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={myWin} draw={s.winner === 'draw'} myScore={myScore} oppScore={oppScore} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: State; onNew: () => void }) {
-  const won = s.winner === 0, draw = s.winner === 'draw'
+function ResultModal({ won, draw, myScore, oppScore, oppLabel, onNew }: { won: boolean; draw: boolean; myScore: number; oppScore: number; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={draw ? 'Even lines' : won ? 'Well placed' : 'Out-placed'}
-      title={draw ? 'A Draw' : won ? 'You Win' : 'AI Wins'}
+      title={draw ? 'A Draw' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
-        <span className="you">You {s.scores[0]}</span>
+        <span className="you">You {myScore}</span>
         <span className="sep">·</span>
-        <span className="foe">AI {s.scores[1]}</span>
+        <span className="foe">{oppLabel} {oppScore}</span>
       </div>
       <div className="modal-body">
         <p style={{ textAlign: 'center' }}>
-          {draw ? 'Both sides scored the same number of lines.' : won ? 'Your lines of three and four carried the day.' : 'The AI built the stronger set of lines.'}
+          {draw ? 'Both sides scored the same number of lines.' : won ? 'Your lines of three and four carried the day.' : `${oppLabel} built the stronger set of lines.`}
         </p>
       </div>
     </Modal>

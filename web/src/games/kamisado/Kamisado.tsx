@@ -1,13 +1,18 @@
-/* KAMISADO — UI (built for this codebase). An 8-colour board on the framework shell,
-   vs an alpha-beta minimax AI. The colour you land on dictates the rival's next tower. */
+/* KAMISADO — UI (built for this codebase). An 8-colour board on the framework shell.
+   Solo: you play vs an alpha-beta minimax AI. Online: host plays seat 0 ('you'),
+   guest plays seat 1 ('ai'), driven by useGameSession. The colour you land on
+   dictates the rival's next tower. Seat-relative: your towers, turn gating, banners
+   and result are all derived from mySeat; the board flips when you sit at seat 1. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { kamisadoAdapter } from './net'
 import * as KM from './logic'
-import type { KState } from './logic'
+import type { KState, Player } from './logic'
 
 const { N, LAYOUT, COLOR_NAMES } = KM
 
@@ -21,20 +26,23 @@ const TITLE_MARK = (
   </svg>
 )
 
+const SEAT: Player[] = ['you', 'ai']
+
 export function Kamisado() {
-  const [s, setS] = useState<KState>(() => KM.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(kamisadoAdapter)
+  const me: Player = SEAT[mySeat] ?? 'you'
+  const opp: Player = me === 'you' ? 'ai' : 'you'
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number | null>(null)
 
-  function newGame() { setS(KM.makeGame()); setShowRules(false); setSel(null) }
+  function newGame() { netNew(); setShowRules(false); setSel(null) }
 
-  useAITurn(!s.winner && s.turn === 'ai', () => setS(p => KM.aiMove(p)), { delayMs: 520 })
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => { setShowRules(false); setSel(null) } })
 
-  const yourTurn = !s.winner && s.turn === 'you'
+  const yourTurn = !s.winner && isMyTurn
 
   // Which of your towers must move (by required colour, or any when free).
-  const youMoves = useMemo(() => yourTurn ? KM.legalMoves(s, 'you') : [], [yourTurn, s])
+  const youMoves = useMemo(() => yourTurn ? KM.legalMoves(s, me) : [], [yourTurn, s, me])
   const movableFroms = useMemo(() => new Set(youMoves.map(m => m.from)), [youMoves])
 
   // When a tower is selected, its legal destinations.
@@ -55,27 +63,39 @@ export function Kamisado() {
   function clickCell(i: number) {
     if (!yourTurn) return
     const t = s.board[i]
-    if (t && t.owner === 'you' && movableFroms.has(i)) { setSel(i); return }
+    if (t && t.owner === me && movableFroms.has(i)) { setSel(i); return }
     if (effSel != null && (effDests.has(i) || dests.has(i))) {
-      setS(KM.move(s, effSel, i))
+      dispatch({ from: effSel, to: i })
       setSel(null)
     }
   }
 
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+  const myWin = s.winner === me
+  const oppWin = s.winner === opp
+
   const reqColor = s.required
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = 'Kamisado — you reach the far row!' }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = 'The rival reaches the far row' }
+  if (myWin) { bk = 'win'; banner = 'Kamisado — you reach the far row!' }
+  else if (oppWin) { bk = 'lose'; banner = `The ${oppLabel.toLowerCase()} reaches the far row` }
   else if (s.winner === 'draw') { bk = ''; banner = 'A deadlock — drawn' }
   else if (yourTurn) {
     bk = 'you'
     banner = reqColor == null ? 'Your turn — move any tower' : `Your turn — move your ${COLOR_NAMES[reqColor]} tower`
   } else {
     bk = 'foe'
-    banner = reqColor == null ? 'The rival is thinking…' : `Rival must move ${COLOR_NAMES[reqColor]}…`
+    const wait = net.online ? `The ${oppLabel.toLowerCase()} is moving…` : 'The rival is thinking…'
+    banner = reqColor == null ? wait : `${oppLabel} must move ${COLOR_NAMES[reqColor]}…`
   }
 
   const lastFrom = s.last?.from ?? -1, lastTo = s.last?.to ?? -1
+
+  // Flip the board so the local player's home row is nearest them (seat 1 sits at top).
+  const flip = mySeat !== 0
+  const order = useMemo(
+    () => Array.from({ length: N * N }, (_, k) => (flip ? N * N - 1 - k : k)),
+    [flip],
+  )
 
   return (
     <>
@@ -93,7 +113,8 @@ export function Kamisado() {
       >
         <div className="km-wrap">
           <div className="km-board">
-            {s.board.map((t, i) => {
+            {order.map((i) => {
+              const t = s.board[i]
               const col = LAYOUT[i]
               const isMovable = movableFroms.has(i)
               const isSel = i === effSel
@@ -104,7 +125,7 @@ export function Kamisado() {
               return (
                 <div key={i} className={cls} onClick={() => clickCell(i)}>
                   {t && (
-                    <div className={'km-tower ' + t.owner + ' c' + t.color
+                    <div className={'km-tower ' + (t.owner === me ? 'you' : 'ai') + ' c' + t.color
                       + (isMovable ? ' movable' : '') + (isSel ? ' sel' : '')}>
                       <span className="km-pip" />
                     </div>
@@ -117,11 +138,14 @@ export function Kamisado() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel turnbox">
             <div className="panel-l">To move</div>
             <div className={'turn-row' + (yourTurn ? ' on' : '')}>
               <span className="turn-who you">You</span>
-              <span className="turn-who foe">Rival</span>
+              <span className="turn-who foe">{oppLabel}</span>
             </div>
             <div className="req-l panel-l">Required colour</div>
             {reqColor == null
@@ -138,18 +162,17 @@ export function Kamisado() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {s.winner && <ResultModal won={myWin} draw={s.winner === 'draw'} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: KState; onNew: () => void }) {
-  const won = s.winner === 'you', draw = s.winner === 'draw'
+function ResultModal({ won, draw, oppLabel, onNew }: { won: boolean; draw: boolean; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={draw ? 'Stalemate' : won ? 'You broke through' : 'Out-manoeuvred'}
-      title={draw ? 'A Draw' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'A Draw' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
@@ -158,7 +181,7 @@ function ResultModal({ s, onNew }: { s: KState; onNew: () => void }) {
           ? 'Both required towers were stuck — the round deadlocked.'
           : won
             ? 'Your tower landed on the rival’s home row. Kamisado!'
-            : 'The rival’s tower reached your home row first.'}
+            : `The ${oppLabel.toLowerCase()}’s tower reached your home row first.`}
       </div>
     </Modal>
   )

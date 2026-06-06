@@ -1,16 +1,19 @@
 /* KALAH (6, 4) — the standard modern Mancala on the framework shell. A carved
    clay board: two rows of six rounded pits and a tall store (kalah) at each end.
-   You sow your bottom row counterclockwise into your right store; landing the
-   last seed in your store earns another turn — so the alpha-beta AI may sow
-   several times in a row. Its turn re-arms on the `moveCount-turn` useAITurn tick. */
+   You sow your pits counterclockwise into your store; landing the last seed in your
+   store earns another turn — so a player may sow several times in a row. Online play
+   is host-authoritative via useGameSession; the AI fills any empty seat. The board is
+   shown seat-relative — your pits sit on the bottom row whichever seat you hold. */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { kalahAdapter } from './net'
 import * as K from './logic'
-import type { State } from './logic'
+import type { State, Side } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -37,22 +40,17 @@ function Seeds({ n }: { n: number }) {
 }
 
 export function Kalah() {
-  const [s, setS] = useState<State>(() => K.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(kalahAdapter)
+  const mySide: Side = mySeat === 0 ? 'you' : 'ai'
+  const oppSide: Side = mySide === 'you' ? 'ai' : 'you'
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
   function newGame() {
-    setS(K.makeGame())
+    netNew()
     setShowRules(false)
   }
 
-  // Extra-turn rule: landing in your own store keeps the same player to move, so
-  // the AI may sow several times. The tick changes on every sub-move (moveCount)
-  // so consecutive AI moves keep firing.
-  useAITurn(s.winner == null && s.turn === 'ai', () => setS(p => K.aiTurn(p)), {
-    delayMs: 620,
-    tick: `${s.moveCount}-${s.turn}`,
-  })
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = 0
   }, [s.log])
@@ -62,58 +60,76 @@ export function Kalah() {
     onEscape: () => setShowRules(false),
   })
 
-  const yourTurn = s.winner == null && s.turn === 'you'
+  const yourTurn = s.winner == null && isMyTurn
   const legal = useMemo(
-    () => (yourTurn ? new Set(K.legalMoves(s, 'you')) : new Set<number>()),
-    [yourTurn, s],
+    () => (yourTurn ? new Set(K.legalMoves(s, mySide)) : new Set<number>()),
+    [yourTurn, s, mySide],
   )
-  const { you, ai } = K.storeCounts(s.pits)
+  const counts = K.storeCounts(s.pits)
+  const myScore = counts[mySide]
+  const oppScore = counts[oppSide]
+
+  const oppName = net.online ? 'Opponent' : 'Rival'
+  const thinking = net.online ? 'is taking their turn…' : 'is thinking…'
 
   function clickPit(i: number) {
-    if (yourTurn && legal.has(i)) setS(K.applyMove(s, i, 'you'))
+    if (yourTurn && legal.has(i)) dispatch({ pit: i })
   }
+
+  // result relative to mySeat
+  const iWon = s.winner === mySide
+  const oppWon = s.winner === oppSide
 
   let banner: string
   let bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = `You win — ${you} to ${ai}` }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = `The rival wins — ${ai} to ${you}` }
-  else if (s.winner === 'draw') { bk = ''; banner = `A tie — ${you}–${ai}` }
+  if (iWon) { bk = 'win'; banner = `You win — ${myScore} to ${oppScore}` }
+  else if (oppWon) { bk = 'lose'; banner = `${oppName} wins — ${oppScore} to ${myScore}` }
+  else if (s.winner === 'draw') { bk = ''; banner = `A tie — ${myScore}–${oppScore}` }
   else if (yourTurn) { bk = 'you'; banner = 'Your turn — sow one of your pits' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  else { bk = 'foe'; banner = `${oppName} ${thinking}` }
 
-  // AI pits drawn right -> left over 12..7 so the board reads counterclockwise
-  const aiRow = [12, 11, 10, 9, 8, 7]
-  const youRow = [0, 1, 2, 3, 4, 5]
+  // Render seat-relative: my pits/store on the bottom, opponent's on top. Indices are
+  // the raw board indices for `mySide` / `oppSide`; pits drawn counterclockwise.
+  const myPitIdx = mySide === 'you' ? K.YOUR_PITS : K.AI_PITS
+  const oppPitIdx = oppSide === 'you' ? K.YOUR_PITS : K.AI_PITS
+  // bottom row reads left->right in sowing order; top row reads right->left so the
+  // board reads counterclockwise around the loop.
+  const youRow = myPitIdx.slice()
+  const aiRow = oppPitIdx.slice().reverse()
+  const myStoreN = mySide === 'you' ? s.pits[K.YOUR_STORE] : s.pits[K.AI_STORE]
+  const oppStoreN = oppSide === 'you' ? s.pits[K.YOUR_STORE] : s.pits[K.AI_STORE]
 
-  function Pit({ i, owner }: { i: number; owner: 'you' | 'ai' }) {
-    const playable = owner === 'you' && legal.has(i)
+  function Pit({ i, owner }: { i: number; owner: 'mine' | 'opp' }) {
+    const side: Side = owner === 'mine' ? mySide : oppSide
+    const playable = owner === 'mine' && legal.has(i)
     return (
       <button
         type="button"
         className={
-          'kl-pit ' + owner +
+          'kl-pit ' + (owner === 'mine' ? 'you' : 'ai') +
           (playable ? ' playable' : '') +
           (s.last === i ? ' last' : '') +
           (s.pits[i] === 0 ? ' empty' : '')
         }
         onClick={() => clickPit(i)}
         disabled={!playable}
-        aria-label={`${owner === 'you' ? 'Your' : 'Rival'} pit ${K.pitLabel(owner, i)}, ${s.pits[i]} seeds`}
+        aria-label={`${owner === 'mine' ? 'Your' : oppName} pit ${K.pitLabel(side, i)}, ${s.pits[i]} seeds`}
       >
         <Seeds n={s.pits[i]} />
         <span className="kl-count">{s.pits[i]}</span>
-        <span className="kl-num">{K.pitLabel(owner, i)}</span>
+        <span className="kl-num">{K.pitLabel(side, i)}</span>
       </button>
     )
   }
 
-  function Store({ side, n }: { side: 'you' | 'ai'; n: number }) {
+  function Store({ owner, n }: { owner: 'mine' | 'opp'; n: number }) {
+    const side: Side = owner === 'mine' ? mySide : oppSide
     const on = s.winner == null && s.turn === side
     return (
-      <div className={'kl-store ' + side + (on ? ' on' : '')}>
+      <div className={'kl-store ' + (owner === 'mine' ? 'you' : 'ai') + (on ? ' on' : '')}>
         <Seeds n={n} />
         <span className="kl-store-count">{n}</span>
-        <span className="kl-store-label">{side === 'you' ? 'You' : 'Rival'}</span>
+        <span className="kl-store-label">{owner === 'mine' ? 'You' : oppName}</span>
       </div>
     )
   }
@@ -134,24 +150,27 @@ export function Kalah() {
       >
         <div className="kl-wrap">
           <div className="kl-board">
-            <Store side="ai" n={ai} />
+            <Store owner="opp" n={oppStoreN} />
             <div className="kl-pits">
-              <div className="kl-row ai">{aiRow.map(i => <Pit key={i} i={i} owner="ai" />)}</div>
-              <div className="kl-row you">{youRow.map(i => <Pit key={i} i={i} owner="you" />)}</div>
+              <div className="kl-row ai">{aiRow.map(i => <Pit key={i} i={i} owner="opp" />)}</div>
+              <div className="kl-row you">{youRow.map(i => <Pit key={i} i={i} owner="mine" />)}</div>
             </div>
-            <Store side="you" n={you} />
+            <Store owner="mine" n={myStoreN} />
           </div>
         </div>
 
         <div className="kl-side">
+          <div className="kl-panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="kl-panel kl-scoreboard">
-            <div className={'kl-sc ai' + (s.turn === 'ai' && s.winner == null ? ' on' : '')}>
-              <span className="kl-sc-dot ai" /><span className="kl-sc-name">Rival</span><span className="kl-sc-n">{ai}</span>
+            <div className={'kl-sc ai' + (s.turn === oppSide && s.winner == null ? ' on' : '')}>
+              <span className="kl-sc-dot ai" /><span className="kl-sc-name">{oppName}</span><span className="kl-sc-n">{oppScore}</span>
             </div>
-            <div className={'kl-sc you' + (s.turn === 'you' && s.winner == null ? ' on' : '')}>
-              <span className="kl-sc-dot you" /><span className="kl-sc-name">You</span><span className="kl-sc-n">{you}</span>
+            <div className={'kl-sc you' + (s.turn === mySide && s.winner == null ? ' on' : '')}>
+              <span className="kl-sc-dot you" /><span className="kl-sc-name">You</span><span className="kl-sc-n">{myScore}</span>
             </div>
-            <div className="kl-bar"><div className="kl-bar-you" style={{ width: `${(you / Math.max(1, you + ai)) * 100}%` }} /></div>
+            <div className="kl-bar"><div className="kl-bar-you" style={{ width: `${(myScore / Math.max(1, myScore + oppScore)) * 100}%` }} /></div>
           </div>
           <div className="kl-panel kl-logbox" ref={logRef}>
             {s.log.slice().reverse().map((l, i) => (
@@ -161,23 +180,21 @@ export function Kalah() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} you={you} ai={ai} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={iWon} draw={s.winner === 'draw'} myScore={myScore} oppScore={oppScore} oppName={oppName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, you, ai, onNew }: { s: State; you: number; ai: number; onNew: () => void }) {
-  const won = s.winner === 'you'
-  const draw = s.winner === 'draw'
+function ResultModal({ won, draw, myScore, oppScore, oppName, onNew }: { won: boolean; draw: boolean; myScore: number; oppScore: number; oppName: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={draw ? 'Dead even' : won ? 'Seeds banked' : 'Out-sown'}
-      title={draw ? 'A Tie' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'A Tie' : won ? 'You Win' : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="kl-finalsc"><span className="you">You {you}</span><span className="foe">Rival {ai}</span></div>
+      <div className="kl-finalsc"><span className="you">You {myScore}</span><span className="foe">{oppName} {oppScore}</span></div>
     </Modal>
   )
 }

@@ -1,16 +1,24 @@
 /* WARI / OWARE — Abapa capture rules on the framework shell. Two rows of six carved
    pits, four seeds each, no end stores — captured seeds bank into a per-player count.
-   You sow your bottom row counterclockwise; landing your last seed in a rival pit that
-   becomes 2 or 3 captures it (and chains backward). The AI is alpha-beta depth 7; its
-   turn re-arms on `${moveCount}-${turn}` via useAITurn's tick. */
+   You sow your row counterclockwise; landing your last seed in a rival pit that
+   becomes 2 or 3 captures it (and chains backward).
+
+   Online-capable via useGameSession(wariAdapter): seat 0 = the 'you' side (bottom pits
+   0..5, moves first), seat 1 = the 'ai' side (pits 6..11). Solo play fills seat 1 with
+   the depth-7 alpha-beta AI; online play hands seat 1 to a remote human. The board and
+   all banners/scores are rendered relative to your own seat. */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { wariAdapter } from './net'
 import * as W from './logic'
-import type { WariState } from './logic'
+import type { WariState, Side } from './logic'
+
+const SEAT_SIDE: Record<number, Side> = { 0: 'you', 1: 'ai' }
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -40,42 +48,52 @@ function Seeds({ n }: { n: number }) {
 }
 
 export function Wari() {
-  const [s, setS] = useState<WariState>(() => W.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(wariAdapter)
+  const mySide: Side = SEAT_SIDE[mySeat]            // the side YOU control
+  const oppSide: Side = mySide === 'you' ? 'ai' : 'you'
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(W.makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  useAITurn(s.winner == null && s.turn === 'ai', () => setS(p => W.aiTurn(p)), {
-    delayMs: 640, tick: `${s.moveCount}-${s.turn}`,
-  })
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = 0 }, [s.log])
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
 
-  const yourTurn = s.winner == null && s.turn === 'you'
+  const yourTurn = s.winner == null && isMyTurn
   const legal = useMemo(
-    () => (yourTurn ? new Set(W.legalMoves(s.pits, 'you')) : new Set<number>()),
-    [yourTurn, s.pits],
+    () => (yourTurn ? new Set(W.legalMoves(s.pits, mySide)) : new Set<number>()),
+    [yourTurn, s.pits, mySide],
   )
-  const { you, ai } = W.capturedCounts(s)
+  // captured counts relative to YOU
+  const mine = mySide === 'you' ? s.captured.you : s.captured.ai
+  const theirs = mySide === 'you' ? s.captured.ai : s.captured.you
 
-  function clickPit(i: number) { if (yourTurn && legal.has(i)) setS(W.applyMove(s, i, 'you')) }
+  function clickPit(i: number) { if (yourTurn && legal.has(i)) dispatch(i) }
+
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+  const myWin = (s.winner as Side | 'draw' | null) === mySide
+  const oppWin = s.winner != null && s.winner !== 'draw' && s.winner !== mySide
 
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = `You win — ${you} to ${ai}` }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = `The rival wins — ${ai} to ${you}` }
-  else if (s.winner === 'draw') { bk = ''; banner = `A tie — ${you}–${ai}` }
+  if (myWin) { bk = 'win'; banner = `You win — ${mine} to ${theirs}` }
+  else if (oppWin) { bk = 'lose'; banner = `${oppLabel} wins — ${theirs} to ${mine}` }
+  else if (s.winner === 'draw') { bk = ''; banner = `A tie — ${mine}–${theirs}` }
   else if (yourTurn) { bk = 'you'; banner = 'Your turn — sow one of your pits' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  else { bk = 'foe'; banner = net.online ? `${oppLabel} is thinking…` : 'The rival is thinking…' }
 
-  // AI pits 6..11 are drawn right→left (11..6) so the board reads counterclockwise.
-  const aiRow = [11, 10, 9, 8, 7, 6]
-  const youRow = [0, 1, 2, 3, 4, 5]
+  // Render YOUR six pits along the bottom and the OPPONENT's six along the top, drawn so
+  // the board reads counterclockwise from your seat. 'you' pits are 0..5, 'ai' pits 6..11.
+  // Bottom row: your pits in sowing order (left→right). Top row: opponent's pits reversed.
+  const myPits = mySide === 'you' ? [0, 1, 2, 3, 4, 5] : [6, 7, 8, 9, 10, 11]
+  const oppPits = mySide === 'you' ? [6, 7, 8, 9, 10, 11] : [0, 1, 2, 3, 4, 5]
+  const topRow = oppPits.slice().reverse()
+  const bottomRow = myPits
   const capSet = new Set(s.capturedPits)
 
-  function Pit({ i, owner }: { i: number; owner: 'you' | 'ai' }) {
-    const playable = owner === 'you' && legal.has(i)
-    const cls = 'pit ' + owner +
+  function Pit({ i, owner }: { i: number; owner: 'mine' | 'theirs' }) {
+    const playable = owner === 'mine' && legal.has(i)
+    const side: Side = owner === 'mine' ? mySide : oppSide
+    const cls = 'pit ' + (owner === 'mine' ? 'you' : 'ai') +
       (playable ? ' playable' : '') +
       (s.last === i ? ' last' : '') +
       (capSet.has(i) ? ' captured' : '') +
@@ -86,21 +104,22 @@ export function Wari() {
         className={cls}
         onClick={() => clickPit(i)}
         disabled={!playable}
-        aria-label={`${owner === 'you' ? 'Your' : 'Rival'} pit ${W.pitLabel(owner, i)}, ${s.pits[i]} seeds`}
+        aria-label={`${owner === 'mine' ? 'Your' : oppLabel} pit ${W.pitLabel(side, i)}, ${s.pits[i]} seeds`}
       >
         <Seeds n={s.pits[i]} />
         <span className="pit-count">{s.pits[i]}</span>
-        <span className="pit-num">{W.pitLabel(owner, i)}</span>
+        <span className="pit-num">{W.pitLabel(side, i)}</span>
       </button>
     )
   }
 
-  function Bowl({ side, n }: { side: 'you' | 'ai'; n: number }) {
+  function Bowl({ owner, n }: { owner: 'mine' | 'theirs'; n: number }) {
+    const side: Side = owner === 'mine' ? mySide : oppSide
     const on = s.winner == null && s.turn === side
     return (
-      <div className={'bowl ' + side + (on ? ' on' : '')}>
+      <div className={'bowl ' + (owner === 'mine' ? 'you' : 'ai') + (on ? ' on' : '')}>
         <span className="bowl-count">{n}</span>
-        <span className="bowl-label">{side === 'you' ? 'You' : 'Rival'}</span>
+        <span className="bowl-label">{owner === 'mine' ? 'You' : oppLabel}</span>
         <span className="bowl-sub">captured</span>
       </div>
     )
@@ -122,24 +141,27 @@ export function Wari() {
       >
         <div className="wa-wrap">
           <div className="wa-board">
-            <Bowl side="ai" n={ai} />
+            <Bowl owner="theirs" n={theirs} />
             <div className="wa-pits">
-              <div className="wa-row ai">{aiRow.map(i => <Pit key={i} i={i} owner="ai" />)}</div>
-              <div className="wa-row you">{youRow.map(i => <Pit key={i} i={i} owner="you" />)}</div>
+              <div className="wa-row ai">{topRow.map(i => <Pit key={i} i={i} owner="theirs" />)}</div>
+              <div className="wa-row you">{bottomRow.map(i => <Pit key={i} i={i} owner="mine" />)}</div>
             </div>
-            <Bowl side="you" n={you} />
+            <Bowl owner="mine" n={mine} />
           </div>
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel scoreboard">
-            <div className={'sc ai' + (s.turn === 'ai' && s.winner == null ? ' on' : '')}>
-              <span className="sc-dot ai" /><span className="sc-name">Rival</span><span className="sc-n">{ai}</span>
+            <div className={'sc ai' + (s.turn === oppSide && s.winner == null ? ' on' : '')}>
+              <span className="sc-dot ai" /><span className="sc-name">{oppLabel}</span><span className="sc-n">{theirs}</span>
             </div>
-            <div className={'sc you' + (s.turn === 'you' && s.winner == null ? ' on' : '')}>
-              <span className="sc-dot you" /><span className="sc-name">You</span><span className="sc-n">{you}</span>
+            <div className={'sc you' + (s.turn === mySide && s.winner == null ? ' on' : '')}>
+              <span className="sc-dot you" /><span className="sc-name">You</span><span className="sc-n">{mine}</span>
             </div>
-            <div className="sc-bar"><div className="sc-bar-you" style={{ width: `${(you / Math.max(1, you + ai)) * 100}%` }} /></div>
+            <div className="sc-bar"><div className="sc-bar-you" style={{ width: `${(mine / Math.max(1, mine + theirs)) * 100}%` }} /></div>
             <div className="sc-goal">first to 25 of 48 wins</div>
           </div>
           <div className="panel logbox" ref={logRef}>
@@ -148,22 +170,26 @@ export function Wari() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} you={you} ai={ai} onNew={newGame} />}
+      {s.winner != null && (
+        <ResultModal won={myWin} draw={s.winner === 'draw'} mine={mine} theirs={theirs} oppLabel={oppLabel} onNew={newGame} />
+      )}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, you, ai, onNew }: { s: WariState; you: number; ai: number; onNew: () => void }) {
-  const won = s.winner === 'you', draw = s.winner === 'draw'
+function ResultModal(
+  { won, draw, mine, theirs, oppLabel, onNew }:
+  { won: boolean; draw: boolean; mine: number; theirs: number; oppLabel: string; onNew: () => void },
+) {
   return (
     <Modal
       eyebrow={draw ? 'Dead even' : won ? 'Seeds banked' : 'Out-sown'}
-      title={draw ? 'A Tie' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'A Tie' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {you}</span><span className="foe">Rival {ai}</span></div>
+      <div className="finalsc"><span className="you">You {mine}</span><span className="foe">{oppLabel} {theirs}</span></div>
     </Modal>
   )
 }
