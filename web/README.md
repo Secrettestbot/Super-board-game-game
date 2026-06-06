@@ -5,10 +5,11 @@ a "Game Library" selection screen plus self-contained, playable game pages with 
 opponent. This is the real, compiled app (no CDN React / in-browser Babel) — the
 prototypes in `../design/` remain the visual reference.
 
-The library shell + the framework + **ninety-three fully-playable games** are done (6 ported
-from the design prototypes + 87 built from scratch on the framework). The latest batch added
-Cartographers, Welcome To..., That's Pretty Clever!, Star Realms, Machi Koro, Cascadia,
-King of Tokyo, and Chinese Checkers. Before that: Patchwork, then Azul, Kingdomino, Qwirkle,
+The library shell + the framework + **one hundred and one fully-playable games** are done (6
+ported from the design prototypes + 95 built from scratch on the framework). The latest batch
+added Sequence, Sagrada, Ingenious, Carcassonne, TwixT, Air Land & Sea, Jotto, and Deep Sea
+Adventure. Before that: Cartographers, Welcome To..., That's Pretty Clever!, Star Realms,
+Machi Koro, Cascadia, King of Tokyo, and Chinese Checkers; Patchwork; Azul, Kingdomino, Qwirkle,
 Splendor, Pickomino, Cockroach Poker, Battle Line, and Port Royal.
 Before that: Sushi Go!, Parade, Euchre, Wari, Mijnlieff, Hanamikoji, Coup, and Point Salad;
 Quixo, Kalah, Hnefatafl, Hearts, Spades, Gin Rummy, Cribbage, and Skull;

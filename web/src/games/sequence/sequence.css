@@ -1,0 +1,180 @@
+/* ==========================================================
+   SEQUENCE — "Cards on the table, chips on the board."
+   Theme: deep felt-green card table, ivory pasteboards, jade & rose chips.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Built for this codebase; shared shell in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #0c1a18;
+  --bg-2:    #07110f;
+  --panel:   #11231f;
+  --panel-2: #0d1c19;
+  --ink:     #eef6f1;
+  --ink-2:   #a8c2b6;
+  --ink-3:   #6b8479;
+  --line:    #1d362f;
+  --line-2:  #2c4d43;
+
+  /* token contract -> this theme (jade primary, dark ink on it) */
+  --accent:    #37d6a9;  --accent-d:#1d8e6f;  --accent-hi:#7af0ce;  --accent-ink:#04231a;
+  --trim:      #ff6b8a;  --trim-hi:#ff9bb1;
+  --you:       #37d6a9;  --foe:#ff6b8a;
+  --good:      #6fe0a0;  --warn:#ffb454;
+
+  /* game-specific */
+  --felt:      #143028;  --felt-2:#0e231d;
+  --card-bg:   #f5f8f4;  --card-bg2:#e6ede7;  --card-line:#c4d1c8;
+  --card-red:  #d23b54;  --card-blk:#27322c;
+  --you-chip:  #37d6a9;  --you-chip-d:#11806012;  --you-chip-edge:#136d52;
+  --foe-chip:  #ff6b8a;  --foe-chip-edge:#bf3a55;
+  --free:      #d9c46a;  --free-d:#9a8732;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(55,214,169,0.08) 0%, transparent 52%),
+    radial-gradient(ellipse at 10% 112%, rgba(255,107,138,0.06) 0%, transparent 46%),
+    radial-gradient(ellipse at 90% 116%, rgba(217,196,106,0.05) 0%, transparent 46%);
+}
+
+.stage { grid-template-columns: auto 244px; gap: clamp(16px, 2.4vw, 34px); }
+
+/* ---- Board: 10x10 card grid ---- */
+.sq-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.sq-board {
+  --cell: clamp(30px, min(5.4vh, 4.4vw), 56px);
+  display: grid;
+  grid-template-columns: repeat(10, var(--cell));
+  grid-template-rows: repeat(10, var(--cell));
+  gap: clamp(2px, 0.4vw, 5px);
+  padding: clamp(8px, 1.2vw, 16px);
+  background: linear-gradient(165deg, var(--felt), var(--felt-2));
+  border: 2px solid var(--line-2); border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.sq-cell {
+  position: relative;
+  border-radius: clamp(4px, 0.6vw, 7px);
+  background: linear-gradient(160deg, var(--card-bg), var(--card-bg2));
+  border: 1px solid var(--card-line);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.28);
+  overflow: hidden;
+  transition: transform 0.1s, box-shadow 0.12s;
+}
+.sq-cell.free {
+  background: radial-gradient(circle at 40% 32%, #f3e6a4, var(--free));
+  border-color: var(--free-d);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.25);
+}
+.freemark { font-size: calc(var(--cell) * 0.5); color: #7a6a1e; line-height: 1; }
+
+/* legal placement highlight (normal/wild) */
+.sq-cell.legal {
+  cursor: pointer;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(55,214,169,0.5);
+  z-index: 2;
+}
+.sq-cell.legal:hover { transform: translateY(-2px) scale(1.04); }
+/* one-eyed jack removal target highlight */
+.sq-cell.targetable {
+  cursor: pointer;
+  border-color: var(--trim);
+  box-shadow: 0 0 0 2px var(--trim), 0 0 12px rgba(255,107,138,0.55);
+  z-index: 2;
+}
+.sq-cell.targetable:hover { transform: translateY(-2px) scale(1.04); }
+.sq-board.selecting .sq-cell:not(.legal):not(.targetable) { opacity: 0.82; }
+.sq-cell.last { outline: 2px dashed rgba(122,240,206,0.7); outline-offset: -2px; }
+
+/* card face inside a cell */
+.cardface {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  line-height: 1; color: var(--card-blk); font-family: var(--display); font-weight: 700;
+  pointer-events: none; gap: 1px;
+}
+.cardface.red { color: var(--card-red); }
+.cardface.sm .rank { font-size: calc(var(--cell) * 0.32); }
+.cardface.sm .suit { font-size: calc(var(--cell) * 0.3); }
+.cardface .jacklbl { font-size: calc(var(--cell) * 0.2); color: var(--free-d); letter-spacing: -1px; }
+.cardface.red .jacklbl { color: #b8863a; }
+
+/* chips sit on top of the card */
+.chip {
+  position: absolute; width: 60%; height: 60%; border-radius: 50%;
+  top: 20%; left: 20%;
+  box-shadow: inset 0 -2px 3px rgba(0,0,0,0.35), inset 0 2px 2px rgba(255,255,255,0.35), 0 2px 4px rgba(0,0,0,0.4);
+  animation: chipdrop 0.16s ease-out;
+}
+.chip.you { background: radial-gradient(circle at 36% 28%, #9af6da, var(--you-chip)); border: 1.5px solid var(--you-chip-edge); }
+.chip.foe { background: radial-gradient(circle at 36% 28%, #ffb0c2, var(--foe-chip)); border: 1.5px solid var(--foe-chip-edge); }
+.chip.locked::after {
+  content: "★"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: calc(var(--cell) * 0.3); color: rgba(0,0,0,0.55);
+}
+@keyframes chipdrop { from { transform: scale(0.3); } to { transform: none; } }
+
+/* ---- Side panel ---- */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.sq-score { display: flex; flex-direction: column; gap: 8px; }
+.sq-row { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.sq-row.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sq-dot { width: 15px; height: 15px; border-radius: 50%; flex: 0 0 auto; }
+.sq-dot.you { background: radial-gradient(circle at 36% 28%, #9af6da, var(--you-chip)); border: 1px solid var(--you-chip-edge); }
+.sq-dot.foe { background: radial-gradient(circle at 36% 28%, #ffb0c2, var(--foe-chip)); border: 1px solid var(--foe-chip-edge); }
+.sq-who { font-family: var(--display); font-weight: 600; font-size: 14px; flex: 1; }
+.sq-seq { font-family: var(--display); font-weight: 700; font-size: 22px; }
+.sq-seq i { font-size: 0.55em; color: var(--ink-3); font-style: normal; font-weight: 600; }
+.sq-deck { font-family: var(--mono); font-size: 10px; color: var(--ink-3); letter-spacing: 0.06em; text-align: center; }
+
+/* ---- Hand ---- */
+.sq-handpanel { display: flex; flex-direction: column; gap: 8px; }
+.sq-handlbl { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); text-align: center; }
+.sq-hand { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.sq-card {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  border-radius: 7px; cursor: pointer; padding: 0;
+  background: linear-gradient(160deg, var(--card-bg), var(--card-bg2));
+  border: 1.5px solid var(--card-line);
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.12s, box-shadow 0.12s;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.35);
+}
+.sq-card .cardface .rank { font-size: 18px; }
+.sq-card .cardface .suit { font-size: 16px; }
+.sq-card .cardface .jacklbl { font-size: 9px; }
+.sq-card:hover:not(:disabled) { transform: translateY(-3px); border-color: var(--accent); }
+.sq-card.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 0 14px rgba(55,214,169,0.5); transform: translateY(-3px); }
+.sq-card.dead { opacity: 0.55; }
+.sq-card.dead:hover:not(:disabled) { border-color: var(--warn); }
+.sq-card:disabled { cursor: default; }
+.deadflag {
+  position: absolute; bottom: 2px; left: 0; right: 0; text-align: center;
+  font-family: var(--mono); font-size: 7px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--warn); background: rgba(0,0,0,0.5); padding: 1px 0; border-radius: 0 0 5px 5px;
+}
+.sq-hint { font-family: var(--sans); font-size: 11px; font-style: italic; color: var(--ink-2); text-align: center; min-height: 15px; }
+
+/* ---- Log ---- */
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 138px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.5; color: var(--ink-2); }
+.log-line.you { color: var(--you); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- Overlays ---- */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 18px; }
+.finalsc .you { color: var(--you); } .finalsc .foe { color: var(--foe); }
+.modal-body i { color: var(--accent-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) {
+  .title-main { font-size: 23px; }
+  .sq-board { --cell: clamp(26px, 4.6vh, 44px); }
+}

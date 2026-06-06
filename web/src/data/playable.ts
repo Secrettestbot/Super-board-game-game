@@ -99,4 +99,12 @@ export const PLAYABLE: Record<string, string> = {
   cascadia: 'games/cascadia.html',
   king_of_tokyo: 'games/king_of_tokyo.html',
   chinese_checkers: 'games/chinese_checkers.html',
+  sequence: 'games/sequence.html',
+  sagrada: 'games/sagrada.html',
+  ingenious: 'games/ingenious.html',
+  carcassonne: 'games/carcassonne.html',
+  twixt: 'games/twixt.html',
+  air_land_sea: 'games/air_land_sea.html',
+  jotto: 'games/jotto.html',
+  deep_sea_adventure: 'games/deep_sea_adventure.html',
 }

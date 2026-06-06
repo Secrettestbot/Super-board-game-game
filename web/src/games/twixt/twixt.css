@@ -1,0 +1,123 @@
+/* ==========================================================
+   TWIXT — "Bridge your borders."
+   Theme: warm charcoal night, coral pegs (you, top/bottom) vs teal pegs (rival, left/right),
+   a recessed slate board framed by the two coloured border pairs.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #11141a;
+  --bg-2:    #0a0c11;
+  --panel:   #1a1f28;
+  --panel-2: #141821;
+  --ink:     #f0f2f7;
+  --ink-2:   #aab2c2;
+  --ink-3:   #646d80;
+  --line:    #262d3a;
+  --line-2:  #38404f;
+
+  /* token contract -> this theme (coral primary, dark text on accent) */
+  --accent:    #e8765a;  --accent-d:#b8462e;  --accent-hi:#ff9a80;  --accent-ink:#2a0d05;
+  --trim:      #e8765a;  --trim-hi:#ff9a80;
+  --you:       #ff9a80;  --foe:#5fd0c6;
+  --good:      #6fcf97;  --warn:#e0b54e;
+
+  /* game-specific */
+  --coral:     #e8765a;  --coral-d:#a8412c;  --coral-hi:#ffac93;
+  --teal:      #3fb6ad;  --teal-d:#236f69;  --teal-hi:#74e0d6;
+  --slot:      #303949;  --board:#171c26;  --board-2:#10141c;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(232,118,90,0.09) 0%, transparent 50%),
+    radial-gradient(ellipse at 6% 50%, rgba(63,182,173,0.07) 0%, transparent 46%),
+    radial-gradient(ellipse at 94% 50%, rgba(63,182,173,0.07) 0%, transparent 46%);
+}
+
+.stage { grid-template-columns: auto 224px; gap: clamp(16px, 2.4vw, 36px); }
+
+.tw-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+
+/* The frame holds the coloured border bars; the recessed board sits inside. */
+.tw-frame {
+  position: relative;
+  padding: 16px;
+  border-radius: 16px;
+  background: linear-gradient(160deg, #1b212c, #0e121a);
+  border: 1.5px solid var(--line);
+  box-shadow: 0 18px 50px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+/* Coloured border cues — coral along top & bottom (yours), teal down the sides (rival's). */
+.tw-edge { position: absolute; pointer-events: none; border-radius: 4px; }
+.tw-edge.top, .tw-edge.bottom { left: 6%; right: 6%; height: 4px; }
+.tw-edge.top    { top: 6px;    background: linear-gradient(90deg, transparent, var(--coral), transparent); box-shadow: 0 0 12px rgba(232,118,90,0.6); }
+.tw-edge.bottom { bottom: 6px; background: linear-gradient(90deg, transparent, var(--coral), transparent); box-shadow: 0 0 12px rgba(232,118,90,0.6); }
+.tw-edge.left, .tw-edge.right { top: 6%; bottom: 6%; width: 4px; }
+.tw-edge.left  { left: 6px;  background: linear-gradient(180deg, transparent, var(--teal), transparent); box-shadow: 0 0 12px rgba(63,182,173,0.6); }
+.tw-edge.right { right: 6px; background: linear-gradient(180deg, transparent, var(--teal), transparent); box-shadow: 0 0 12px rgba(63,182,173,0.6); }
+
+.tw-board {
+  display: block;
+  width: clamp(300px, min(64vh, 52vw), 560px);
+  height: clamp(300px, min(64vh, 52vw), 560px);
+  background: radial-gradient(ellipse at 50% 40%, var(--board), var(--board-2));
+  border-radius: 11px;
+  border: 1px solid var(--line);
+}
+
+/* Holes */
+.tw-hit { fill: transparent; }
+.tw-slot { fill: var(--slot); stroke: #0c0f15; stroke-width: 1; transition: fill 0.12s; }
+.tw-hole.brd-you .tw-slot { fill: #3a2820; }
+.tw-hole.brd-foe .tw-slot { fill: #1d3330; }
+.tw-hole.legal { cursor: pointer; }
+.tw-hole.legal:hover .tw-slot { fill: var(--coral); }
+.tw-hole.legal:hover .tw-hit { fill: rgba(232,118,90,0.08); }
+
+/* Pegs */
+.tw-peg { stroke: rgba(0,0,0,0.45); stroke-width: 1; animation: drop 0.16s ease-out; }
+.tw-peg.you { fill: var(--coral); }
+.tw-peg.foe { fill: var(--teal); }
+.tw-peg.last { stroke: var(--accent-hi); stroke-width: 2.2; }
+.tw-peg.win { stroke: var(--good); stroke-width: 2.4; filter: drop-shadow(0 0 5px rgba(111,207,151,0.8)); }
+@keyframes drop { from { transform: scale(0.4); opacity: 0.4; } to { transform: none; opacity: 1; } }
+
+/* Links */
+.tw-link { stroke-width: 3.2; stroke-linecap: round; opacity: 0.92; }
+.tw-link.you { stroke: var(--coral-hi); }
+.tw-link.foe { stroke: var(--teal-hi); }
+.tw-link.win { stroke: var(--good); stroke-width: 4; filter: drop-shadow(0 0 4px rgba(111,207,151,0.7)); }
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.players { display: flex; flex-direction: column; gap: 9px; }
+.pl { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--line); }
+.pl.you.on { border-color: var(--coral); box-shadow: 0 0 0 1px var(--coral); }
+.pl.foe.on { border-color: var(--teal); box-shadow: 0 0 0 1px var(--teal); }
+.pl-peg { width: 20px; height: 20px; border-radius: 50%; flex: 0 0 auto; }
+.pl-peg.you { background: radial-gradient(circle at 36% 30%, var(--coral-hi), var(--coral) 60%, var(--coral-d)); }
+.pl-peg.foe { background: radial-gradient(circle at 36% 30%, var(--teal-hi), var(--teal) 60%, var(--teal-d)); }
+.pl-txt { display: flex; flex-direction: column; line-height: 1.25; }
+.pl-txt b { font-family: var(--display); font-weight: 600; font-size: 14px; }
+.pl-txt i { font-family: var(--mono); font-style: normal; font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 200px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--coral-hi); } .log-line.ai { color: var(--teal-hi); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; margin: 12px 0; font-family: var(--display); font-weight: 600; font-size: 19px; }
+.finalsc .you { color: var(--coral-hi); } .finalsc .foe { color: var(--teal-hi); }
+.modal-body i { color: var(--coral-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }
