@@ -123,4 +123,12 @@ export const PLAYABLE: Record<string, string> = {
   canadian_checkers: 'games/canadian_checkers.html',
   dvonn: 'games/dvonn.html',
   havannah: 'games/havannah.html',
+  calico: 'games/calico.html',
+  alhambra: 'games/alhambra.html',
+  parks: 'games/parks.html',
+  senet: 'games/senet.html',
+  rummikub: 'games/rummikub.html',
+  parcheesi: 'games/parcheesi.html',
+  boggle: 'games/boggle.html',
+  mille_bornes: 'games/mille_bornes.html',
 }

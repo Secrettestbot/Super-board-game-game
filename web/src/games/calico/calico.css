@@ -1,0 +1,183 @@
+/* ==========================================================
+   CALICO — "A cozy quilt of color and pattern."
+   Theme: warm patchwork — soft cream stage, rich jewel patch colors, hand-stitched trim.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #2a2118;
+  --bg-2:    #1f1812;
+  --panel:   #3a2e22;
+  --panel-2: #2f251b;
+  --ink:     #f7eede;
+  --ink-2:   #cdbba3;
+  --ink-3:   #8c7a62;
+  --line:    #4a3b2c;
+  --line-2:  #61503c;
+
+  /* token contract -> this theme (warm honey primary, dark text on it) */
+  --accent:    #e8a14b;  --accent-d:#b9761f;  --accent-hi:#f6c279;  --accent-ink:#3a2200;
+  --trim:      #d96a7e;  --trim-hi:#eb9aa8;
+  --you:       #6fbf9a;  --foe:#e08a5a;
+  --good:      #7fcf8f;  --warn:#e07a6a;
+
+  /* the six quilt patch colors */
+  --c0: #d96a7e; /* rose   */
+  --c1: #e8a14b; /* amber  */
+  --c2: #7faf6a; /* sage   */
+  --c3: #4fa6a6; /* teal   */
+  --c4: #6f7fc4; /* indigo */
+  --c5: #a06fb0; /* plum   */
+
+  --board-bg:  #efe2cc;
+  --board-line:#c9b496;
+  --hex-empty: #e6d6bd;
+  --hex-line:  #cdb896;
+  --fixed-ring:#7a6240;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(232,161,75,0.10) 0%, transparent 52%),
+    radial-gradient(ellipse at 14% 112%, rgba(217,106,126,0.08) 0%, transparent 46%),
+    radial-gradient(ellipse at 86% 116%, rgba(79,166,166,0.07) 0%, transparent 46%);
+}
+
+.stage { grid-template-columns: auto 268px; gap: clamp(16px, 2.4vw, 34px); }
+
+/* ---- Quilt board (your hex grid) ---- */
+.cal-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.cal-board {
+  --hw: clamp(46px, min(8.4vw, 11vh), 78px);   /* hex width  */
+  --hh: calc(var(--hw) * 1.1547);              /* hex height (pointy-top) */
+  position: relative;
+  background: linear-gradient(160deg, var(--board-bg), #e3d2b6);
+  border: 3px solid var(--board-line); border-radius: 18px;
+  padding: clamp(12px, 1.6vw, 20px);
+  box-shadow: 0 18px 50px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.25);
+}
+.cal-grid { position: relative; }
+
+/* one hex tile, absolutely positioned by inline left/top */
+.cal-hex {
+  position: absolute;
+  width: var(--hw); height: var(--hh);
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--hex-empty);
+  box-shadow: inset 0 0 0 1px var(--hex-line);
+  transition: filter 0.12s, transform 0.12s;
+}
+
+/* a placed / fixed patch shows its color + pattern glyph */
+.cal-hex.patch { box-shadow: inset 0 0 0 1.5px rgba(0,0,0,0.22); }
+.cal-hex.c0 { background: var(--c0); } .cal-hex.c1 { background: var(--c1); }
+.cal-hex.c2 { background: var(--c2); } .cal-hex.c3 { background: var(--c3); }
+.cal-hex.c4 { background: var(--c4); } .cal-hex.c5 { background: var(--c5); }
+.cal-hex.fixed { box-shadow: inset 0 0 0 3px var(--fixed-ring); }
+
+/* pattern glyph drawn on each patch */
+.cal-glyph { font-size: calc(var(--hw) * 0.42); line-height: 1; color: rgba(255,255,255,0.92);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.35); font-family: var(--sans); pointer-events: none; }
+
+/* placeable highlight when it's your turn and a hand tile is selected */
+.cal-hex.placeable { cursor: pointer; }
+.cal-hex.placeable:hover { filter: brightness(1.04); transform: scale(1.04); z-index: 5; }
+.cal-hex.placeable::after {
+  content: ""; position: absolute; inset: 30%;
+  border-radius: 50%; border: 2px dashed var(--accent-d); opacity: 0.55;
+}
+.cal-hex.preview { filter: saturate(1.05) brightness(1.05); }
+
+/* design-goal hex */
+.cal-hex.goal {
+  background: repeating-linear-gradient(45deg, #efe2cc 0 6px, #e2d0b2 6px 12px);
+  box-shadow: inset 0 0 0 2px var(--accent-d);
+  cursor: default;
+}
+.cal-hex.goal.met { box-shadow: inset 0 0 0 3px var(--good); }
+.cal-goal-pts { font-family: var(--display); font-weight: 700; font-size: calc(var(--hw) * 0.30);
+  color: var(--accent-ink); background: var(--accent-hi); border-radius: 6px; padding: 1px 5px;
+  border: 1px solid var(--accent-d); }
+.cal-goal.met .cal-goal-pts { background: var(--good); }
+
+/* ---- Side panel ---- */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; min-height: 0; }
+
+.panel {
+  background: linear-gradient(160deg, var(--panel), var(--panel-2));
+  border: 1.5px solid var(--line); border-radius: 12px; padding: 11px 12px;
+}
+
+/* score rows */
+.cal-score { display: flex; flex-direction: column; gap: 8px; }
+.cal-srow { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 10px;
+  border: 1.5px solid var(--line); }
+.cal-srow.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.cal-swatch { width: 15px; height: 15px; border-radius: 5px; flex: 0 0 auto; }
+.cal-swatch.you { background: var(--you); border: 1px solid #3f8d6e; }
+.cal-swatch.foe { background: var(--foe); border: 1px solid #b0613a; }
+.cal-who { font-family: var(--display); font-weight: 600; font-size: 14px; flex: 1; }
+.cal-total { font-family: var(--display); font-weight: 700; font-size: 22px; }
+.cal-break { font-family: var(--mono); font-size: 10px; color: var(--ink-3); letter-spacing: 0.04em; }
+
+/* design-goal legend */
+.cal-goals { display: flex; flex-direction: column; gap: 7px; }
+.cal-glabel { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); }
+.cal-goal-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); }
+.cal-goal-row .pts { font-family: var(--display); font-weight: 700; color: var(--accent-hi); min-width: 22px; }
+.cal-goal-row.met { color: var(--good); }
+.cal-goal-row.met .pts { color: var(--good); }
+
+/* hand + market */
+.cal-hand-wrap { display: flex; flex-direction: column; gap: 9px; }
+.cal-tiles { display: flex; gap: 9px; justify-content: center; }
+.cal-tile {
+  width: 52px; height: 60px; border-radius: 11px; cursor: pointer; position: relative;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid rgba(0,0,0,0.25); box-shadow: 0 3px 6px rgba(0,0,0,0.3);
+  transition: transform 0.12s, box-shadow 0.12s; clip-path: none;
+}
+.cal-tile.c0 { background: var(--c0); } .cal-tile.c1 { background: var(--c1); }
+.cal-tile.c2 { background: var(--c2); } .cal-tile.c3 { background: var(--c3); }
+.cal-tile.c4 { background: var(--c4); } .cal-tile.c5 { background: var(--c5); }
+.cal-tile .cal-glyph { font-size: 26px; }
+.cal-tile.sel { transform: translateY(-4px); box-shadow: 0 0 0 3px var(--accent), 0 6px 12px rgba(0,0,0,0.4); }
+.cal-tile.market { width: 42px; height: 50px; cursor: default; opacity: 0.9; }
+.cal-tile.market .cal-glyph { font-size: 20px; }
+
+.cal-pl { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); text-align: center; }
+.cal-hint { font-family: var(--sans); font-size: 11px; font-style: italic; color: var(--ink-2); text-align: center; min-height: 15px; }
+
+/* opponent board summary (mini-quilt) */
+.cal-mini { display: flex; flex-direction: column; gap: 6px; }
+.cal-mini-grid { position: relative; align-self: center; }
+.cal-mini-hex {
+  position: absolute; width: 16px; height: 18.5px;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  background: var(--hex-empty);
+}
+.cal-mini-hex.c0 { background: var(--c0); } .cal-mini-hex.c1 { background: var(--c1); }
+.cal-mini-hex.c2 { background: var(--c2); } .cal-mini-hex.c3 { background: var(--c3); }
+.cal-mini-hex.c4 { background: var(--c4); } .cal-mini-hex.c5 { background: var(--c5); }
+.cal-mini-hex.goal { background: repeating-linear-gradient(45deg, #6b5942 0 3px, #564631 3px 6px); }
+
+.logbox { flex: 0 0 auto; min-height: 38px; max-height: 110px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.5; color: var(--ink-2); }
+.log-line.you { color: var(--you); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- Overlays ---- */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 22px; }
+.finalsc .you { color: var(--you); } .finalsc .foe { color: var(--foe); }
+.modal-body i { color: var(--trim-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) {
+  .title-main { font-size: 23px; }
+  .cal-board { --hw: clamp(40px, 7vh, 60px); }
+}
