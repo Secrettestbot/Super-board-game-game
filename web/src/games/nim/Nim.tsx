@@ -1,14 +1,17 @@
 /* NIM — UI (built for this codebase). Glowing tokens on a dark field, on the framework
-   shell, vs a perfect nim-sum AI. Hover a token to highlight it and everything after it in
-   its heap (the tokens that would be removed); click to take them. */
+   shell, vs a perfect nim-sum AI (solo) or a remote human (online). Hover a token to
+   highlight it and everything after it in its heap (the tokens that would be removed);
+   click to take them. Seat-relative: your side is derived from mySeat. */
 
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { nimAdapter } from './net'
 import * as NM from './logic'
-import type { NimState } from './logic'
+import type { NimState, Player } from './logic'
 
 const { HEAP_LABELS } = NM
 
@@ -25,16 +28,20 @@ const TITLE_MARK = (
 )
 
 export function Nim() {
-  const [s, setS] = useState<NimState>(() => NM.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(nimAdapter)
   const [showRules, setShowRules] = useState(false)
   const [hover, setHover] = useState<{ heap: number; pos: number } | null>(null)
 
-  function newGame() { setS(NM.makeGame()); setShowRules(false); setHover(null) }
+  // seat 0 = 'you', seat 1 = 'ai'; derive your side + the opponent's from mySeat.
+  const mySide: Player = mySeat === 1 ? 'ai' : 'you'
+  const oppSide: Player = mySide === 'you' ? 'ai' : 'you'
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
 
-  useAITurn(!s.winner && s.turn === 'ai', () => setS(p => NM.aiMove(p)), { delayMs: 620 })
+  function newGame() { netNew(); setShowRules(false); setHover(null) }
+
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
 
-  const yourTurn = !s.winner && s.turn === 'you'
+  const yourTurn = !s.winner && isMyTurn
   const total = s.heaps.reduce((a, b) => a + b, 0)
 
   // hovering the token at index `pos` in a heap of size n removes (n - pos) tokens,
@@ -42,15 +49,17 @@ export function Nim() {
   function clickToken(heap: number, pos: number) {
     if (!yourTurn) return
     const n = s.heaps[heap]
-    setS(NM.take(s, heap, n - pos, 'you'))
+    dispatch({ heap, count: n - pos })
     setHover(null)
   }
 
+  const myWin = s.winner === mySide
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = 'You took the last token — you win' }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = 'The rival took the last token' }
-  else if (yourTurn) { bk = 'you'; banner = 'Your turn — take from one heap' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  if (s.winner) {
+    if (myWin) { bk = 'win'; banner = 'You took the last token — you win' }
+    else { bk = 'lose'; banner = `${oppLabel} took the last token` }
+  } else if (yourTurn) { bk = 'you'; banner = 'Your turn — take from one heap' }
+  else { bk = 'foe'; banner = net.online ? `${oppLabel} is thinking…` : 'The rival is thinking…' }
 
   return (
     <>
@@ -94,33 +103,37 @@ export function Nim() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel turnbox">
-            <div className={'tn you' + (s.turn === 'you' && !s.winner ? ' on' : '')}><span className="tn-dot you" /><span className="tn-name">You</span></div>
-            <div className={'tn ai' + (s.turn === 'ai' && !s.winner ? ' on' : '')}><span className="tn-dot ai" /><span className="tn-name">Rival</span></div>
+            <div className={'tn you' + (s.turn === mySide && !s.winner ? ' on' : '')}><span className="tn-dot you" /><span className="tn-name">You</span></div>
+            <div className={'tn ai' + (s.turn === oppSide && !s.winner ? ' on' : '')}><span className="tn-dot ai" /><span className="tn-name">{oppLabel}</span></div>
           </div>
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}</div>
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {s.winner && <ResultModal won={myWin} oppLabel={oppLabel} online={net.online} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: NimState; onNew: () => void }) {
-  const won = s.winner === 'you'
+function ResultModal({ won, oppLabel, online, onNew }: { won: boolean; oppLabel: string; online: boolean; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Last token taken' : 'Out-balanced'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="modal-body">
         <p>{won
           ? 'You claimed the final token. The heaps stayed balanced when it mattered.'
-          : 'The rival balanced the heaps to a zero nim-sum and never let go. Try opening differently.'}</p>
+          : online
+            ? 'Your opponent took the final token. Try opening differently.'
+            : 'The rival balanced the heaps to a zero nim-sum and never let go. Try opening differently.'}</p>
       </div>
     </Modal>
   )

@@ -1,17 +1,24 @@
 /* ONITAMA — UI (built for this codebase). A stone 5x5 board on the framework shell, with the
    five move cards drawn as little 5x5 pattern grids. Pick one of your two cards, a piece, then a
    highlighted destination. The used card swaps to the middle. Win by capturing the enemy Master
-   or landing your Master on their temple arch. Opponent is an alpha-beta minimax AI. */
+   or landing your Master on their temple arch.
+
+   Solo: opponent is an alpha-beta minimax AI (driven by useGameSession's AI fill). Online: the
+   game is seat-relative — your side, cards, banners and panels are derived from mySeat, and the
+   board flips so your pieces are nearest you when you sit at the top seat. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { onitamaAdapter } from './net'
 import * as ON from './logic'
-import type { OnitamaState, Side, Card, Move } from './logic'
+import type { Side, Card, Move } from './logic'
 
 const { N } = ON
+const SIDE: Side[] = ['you', 'ai'] // seat 0 -> bottom (Blue), seat 1 -> top (Red)
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -23,8 +30,12 @@ const TITLE_MARK = (
 )
 
 // Render a single card as a 5x5 pattern grid (centre = the moving piece, dots = its offsets).
-function CardGrid({ card }: { card: Card }) {
-  const set = useMemo(() => new Set(card.moves.map(([dr, dc]) => (2 + dr) * 5 + (2 + dc))), [card])
+// When `mirror` is set (top-seat player), the offsets are negated so they read from your view.
+function CardGrid({ card, mirror }: { card: Card; mirror?: boolean }) {
+  const set = useMemo(() => {
+    const m = mirror ? -1 : 1
+    return new Set(card.moves.map(([dr, dc]) => (2 + dr * m) * 5 + (2 + dc * m)))
+  }, [card, mirror])
   const cells = []
   for (let i = 0; i < 25; i++) {
     const isCentre = i === 12
@@ -37,8 +48,8 @@ function CardGrid({ card }: { card: Card }) {
 }
 
 function CardView({
-  name, selectable, selected, onClick, faded,
-}: { name: string; selectable?: boolean; selected?: boolean; onClick?: () => void; faded?: boolean }) {
+  name, mirror, selectable, selected, onClick, faded,
+}: { name: string; mirror?: boolean; selectable?: boolean; selected?: boolean; onClick?: () => void; faded?: boolean }) {
   const card = ON.cardByName(name)
   return (
     <div
@@ -46,29 +57,33 @@ function CardView({
       onClick={selectable ? onClick : undefined}
     >
       <div className="mcard-name">{name}</div>
-      <CardGrid card={card} />
+      <CardGrid card={card} mirror={mirror} />
     </div>
   )
 }
 
 export function Onitama() {
-  const [s, setS] = useState<OnitamaState>(() => ON.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(onitamaAdapter)
   const [showRules, setShowRules] = useState(false)
   const [selCard, setSelCard] = useState<string | null>(null)
   const [selPiece, setSelPiece] = useState<number | null>(null)
 
+  const mySide = SIDE[mySeat]            // your colour this match
+  const oppSide: Side = mySide === 'you' ? 'ai' : 'you'
+  const flip = mySeat !== 0              // top-seat player views the board upside-down
+  const oppName = net.online ? 'Opponent' : 'Rival'
+
   function newGame() {
-    setS(ON.makeGame()); setShowRules(false); setSelCard(null); setSelPiece(null)
+    netNew(); setShowRules(false); setSelCard(null); setSelPiece(null)
   }
   function deselect() { setSelCard(null); setSelPiece(null) }
 
-  const yourTurn = !s.winner && s.turn === 'you'
+  const yourTurn = !s.winner && isMyTurn
 
-  useAITurn(!s.winner && s.turn === 'ai', () => setS(p => ON.aiMove(p)), { delayMs: 520, tick: s.turn })
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => (showRules ? setShowRules(false) : deselect()) })
 
   // All of your legal moves this turn, and the subset matching the current card+piece selection.
-  const myMoves = useMemo<Move[]>(() => (yourTurn ? ON.legalMoves(s, 'you') : []), [yourTurn, s])
+  const myMoves = useMemo<Move[]>(() => (yourTurn ? ON.legalMoves(s, mySide) : []), [yourTurn, s, mySide])
   const mustPass = yourTurn && myMoves.length === 0
 
   const destSet = useMemo(() => {
@@ -93,18 +108,22 @@ export function Onitama() {
   function clickSquare(i: number) {
     if (!yourTurn) return
     const dest = destSet.get(i)
-    if (dest) { setS(ON.applyMove(s, 'you', dest)); deselect(); return }
+    if (dest) { dispatch({ card: dest.card, from: dest.from, to: dest.to }); deselect(); return }
     const p = s.board[i]
-    if (selCard && p && p.side === 'you' && movablePieces.has(i)) { setSelPiece(i) }
+    if (selCard && p && p.side === mySide && movablePieces.has(i)) { setSelPiece(i) }
   }
-  function doPass() { if (mustPass) { setS(ON.passTurn(s, 'you')); deselect() } }
+  // Passing still swaps a card; the host honours a pass intent only when no legal move exists.
+  function doPass() { if (mustPass) { dispatch({ pass: true }); deselect() } }
 
   let banner = '', bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = 'You win — the rival falls' }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = 'The rival wins' }
+  if (s.winner === mySide) { bk = 'win'; banner = 'You win — the rival falls' }
+  else if (s.winner === oppSide) { bk = 'lose'; banner = `${oppName} wins` }
   else if (mustPass) { bk = 'you'; banner = 'No legal move — exchange a card' }
   else if (yourTurn) { bk = 'you'; banner = selCard ? (selPiece != null ? 'Pick a destination' : 'Pick a piece') : 'Your turn — choose a card' }
-  else { bk = 'foe'; banner = 'The rival is contemplating…' }
+  else { bk = 'foe'; banner = net.online ? `${oppName} is choosing…` : 'The rival is contemplating…' }
+
+  // Render order: flip top-to-bottom AND left-to-right so the local player's back row is nearest.
+  const order = flip ? Array.from({ length: N * N }, (_, k) => N * N - 1 - k) : Array.from({ length: N * N }, (_, k) => k)
 
   return (
     <>
@@ -123,28 +142,32 @@ export function Onitama() {
         <div className="on-play">
           {/* Opponent (top) cards */}
           <div className="cardrow foe-row">
-            {s.hands.ai.map(name => <CardView key={name} name={name} faded={!yourTurn} />)}
+            {s.hands[oppSide].map(name => <CardView key={name} name={name} mirror={oppSide === 'ai'} faded={!yourTurn} />)}
           </div>
 
           <div className="on-mid">
             <div className="on-board">
-              {s.board.map((p, i) => {
+              {order.map((i) => {
+                const p = s.board[i]
                 const r = (i / N) | 0, c = i % N
                 const isYouTemple = i === ON.YOU_TEMPLE
                 const isAiTemple = i === ON.AI_TEMPLE
+                // temple class is relative to side, not seat: AI_TEMPLE belongs to the 'ai' side.
+                const isMyTemple = (mySide === 'you' && isYouTemple) || (mySide === 'ai' && isAiTemple)
+                const isOppTemple = (oppSide === 'you' && isYouTemple) || (oppSide === 'ai' && isAiTemple)
                 const isDest = destSet.has(i)
                 const isSel = selPiece === i
                 const isLastFrom = s.last?.from === i
                 const isLastTo = s.last?.to === i
-                const movable = yourTurn && selCard != null && movablePieces.has(i) && p?.side === 'you'
+                const movable = yourTurn && selCard != null && movablePieces.has(i) && p?.side === mySide
                 return (
                   <div
                     key={i}
                     className={
                       'on-cell' +
                       ((r + c) % 2 ? ' alt' : '') +
-                      (isAiTemple ? ' temple-ai' : '') +
-                      (isYouTemple ? ' temple-you' : '') +
+                      (isOppTemple ? ' temple-ai' : '') +
+                      (isMyTemple ? ' temple-you' : '') +
                       (isLastFrom ? ' last-from' : '') +
                       (isLastTo ? ' last-to' : '') +
                       (movable ? ' movable' : '') +
@@ -154,7 +177,7 @@ export function Onitama() {
                   >
                     {(isAiTemple || isYouTemple) && <div className="arch" />}
                     {p && (
-                      <div className={'piece ' + p.side + ' ' + p.kind + (isSel ? ' sel' : '')}>
+                      <div className={'piece ' + (p.side === mySide ? 'you' : 'ai') + ' ' + p.kind + (isSel ? ' sel' : '')}>
                         {p.kind === 'master'
                           ? <span className="crown">♔</span>
                           : <span className="pip" />}
@@ -168,10 +191,11 @@ export function Onitama() {
 
             {/* Your (bottom) cards + the middle card */}
             <div className="cardrow you-row">
-              {s.hands.you.map(name => (
+              {s.hands[mySide].map(name => (
                 <CardView
                   key={name}
                   name={name}
+                  mirror={mySide === 'ai'}
                   selectable={yourTurn && !mustPass}
                   selected={selCard === name}
                   onClick={() => pickCard(name)}
@@ -181,14 +205,19 @@ export function Onitama() {
           </div>
 
           <div className="side">
+            <div className="panel">
+              <OnlineBar net={net} />
+            </div>
             <div className="panel turnpanel">
               <div className="panel-l">To move</div>
-              <div className={'turnwho ' + (s.winner ? 'over' : s.turn === 'you' ? 'you' : 'ai')}>
-                {s.winner ? (s.winner === 'you' ? 'You won' : 'Rival won') : s.turn === 'you' ? 'You · Blue' : 'Rival · Red'}
+              <div className={'turnwho ' + (s.winner ? 'over' : yourTurn ? 'you' : 'ai')}>
+                {s.winner
+                  ? (s.winner === mySide ? 'You won' : `${oppName} won`)
+                  : yourTurn ? 'You' : oppName}
               </div>
               <div className="midwrap">
                 <div className="panel-l">Middle card (next swap)</div>
-                <CardView name={s.middle} />
+                <CardView name={s.middle} mirror={mySide === 'ai'} />
               </div>
               {mustPass && <button className="passbtn" onClick={doPass}>Exchange card (pass)</button>}
             </div>
@@ -199,18 +228,17 @@ export function Onitama() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {s.winner && <ResultModal won={s.winner === mySide} oppName={oppName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: OnitamaState; onNew: () => void }) {
-  const won = s.winner === 'you'
+function ResultModal({ won, oppName, onNew }: { won: boolean; oppName: string; onNew: () => void }) {
   return (
     <Modal
-      eyebrow={won ? 'Way of the master' : 'The rival prevails'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      eyebrow={won ? 'Way of the master' : `${oppName} prevails`}
+      title={won ? 'You Win' : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >

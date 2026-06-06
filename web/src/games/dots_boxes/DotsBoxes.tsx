@@ -1,14 +1,20 @@
-/* DOTS AND BOXES — UI (built for this codebase). A 4x4 blueprint board on the framework shell,
-   vs a greedy safe-move AI. Click thin edge slots between dots to draw; closing a box claims it
-   and grants another move — so the AI may chain several moves, hence the useAITurn tick. */
+/* DOTS AND BOXES — UI (built for this codebase). A 4x4 blueprint board on the framework shell.
+   Click thin edge slots between dots to draw; closing a box claims it and grants another move.
+   Online-capable via useGameSession: seat 0 = 'you' (first), seat 1 = 'ai'/remote. The hook
+   drives the AI for any empty seat, so this component carries no useAITurn of its own — and
+   because completing a box keeps the same seat to move, the hook simply lets you keep going
+   while isMyTurn stays true. Everything (your side, score, banners, result) is relative to
+   mySeat, so a guest sitting in seat 1 sees their own boxes as "You". */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { dotsBoxesAdapter } from './net'
 import * as DB from './logic'
-import type { DotsState, EdgeId } from './logic'
+import type { EdgeId, Player } from './logic'
 
 const { SIZE, DOTS } = DB
 
@@ -24,21 +30,27 @@ const TITLE_MARK = (
 )
 
 export function DotsBoxes() {
-  const [s, setS] = useState<DotsState>(() => DB.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(dotsBoxesAdapter)
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(DB.makeGame()); setShowRules(false) }
+  // Seat-relative sides: seat 0 = 'you', seat 1 = 'ai'. "mine" is always rendered as You.
+  const mySide: Player = mySeat === 0 ? 'you' : 'ai'
+  const oppSide: Player = mySeat === 0 ? 'ai' : 'you'
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
 
-  // Closing a box grants the same player another move, so the AI may move several times while
-  // it's still its turn. Re-arm the timer on every move via a tick that changes each move.
-  useAITurn(!s.winner && s.turn === 'ai', () => setS(p => DB.aiMove(p)), { delayMs: 560, tick: `${s.moves}-${s.turn}` })
+  function newGame() { netNew(); setShowRules(false) }
+
+  const yourTurn = !s.winner && isMyTurn
+
+  function clickEdge(id: EdgeId) { if (yourTurn && !s.edges[id]) dispatch({ edge: id }) }
+
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
 
-  const yourTurn = !s.winner && s.turn === 'you'
-  const { you, ai } = DB.counts(s.owners)
+  // Scores relative to my seat: "mine" / "theirs".
+  const raw = DB.counts(s.owners)
+  const mine = mySide === 'you' ? raw.you : raw.ai
+  const theirs = mySide === 'you' ? raw.ai : raw.you
   const total = SIZE * SIZE
-
-  function clickEdge(id: EdgeId) { if (yourTurn && !s.edges[id]) setS(DB.drawEdge(s, id, 'you')) }
 
   // ----- board geometry (CSS grid of 2*SIZE+1 tracks each way) -----
   const dots = useMemo(() => {
@@ -47,15 +59,20 @@ export function DotsBoxes() {
     return out
   }, [])
 
+  const iWon = s.winner === mySide
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = `You win — ${you} to ${ai}` }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = `The rival wins — ${ai} to ${you}` }
-  else if (s.winner === 'draw') { bk = ''; banner = `A tie — ${you}–${ai}` }
+  if (iWon) { bk = 'win'; banner = `You win — ${mine} to ${theirs}` }
+  else if (s.winner === oppSide) { bk = 'lose'; banner = `${oppLabel} wins — ${theirs} to ${mine}` }
+  else if (s.winner === 'draw') { bk = ''; banner = `A tie — ${mine}–${theirs}` }
   else if (yourTurn) { bk = 'you'; banner = 'Your turn — draw an edge' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  else { bk = 'foe'; banner = net.online ? `${oppLabel} is moving…` : `${oppLabel} is thinking…` }
 
   const trackPos = (i: number) => i * 2 + 1                 // dot at even index -> grid line
   const span = (a: number) => `${a} / span 1`
+
+  // CSS classes for a drawn edge / filled box are keyed by ownership relative to me:
+  // 'you' class for my marks, 'ai' class for the opponent's, regardless of seat.
+  const ownClass = (o: Player) => (o === mySide ? 'you' : 'ai')
 
   return (
     <>
@@ -79,10 +96,10 @@ export function DotsBoxes() {
               return (
                 <div
                   key={'box-' + i}
-                  className={'db-box' + (o ? ' filled ' + o : '')}
+                  className={'db-box' + (o ? ' filled ' + ownClass(o) : '')}
                   style={{ gridColumn: span(trackPos(c) + 1), gridRow: span(trackPos(r) + 1) }}
                 >
-                  {o && <span className="db-init">{o === 'you' ? 'Y' : 'R'}</span>}
+                  {o && <span className="db-init">{o === mySide ? 'Y' : 'R'}</span>}
                 </div>
               )
             })}
@@ -95,7 +112,7 @@ export function DotsBoxes() {
                 return (
                   <div
                     key={id}
-                    className={'db-edge h' + (drawn ? ' drawn ' + drawn : '') + (s.last === id ? ' last' : '') + (yourTurn && !drawn ? ' open' : '')}
+                    className={'db-edge h' + (drawn ? ' drawn ' + ownClass(drawn) : '') + (s.last === id ? ' last' : '') + (yourTurn && !drawn ? ' open' : '')}
                     style={{ gridColumn: span(trackPos(c) + 1), gridRow: span(trackPos(r)) }}
                     onClick={() => clickEdge(id)}
                   >
@@ -113,7 +130,7 @@ export function DotsBoxes() {
                 return (
                   <div
                     key={id}
-                    className={'db-edge v' + (drawn ? ' drawn ' + drawn : '') + (s.last === id ? ' last' : '') + (yourTurn && !drawn ? ' open' : '')}
+                    className={'db-edge v' + (drawn ? ' drawn ' + ownClass(drawn) : '') + (s.last === id ? ' last' : '') + (yourTurn && !drawn ? ' open' : '')}
                     style={{ gridColumn: span(trackPos(c)), gridRow: span(trackPos(r) + 1) }}
                     onClick={() => clickEdge(id)}
                   >
@@ -131,43 +148,43 @@ export function DotsBoxes() {
         </div>
 
         <div className="side">
+          <div className="panel"><OnlineBar net={net} /></div>
           <div className="panel scoreboard">
-            <div className={'sc you' + (s.turn === 'you' && !s.winner ? ' on' : '')}>
+            <div className={'sc you' + (yourTurn ? ' on' : '')}>
               <span className="sc-chip you" />
               <span className="sc-name">You</span>
-              <span className="sc-n">{you}</span>
+              <span className="sc-n">{mine}</span>
             </div>
-            <div className={'sc ai' + (s.turn === 'ai' && !s.winner ? ' on' : '')}>
+            <div className={'sc ai' + (!s.winner && !isMyTurn && s.turn != null ? ' on' : '')}>
               <span className="sc-chip ai" />
-              <span className="sc-name">Rival</span>
-              <span className="sc-n">{ai}</span>
+              <span className="sc-name">{oppLabel}</span>
+              <span className="sc-n">{theirs}</span>
             </div>
             <div className="sc-bar">
-              <div className="sc-bar-you" style={{ width: `${(you / total) * 100}%` }} />
-              <div className="sc-bar-ai" style={{ width: `${(ai / total) * 100}%` }} />
+              <div className="sc-bar-you" style={{ width: `${(mine / total) * 100}%` }} />
+              <div className="sc-bar-ai" style={{ width: `${(theirs / total) * 100}%` }} />
             </div>
-            <div className="sc-foot">{total - you - ai} squares left</div>
+            <div className="sc-foot">{total - mine - theirs} squares left</div>
           </div>
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}</div>
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} you={you} ai={ai} onNew={newGame} />}
+      {s.winner && <ResultModal won={iWon} draw={s.winner === 'draw'} mine={mine} theirs={theirs} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, you, ai, onNew }: { s: DotsState; you: number; ai: number; onNew: () => void }) {
-  const won = s.winner === 'you', draw = s.winner === 'draw'
+function ResultModal({ won, draw, mine, theirs, oppLabel, onNew }: { won: boolean; draw: boolean; mine: number; theirs: number; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={draw ? 'Split decision' : won ? 'Grid claimed' : 'Out-boxed'}
-      title={draw ? 'A Tie' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'A Tie' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {you}</span><span className="foe">Rival {ai}</span></div>
+      <div className="finalsc"><span className="you">You {mine}</span><span className="foe">{oppLabel} {theirs}</span></div>
     </Modal>
   )
 }

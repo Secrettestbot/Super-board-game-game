@@ -1,14 +1,18 @@
-/* FOX AND HOUNDS — UI (built for this codebase). 8x8 checkerboard on the framework shell;
-   you are the sly fox slipping past a wall of four minimax hounds. Click the fox, then a
-   highlighted diagonal square to slip there; the AI advances one hound in reply. */
+/* FOX AND HOUNDS — UI (built for this codebase). 8x8 checkerboard on the framework shell.
+   Asymmetric two-player: ONE seat is the sly fox, the other drives the four hounds. In solo
+   play you are the fox (seat 0) and a minimax AI runs the hounds (seat 1). Online, a guest
+   can take the opposite seat and drive the hounds against you. Click your own piece, then a
+   highlighted diagonal square to move it. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { foxHoundsAdapter } from './net'
 import * as FH from './logic'
-import type { FHState } from './logic'
+import type { Side } from './logic'
 
 const { N } = FH
 
@@ -41,38 +45,69 @@ const HOUND_GLYPH = (
 )
 
 export function FoxHounds() {
-  const [s, setS] = useState<FHState>(() => FH.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(foxHoundsAdapter)
+  const mySide: Side = mySeat === 0 ? 'fox' : 'hound' // seat 0 = fox, seat 1 = hounds
   const [showRules, setShowRules] = useState(false)
-  const [sel, setSel] = useState(false) // fox selected?
+  const [sel, setSel] = useState<number | null>(null) // selected square (fox square, or a hound's square)
 
-  function newGame() { setS(FH.makeGame()); setSel(false); setShowRules(false) }
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
 
-  useAITurn(!s.winner && s.turn === 'hound', () => setS(p => FH.aiMove(p)), { delayMs: 520 })
-  useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => { setShowRules(false); setSel(false) } })
+  useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => { setShowRules(false); setSel(null) } })
 
-  const yourTurn = !s.winner && s.turn === 'fox'
-  const targets = useMemo(
-    () => (yourTurn && sel) ? new Set(FH.legalMoves({ fox: s.fox, hounds: s.hounds }, 'fox')) : new Set<number>(),
-    [yourTurn, sel, s.fox, s.hounds],
-  )
+  const yourTurn = s.winner == null && isMyTurn
   const houndSet = useMemo(() => new Set(s.hounds), [s.hounds])
-  const canMove = yourTurn && FH.legalMoves({ fox: s.fox, hounds: s.hounds }, 'fox').length > 0
+
+  // legal destination squares for the currently selected piece (only when it's your turn)
+  const targets = useMemo(() => {
+    if (!yourTurn || sel == null) return new Set<number>()
+    const occ = new Set<number>([s.fox, ...s.hounds])
+    if (mySide === 'fox') {
+      return sel === s.fox ? new Set(FH.foxMoves(s.fox, occ)) : new Set<number>()
+    }
+    return houndSet.has(sel) ? new Set(FH.houndMoves(sel, occ)) : new Set<number>()
+  }, [yourTurn, sel, mySide, s.fox, s.hounds, houndSet])
+
+  // can my side move at all this turn?
+  const canMove = yourTurn && FH.legalMoves({ fox: s.fox, hounds: s.hounds }, mySide).length > 0
+
+  function isMine(i: number): boolean {
+    return mySide === 'fox' ? i === s.fox : houndSet.has(i)
+  }
 
   function clickCell(i: number) {
     if (!yourTurn) return
-    if (i === s.fox) { setSel(v => !v); return }
-    if (sel && targets.has(i)) { setS(FH.moveFox(s, i)); setSel(false) }
+    if (isMine(i)) { setSel(v => (v === i ? null : i)); return }
+    if (sel != null && targets.has(i)) {
+      if (mySide === 'fox') dispatch({ to: i })
+      else dispatch({ to: i, hi: s.hounds.indexOf(sel) })
+      setSel(null)
+    }
   }
 
+  // banner + result, relative to MY side
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+  const iWon = s.winner != null && s.winner === mySide
+  const myName = mySide === 'fox' ? 'Fox' : 'Hounds'
+
   let banner: string, bk = ''
-  if (s.winner === 'fox') { bk = 'win'; banner = 'You Win — the fox slips free' }
-  else if (s.winner === 'hound') { bk = 'lose'; banner = 'Rival Wins — the pack closes in' }
-  else if (yourTurn) { bk = 'you'; banner = sel ? 'Pick a glowing square to dart to' : 'Your turn — click the fox' }
-  else { bk = 'foe'; banner = 'The hounds are circling…' }
+  if (s.winner != null) {
+    bk = iWon ? 'win' : 'lose'
+    banner = iWon
+      ? (mySide === 'fox' ? 'You Win — the fox slips free' : 'You Win — the pack closes in')
+      : (mySide === 'fox' ? `${oppLabel} Wins — the pack closes in` : `${oppLabel} Wins — the fox slips free`)
+  } else if (yourTurn) {
+    bk = 'you'
+    banner = sel != null ? 'Pick a glowing square to move to' : `Your turn — click your ${mySide === 'fox' ? 'fox' : 'hound'}`
+  } else {
+    bk = 'foe'
+    banner = net.online ? `${oppLabel} is moving…` : (mySide === 'fox' ? 'The hounds are circling…' : 'The fox is darting…')
+  }
 
   const hint = canMove
-    ? 'Drift sideways and back to bait a gap, then sprint through it.'
-    : (yourTurn ? 'No escape left…' : 'Watch the wall — slip the moment it bends.')
+    ? (mySide === 'fox'
+      ? 'Drift sideways and back to bait a gap, then sprint through it.'
+      : 'Keep the wall unbroken and advance together — never leave a diagonal open.')
+    : (yourTurn ? 'No legal move left…' : 'Watch for the moment the line bends.')
 
   return (
     <>
@@ -80,7 +115,9 @@ export function FoxHounds() {
         mark={TITLE_MARK}
         eyebrow="Fox &amp; Hounds · the hunt"
         title="Fox and Hounds"
-        subtitle="you are the fox — slip past four relentless hounds to the far back row"
+        subtitle={mySide === 'fox'
+          ? 'you are the fox — slip past four relentless hounds to the far back row'
+          : 'you drive the hounds — herd the fox into a corner with no escape'}
         onRules={() => setShowRules(true)}
         onNew={newGame}
         modeLeft="8 × 8 · dark squares"
@@ -97,12 +134,13 @@ export function FoxHounds() {
               const cls =
                 'fh-cell ' + (dark ? 'dark' : 'light') +
                 (FH.isDark(i) && targets.has(i) ? ' target' : '') +
-                (isFox && sel ? ' picked' : '') +
+                (sel === i ? ' picked' : '') +
                 (s.last === i ? ' last' : '')
+              const clickable = yourTurn && (isMine(i) || targets.has(i))
               return (
-                <div key={i} className={cls} onClick={() => clickCell(i)}>
-                  {isFox && <div className={'fh-piece fox' + (yourTurn ? ' live' : '')}>{FOX_GLYPH}</div>}
-                  {isHound && <div className="fh-piece hound">{HOUND_GLYPH}</div>}
+                <div key={i} className={cls + (clickable ? ' clickable' : '')} onClick={() => clickCell(i)}>
+                  {isFox && <div className={'fh-piece fox' + (yourTurn && mySide === 'fox' ? ' live' : '')}>{FOX_GLYPH}</div>}
+                  {isHound && <div className={'fh-piece hound' + (yourTurn && mySide === 'hound' ? ' live' : '')}>{HOUND_GLYPH}</div>}
                   {!isFox && !isHound && targets.has(i) && <div className="fh-dot" />}
                 </div>
               )
@@ -111,15 +149,16 @@ export function FoxHounds() {
         </div>
 
         <div className="side">
+          <div className="panel"><OnlineBar net={net} /></div>
           <div className="panel turnbox">
-            <div className={'tn fox' + (s.turn === 'fox' && !s.winner ? ' on' : '')}>
+            <div className={'tn fox' + (s.turn === 'fox' && s.winner == null ? ' on' : '')}>
               <span className="tn-mark fox">{FOX_GLYPH}</span>
-              <span className="tn-name">You · Fox</span>
+              <span className="tn-name">{mySide === 'fox' ? 'You · Fox' : `${oppLabel} · Fox`}</span>
               <span className="tn-tag">any diagonal</span>
             </div>
-            <div className={'tn hound' + (s.turn === 'hound' && !s.winner ? ' on' : '')}>
+            <div className={'tn hound' + (s.turn === 'hound' && s.winner == null ? ' on' : '')}>
               <span className="tn-mark hound">{HOUND_GLYPH}</span>
-              <span className="tn-name">Rival · Hounds ×{s.hounds.length}</span>
+              <span className="tn-name">{mySide === 'hound' ? 'You · Hounds' : `${oppLabel} · Hounds`} ×{s.hounds.length}</span>
               <span className="tn-tag">forward only</span>
             </div>
           </div>
@@ -128,23 +167,28 @@ export function FoxHounds() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={iWon} mySide={mySide} oppLabel={oppLabel} myName={myName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: FHState; onNew: () => void }) {
-  const won = s.winner === 'fox'
+function ResultModal({ won, mySide, oppLabel, myName, onNew }: { won: boolean; mySide: Side; oppLabel: string; myName: string; onNew: () => void }) {
+  const eyebrow = won
+    ? (mySide === 'fox' ? 'Broken free' : 'Run to ground')
+    : (mySide === 'fox' ? 'Run to ground' : 'Broken free')
+  const blurb = won
+    ? (mySide === 'fox' ? 'The fox darts past the line' : 'The pack pins the fox')
+    : (mySide === 'fox' ? 'The pack pins the fox' : 'The fox darts past the line')
   return (
     <Modal
-      eyebrow={won ? 'Broken free' : 'Run to ground'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      eyebrow={eyebrow}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
-        <span className="you">{won ? 'The fox darts past the line' : 'The pack pins the fox'}</span>
+        <span className={won ? 'you' : 'foe'}>{blurb} — {myName}.</span>
       </div>
     </Modal>
   )
@@ -155,10 +199,11 @@ function RulesModal({ onClose }: { onClose: () => void }) {
     <Modal eyebrow="How to play" title="Fox and Hounds" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Begin</button>}>
       <div className="modal-body">
-        <p>The game lives on the <b>dark squares</b> of the board. You are the lone <b>fox</b>; the rival drives the four <b>hounds</b>. Each turn a piece steps <b>one square diagonally</b> to an empty dark square — no captures, no jumps.</p>
-        <p>The <b>fox</b> may move along <i>any</i> of the four diagonals — forward or backward. The <b>hounds</b> may only move <i>forward</i>, advancing toward your home row, so their wall can never retreat.</p>
+        <p>The game lives on the <b>dark squares</b> of the board. One side is the lone <b>fox</b>; the other drives the four <b>hounds</b>. Each turn a piece steps <b>one square diagonally</b> to an empty dark square — no captures, no jumps.</p>
+        <p>The <b>fox</b> may move along <i>any</i> of the four diagonals — forward or backward. The <b>hounds</b> may only move <i>forward</i>, advancing toward the fox's home row, so their wall can never retreat.</p>
         <p>The <b>fox wins</b> by slipping all the way to the hounds' back row — or by jamming every hound so none can move. The <b>hounds win</b> if they trap the fox with no legal move left.</p>
-        <p>Click the fox to select it, then click a glowing square to dart there. With a perfect wall the hounds are unbeatable — so wait for a crooked line and sprint through the gap.</p>
+        <p>Click your own piece to select it, then click a glowing square to move there. With a perfect wall the hounds are unbeatable — so the fox must wait for a crooked line and sprint through the gap.</p>
+        <p>In solo play you are the fox against a minimax AI. <b>Online,</b> a second player can take the hounds (or the fox) against you.</p>
         <p><b>Keys:</b> <kbd>N</kbd> new game · <kbd>?</kbd> rules · <kbd>Esc</kbd> deselect / close.</p>
       </div>
     </Modal>

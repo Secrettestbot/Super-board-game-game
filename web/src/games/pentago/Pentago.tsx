@@ -1,14 +1,22 @@
 /* PENTAGO — UI (built for this codebase). A 6x6 board of four rotatable wooden quadrants and
-   glassy marbles on the framework shell, vs an alpha-beta AI. Place a marble, then twist a
-   quadrant clockwise or counter-clockwise; five in a row wins. */
+   glassy marbles on the framework shell, vs an alpha-beta AI or a remote opponent online. Place
+   a marble, then twist a quadrant clockwise or counter-clockwise; five in a row wins.
+
+   Online: a full turn (place + rotate) crosses the wire as ONE intent. So the place-then-rotate
+   interaction lives as LOCAL UI state here — we hold the pending placement until a quadrant twist
+   is chosen, then dispatch the complete { cell, quad, dir } intent exactly once. Everything is
+   seat-relative: your marble colour comes from mySeat, isMyTurn gates interaction, and banners /
+   panels read from your perspective ("Opponent" when online). */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { pentagoAdapter } from './net'
 import * as PG from './logic'
-import type { PentagoState, Dir } from './logic'
+import type { Dir, Marble } from './logic'
 
 const { N, QUADS } = PG
 
@@ -24,33 +32,55 @@ const TITLE_MARK = (
 )
 
 const ARROW: Record<Dir, string> = { cw: '↻', ccw: '↺' }
+const NAME: Record<Marble, string> = { w: 'White', b: 'Black' }
 
 export function Pentago() {
-  const [s, setS] = useState<PentagoState>(() => PG.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(pentagoAdapter)
+  const myColor: Marble = mySeat === 0 ? 'w' : 'b'
+  const oppColor: Marble = myColor === 'w' ? 'b' : 'w'
   const [showRules, setShowRules] = useState(false)
+  // Local two-step interaction state: the cell we've tentatively placed, awaiting a twist.
+  const [pendingCell, setPendingCell] = useState<number | null>(null)
 
-  function newGame() { setS(PG.makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false); setPendingCell(null) }
 
-  useAITurn(!s.winner && s.turn === 'b' && s.phase === 'place', () => setS(p => PG.aiMove(p)), { delayMs: 560 })
-  useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
+  useGameKeys({
+    onNew: newGame,
+    onToggleRules: () => setShowRules(v => !v),
+    onEscape: () => { if (pendingCell != null) setPendingCell(null); else setShowRules(false) },
+  })
 
-  const yourTurn = !s.winner && s.turn === 'w'
-  const canPlace = yourTurn && s.phase === 'place'
-  const canRotate = yourTurn && s.phase === 'rotate'
+  const over = s.winner != null
+  const yourTurn = !over && isMyTurn
+  // Within your turn: choose a cell first (place phase), then a rotation.
+  const canPlace = yourTurn && pendingCell == null
+  const canRotate = yourTurn && pendingCell != null
   const winSet = useMemo(() => new Set(s.line ?? []), [s.line])
 
-  function clickCell(i: number) { if (canPlace && !s.board[i]) setS(PG.place(s, i, 'w')) }
-  function doRotate(q: number, dir: Dir) { if (canRotate) setS(PG.rotate(s, q, dir, 'w')) }
+  function clickCell(i: number) {
+    if (!canPlace || s.board[i]) return
+    setPendingCell(i)
+  }
+  function doRotate(q: number, dir: Dir) {
+    if (!canRotate || pendingCell == null) return
+    dispatch({ cell: pendingCell, quad: q, dir })
+    setPendingCell(null)
+  }
+
+  // A marble is "previewed" in the pending cell while we wait for the twist choice.
+  const previewCell = canRotate ? pendingCell : null
+
+  const myWin = s.winner === myColor
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
 
   let banner: string, bk = ''
-  if (s.winner === 'w') { bk = 'win'; banner = 'You win — five in a row' }
-  else if (s.winner === 'b') { bk = 'lose'; banner = 'The rival wins — five in a row' }
+  if (s.winner === myColor) { bk = 'win'; banner = 'You win — five in a row' }
+  else if (s.winner === oppColor) { bk = 'lose'; banner = `The ${oppLabel.toLowerCase()} wins — five in a row` }
   else if (s.winner === 'draw') { bk = ''; banner = 'A draw — no five in a row' }
   else if (canPlace) { bk = 'you'; banner = 'Your turn — place a marble' }
   else if (canRotate) { bk = 'you'; banner = 'Now rotate a quadrant ↻ ↺' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  else { bk = 'foe'; banner = net.online ? `The ${oppLabel.toLowerCase()} is moving…` : 'The rival is thinking…' }
 
-  // Build the four quadrant grids (each 3x3 slice of the 6x6 board).
   return (
     <>
       <GameShell
@@ -73,6 +103,7 @@ export function Pentago() {
                   {[0, 1, 2].map(r => [0, 1, 2].map(c => {
                     const bi = (qd.r0 + r) * N + (qd.c0 + c)
                     const v = s.board[bi]
+                    const isPreview = bi === previewCell
                     return (
                       <div
                         key={bi}
@@ -80,7 +111,8 @@ export function Pentago() {
                         onClick={() => clickCell(bi)}
                       >
                         {v && <div className={"pg-marble " + v} />}
-                        {!v && canPlace && <div className="pg-ghost" />}
+                        {!v && isPreview && <div className={"pg-marble " + myColor} />}
+                        {!v && !isPreview && canPlace && <div className="pg-ghost" />}
                       </div>
                     )
                   }))}
@@ -98,37 +130,39 @@ export function Pentago() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel players">
-            <div className={"pl w" + (s.turn === 'w' && !s.winner ? " on" : "")}>
-              <span className="pl-marble w" /><span className="pl-name">You · White</span>
-              {s.turn === 'w' && !s.winner && <span className="pl-step">{s.phase === 'place' ? 'place' : 'rotate'}</span>}
+            <div className={"pl " + myColor + (yourTurn ? " on" : "")}>
+              <span className={"pl-marble " + myColor} /><span className="pl-name">You · {NAME[myColor]}</span>
+              {yourTurn && <span className="pl-step">{canPlace ? 'place' : 'rotate'}</span>}
             </div>
-            <div className={"pl b" + (s.turn === 'b' && !s.winner ? " on" : "")}>
-              <span className="pl-marble b" /><span className="pl-name">Rival · Black</span>
-              {s.turn === 'b' && !s.winner && <span className="pl-step">thinking</span>}
+            <div className={"pl " + oppColor + (!over && !isMyTurn ? " on" : "")}>
+              <span className={"pl-marble " + oppColor} /><span className="pl-name">{oppLabel} · {NAME[oppColor]}</span>
+              {!over && !isMyTurn && <span className="pl-step">{net.online ? 'moving' : 'thinking'}</span>}
             </div>
           </div>
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={"log-line " + l.t}>{l.x}</div>)}</div>
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {over && <ResultModal won={myWin} draw={s.winner === 'draw'} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: PentagoState; onNew: () => void }) {
-  const won = s.winner === 'w', draw = s.winner === 'draw'
+function ResultModal({ won, draw, oppLabel, onNew }: { won: boolean; draw: boolean; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={draw ? 'No line found' : won ? 'Five in a row' : 'Out-spun'}
-      title={draw ? 'A Draw' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'A Draw' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
-        {draw ? <span className="you">Stalemate</span> : <><span className={won ? 'you' : 'foe'}>{won ? 'You' : 'Rival'}</span><span className="foe">five in a row</span></>}
+        {draw ? <span className="you">Stalemate</span> : <><span className={won ? 'you' : 'foe'}>{won ? 'You' : oppLabel}</span><span className="foe">five in a row</span></>}
       </div>
     </Modal>
   )
@@ -139,10 +173,10 @@ function RulesModal({ onClose }: { onClose: () => void }) {
     <Modal eyebrow="How to play" title="Pentago" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Begin</button>}>
       <div className="modal-body">
-        <p>You are <b>White</b> and move first. Each turn has <b>two steps</b>: first <b>place</b> one of your marbles in any empty cell, then <b>rotate</b> one of the four 3×3 quadrants a quarter-turn — clockwise <i>↻</i> or counter-clockwise <i>↺</i>.</p>
+        <p>Each turn has <b>two steps</b>: first <b>place</b> one of your marbles in any empty cell, then <b>rotate</b> one of the four 3×3 quadrants a quarter-turn — clockwise <i>↻</i> or counter-clockwise <i>↺</i>. White moves first.</p>
         <p>After the rotation, having <b>five of your marbles in a row</b> — horizontally, vertically, or diagonally, anywhere on the 6×6 (lines may cross quadrant borders) — wins.</p>
         <p>If both players make five at once after a rotation, or the board fills with no five, it's a <b>draw</b>.</p>
-        <p><b>Keys:</b> <kbd>N</kbd> new game · <kbd>?</kbd> rules · <kbd>Esc</kbd> close.</p>
+        <p><b>Keys:</b> <kbd>N</kbd> new game · <kbd>?</kbd> rules · <kbd>Esc</kbd> undo placement / close.</p>
       </div>
     </Modal>
   )

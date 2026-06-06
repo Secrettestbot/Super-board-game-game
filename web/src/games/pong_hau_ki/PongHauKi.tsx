@@ -1,14 +1,18 @@
-/* PONG HAU K'I — UI (built for this codebase). A 5-point blocking board (square + both
-   diagonals) on the framework shell, vs a perfect minimax AI. Pick your piece, then the
-   highlighted empty point it can slide to. Trap the rival to win. */
+/* PONG HAU K'I — UI (built for this codebase). A 5-point blocking board (square + one
+   diagonal) on the framework shell. Solo: you are Red vs a perfect minimax AI. Online:
+   the hook fills the empty seat with the AI or a remote guest, and the view is rendered
+   relative to your seat (seat 0 = Red, seat 1 = Blue). Pick your disc, then the
+   highlighted empty point it can slide to. Trap the opponent to win. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { pongHauKiAdapter } from './net'
 import * as PHK from './logic'
-import type { PHKState, Move } from './logic'
+import type { Disc, Move } from './logic'
 
 const { PT } = PHK
 
@@ -43,46 +47,56 @@ const TITLE_MARK = (
 )
 
 export function PongHauKi() {
-  const [s, setS] = useState<PHKState>(() => PHK.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(pongHauKiAdapter)
+  const myDisc: Disc = mySeat === 1 ? 'b' : 'r'
+  const oppDisc: Disc = myDisc === 'r' ? 'b' : 'r'
   const [showRules, setShowRules] = useState(false)
   const [from, setFrom] = useState<number | null>(null)
 
-  function newGame() { setS(PHK.makeGame()); setShowRules(false); setFrom(null) }
+  function newGame() { netNew(); setShowRules(false); setFrom(null) }
 
-  useAITurn(!s.winner && s.turn === 'b', () => setS(p => PHK.aiMove(p)), { delayMs: 520 })
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => { if (showRules) setShowRules(false); else setFrom(null) },
   })
 
-  const yourTurn = !s.winner && s.turn === 'r'
-  const myMoves = useMemo(() => yourTurn ? PHK.legalMoves(s.board, 'r') : [], [yourTurn, s.board])
+  const yourTurn = !s.winner && isMyTurn
+  const myMoves = useMemo(() => yourTurn ? PHK.legalMoves(s.board, myDisc) : [], [yourTurn, s.board, myDisc])
   const movableFrom = useMemo(() => new Set(myMoves.map(m => m.from)), [myMoves])
   const targets = useMemo(() => new Set(from === null ? [] : myMoves.filter(m => m.from === from).map(m => m.to)), [from, myMoves])
 
   function clickPoint(i: number) {
     if (!yourTurn) return
-    if (s.board[i] === 'r' && movableFrom.has(i)) { setFrom(i === from ? null : i); return }
+    if (s.board[i] === myDisc && movableFrom.has(i)) { setFrom(i === from ? null : i); return }
     if (from !== null && targets.has(i)) {
-      const m: Move = { from, to: i }
-      setS(PHK.move(s, m, 'r')); setFrom(null)
+      dispatch({ from, to: i }); setFrom(null)
     }
   }
 
+  const oppLabel = net.online ? 'The opponent' : 'The rival'
+  const oppName = net.online ? 'Opponent' : 'Rival'
+  const myWin = s.winner === myDisc
+  const oppWin = s.winner === oppDisc
+  const myColorName = myDisc === 'r' ? 'Red' : 'Blue'
+  const oppColorName = oppDisc === 'r' ? 'Red' : 'Blue'
+
   let banner: string, bk = ''
-  if (s.winner === 'r') { bk = 'win'; banner = 'You win — the rival is trapped' }
-  else if (s.winner === 'b') { bk = 'lose'; banner = 'The rival wins — you were trapped' }
-  else if (yourTurn) { bk = 'you'; banner = from === null ? 'Your turn — pick a red disc to slide' : 'Now choose where to slide it' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  if (myWin) { bk = 'win'; banner = `You win — ${oppLabel.toLowerCase()} is trapped` }
+  else if (oppWin) { bk = 'lose'; banner = `${oppLabel} wins — you were trapped` }
+  else if (yourTurn) { bk = 'you'; banner = from === null ? `Your turn — pick a ${myColorName.toLowerCase()} disc to slide` : 'Now choose where to slide it' }
+  else { bk = 'foe'; banner = `${oppLabel} is thinking…` }
+
+  const myOn = !s.winner && s.turn === myDisc
+  const oppOn = !s.winner && s.turn === oppDisc
 
   return (
     <>
       <GameShell
         mark={TITLE_MARK}
-        eyebrow="Pong Hau K'i · trap the rival"
+        eyebrow="Pong Hau K'i · trap the opponent"
         title="Pong Hau K'i"
-        subtitle="slide a disc into the open point — and box the rival in so it can't move"
+        subtitle="slide a disc into the open point — and box the opponent in so it can't move"
         onRules={() => setShowRules(true)}
         onNew={newGame}
         modeLeft="5 points · 2 each"
@@ -98,7 +112,7 @@ export function PongHauKi() {
             {POS.map((p, i) => {
               const v = s.board[i]
               const isTarget = targets.has(i)
-              const isMovable = v === 'r' && movableFrom.has(i)
+              const isMovable = v === myDisc && movableFrom.has(i)
               const cls = 'phk-point'
                 + (isTarget ? ' target' : '')
                 + (isMovable ? ' movable' : '')
@@ -117,31 +131,33 @@ export function PongHauKi() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel turnbox">
-            <div className={'tn r' + (s.turn === 'r' && !s.winner ? ' on' : '')}><span className="tn-disc r" /><span className="tn-name">You · Red</span></div>
-            <div className={'tn b' + (s.turn === 'b' && !s.winner ? ' on' : '')}><span className="tn-disc b" /><span className="tn-name">Rival · Blue</span></div>
+            <div className={'tn ' + myDisc + (myOn ? ' on' : '')}><span className={'tn-disc ' + myDisc} /><span className="tn-name">You · {myColorName}</span></div>
+            <div className={'tn ' + oppDisc + (oppOn ? ' on' : '')}><span className={'tn-disc ' + oppDisc} /><span className="tn-name">{oppName} · {oppColorName}</span></div>
             <div className="tn-hint">It's all about not getting boxed in — keep an escape square open.</div>
           </div>
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}</div>
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {s.winner && <ResultModal won={myWin} oppName={oppName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: PHKState; onNew: () => void }) {
-  const won = s.winner === 'r'
+function ResultModal({ won, oppName, onNew }: { won: boolean; oppName: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Boxed them in' : 'Trapped'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalmsg">{won ? 'The rival had no slide left.' : 'You ran out of room to move.'}</div>
+      <div className="finalmsg">{won ? `${oppName} had no slide left.` : 'You ran out of room to move.'}</div>
     </Modal>
   )
 }
@@ -153,7 +169,7 @@ function RulesModal({ onClose }: { onClose: () => void }) {
       <div className="modal-body">
         <p>You are <b>Red</b> and move first. The board has <b>five points</b> — four corners and the centre — joined by the square's four sides and one <b>diagonal</b> through the centre.</p>
         <p>Each side has <b>two discs</b> and one point is always empty. On your turn, <b>slide</b> one disc along a line into the adjacent <i>empty</i> point. There are no captures.</p>
-        <p>You <b>win</b> by <b>boxing the rival in</b>: if it's their turn and none of their discs sit next to the empty point, they can't move and lose.</p>
+        <p>You <b>win</b> by <b>boxing the opponent in</b>: if it's their turn and none of their discs sit next to the empty point, they can't move and lose.</p>
         <p><b>Keys:</b> <kbd>N</kbd> new game · <kbd>?</kbd> rules · <kbd>Esc</kbd> deselect / close.</p>
       </div>
     </Modal>
