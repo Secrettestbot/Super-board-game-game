@@ -139,4 +139,12 @@ export const PLAYABLE: Record<string, string> = {
   bang_dice: 'games/bang_dice.html',
   wingspan_card: 'games/wingspan_card.html',
   stone_age: 'games/stone_age.html',
+  word_game: 'games/word_game.html',
+  cryptid: 'games/cryptid.html',
+  snakes_ladders: 'games/snakes_ladders.html',
+  isle_of_cats: 'games/isle_of_cats.html',
+  radlands: 'games/radlands.html',
+  clank: 'games/clank.html',
+  everdell: 'games/everdell.html',
+  raptor: 'games/raptor.html',
 }

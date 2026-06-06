@@ -5,10 +5,11 @@ a "Game Library" selection screen plus self-contained, playable game pages with 
 opponent. This is the real, compiled app (no CDN React / in-browser Babel) — the
 prototypes in `../design/` remain the visual reference.
 
-The library shell + the framework + **one hundred and thirty-three fully-playable games** are done
-(6 ported from the design prototypes + 127 built from scratch on the framework). The latest batch
-added ZÈRTZ, Hanabi, The Mind, Mahjong Solitaire, Perudo, BANG! The Dice Game, Wingspan, and
-Stone Age. Before that:
+The library shell + the framework + **one hundred and forty-one fully-playable games** are done
+(6 ported from the design prototypes + 135 built from scratch on the framework). The latest batch
+added Word Duel, Cryptid, Snakes & Ladders, The Isle of Cats, Radlands, Clank!, Everdell, and
+Raptor. Before that:
+ZÈRTZ, Hanabi, The Mind, Mahjong Solitaire, Perudo, BANG! The Dice Game, Wingspan, and Stone Age;
 Calico, Alhambra, PARKS, Senet, Rummikub, Parcheesi, Boggle, and Mille Bornes;
 Railroad Ink, Catan Dice, Seven Wonders Duel, Quacks of Quedlinburg, Photosynthesis,
 Canadian Checkers, DVONN, and Havannah;

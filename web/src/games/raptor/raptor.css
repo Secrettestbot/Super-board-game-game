@@ -1,0 +1,173 @@
+/* ==========================================================
+   RAPTOR — "The hunt in the lab garden."
+   Asymmetric chase: YOU command the raptors (mother + babies) against an AI team of
+   scientists. Theme: humid jungle-lab — deep moss greens, warning amber, bio-teal.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #0e1712;
+  --bg-2:    #08100c;
+  --panel:   #16241b;
+  --panel-2: #101c15;
+  --ink:     #eafbf0;
+  --ink-2:   #a9c8b5;
+  --ink-3:   #5f7a68;
+  --line:    #1f3527;
+  --line-2:  #2e4d39;
+
+  /* token contract -> jungle-lab theme (amber primary, dark ink on it) */
+  --accent:    #f0b53a;  --accent-d:#bd8612;  --accent-hi:#ffd470;  --accent-ink:#241701;
+  --trim:      #45d9a0;  --trim-hi:#7af0c4;
+  --you:       #5fe3a0;  --foe:#ff8d63;
+  --good:      #6fe0a0;  --warn:#ff7d7d;
+
+  /* game-specific */
+  --board:     #14241a;  --board-2:#0d1a12;
+  --cell:      #1a2e21;  --cell-2:#15271c;
+  --cell-line: #25402e;
+  --edge-glow: rgba(95,227,160,0.22);
+  --mother:    #ff7a4d;  --mother-d:#c24a23;
+  --baby:      #ffd470;  --baby-d:#c8941f;
+  --sci:       #6fc6ff;  --sci-d:#2f7fb8;
+  --sci-coat:  #dbeefc;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(69,217,160,0.08) 0%, transparent 52%),
+    radial-gradient(ellipse at 10% 112%, rgba(240,181,58,0.07) 0%, transparent 46%),
+    radial-gradient(ellipse at 90% 116%, rgba(111,198,255,0.06) 0%, transparent 46%);
+}
+
+.stage { grid-template-columns: auto 250px; gap: clamp(16px, 2.4vw, 34px); }
+
+/* ---- Board ---- */
+.rp-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.rp-board {
+  --cellsz: clamp(26px, min(4.4vw, 6.6vh), 52px);
+  display: grid;
+  grid-template-columns: repeat(11, var(--cellsz));
+  grid-template-rows: repeat(9, var(--cellsz));
+  gap: 2px;
+  padding: clamp(8px, 1.2vw, 14px);
+  background: linear-gradient(165deg, var(--board), var(--board-2));
+  border: 2px solid var(--line-2); border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.rp-cell {
+  position: relative;
+  background: var(--cell);
+  border: 1px solid var(--cell-line);
+  border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+}
+.rp-cell.alt { background: var(--cell-2); }
+.rp-cell.edge {
+  box-shadow: inset 0 0 0 1px var(--edge-glow);
+  background: linear-gradient(var(--cell), color-mix(in srgb, var(--cell) 80%, var(--trim) 20%));
+}
+
+/* ---- Pieces ---- */
+.rp-piece {
+  width: 80%; height: 80%;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: calc(var(--cellsz) * 0.46);
+  line-height: 1;
+  box-shadow: 0 3px 9px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.25);
+  user-select: none;
+}
+.rp-piece.mother {
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--mother) 70%, #fff 30%), var(--mother));
+  border: 2px solid var(--mother-d);
+  width: 92%; height: 92%;
+  font-size: calc(var(--cellsz) * 0.56);
+}
+.rp-piece.mother.asleep { filter: grayscale(0.7) brightness(0.7); }
+.rp-piece.baby {
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--baby) 70%, #fff 30%), var(--baby));
+  border: 2px solid var(--baby-d);
+  width: 66%; height: 66%;
+  font-size: calc(var(--cellsz) * 0.4);
+}
+.rp-piece.scientist {
+  background: radial-gradient(circle at 35% 30%, var(--sci-coat), var(--sci));
+  border: 2px solid var(--sci-d);
+}
+
+/* ---- Right column / side ---- */
+.rp-side { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+
+.rp-score { display: flex; flex-direction: column; gap: 9px; }
+.rp-row {
+  display: grid; grid-template-columns: 18px 1fr auto;
+  align-items: center; gap: 8px;
+  padding: 6px 8px; border-radius: 8px;
+  border: 1px solid transparent;
+}
+.rp-row.on { border-color: var(--line-2); background: rgba(255,255,255,0.025); }
+.rp-dot { width: 14px; height: 14px; border-radius: 50%; }
+.rp-dot.you { background: var(--mother); }
+.rp-dot.foe { background: var(--sci); }
+.rp-who { font-family: var(--display); font-weight: 600; font-size: 14px; color: var(--ink); }
+.rp-obj { font-family: var(--mono); font-size: 10px; color: var(--ink-2); }
+.rp-goals { display: flex; gap: 14px; padding: 2px 8px 4px; }
+.rp-goal { display: flex; flex-direction: column; gap: 2px; }
+.rp-goal .lab { font-family: var(--mono); font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+.rp-goal .num { font-family: var(--display); font-weight: 700; font-size: 18px; color: var(--accent-hi); }
+.rp-goal .num.foe { color: var(--sci); }
+
+/* ---- Reveal area ---- */
+.rp-reveal { display: flex; flex-direction: column; gap: 8px; }
+.rp-reveal-row { display: flex; align-items: center; justify-content: space-around; gap: 8px; }
+.rp-revcard {
+  width: 44px; height: 60px; border-radius: 9px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-family: var(--display); font-weight: 700;
+  border: 2px solid var(--line-2); background: var(--panel);
+  color: var(--ink-3);
+}
+.rp-revcard .v { font-size: 26px; line-height: 1; }
+.rp-revcard .w { font-family: var(--mono); font-size: 7px; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 3px; }
+.rp-revcard.you { border-color: var(--mother-d); color: var(--mother); background: color-mix(in srgb, var(--panel) 80%, var(--mother) 20%); }
+.rp-revcard.foe { border-color: var(--sci-d); color: var(--sci); background: color-mix(in srgb, var(--panel) 80%, var(--sci) 20%); }
+.rp-revcard.high { box-shadow: 0 0 0 2px var(--accent), 0 4px 14px rgba(240,181,58,0.3); }
+.rp-vs { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.rp-resolve-note { font-size: 11px; color: var(--ink-2); text-align: center; line-height: 1.4; }
+.rp-resolve-note b { color: var(--accent-hi); }
+
+/* ---- Hand ---- */
+.rp-hand-l { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); margin-bottom: 6px; }
+.rp-hand { display: flex; flex-wrap: wrap; gap: 6px; }
+.rp-card {
+  width: 38px; height: 50px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--display); font-weight: 700; font-size: 22px;
+  background: var(--panel); color: var(--ink);
+  border: 1.5px solid var(--line-2); cursor: pointer;
+  transition: transform 0.08s, border-color 0.1s, box-shadow 0.1s;
+}
+.rp-card:hover:not(.disabled) { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 6px 14px rgba(0,0,0,0.4); }
+.rp-card.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); color: var(--accent-hi); }
+.rp-card.disabled { opacity: 0.4; cursor: default; }
+
+.rp-actions { display: flex; gap: 8px; margin-top: 10px; }
+.rp-btn {
+  flex: 1; font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+  padding: 9px 10px; border-radius: 8px; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink); border: 1.5px solid var(--accent-d);
+}
+.rp-btn:disabled { opacity: 0.4; cursor: default; }
+.rp-btn.ghost { background: var(--panel); color: var(--ink-2); border-color: var(--line-2); }
+.rp-hint { font-size: 11px; color: var(--ink-3); font-style: italic; margin-top: 8px; text-align: center; }
+
+.finalsc .you { color: var(--you); }
+.finalsc .foe { color: var(--foe); }
+.finalsc { text-align: center; font-family: var(--display); font-size: 15px; }
