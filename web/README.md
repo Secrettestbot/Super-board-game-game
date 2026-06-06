@@ -5,10 +5,13 @@ a "Game Library" selection screen plus self-contained, playable game pages with 
 opponent. This is the real, compiled app (no CDN React / in-browser Babel) — the
 prototypes in `../design/` remain the visual reference.
 
-The library shell + the framework + **one hundred and forty-one fully-playable games** are done
-(6 ported from the design prototypes + 135 built from scratch on the framework). The latest batch
-added Word Duel, Cryptid, Snakes & Ladders, The Isle of Cats, Radlands, Clank!, Everdell, and
-Raptor. Before that:
+The library shell + the framework + **all 148 catalog games are now fully playable** — the
+collection is COMPLETE (6 ported from the design prototypes + 142 built from scratch on the
+framework). The final batch added the heavyweights: Chess (full rules + alpha-beta + piece-square
+tables), Go (9×9, capture/ko/area scoring), Shogi (5×5 Minishogi with drops + promotion), Stratego
+(hidden-info + belief AI), Codenames Duet (co-op word association), Power Grid, and Watergate.
+Before that:
+Word Duel, Cryptid, Snakes & Ladders, The Isle of Cats, Radlands, Clank!, Everdell, and Raptor;
 ZÈRTZ, Hanabi, The Mind, Mahjong Solitaire, Perudo, BANG! The Dice Game, Wingspan, and Stone Age;
 Calico, Alhambra, PARKS, Senet, Rummikub, Parcheesi, Boggle, and Mille Bornes;
 Railroad Ink, Catan Dice, Seven Wonders Duel, Quacks of Quedlinburg, Photosynthesis,

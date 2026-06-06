@@ -1,0 +1,215 @@
+/* ==========================================================
+   POWER GRID — "Auction plants, hoard fuel, wire cities, power up."
+   Theme: industrial utility — slate/steel surfaces, electric cyan primary,
+   amped-yellow energy accents, mint green for you, ember orange for the rival.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   ========================================================== */
+
+:root {
+  --bg:      #0e161e;
+  --bg-2:    #0a1118;
+  --panel:   #16222e;
+  --panel-2: #111b25;
+  --ink:     #e7f0f6;
+  --ink-2:   #a9bccb;
+  --ink-3:   #6c8093;
+  --line:    #233646;
+  --line-2:  #2f4a5e;
+
+  /* token contract -> electric cyan primary, dark ink on it */
+  --accent:    #36c5d6;  --accent-d:#1f8b99;  --accent-hi:#6fe2ef;  --accent-ink:#062028;
+  --trim:      #ffd23f;  --trim-hi:#ffe27a;
+  --you:       #5fe0a0;  --foe:#ff7a59;
+  --good:      #6fe0a4;  --warn:#ff6a55;
+
+  /* resource / fuel colors */
+  --coal:    #6d7a86;  --coal-hi:#9aa7b3;
+  --oil:     #c79a4a;  --oil-hi:#e6c177;
+  --garbage: #79b06a;  --garbage-hi:#a3d695;
+  --uranium: #c45fd0;  --uranium-hi:#e191ea;
+  --wind:    #6fd0e0;  --wind-hi:#9be9f4;
+  --energy:  #ffd23f;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(54,197,214,0.12) 0%, transparent 52%),
+    radial-gradient(ellipse at 12% 112%, rgba(95,224,160,0.07) 0%, transparent 44%),
+    radial-gradient(ellipse at 90% 116%, rgba(255,122,89,0.07) 0%, transparent 44%);
+}
+
+.stage { grid-template-columns: minmax(0, 1fr) 268px; gap: clamp(12px, 1.8vw, 24px); align-items: start; }
+
+/* ---------- main column ---------- */
+.pg-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+/* ---------- map ---------- */
+.pg-map {
+  background: linear-gradient(165deg, var(--panel), var(--panel-2));
+  border: 1.5px solid var(--line-2); border-radius: 14px;
+  padding: 8px 10px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.pg-map-svg { width: 100%; height: clamp(190px, 30vh, 270px); display: block; }
+
+.pg-link { stroke: var(--line-2); stroke-width: 0.7; }
+.pg-link-cost {
+  fill: var(--ink-3); font-family: var(--mono); font-size: 2.4px; font-weight: 600;
+  text-anchor: middle; dominant-baseline: middle;
+  paint-order: stroke; stroke: var(--bg-2); stroke-width: 0.9px;
+}
+.pg-city-dot {
+  fill: var(--panel); stroke: var(--ink-3); stroke-width: 0.9;
+  transition: fill 0.15s, stroke 0.15s;
+}
+.pg-city-name {
+  fill: var(--ink-2); font-family: var(--sans); font-size: 2.7px; font-weight: 600;
+  text-anchor: middle;
+}
+.pg-city-cost {
+  fill: var(--accent-hi); font-family: var(--mono); font-size: 2.6px; font-weight: 700;
+  text-anchor: middle;
+}
+.pg-city.you .pg-city-dot { fill: var(--you); stroke: var(--you); }
+.pg-city.foe .pg-city-dot { fill: var(--foe); stroke: var(--foe); }
+.pg-city.buildable { cursor: pointer; }
+.pg-city.buildable .pg-city-dot {
+  fill: var(--accent); stroke: var(--accent-hi); stroke-width: 1.2;
+  filter: drop-shadow(0 0 2px var(--accent));
+}
+.pg-city.buildable:hover .pg-city-dot { fill: var(--accent-hi); r: 4; }
+
+/* ---------- markets row ---------- */
+.pg-markets { display: grid; grid-template-columns: 1.15fr 1fr; gap: 12px; }
+@media (max-width: 760px) { .pg-markets { grid-template-columns: 1fr; } }
+
+.pg-market { display: flex; flex-direction: column; gap: 8px; }
+.pg-market-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.pg-mk-title {
+  font-family: var(--display); font-weight: 700; font-size: 14px; color: var(--ink);
+  letter-spacing: 0.01em;
+}
+.pg-mk-sub { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-3); }
+
+/* plant cards */
+.pg-plants { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.pg-plant {
+  display: flex; align-items: stretch; gap: 8px;
+  background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 10px;
+  padding: 8px; transition: border-color 0.13s, transform 0.1s;
+}
+.pg-plant.dim { opacity: 0.5; }
+.pg-plant.selectable { cursor: pointer; border-color: var(--accent-d); }
+.pg-plant.selectable:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,0,0,0.35); }
+.pg-plant-cost {
+  display: grid; place-items: center; min-width: 30px;
+  font-family: var(--mono); font-weight: 700; font-size: 17px;
+  color: var(--energy); background: var(--bg-2); border-radius: 7px;
+  border: 1px solid var(--line-2);
+}
+.pg-plant-body { display: flex; flex-direction: column; justify-content: center; gap: 4px; flex: 1; min-width: 0; }
+.pg-fuel { font-size: 11px; font-weight: 600; color: var(--ink-2); display: flex; align-items: center; gap: 5px; }
+.pg-fuel .g { font-size: 13px; }
+.pg-fuel.coal { color: var(--coal-hi); }
+.pg-fuel.oil { color: var(--oil-hi); }
+.pg-fuel.garbage { color: var(--garbage-hi); }
+.pg-fuel.uranium { color: var(--uranium-hi); }
+.pg-fuel.wind { color: var(--wind-hi); }
+.pg-plant-cap { font-family: var(--mono); font-size: 10px; color: var(--ink-3); display: flex; align-items: baseline; gap: 4px; }
+.pg-plant-cap b { font-size: 16px; color: var(--accent-hi); }
+
+/* resource / fuel market */
+.pg-fuels { display: flex; flex-direction: column; gap: 5px; }
+.pg-fuelrow {
+  display: grid; grid-template-columns: 22px 1fr auto auto; align-items: center; gap: 8px;
+  background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 9px;
+  padding: 7px 10px; font-size: 12px; transition: border-color 0.13s;
+}
+.pg-fuelrow.buyable { cursor: pointer; border-color: var(--accent-d); }
+.pg-fuelrow.buyable:hover { border-color: var(--accent); }
+.pg-fuel-glyph { font-size: 14px; }
+.pg-fuel-name { font-weight: 600; color: var(--ink); text-transform: capitalize; }
+.pg-fuelrow.coal .pg-fuel-name { color: var(--coal-hi); }
+.pg-fuelrow.oil .pg-fuel-name { color: var(--oil-hi); }
+.pg-fuelrow.garbage .pg-fuel-name { color: var(--garbage-hi); }
+.pg-fuelrow.uranium .pg-fuel-name { color: var(--uranium-hi); }
+.pg-fuel-supply { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.pg-fuel-price { font-family: var(--mono); font-weight: 700; font-size: 14px; color: var(--energy); }
+.pg-fuel-price small { font-size: 8px; color: var(--ink-3); font-weight: 500; margin-left: 1px; }
+.pg-fuel-have { grid-column: 2 / 5; font-family: var(--mono); font-size: 9px; color: var(--ink-3); margin-top: -2px; }
+
+.pg-empty { font-size: 11px; color: var(--ink-3); font-style: italic; padding: 8px; }
+
+/* ---------- phase bar ---------- */
+.pg-phasebar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  background: linear-gradient(165deg, var(--panel), var(--panel-2));
+  border: 1.5px solid var(--line-2); border-radius: 12px; padding: 10px 14px;
+  box-shadow: 0 8px 22px rgba(0,0,0,0.35);
+}
+.pg-phase-info { font-size: 12px; color: var(--ink-2); flex: 1; min-width: 180px; }
+.pg-phase-btns { display: flex; gap: 7px; flex-wrap: wrap; }
+.pg-btn {
+  font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; padding: 8px 13px; border-radius: 8px; cursor: pointer;
+  background: var(--panel); color: var(--ink); border: 1.5px solid var(--line-2);
+  transition: filter 0.12s, border-color 0.12s, opacity 0.12s; white-space: nowrap;
+}
+.pg-btn:hover:not(:disabled) { border-color: var(--trim); color: var(--trim-hi); }
+.pg-btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent-d); }
+.pg-btn.primary:hover:not(:disabled) { filter: brightness(1.12); border-color: var(--accent); color: var(--accent-ink); }
+.pg-btn:disabled { opacity: 0.34; cursor: default; }
+
+/* ---------- side panel ---------- */
+.pg-player { display: flex; flex-direction: column; gap: 8px; }
+.pg-player.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 8px 22px rgba(0,0,0,0.4); }
+.pg-player.you-p { border-color: var(--you); }
+.pg-player.you-p.active { box-shadow: 0 0 0 1px var(--you), 0 8px 22px rgba(0,0,0,0.4); }
+.pg-p-head { display: flex; align-items: baseline; justify-content: space-between; }
+.pg-p-name { font-family: var(--display); font-weight: 700; font-size: 15px; }
+.pg-p-name.you { color: var(--you); }
+.pg-p-name.foe { color: var(--foe); }
+.pg-p-money { font-family: var(--mono); font-weight: 700; font-size: 17px; color: var(--energy); }
+.pg-p-money small { font-size: 8px; color: var(--ink-3); text-transform: uppercase; margin-left: 3px; letter-spacing: 0.08em; }
+
+.pg-p-stats { display: flex; gap: 6px; }
+.pg-chip {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  font-family: var(--mono); font-weight: 700; font-size: 15px; color: var(--ink);
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; padding: 5px 2px;
+}
+.pg-chip small { font-size: 8px; font-weight: 500; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
+.pg-chip.cities { color: var(--accent-hi); }
+.pg-chip.powered { color: var(--good); }
+
+.pg-p-plants { display: flex; gap: 5px; flex-wrap: wrap; min-height: 24px; align-items: center; }
+.pg-pchip {
+  display: inline-flex; align-items: center; gap: 2px;
+  font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--ink);
+  background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 6px; padding: 3px 6px;
+}
+.pg-pchip b { color: var(--accent-hi); }
+.pg-p-empty { font-size: 10px; color: var(--ink-3); font-style: italic; }
+
+.pg-p-fuels { display: flex; gap: 5px; flex-wrap: wrap; }
+.pg-fchip {
+  font-family: var(--mono); font-size: 10px; color: var(--ink-2);
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 5px; padding: 2px 5px;
+}
+
+/* ---------- log ---------- */
+.pg-log { max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+
+/* ---------- final score ---------- */
+.finalsc { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.finalsc span {
+  font-family: var(--mono); font-size: 12px; font-weight: 600;
+  padding: 8px 12px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--line);
+}
+.finalsc .you { color: var(--you); border-color: var(--you); }
+.finalsc .foe { color: var(--foe); border-color: var(--foe); }

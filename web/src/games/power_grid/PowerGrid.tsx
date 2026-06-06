@@ -1,0 +1,357 @@
+/* POWER GRID — UI. You (player 0) vs one greedy AI (player 1).
+
+   Each ROUND has five phases: AUCTION (buy a power plant at its listed cost in turn order)
+   -> RESOURCES (buy fuel at prices that rise as supply drains) -> BUILD (connect cities;
+   connection + slot cost) -> BUREAU (run plants, burn fuel, power cities, earn from the
+   payout table). The game ends when a player connects 7 cities; most cities powered wins
+   (tie -> money).
+
+   The AI takes MANY sub-steps per round (buy plant, buy each fuel batch, build each city,
+   power). useAITurn re-arms on a `tick` that CHANGES on every AI mutation
+   (round·phase·turn·orderIdx·log length) so it never stalls. */
+
+import { useEffect, useRef, useState } from 'react'
+import { GameShell } from '../../framework/GameShell'
+import { Modal } from '../../framework/Modal'
+import { useAITurn } from '../../framework/useAITurn'
+import { useGameKeys } from '../../framework/useGameKeys'
+import * as PG from './logic'
+import type { State, Player, Plant, FuelId, ResourceId } from './logic'
+
+const { makeGame, RESOURCES } = PG
+
+const TITLE_MARK = (
+  <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
+    <rect x="4" y="4" width="40" height="40" rx="11" fill="#16202b" stroke="#36c5d6" strokeWidth="1.5" />
+    <path d="M26 8 L15 27 L23 27 L20 40 L34 20 L25 20 Z" fill="#ffd23f" stroke="#caa21f" strokeWidth="1" strokeLinejoin="round" />
+    <circle cx="12" cy="38" r="2.4" fill="#5fe0a0" />
+    <circle cx="38" cy="34" r="2.4" fill="#ff7a59" />
+  </svg>
+)
+
+const FUEL_GLYPH: Record<FuelId, string> = {
+  coal: '⬛', oil: '🛢️', garbage: '♻️', uranium: '☢️', wind: '🌬️',
+}
+const RES_GLYPH: Record<ResourceId, string> = { coal: '⬛', oil: '🛢️', garbage: '♻️', uranium: '☢️' }
+
+export function PowerGrid() {
+  const [s, setS] = useState<State>(() => makeGame())
+  const [showRules, setShowRules] = useState(false)
+  const logRef = useRef<HTMLDivElement>(null)
+
+  function newGame() { setS(makeGame()); setShowRules(false) }
+
+  const you = s.players[0]
+  const ai = s.players[1]
+  const yours = s.winner == null && s.turn === 0
+
+  // ----- player actions -----
+  function clickPlant(i: number) {
+    setS(p => (p.phase === 'auction' && p.turn === 0 && PG.canBuyPlant(p, 0, i) ? PG.buyPlant(p, 0, i) : p))
+  }
+  function pass() { setS(p => (p.phase === 'auction' && p.turn === 0 ? PG.passAuction(p, 0) : p)) }
+  function buyFuel(r: ResourceId) {
+    setS(p => (p.phase === 'resources' && p.turn === 0 && PG.canBuyResource(p, 0, r, 1) ? PG.buyResource(p, 0, r, 1) : p))
+  }
+  function doneResources() { setS(p => (p.phase === 'resources' && p.turn === 0 ? PG.endResources(p, 0) : p)) }
+  function clickCity(id: string) {
+    setS(p => (p.phase === 'build' && p.turn === 0 && PG.canBuildCity(p, 0, id) ? PG.buildCity(p, 0, id) : p))
+  }
+  function doneBuild() { setS(p => (p.phase === 'build' && p.turn === 0 ? PG.endBuild(p, 0) : p)) }
+  function powerAll() {
+    setS(p => (p.phase === 'bureau' && p.turn === 0 ? PG.powerCities(p, 0, p.players[0].plants.map(pl => pl.id)) : p))
+  }
+
+  // ----- AI driver: one sub-step per call; tick changes on every AI mutation -----
+  const aiActive = s.winner == null && s.turn === 1
+  const tick = `${s.round}-${s.phase}-${s.turn}-${s.orderIdx}-${s.done.join('')}-${s.log.length}`
+  useAITurn(aiActive, () => setS(p => (p.turn === 1 && p.winner == null ? PG.aiTurn(p) : p)), { delayMs: 520, tick })
+
+  useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
+
+  useGameKeys({
+    onNew: newGame,
+    onToggleRules: () => setShowRules(v => !v),
+    onEscape: () => setShowRules(false),
+    extra: (e) => {
+      if (e.key === ' ' || e.key === 'Spacebar') {
+        if (yours && s.phase === 'auction') { pass(); return true }
+        if (yours && s.phase === 'resources') { doneResources(); return true }
+        if (yours && s.phase === 'build') { doneBuild(); return true }
+        if (yours && s.phase === 'bureau') { powerAll(); return true }
+      }
+      return false
+    },
+  })
+
+  // ----- banner -----
+  let banner: string, bk = ''
+  if (s.winner === 0) { bk = 'win'; banner = `You powered ${you.powered} cities — you win!` }
+  else if (s.winner === 1) { bk = 'lose'; banner = `${ai.name} powered ${ai.powered} cities — you lose.` }
+  else if (yours) {
+    bk = 'you'
+    banner =
+      s.phase === 'auction' ? 'Auction — buy a power plant or pass'
+      : s.phase === 'resources' ? 'Buy fuel for your plants'
+      : s.phase === 'build' ? 'Connect cities to your network'
+      : 'Bureaucracy — power your cities'
+  } else { bk = 'foe'; banner = `${ai.name} is taking their turn…` }
+
+  const phaseLabel =
+    s.phase === 'auction' ? 'Auction' : s.phase === 'resources' ? 'Resources'
+    : s.phase === 'build' ? 'Build' : s.phase === 'bureau' ? 'Bureaucracy' : 'Game Over'
+
+  return (
+    <>
+      <GameShell
+        mark={TITLE_MARK}
+        eyebrow="Power Grid · network economy"
+        title="Power Grid"
+        subtitle="auction plants, hoard fuel, wire up cities, and out-power the rival utility"
+        onRules={() => setShowRules(true)}
+        onNew={newGame}
+        modeLeft={<>Round {s.round} · Step {s.step} · {phaseLabel}</>}
+        banner={banner}
+        bannerClass={bk}
+        modeRight={<>click · act &nbsp; space · done/power &nbsp; N · new</>}
+      >
+        <div className="pg-main">
+          <Map s={s} can={yours && s.phase === 'build'} onCity={clickCity} />
+
+          <div className="pg-markets">
+            <PlantMarket s={s} you={you} can={yours && s.phase === 'auction'} onPick={clickPlant} />
+            <ResourceMarket s={s} you={you} can={yours && s.phase === 'resources'} onBuy={buyFuel} />
+          </div>
+
+          <PhaseBar
+            s={s} yours={yours}
+            onPass={pass} onDoneRes={doneResources} onDoneBuild={doneBuild} onPower={powerAll}
+          />
+        </div>
+
+        <div className="side">
+          <PlayerCard p={you} you active={s.turn === 0 && s.winner == null} />
+          <PlayerCard p={ai} you={false} active={s.turn === 1 && s.winner == null} />
+          <div className="panel pg-log" ref={logRef}>
+            {s.log.map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}
+          </div>
+        </div>
+      </GameShell>
+
+      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {showRules && <RulesModal onClose={() => setShowRules(false)} />}
+    </>
+  )
+}
+
+// ---------- map ----------
+
+function Map({ s, can, onCity }: { s: State; can: boolean; onCity: (id: string) => void }) {
+  const cityOwner = (id: string): number | null => {
+    if (s.players[0].network.includes(id)) return 0
+    if (s.players[1].network.includes(id)) return 1
+    return null
+  }
+  return (
+    <div className="pg-map">
+      <svg viewBox="0 0 100 92" className="pg-map-svg" preserveAspectRatio="xMidYMid meet">
+        {Object.entries(s.links).map(([k, cost]) => {
+          const [a, b] = k.split('|')
+          const ca = s.cities.find(c => c.id === a)!
+          const cb = s.cities.find(c => c.id === b)!
+          const mx = (ca.x + cb.x) / 2, my = (ca.y + cb.y) / 2
+          return (
+            <g key={k}>
+              <line x1={ca.x} y1={ca.y} x2={cb.x} y2={cb.y} className="pg-link" />
+              <text x={mx} y={my} className="pg-link-cost">{cost}</text>
+            </g>
+          )
+        })}
+        {s.cities.map(c => {
+          const owner = cityOwner(c.id)
+          const buildable = can && PG.canBuildCity(s, 0, c.id)
+          const cost = PG.buildCost(s, 0, c.id)
+          const cls = `pg-city${owner === 0 ? ' you' : owner === 1 ? ' foe' : ''}${buildable ? ' buildable' : ''}`
+          return (
+            <g key={c.id} className={cls} onClick={() => buildable && onCity(c.id)} role={buildable ? 'button' : undefined}>
+              <circle cx={c.x} cy={c.y} r={3.4} className="pg-city-dot" />
+              <text x={c.x} y={c.y - 5} className="pg-city-name">{c.name}</text>
+              {buildable && cost != null && <text x={c.x} y={c.y + 7.5} className="pg-city-cost">{cost}</text>}
+            </g>
+          )
+        })}
+      </svg>
+    </div>
+  )
+}
+
+// ---------- plant market ----------
+
+function PlantCard({ plant, afford, can, onPick }: {
+  plant: Plant; afford: boolean; can: boolean; onPick: () => void
+}) {
+  const selectable = can && afford
+  return (
+    <div
+      className={`pg-plant${selectable ? ' selectable' : ''}${!afford ? ' dim' : ''}`}
+      onClick={() => selectable && onPick()}
+      role={selectable ? 'button' : undefined}
+    >
+      <div className="pg-plant-cost">{plant.cost}</div>
+      <div className="pg-plant-body">
+        <div className={`pg-fuel ${plant.fuel}`}>
+          <span className="g">{FUEL_GLYPH[plant.fuel]}</span>
+          {plant.fuel === 'wind' ? 'free' : `${plant.burn} ${plant.fuel}`}
+        </div>
+        <div className="pg-plant-cap"><b>{plant.capacity}</b><span>cities</span></div>
+      </div>
+    </div>
+  )
+}
+
+function PlantMarket({ s, you, can, onPick }: {
+  s: State; you: Player; can: boolean; onPick: (i: number) => void
+}) {
+  return (
+    <div className="panel pg-market">
+      <div className="pg-market-head"><span className="pg-mk-title">Plant Market</span>
+        <span className="pg-mk-sub">cost · fuel · capacity</span></div>
+      <div className="pg-plants">
+        {s.market.map((plant, i) => (
+          <PlantCard key={plant.id} plant={plant}
+            afford={you.money >= plant.cost && you.plants.length < 3}
+            can={can} onPick={() => onPick(i)} />
+        ))}
+        {s.market.length === 0 && <div className="pg-empty">deck exhausted</div>}
+      </div>
+    </div>
+  )
+}
+
+// ---------- resource market ----------
+
+function ResourceMarket({ s, you, can, onBuy }: {
+  s: State; you: Player; can: boolean; onBuy: (r: ResourceId) => void
+}) {
+  return (
+    <div className="panel pg-market">
+      <div className="pg-market-head"><span className="pg-mk-title">Fuel Market</span>
+        <span className="pg-mk-sub">price rises as supply drains</span></div>
+      <div className="pg-fuels">
+        {RESOURCES.map(r => {
+          const remaining = s.supply[r]
+          const price = PG.resourcePrice(r, remaining)
+          const ok = can && PG.canBuyResource(s, 0, r, 1)
+          return (
+            <div key={r} className={`pg-fuelrow ${r}${ok ? ' buyable' : ''}`}
+              onClick={() => ok && onBuy(r)} role={ok ? 'button' : undefined}>
+              <span className="pg-fuel-glyph">{RES_GLYPH[r]}</span>
+              <span className="pg-fuel-name">{r}</span>
+              <span className="pg-fuel-supply">{remaining} left</span>
+              <span className="pg-fuel-price">{remaining > 0 ? `${price}` : '—'}<small>/unit</small></span>
+              <span className="pg-fuel-have">you: {you.res[r]}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ---------- phase bar ----------
+
+function PhaseBar({ s, yours, onPass, onDoneRes, onDoneBuild, onPower }: {
+  s: State; yours: boolean
+  onPass: () => void; onDoneRes: () => void; onDoneBuild: () => void; onPower: () => void
+}) {
+  const you = s.players[0]
+  let info = ''
+  if (s.phase === 'auction') info = you.plants.length >= 3 ? 'Your plant slots are full (3).' : `You hold ${you.plants.length}/3 plants.`
+  else if (s.phase === 'resources') info = 'Click a fuel to buy 1 unit. Stock fuel for the bureau phase.'
+  else if (s.phase === 'build') info = `Step ${s.step} slot cost ${PG.SLOT_COST[s.step]} + connection. Click a lit city.`
+  else if (s.phase === 'bureau') info = `You can power up to ${PG.bestPowered(you)} cities with your fuel.`
+  return (
+    <div className="pg-phasebar">
+      <div className="pg-phase-info">{info}</div>
+      <div className="pg-phase-btns">
+        <button className="pg-btn" disabled={!(yours && s.phase === 'auction')} onClick={onPass}>Pass auction</button>
+        <button className="pg-btn" disabled={!(yours && s.phase === 'resources')} onClick={onDoneRes}>Done buying fuel</button>
+        <button className="pg-btn" disabled={!(yours && s.phase === 'build')} onClick={onDoneBuild}>Done building</button>
+        <button className="pg-btn primary" disabled={!(yours && s.phase === 'bureau')} onClick={onPower}>Power cities</button>
+      </div>
+    </div>
+  )
+}
+
+// ---------- player card ----------
+
+function PlayerCard({ p, you, active }: { p: Player; you: boolean; active: boolean }) {
+  return (
+    <div className={`panel pg-player${you ? ' you-p' : ''}${active ? ' active' : ''}`}>
+      <div className="pg-p-head">
+        <span className={'pg-p-name ' + (you ? 'you' : 'foe')}>{p.name}</span>
+        <span className="pg-p-money">{p.money}<small>elektro</small></span>
+      </div>
+      <div className="pg-p-stats">
+        <span className="pg-chip cities">{p.network.length}<small>cities</small></span>
+        <span className="pg-chip plants">{p.plants.length}<small>plants</small></span>
+        <span className="pg-chip powered">{p.powered}<small>powered</small></span>
+      </div>
+      <div className="pg-p-plants">
+        {p.plants.length
+          ? p.plants.map(pl => (
+              <span key={pl.id} className={`pg-pchip ${pl.fuel}`} title={`cost ${pl.cost} · ${pl.fuel} · cap ${pl.capacity}`}>
+                {FUEL_GLYPH[pl.fuel]}<b>{pl.capacity}</b>
+              </span>
+            ))
+          : <span className="pg-p-empty">no plants yet</span>}
+      </div>
+      <div className="pg-p-fuels">
+        {RESOURCES.map(r => (
+          <span key={r} className={`pg-fchip ${r}`}>{RES_GLYPH[r]}{p.res[r]}</span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ---------- modals ----------
+
+function ResultModal({ s, onNew }: { s: State; onNew: () => void }) {
+  const won = s.winner === 0
+  return (
+    <Modal
+      eyebrow={won ? 'Grid secured' : 'Out-powered'}
+      title={won ? 'You Win' : `${s.players[1].name} Wins`}
+      closeOnOverlay={false}
+      actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
+    >
+      <div className="modal-body">
+        <p>{won
+          ? 'Your utility wired the most cities and kept the lights on — a model of efficient power.'
+          : 'The rival utility powered more cities. Buy fuel-efficient plants and expand faster next time.'}</p>
+      </div>
+      <div className="finalsc">
+        <span className="you">You {s.players[0].powered} powered · {s.players[0].money}₠</span>
+        <span className="foe">{s.players[1].name} {s.players[1].powered} powered · {s.players[1].money}₠</span>
+      </div>
+    </Modal>
+  )
+}
+
+function RulesModal({ onClose }: { onClose: () => void }) {
+  return (
+    <Modal eyebrow="How to play" title="Power Grid" onClose={onClose}
+      actions={<button className="btn-modal" onClick={onClose}>Begin!</button>}>
+      <div className="modal-body">
+        <p>Build a network of <b>cities</b> and buy <b>power plants</b> to light them up for income. First to connect <b>7 cities</b> ends the game; whoever can <b>power the most cities</b> wins (tie → most money).</p>
+        <p>Each round runs five phases:</p>
+        <p><b>1 · Auction</b> — buy one face-up plant at its listed cost (or pass). Each plant lists a cost, the fuel it burns (coal/oil/garbage/uranium, or wind = free) and how many cities it can power. Hold up to 3 plants.</p>
+        <p><b>2 · Resources</b> — buy fuel. Prices <b>rise as supply drains</b>, so stock early.</p>
+        <p><b>3 · Build</b> — connect new cities: pay the cheapest connection cost from your network plus the city slot cost (which rises in Step 2).</p>
+        <p><b>4 · Bureaucracy</b> — run your plants: each burns its fuel to power up to its capacity in cities. Earn Elektro from the payout table by total cities powered.</p>
+        <p><b>Keys:</b> <kbd>click</kbd> act · <kbd>Space</kbd> done / power · <kbd>N</kbd> new · <kbd>?</kbd> rules · <kbd>Esc</kbd> close.</p>
+      </div>
+    </Modal>
+  )
+}

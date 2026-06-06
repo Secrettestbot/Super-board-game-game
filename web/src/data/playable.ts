@@ -147,4 +147,11 @@ export const PLAYABLE: Record<string, string> = {
   clank: 'games/clank.html',
   everdell: 'games/everdell.html',
   raptor: 'games/raptor.html',
+  chess: 'games/chess.html',
+  go: 'games/go.html',
+  shogi: 'games/shogi.html',
+  stratego: 'games/stratego.html',
+  codenames_duet: 'games/codenames_duet.html',
+  power_grid: 'games/power_grid.html',
+  watergate: 'games/watergate.html',
 }
