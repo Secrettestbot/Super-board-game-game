@@ -1,0 +1,114 @@
+/* ==========================================================
+   SURAKARTA — "Loop and capture."
+   Theme: warm lacquered wood, painted ivory corner-loop arcs, crimson and onyx discs.
+   Display: Marcellus · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #1a120c;
+  --bg-2:    #110b07;
+  --panel:   #271a10;
+  --panel-2: #1f140c;
+  --ink:     #f3e8da;
+  --ink-2:   #c4a987;
+  --ink-3:   #8a6f55;
+  --line:    #3a2716;
+  --line-2:  #573a22;
+
+  /* token contract -> this theme (warm gold primary, dark text) */
+  --accent:  #d79a4a;  --accent-d:#a86f20;  --accent-hi:#f0bd6e;  --accent-ink:#2a1804;
+  --trim:    #e7c79a;  --trim-hi:#f6dcab;
+  --you:     #f0a06e;  --foe:#c4a987;
+  --good:    #74c08a;  --warn:#e0894e;
+
+  /* game-specific */
+  --wood:    #7a4a2a;  --wood-2:#653c20;  --wood-grid:#3c2412;
+  --arc:     #ecd3a8;  --arc-out:#e7c79a;
+  --red:     #c2362e;  --red-hi:#e0594d;  --red-d:#8c1f1a;
+  --black:   #211f22;  --black-hi:#403d44;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Marcellus", "Outfit", serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(231,199,154,0.07) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 230px; gap: clamp(18px, 2.6vw, 38px); }
+
+.sk-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.sk-board {
+  width: clamp(280px, min(74vh, 52vw), 560px);
+  height: clamp(280px, min(74vh, 52vw), 560px);
+  border-radius: 16px;
+  box-shadow: 0 16px 46px rgba(0,0,0,0.6), inset 0 0 0 2px rgba(120,72,40,0.5);
+}
+
+/* board background — lacquered wood */
+.sk-bg {
+  fill: radial-gradient(circle at 38% 28%, var(--wood), var(--wood-2));
+}
+.sk-board .sk-bg { fill: #6f4327; }
+
+/* grid lines connecting the points */
+.sk-grid { stroke: var(--wood-grid); stroke-width: 0.7; stroke-linecap: round; opacity: 0.85; }
+
+/* painted corner loop arcs */
+.sk-arc { fill: none; stroke-linecap: round; }
+.sk-arc.outer { stroke: var(--arc-out); stroke-width: 1.5; opacity: 0.92; }
+.sk-arc.inner { stroke: var(--arc); stroke-width: 1.5; opacity: 0.82; }
+
+/* node dot at each intersection */
+.sk-node { fill: var(--wood-grid); opacity: 0.7; }
+.sk-hit { fill: transparent; }
+
+/* capture path trail */
+.sk-trail { fill: none; stroke: rgba(240,160,110,0.45); stroke-width: 1.1; stroke-dasharray: 1.6 1.6; stroke-linecap: round; }
+
+/* discs */
+.sk-disc { stroke-width: 0.5; transition: filter 0.12s; animation: drop 0.16s ease-out; }
+.sk-disc.r { fill: var(--red); stroke: var(--red-d); filter: drop-shadow(0 1.4px 1.4px rgba(0,0,0,0.5)); }
+.sk-disc.b { fill: var(--black); stroke: #000; filter: drop-shadow(0 1.4px 1.4px rgba(0,0,0,0.55)); }
+.sk-disc.sel { stroke: var(--trim-hi); stroke-width: 1.4; filter: drop-shadow(0 0 3px rgba(246,220,171,0.9)); }
+.sk-disc.last { stroke: var(--trim); stroke-width: 1.1; }
+@keyframes drop { from { transform: scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* move hints */
+.sk-hint-step { fill: rgba(231,199,154,0.55); }
+.sk-hint-cap { fill: none; stroke: var(--red-hi); stroke-width: 1.2; stroke-dasharray: 2 1.6; animation: spin 6s linear infinite; transform-origin: center; transform-box: fill-box; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.sk-pt:hover .sk-disc { filter: brightness(1.12) drop-shadow(0 1.4px 1.4px rgba(0,0,0,0.5)); }
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.scoreboard { display: flex; flex-direction: column; gap: 9px; }
+.sc { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.sc.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sc-disc { width: 18px; height: 18px; border-radius: 50%; flex: 0 0 auto; }
+.sc-disc.r { background: radial-gradient(circle at 38% 30%, var(--red-hi), var(--red-d)); border: 1px solid var(--red-d); }
+.sc-disc.b { background: radial-gradient(circle at 38% 30%, var(--black-hi), var(--black)); border: 1px solid #000; }
+.sc-name { font-family: var(--display); font-weight: 600; font-size: 14px; flex: 1; letter-spacing: 0.01em; }
+.sc-n { font-family: var(--display); font-weight: 700; font-size: 20px; }
+.sc.r .sc-n { color: var(--red-hi); } .sc.b .sc-n { color: var(--ink); }
+.sc-bar { height: 7px; border-radius: 4px; background: var(--black); overflow: hidden; }
+.sc-bar-r { height: 100%; background: linear-gradient(90deg, var(--red), var(--red-hi)); border-right: 1px solid var(--line-2); }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 150px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--you); } .log-line.ai { color: var(--ink-2); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 22px; }
+.finalsc .you { color: var(--red-hi); } .finalsc .foe { color: var(--ink); }
+.modal-body i { color: var(--trim-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

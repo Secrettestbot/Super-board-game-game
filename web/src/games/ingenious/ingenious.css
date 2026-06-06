@@ -1,0 +1,154 @@
+/* ==========================================================
+   INGENIOUS — "Balance six colours."
+   Theme: deep aubergine night, six jewel symbol colours on a smoky hex field, score tracks as
+   slim coloured bars. Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Shared structural classes live in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #14101f;
+  --bg-2:    #0c0916;
+  --panel:   #1f1830;
+  --panel-2: #181225;
+  --ink:     #f1ecf8;
+  --ink-2:   #b6acc8;
+  --ink-3:   #7a7090;
+  --line:    #2c2440;
+  --line-2:  #3d3356;
+
+  /* token contract -> this theme (violet primary, light ink) */
+  --accent:    #b07be0;
+  --accent-d:  #7b4fad;
+  --accent-hi: #d4aef2;
+  --accent-ink:#1a1026;
+  --trim:      #b07be0;
+  --trim-hi:   #d4aef2;
+  --you:       #66d9b0;
+  --foe:       #e88a8a;
+  --good:      #66d9b0;
+  --warn:      #e8b85a;
+
+  /* six symbol colours */
+  --c-red:    #e0556b;
+  --c-orange: #ef9b48;
+  --c-yellow: #f0d24a;
+  --c-green:  #5ec27a;
+  --c-blue:   #4aa3e0;
+  --c-purple: #b06be0;
+
+  --hexface:   #221a35;
+  --hexface-2: #1a1429;
+  --hexline:   #362b4f;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(176,123,224,0.10) 0%, transparent 52%),
+    radial-gradient(ellipse at 14% 110%, rgba(74,163,224,0.07) 0%, transparent 46%),
+    radial-gradient(ellipse at 86% 110%, rgba(224,85,107,0.07) 0%, transparent 46%);
+}
+
+.stage { grid-template-columns: auto 268px; gap: clamp(16px, 2.4vw, 36px); }
+
+/* ===== Board ===== */
+.ig-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.ig-board {
+  width: clamp(300px, min(64vh, 52vw), 620px);
+  height: auto; max-height: 80vh;
+  background: linear-gradient(160deg, #1b1430, #0f0b1c);
+  border: 1.5px solid var(--line);
+  border-radius: 16px;
+  padding: 8px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+.ig-cell { cursor: default; }
+.ig-cell.clickable { cursor: pointer; }
+.ig-hex {
+  fill: var(--hexface);
+  stroke: var(--hexline);
+  stroke-width: 1.5;
+  transition: fill 0.12s, stroke 0.12s;
+}
+.ig-cell.filled .ig-hex { fill: var(--hexface-2); }
+.ig-cell.clickable:hover .ig-hex { fill: #2c2244; stroke: var(--accent); }
+.ig-cell.target .ig-hex { stroke: var(--accent-hi); stroke-width: 2.4; fill: #2a2142; }
+.ig-cell.picked .ig-hex { stroke: var(--you); stroke-width: 2.6; fill: #1f2c2a; }
+.ig-cell.last .ig-hex { stroke: var(--accent-hi); stroke-width: 2.2; }
+
+.ig-sym {
+  stroke: rgba(0,0,0,0.32); stroke-width: 1;
+  filter: drop-shadow(0 1px 1.5px rgba(0,0,0,0.4));
+  animation: pop 0.16s ease-out;
+}
+@keyframes pop { from { transform: scale(0.4); opacity: 0.3; transform-box: fill-box; transform-origin: center; } to { transform: none; opacity: 1; } }
+
+/* ===== Side ===== */
+.ig-side { display: flex; flex-direction: column; gap: 11px; align-self: stretch; min-height: 0; }
+.ig-panel {
+  background: var(--panel-2); border: 1.5px solid var(--line);
+  border-radius: 13px; padding: 11px 12px;
+}
+.ig-ptitle {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ink-3); margin-bottom: 9px;
+}
+
+/* score tracks */
+.ig-tracks { padding: 8px 9px; border: 1.5px solid var(--line); border-radius: 10px; margin-bottom: 9px; }
+.ig-tracks:last-child { margin-bottom: 0; }
+.ig-tracks.you.active { border-color: var(--you); box-shadow: 0 0 0 1px var(--you); }
+.ig-tracks.foe.active { border-color: var(--foe); box-shadow: 0 0 0 1px var(--foe); }
+.ig-tlabel { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
+.ig-tlabel b { font-family: var(--display); font-weight: 600; font-size: 14px; color: var(--ink); }
+.ig-low { font-family: var(--mono); font-size: 10px; color: var(--ink-2); }
+.ig-tracks.you .ig-low { color: var(--you); }
+.ig-tracks.foe .ig-low { color: var(--foe); }
+
+.ig-track { display: flex; align-items: center; gap: 7px; height: 16px; }
+.ig-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.25); }
+.ig-bar { position: relative; flex: 1 1 auto; height: 7px; background: var(--bg-2); border-radius: 4px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--line); }
+.ig-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; transition: width 0.25s ease; }
+.ig-val { font-family: var(--mono); font-size: 10px; width: 16px; text-align: right; color: var(--ink-2); }
+.ig-track.lowest .ig-val { color: var(--ink); font-weight: 600; }
+.ig-track.lowest .ig-bar { box-shadow: inset 0 0 0 1px var(--line-2); }
+
+/* rack */
+.ig-tiles { display: flex; flex-wrap: wrap; gap: 8px; }
+.ig-tile {
+  display: flex; padding: 0; gap: 0; border: 1.5px solid var(--line-2); border-radius: 9px;
+  overflow: hidden; cursor: pointer; background: var(--panel); transition: transform 0.1s, box-shadow 0.1s, border-color 0.1s;
+}
+.ig-tile:disabled { cursor: default; opacity: 0.65; }
+.ig-tile:not(:disabled):hover { transform: translateY(-2px); border-color: var(--accent); }
+.ig-tile.on { border-color: var(--you); box-shadow: 0 0 0 2px var(--you); transform: translateY(-2px); }
+.ig-end { width: 26px; height: 38px; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.22); }
+.ig-end:first-child { border-right: 1.5px solid rgba(0,0,0,0.3); }
+.ig-empty-rack { color: var(--ink-3); font-style: italic; font-size: 12px; padding: 6px 2px; }
+
+/* log */
+.ig-logbox { flex: 1 1 auto; min-height: 48px; max-height: 168px; overflow-y: auto; }
+.ig-log { font-size: 11px; line-height: 1.5; color: var(--ink-2); }
+.ig-log.you { color: var(--you); }
+.ig-log.ai { color: var(--foe); }
+.ig-log.sys { color: var(--ink-3); font-style: italic; }
+
+/* result modal */
+.ig-final { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 14px 0 6px; }
+.ig-fcol { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 16px; border-radius: 12px; border: 1.5px solid var(--line); min-width: 86px; }
+.ig-fcol.you { border-color: var(--you); box-shadow: 0 0 0 1px var(--you); }
+.ig-fcol.foe { border-color: var(--foe); box-shadow: 0 0 0 1px var(--foe); }
+.ig-fname { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+.ig-fscore { font-family: var(--display); font-weight: 700; font-size: 34px; line-height: 1; color: var(--ink); }
+.ig-fsub { font-family: var(--mono); font-size: 9px; color: var(--ink-3); }
+.ig-fvs { font-family: var(--display); font-size: 15px; color: var(--ink-3); }
+
+.modal-body i { color: var(--accent-hi); font-style: normal; font-weight: 600; }
+.ig-rsmall { font-size: 11px; color: var(--ink-3); }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } .ig-end { height: 32px; } }

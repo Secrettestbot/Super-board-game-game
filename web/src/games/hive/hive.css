@@ -1,0 +1,179 @@
+/* ==========================================================
+   HIVE — "Surround the queen."
+   Theme: warm amber-on-black hive — honeyed amber tiles (you) vs charcoal tiles (rival),
+   six insect glyphs, an open hex field on a dark waxen background.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Shared shell: ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #14110a;
+  --bg-2:    #0c0a06;
+  --panel:   #1f1a10;
+  --panel-2: #181308;
+  --ink:     #f4ecdb;
+  --ink-2:   #c1b394;
+  --ink-3:   #7e7152;
+  --line:    #342a18;
+  --line-2:  #4a3c22;
+
+  /* token contract -> amber primary, dark ink on accent */
+  --accent:    #e9a92e;  --accent-d:#a9760f;  --accent-hi:#ffcf6b;  --accent-ink:#1c1407;
+  --trim:      #e9a92e;  --trim-hi:#ffcf6b;
+  --you:       #ffcf6b;  --foe:#b9a279;
+  --good:      #8fd06a;  --warn:#e8743f;
+
+  /* game-specific */
+  --you-tile:   #e9a92e;  --you-tile-d:#9c6c0d;  --you-tile-hi:#ffd884;
+  --foe-tile:   #6a6354;  --foe-tile-d:#3c3729;  --foe-tile-hi:#9a907c;
+  --hexface:    #221b0f;  --hexface-2:#1a140a;  --hexline:#3a2e18;
+  --glow:       #ffcf6b;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(233,169,46,0.10) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 110%, rgba(233,169,46,0.05) 0%, transparent 50%);
+}
+
+.stage { grid-template-columns: auto 232px; gap: clamp(16px, 2.4vw, 34px); }
+
+/* ---- the open hex field ---- */
+.hv-wrap {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 0; min-width: 0; overflow: auto;
+}
+.hv-field {
+  position: relative;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(233,169,46,0.05), transparent 60%),
+    linear-gradient(160deg, #1a150c, #100c06);
+  border: 1.5px solid var(--line);
+  box-shadow: 0 18px 50px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.03);
+  transition: width 0.2s ease, height 0.2s ease;
+}
+
+.hv-cell {
+  position: absolute;
+  display: flex; align-items: center; justify-content: center;
+  cursor: default;
+}
+.hv-cell.empty { pointer-events: none; }
+.hv-cell.target { pointer-events: auto; cursor: pointer; }
+.hv-cell:not(.empty) { cursor: default; }
+
+/* faint hex outline for empty target cells */
+.hv-hex {
+  position: absolute; inset: 12%;
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px transparent;
+}
+.hv-cell.target .hv-hex {
+  background: rgba(233,169,46,0.10);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+.hv-cell.target:hover .hv-hex { background: rgba(233,169,46,0.22); }
+
+.hv-dot {
+  position: relative; z-index: 3;
+  width: 26%; height: 26%; border-radius: 50%;
+  background: var(--accent-hi);
+  box-shadow: 0 0 10px rgba(255,207,107,0.8);
+  animation: pulse 1.3s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 0.55; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1.05); } }
+
+/* the placed insect tiles */
+.hv-tile {
+  position: absolute; inset: 4%;
+  display: flex; align-items: center; justify-content: center;
+  animation: drop 0.16s ease-out;
+}
+@keyframes drop { from { transform: scale(0.5); opacity: 0.3; } to { transform: none; opacity: 1; } }
+.hv-tile.you {
+  background: linear-gradient(155deg, var(--you-tile-hi), var(--you-tile) 50%, var(--you-tile-d));
+  box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.18), 0 3px 7px rgba(0,0,0,0.5);
+}
+.hv-tile.foe {
+  background: linear-gradient(155deg, var(--foe-tile-hi), var(--foe-tile) 50%, var(--foe-tile-d));
+  box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.10), 0 3px 7px rgba(0,0,0,0.5);
+}
+.hv-glyph {
+  font-size: 22px; line-height: 1;
+  user-select: none;
+}
+.hv-tile.you .hv-glyph { color: #2a1c06; text-shadow: 0 1px 0 rgba(255,255,255,0.25); }
+.hv-tile.foe .hv-glyph { color: #1a1710; text-shadow: 0 1px 0 rgba(255,255,255,0.10); }
+
+/* per-type accent ring on the inner tile */
+.hv-tile.t-Q { box-shadow: inset 0 0 0 2.5px rgba(255,80,80,0.55), 0 3px 7px rgba(0,0,0,0.5); }
+.hv-tile.t-S .hv-glyph { font-size: 20px; }
+.hv-tile.t-B .hv-glyph { font-size: 21px; }
+.hv-tile.t-G .hv-glyph { font-size: 21px; }
+.hv-tile.t-A .hv-glyph { font-size: 20px; }
+
+.hv-stack {
+  position: absolute; top: 2px; right: 4px; z-index: 4;
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  color: var(--ink); background: rgba(0,0,0,0.55);
+  border-radius: 6px; padding: 0 4px; line-height: 1.3;
+}
+
+.hv-cell.sel .hv-tile { box-shadow: inset 0 0 0 2.5px var(--glow), 0 0 14px rgba(255,207,107,0.6); }
+.hv-cell.last .hv-tile { outline: 2px solid rgba(255,207,107,0.5); outline-offset: -2px; }
+
+/* ---- side panels ---- */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; min-width: 0; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+
+.hv-status { display: flex; flex-direction: column; gap: 8px; }
+.hv-pl { display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); transition: all 0.15s; }
+.hv-pl.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.hv-chip { width: 20px; height: 20px; flex: 0 0 auto; clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); }
+.hv-chip.you { background: linear-gradient(155deg, var(--you-tile-hi), var(--you-tile-d)); }
+.hv-chip.foe { background: linear-gradient(155deg, var(--foe-tile-hi), var(--foe-tile-d)); }
+.hv-who { display: flex; flex-direction: column; line-height: 1.25; }
+.hv-who b { font-family: var(--display); font-weight: 600; font-size: 14px; }
+.hv-who i { font-family: var(--mono); font-style: normal; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+
+.hv-hand .panel-l { margin-bottom: 9px; }
+.hv-tiles { display: flex; flex-direction: column; gap: 6px; }
+.hv-handtile {
+  display: grid; grid-template-columns: 26px 1fr auto; align-items: center; gap: 9px;
+  padding: 6px 9px; border-radius: 9px; cursor: pointer;
+  background: var(--panel); border: 1.5px solid var(--line-2);
+  color: var(--ink); transition: all 0.13s; text-align: left;
+  font-family: var(--sans);
+}
+.hv-handtile .hv-glyph {
+  width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+  font-size: 17px; border-radius: 6px;
+  background: linear-gradient(155deg, var(--you-tile-hi), var(--you-tile) 55%, var(--you-tile-d));
+  color: #2a1c06;
+}
+.hv-hl { font-size: 12.5px; font-weight: 600; }
+.hv-hn { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent-hi); }
+.hv-handtile:not(.off):hover { border-color: var(--accent); }
+.hv-handtile.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 12px rgba(233,169,46,0.3); }
+.hv-handtile.off { opacity: 0.4; cursor: not-allowed; }
+.hv-handtile.off .hv-glyph { filter: grayscale(0.6); }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 150px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--accent-hi); }
+.log-line.ai { color: var(--foe); }
+.log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; margin: 12px 0; font-family: var(--display); font-weight: 600; font-size: 18px; text-align: center; }
+.finalsc .you { color: var(--accent-hi); }
+.finalsc .foe { color: var(--foe); }
+.modal-body i { color: var(--accent-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

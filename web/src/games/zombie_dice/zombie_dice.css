@@ -1,0 +1,135 @@
+/* ==========================================================
+   ZOMBIE DICE — "Eat brains. Don't get shot."
+   Theme: horror-comedy — bone-white dice in green / yellow / red, brain & shotgun
+   icons, a blood-spatter accent. Push-your-luck dice vs a greedy AI.
+   Display: Bungee · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #14110f;
+  --bg-2:    #0c0a09;
+  --panel:   #211b18;
+  --panel-2: #19140f;
+  --ink:     #f2ede6;
+  --ink-2:   #b6a99b;
+  --ink-3:   #756857;
+  --line:    #322a23;
+  --line-2:  #4a3e33;
+
+  /* token contract -> this theme (toxic-green primary, dark text) */
+  --accent:  #7fc23a;  --accent-d:#4f8a1f;  --accent-hi:#a7e066;  --accent-ink:#10210a;
+  --trim:    #c64b3a;  --trim-hi:#e87a5e;
+  --you:     #a7e066;  --foe:#e08a5e;
+  --good:    #7fc23a;  --warn:#e0894e;
+
+  /* game-specific */
+  --die-g:   #4fae3e;  --die-g-d:#357d28;
+  --die-y:   #d8b23a;  --die-y-d:#a8841f;
+  --die-r:   #c64b3a;  --die-r-d:#8e2f22;
+  --pip:     #1c1612;  --bone:#f4efe6;
+  --blood:   #b8331f;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Bungee", system-ui, sans-serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(127,194,58,0.07) 0%, transparent 52%),
+    radial-gradient(ellipse at 78% 8%, rgba(184,51,31,0.08) 0%, transparent 40%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 248px; gap: clamp(18px, 2.6vw, 38px); }
+
+/* ===== play area ===== */
+.zd-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(14px, 2.4vh, 26px); min-height: 0; }
+
+.zd-table {
+  display: flex; flex-direction: column; align-items: center; gap: clamp(12px, 2vh, 22px);
+  padding: clamp(16px, 2.6vh, 30px) clamp(20px, 3vw, 40px);
+  background: radial-gradient(ellipse at 50% 28%, #241d18, #16110d);
+  border: 2px solid #2e2620; border-radius: 18px; box-shadow: 0 18px 48px rgba(0,0,0,0.6), inset 0 0 60px rgba(0,0,0,0.35);
+}
+
+.zd-roll-label { font-family: var(--display); font-size: 12px; letter-spacing: 1px; color: var(--ink-3); text-transform: uppercase; }
+
+.zd-hand { display: flex; gap: clamp(12px, 2vw, 26px); min-height: var(--die); }
+.zd-hand.empty { color: var(--ink-3); font-family: var(--sans); font-size: 14px; align-items: center; }
+
+.zd-die {
+  --die: clamp(54px, min(11vh, 8vw), 92px);
+  width: var(--die); height: var(--die); border-radius: 16px;
+  display: flex; align-items: center; justify-content: center; position: relative;
+  font-size: calc(var(--die) * 0.52); line-height: 1;
+  box-shadow: 0 5px 0 rgba(0,0,0,0.35), 0 10px 22px rgba(0,0,0,0.5), inset 0 2px 4px rgba(255,255,255,0.18);
+  animation: tumble 0.26s cubic-bezier(.2,1.3,.5,1);
+}
+.zd-die.g { background: linear-gradient(155deg, var(--die-g), var(--die-g-d)); }
+.zd-die.y { background: linear-gradient(155deg, var(--die-y), var(--die-y-d)); }
+.zd-die.r { background: linear-gradient(155deg, var(--die-r), var(--die-r-d)); }
+.zd-die .zd-glyph { filter: drop-shadow(0 1px 1px rgba(0,0,0,0.4)); }
+.zd-die.run { opacity: 0.92; outline: 2px dashed rgba(255,255,255,0.45); outline-offset: -7px; }
+@keyframes tumble { from { transform: rotate(-14deg) scale(0.7); } to { transform: none; } }
+
+/* set-aside row: brains scored & shotguns taken this turn */
+.zd-aside { display: flex; gap: clamp(18px, 3vw, 40px); }
+.zd-pile { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.zd-pile-row { display: flex; gap: 5px; min-height: 30px; align-items: center; flex-wrap: wrap; justify-content: center; max-width: 220px; }
+.zd-chip { font-size: 24px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); animation: tumble 0.22s ease-out; }
+.zd-pile-l { font-family: var(--display); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--ink-3); }
+.zd-pile.brains .zd-pile-l { color: var(--good); }
+.zd-pile.shots .zd-pile-l { color: var(--trim-hi); }
+.zd-pile-empty { color: var(--ink-3); font-size: 22px; opacity: 0.4; }
+
+/* action buttons */
+.zd-actions { display: flex; gap: 14px; }
+.zd-btn {
+  font-family: var(--display); font-size: 15px; letter-spacing: 0.5px;
+  padding: 13px 30px; border-radius: 12px; border: 2px solid transparent; cursor: pointer;
+  color: var(--accent-ink); background: linear-gradient(var(--accent-hi), var(--accent));
+  box-shadow: 0 4px 0 var(--accent-d), 0 8px 18px rgba(0,0,0,0.4); transition: transform .06s, box-shadow .06s;
+}
+.zd-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--accent-d), 0 4px 10px rgba(0,0,0,0.4); }
+.zd-btn.stop { color: var(--ink); background: linear-gradient(var(--trim-hi), var(--trim)); box-shadow: 0 4px 0 #7e2a1c, 0 8px 18px rgba(0,0,0,0.4); }
+.zd-btn.stop:active { box-shadow: 0 1px 0 #7e2a1c, 0 4px 10px rgba(0,0,0,0.4); }
+.zd-btn:disabled { cursor: not-allowed; opacity: 0.4; filter: grayscale(0.6); box-shadow: none; transform: none; }
+
+/* ===== side ===== */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.panel-l { font-family: var(--display); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--ink-3); margin-bottom: 9px; }
+
+.scoreboard { display: flex; flex-direction: column; gap: 9px; }
+.sc { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.sc.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sc-ic { font-size: 18px; flex: 0 0 auto; }
+.sc-name { font-family: var(--display); font-size: 12px; flex: 1; }
+.sc-n { font-family: var(--display); font-size: 22px; }
+.sc.you .sc-n { color: var(--you); } .sc.ai .sc-n { color: var(--foe); }
+.sc-goal { text-align: center; font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+
+/* this-turn + cup stats */
+.zd-stats { display: flex; flex-direction: column; gap: 7px; }
+.zd-stat { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-family: var(--sans); color: var(--ink-2); }
+.zd-stat b { font-family: var(--mono); color: var(--ink); font-size: 13px; }
+.zd-cup { display: flex; gap: 7px; margin-top: 2px; }
+.zd-cup span { display: flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+.zd-swatch { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+.zd-swatch.g { background: var(--die-g); } .zd-swatch.y { background: var(--die-y); } .zd-swatch.r { background: var(--die-r); }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 150px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--accent-hi); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-size: 20px; }
+.finalsc .you { color: var(--accent-hi); } .finalsc .foe { color: var(--foe); }
+.modal-body b { color: var(--accent-hi); }
+.modal-body i { color: var(--trim-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 22px; } .zd-die { --die: clamp(46px, 9vh, 72px); } }

@@ -1,0 +1,146 @@
+/* ==========================================================
+   THE ROYAL GAME OF UR — "Race the seven stones home."
+   Theme: ancient Mesopotamian lapis-and-shell inlay, gold rosette motifs,
+   two stone piece colours (warm shell vs dark obsidian).
+   Display: Cinzel · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #0e1322;
+  --bg-2:    #080b14;
+  --panel:   #182239;
+  --panel-2: #121a2c;
+  --ink:     #eef1f8;
+  --ink-2:   #a8b3cf;
+  --ink-3:   #62708f;
+  --line:    #232f4a;
+  --line-2:  #344571;
+
+  /* token contract -> this theme (lapis-gold primary, dark text on it) */
+  --accent:  #e3bd5b;  --accent-d:#b08c26;  --accent-hi:#f6dd8b;  --accent-ink:#231803;
+  --trim:    #5f86d6;  --trim-hi:#9fc0ff;
+  --you:     #f0d68f;  --foe:#bfa07a;
+  --good:    #6fc79a;  --warn:#e08a52;
+
+  /* game-specific */
+  --lapis:   #1c2f6b;  --lapis-2:#16265a;  --lapis-hi:#2a4490;
+  --shell:   #efe6cf;  --shell-d:#cabf9f;
+  --obsid:   #2a2d3a;  --obsid-hi:#454a60;
+  --gold:    #e3bd5b;  --gold-hi:#f6dd8b;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Cinzel", "Marcellus", Georgia, serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(ellipse at 50% -10%, rgba(95,134,214,0.10) 0%, transparent 54%),
+              radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 232px; gap: clamp(16px, 2.4vw, 36px); }
+
+.ur-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; min-height: 0; }
+
+/* ---- board: 3 rows × 8 cols with a 2-cell gap on the outer rows ---- */
+.ur-board {
+  --cell: clamp(38px, min(8.4vh, 6.6vw), 64px);
+  display: grid;
+  grid-template-columns: repeat(8, var(--cell));
+  grid-template-rows: repeat(3, var(--cell));
+  gap: 5px; padding: 13px;
+  background:
+    linear-gradient(150deg, rgba(95,134,214,0.10), transparent 60%),
+    var(--lapis-2);
+  border: 2px solid var(--lapis-hi);
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(159,192,255,0.10);
+}
+.ur-gap { background: transparent; }
+.ur-cell {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  border-radius: 8px; cursor: default;
+  background: radial-gradient(circle at 50% 32%, #233a82, var(--lapis));
+  box-shadow: inset 0 0 0 1px rgba(159,192,255,0.14), inset 0 -3px 6px rgba(0,0,0,0.32);
+}
+.ur-cell.youside { background: radial-gradient(circle at 50% 32%, #20377b, var(--lapis-2)); }
+.ur-cell.foeside { background: radial-gradient(circle at 50% 32%, #1d2c5e, #131f47); }
+.ur-cell.shared  { background: radial-gradient(circle at 50% 32%, #284398, #1d3179); }
+.ur-cell.ros { box-shadow: inset 0 0 0 1.5px rgba(227,189,91,0.55), inset 0 -3px 6px rgba(0,0,0,0.32); }
+.ur-cell.safe { box-shadow: inset 0 0 0 2px rgba(246,221,139,0.85); }
+.ur-cell.last::after { content: ""; position: absolute; inset: 9%; border-radius: 9px; box-shadow: inset 0 0 0 2px rgba(159,192,255,0.7); pointer-events: none; }
+
+/* eight-petal rosette motif */
+.ur-rosette {
+  position: absolute; width: 64%; height: 64%; opacity: 0.85;
+  background:
+    radial-gradient(circle, var(--gold-hi) 0 14%, transparent 16%),
+    conic-gradient(from 0deg, var(--gold) 0 12.5%, transparent 0 25%, var(--gold) 0 37.5%, transparent 0 50%, var(--gold) 0 62.5%, transparent 0 75%, var(--gold) 0 87.5%, transparent 0);
+  -webkit-mask: radial-gradient(circle, #000 0 50%, transparent 52%);
+          mask: radial-gradient(circle, #000 0 50%, transparent 52%);
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+}
+.ur-cell.safe .ur-rosette { opacity: 1; }
+
+/* ---- pieces ---- */
+.ur-piece {
+  position: relative; z-index: 2; width: 74%; height: 74%; border-radius: 50%;
+  animation: drop 0.18s ease-out;
+}
+.ur-piece.you { background: radial-gradient(circle at 38% 30%, #fff, var(--shell-d)); box-shadow: 0 2px 4px rgba(0,0,0,0.55), inset 0 -2px 3px rgba(0,0,0,0.22), inset 0 0 0 2px rgba(255,255,255,0.4); }
+.ur-piece.foe { background: radial-gradient(circle at 38% 30%, var(--obsid-hi), var(--obsid)); box-shadow: 0 2px 4px rgba(0,0,0,0.55), inset 0 -2px 3px rgba(0,0,0,0.45), inset 0 0 0 2px rgba(255,255,255,0.10); }
+.ur-piece.movable { cursor: pointer; box-shadow: 0 0 0 2px var(--gold-hi), 0 0 12px rgba(246,221,139,0.8), inset 0 -2px 3px rgba(0,0,0,0.22); animation: pulse 1.1s ease-in-out infinite; }
+.ur-cell:has(.movable) { cursor: pointer; }
+@keyframes drop { from { transform: scale(0.5); } to { transform: none; } }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 2px var(--gold-hi), 0 0 8px rgba(246,221,139,0.6), inset 0 -2px 3px rgba(0,0,0,0.22); } 50% { box-shadow: 0 0 0 2px var(--gold-hi), 0 0 16px rgba(246,221,139,0.95), inset 0 -2px 3px rgba(0,0,0,0.22); } }
+
+/* ---- dice tray ---- */
+.ur-dice { display: flex; align-items: center; gap: 10px; padding: 9px 14px; background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 12px; }
+.die svg { width: 30px; height: 30px; display: block; }
+.die polygon { fill: #1a2440; stroke: var(--line-2); stroke-width: 1.2; }
+.die .pip { fill: transparent; }
+.die.up polygon { fill: var(--shell); stroke: var(--shell-d); }
+.die.up .pip { fill: var(--gold); }
+.ur-rollnum { font-family: var(--display); font-weight: 700; font-size: 22px; color: var(--ink-3); min-width: 26px; text-align: center; }
+.ur-rollnum.show { color: var(--gold-hi); }
+.ur-rollbtn {
+  font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 9px 18px; border-radius: 9px; cursor: default;
+  background: var(--panel); color: var(--ink-3); border: 1.5px solid var(--line-2); transition: filter 0.13s;
+}
+.ur-rollbtn.live { background: var(--accent); color: var(--accent-ink); border-color: var(--accent-d); cursor: pointer; }
+.ur-rollbtn.live:hover { filter: brightness(1.1); }
+
+/* ---- side ---- */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.scoreboard { display: flex; flex-direction: column; gap: 9px; }
+.pr { display: flex; flex-direction: column; gap: 7px; padding: 10px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.pr.on { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.pr-top { display: flex; align-items: center; gap: 9px; }
+.pr-dot { width: 16px; height: 16px; border-radius: 50%; flex: 0 0 auto; }
+.pr-dot.you { background: radial-gradient(circle at 38% 30%, #fff, var(--shell-d)); border: 1px solid var(--shell-d); }
+.pr-dot.foe { background: radial-gradient(circle at 38% 30%, var(--obsid-hi), var(--obsid)); border: 1px solid #000; }
+.pr-name { font-family: var(--display); font-weight: 700; font-size: 14px; }
+.pr-stats { display: flex; gap: 12px; font-size: 11px; color: var(--ink-2); font-family: var(--mono); }
+.pr-stat b { color: var(--ink); font-size: 13px; }
+.pr-stat.home b { color: var(--gold-hi); }
+.pr-track { display: flex; gap: 4px; flex-wrap: wrap; }
+.pip { width: 11px; height: 11px; border-radius: 50%; box-sizing: border-box; }
+.pip.you { background: var(--shell); } .pip.foe { background: var(--obsid-hi); }
+.pip.off { opacity: 0.32; }
+.pip.on { box-shadow: 0 0 0 1.5px var(--trim-hi); }
+.pip.home { box-shadow: 0 0 0 1.5px var(--gold-hi); opacity: 1; }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 150px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--gold-hi); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- overlays ---- */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 22px; }
+.finalsc .you { color: var(--gold-hi); } .finalsc .foe { color: var(--foe); }
+.modal-body i { color: var(--gold-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 22px; } .ur-board { --cell: clamp(34px, 7vh, 52px); } }

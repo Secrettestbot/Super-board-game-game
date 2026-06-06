@@ -1,0 +1,167 @@
+/* ==========================================================
+   ALQUERQUE — "The old stone game."
+   Theme: an incised sandstone slab, the alquerque lattice cut into it,
+   bone (ivory) pieces vs obsidian (black-glass) pieces, ochre engraving + hints.
+   Display: Marcellus · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #1a1612;
+  --bg-2:    #110e0a;
+  --panel:   #2a241c;
+  --panel-2: #211c15;
+  --ink:     #f1e9da;
+  --ink-2:   #c4b69b;
+  --ink-3:   #8a7d63;
+  --line:    #3a3225;
+  --line-2:  #564a36;
+
+  /* token contract -> this theme (ochre primary, dark text) */
+  --accent:  #c79a4e;  --accent-d:#9a7126;  --accent-hi:#e3bf78;  --accent-ink:#241a09;
+  --trim:    #c79a4e;  --trim-hi:#e3bf78;
+  --you:     #ecd9a8;  --foe:#b9a07c;
+  --good:    #8fc07a;  --warn:#d98a52;
+
+  /* game-specific */
+  --stone:   #3b3225;  --stone-2:#2c251a;  --incise:#a98a52;
+  --bone:    #ece4d2;  --bone-d:#b9ad94;
+  --obsidian:#1c1916;  --obsidian-hi:#4a443c;
+  --ochre:   #c79a4e;  --ochre-hi:#e3bf78;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Marcellus", Georgia, serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(199,154,78,0.06) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 230px; gap: clamp(18px, 2.6vw, 38px); }
+
+.aq-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+
+.aq-board {
+  --slab: clamp(228px, min(64vh, 46vw), 460px);
+  position: relative;
+  width: var(--slab); height: var(--slab);
+  padding: 0; /* nodes are positioned in the inner field via padding offset below */
+  box-sizing: content-box;
+  background:
+    radial-gradient(ellipse at 32% 22%, #4a4030, transparent 60%),
+    radial-gradient(ellipse at 72% 80%, #241e15, transparent 65%),
+    linear-gradient(150deg, var(--stone), var(--stone-2));
+  border: 3px solid #1c1710;
+  border-radius: 14px;
+  box-shadow:
+    0 18px 48px rgba(0,0,0,0.6),
+    inset 0 2px 0 rgba(255,240,210,0.05),
+    inset 0 0 60px rgba(0,0,0,0.45);
+}
+
+/* The inner playfield where lattice points live (inset from the slab edge). */
+.aq-board { --pad: clamp(26px, 9%, 46px); }
+.aq-lines, .aq-node {
+  position: absolute;
+  left: var(--pad); top: var(--pad);
+}
+.aq-lines {
+  width: calc(100% - 2 * var(--pad));
+  height: calc(100% - 2 * var(--pad));
+  overflow: visible;
+  pointer-events: none;
+}
+.aq-lines line {
+  stroke: var(--incise);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  opacity: 0.55;
+  filter: drop-shadow(0 1px 0 rgba(0,0,0,0.5));
+}
+
+/* A node is positioned by its left/top % within the inner field; translate to centre it. */
+.aq-node {
+  width: calc(100% - 2 * var(--pad));   /* unused width; node sized via fixed box below */
+  height: auto;
+}
+/* Re-declare node as a fixed-size hit target centred on its (left,top) point. */
+.aq-node {
+  --node: clamp(30px, 8.5vh, 50px);
+  width: var(--node); height: var(--node);
+  margin-left: calc(-1 * var(--node) / 2);
+  margin-top: calc(-1 * var(--node) / 2);
+  display: flex; align-items: center; justify-content: center;
+  cursor: default;
+}
+/* left/top set inline are % of the inner field; nudge into the inner field origin. */
+.aq-node { transform: translate(0, 0); }
+
+.aq-spot {
+  position: absolute;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: radial-gradient(circle at 50% 40%, #5a4d36, #2a2318);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.45), 0 1px 1px rgba(255,240,210,0.05);
+}
+
+.aq-piece {
+  position: relative; z-index: 2;
+  width: 72%; height: 72%; border-radius: 50%;
+  animation: drop 0.16s ease-out;
+}
+.aq-piece.w {
+  background: radial-gradient(circle at 38% 30%, #fffaf0, var(--bone-d));
+  box-shadow: 0 3px 5px rgba(0,0,0,0.5), inset 0 -2px 4px rgba(120,108,84,0.4), inset 0 2px 3px rgba(255,255,255,0.6);
+}
+.aq-piece.b {
+  background: radial-gradient(circle at 38% 28%, #514a40, var(--obsidian));
+  box-shadow: 0 3px 5px rgba(0,0,0,0.6), inset 0 -2px 4px rgba(0,0,0,0.6), inset 0 2px 3px rgba(120,112,100,0.5);
+}
+.aq-piece.sel { box-shadow: 0 0 0 3px var(--ochre-hi), 0 3px 6px rgba(0,0,0,0.5); }
+@keyframes drop { from { transform: scale(0.6); } to { transform: none; } }
+
+/* Move hints */
+.aq-hint {
+  position: absolute; z-index: 1;
+  width: 34%; height: 34%; border-radius: 50%;
+  pointer-events: none;
+}
+.aq-node.step .aq-hint { background: rgba(199,154,78,0.5); box-shadow: 0 0 8px rgba(199,154,78,0.45); }
+.aq-node.jump .aq-hint {
+  width: 56%; height: 56%; background: transparent; border-radius: 50%;
+  box-shadow: inset 0 0 0 3px var(--good), 0 0 10px rgba(143,192,122,0.5);
+}
+.aq-node.step, .aq-node.jump, .aq-node.pickable { cursor: pointer; }
+.aq-node.pickable .aq-piece { cursor: pointer; }
+.aq-node.pickable .aq-piece:hover { filter: brightness(1.08); }
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.scoreboard { display: flex; flex-direction: column; gap: 9px; }
+.sc { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.sc.on { border-color: var(--ochre); box-shadow: 0 0 0 1px var(--ochre); }
+.sc-pc { width: 18px; height: 18px; border-radius: 50%; flex: 0 0 auto; }
+.sc-pc.w { background: radial-gradient(circle at 38% 30%, #fffaf0, var(--bone-d)); border: 1px solid var(--bone-d); }
+.sc-pc.b { background: radial-gradient(circle at 38% 28%, #514a40, var(--obsidian)); border: 1px solid #000; }
+.sc-name { font-family: var(--display); font-weight: 400; font-size: 14px; flex: 1; letter-spacing: 0.01em; }
+.sc-n { font-family: var(--display); font-weight: 400; font-size: 21px; }
+.sc.w .sc-n { color: var(--bone); } .sc.b .sc-n { color: var(--ink-2); }
+.sc-bar { height: 7px; border-radius: 4px; background: var(--obsidian); overflow: hidden; }
+.sc-bar-w { height: 100%; background: var(--bone); border-right: 1px solid var(--line-2); }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 150px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--ochre-hi); } .log-line.ai { color: var(--ink-2); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 400; font-size: 24px; }
+.finalsc .you { color: var(--ochre-hi); } .finalsc .foe { color: var(--bone); }
+.modal-title { font-family: var(--display); font-weight: 400; }
+.modal-body i { color: var(--ochre-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

@@ -1,0 +1,132 @@
+/* ==========================================================
+   COLORETTO — "Grab the colours you want."
+   Theme: bright, friendly chameleon / colour-card look on a cool slate ground;
+   rounded card chips, soft glow on actionable rows.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #14161f;
+  --bg-2:    #0d0f16;
+  --panel:   #1d2030;
+  --panel-2: #181b28;
+  --ink:     #f1f3fb;
+  --ink-2:   #aab1cc;
+  --ink-3:   #6b7290;
+  --line:    #2a2f44;
+  --line-2:  #3b4163;
+
+  /* token contract -> this theme (warm coral primary on dark ink) */
+  --accent:  #ff9636;  --accent-d:#d96f12;  --accent-hi:#ffb061;  --accent-ink:#2a1604;
+  --trim:    #5ec46b;  --trim-hi:#86e290;
+  --you:     #86e290;  --foe:#ff9bbf;
+  --good:    #5ec46b;  --warn:#ff7a7a;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", "Quicksand", system-ui, sans-serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 18% -6%, rgba(94,196,107,0.08) 0%, transparent 46%),
+    radial-gradient(ellipse at 84% 4%, rgba(74,168,255,0.07) 0%, transparent 44%),
+    radial-gradient(ellipse at 50% 122%, rgba(0,0,0,0.5) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 244px; gap: clamp(18px, 2.6vw, 38px); }
+
+/* ===== play area ===== */
+.cl-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(14px, 2.4vh, 26px); min-height: 0; }
+
+.cl-pending { display: flex; align-items: center; justify-content: center; min-height: 64px; }
+.cl-actions { display: flex; gap: 14px; }
+.cl-btn {
+  font-family: var(--display); font-weight: 600; font-size: 16px; letter-spacing: 0.01em;
+  padding: 11px 22px; border-radius: 13px; cursor: pointer; border: 1.5px solid var(--line-2);
+  background: var(--panel); color: var(--ink); transition: filter .12s, transform .06s;
+}
+.cl-btn:hover:not(:disabled) { filter: brightness(1.12); }
+.cl-btn:active:not(:disabled) { transform: translateY(1px); }
+.cl-btn:disabled { opacity: 0.4; cursor: default; }
+.cl-btn.draw { background: linear-gradient(180deg, var(--accent-hi), var(--accent)); color: var(--accent-ink); border-color: var(--accent-d); }
+.cl-btn.take { background: linear-gradient(180deg, var(--trim-hi), var(--trim)); color: #0c2310; border-color: #3a8c46; }
+.cl-btn.take.armed { box-shadow: 0 0 0 2px var(--trim), 0 0 18px rgba(94,196,107,0.45); }
+
+.cl-pendcard { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.cl-pendlabel { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.18em; color: var(--ink-3); }
+
+/* card chips */
+.cl-card {
+  width: clamp(30px, 4.6vh, 42px); height: clamp(40px, 6vh, 56px); border-radius: 9px;
+  box-shadow: inset 0 -4px 7px rgba(0,0,0,0.22), inset 0 2px 4px rgba(255,255,255,0.32), 0 3px 6px rgba(0,0,0,0.4);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--display); font-weight: 700; font-size: 15px; color: #1a1410;
+  animation: pop 0.16s ease-out;
+}
+.cl-card.big { width: clamp(46px, 7vh, 64px); height: clamp(62px, 9.4vh, 88px); font-size: 22px; border-radius: 12px; }
+.cl-card.plus2 { background: linear-gradient(180deg, #fff0d2, #ffd98a); color: #6b4a08; }
+.cl-card.last { background: linear-gradient(180deg, #2a2f44, #181b28); color: #ffd24a; border: 1.5px solid #ffd24a; }
+@keyframes pop { from { transform: scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* rows */
+.cl-rows { display: flex; flex-direction: column; gap: 12px; }
+.cl-row {
+  display: flex; align-items: center; gap: 14px; padding: 10px 16px;
+  background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 16px;
+  position: relative; cursor: default; transition: border-color .12s, box-shadow .12s, opacity .12s;
+}
+.cl-row.hot { cursor: pointer; border-color: var(--accent); box-shadow: 0 0 0 1.5px var(--accent), 0 0 20px rgba(255,150,54,0.28); }
+.cl-row.hot:hover { filter: brightness(1.07); }
+.cl-row.taken { opacity: 0.42; }
+.cl-rown { font-family: var(--display); font-weight: 700; font-size: 18px; color: var(--ink-3); width: 18px; text-align: center; }
+.cl-slots { display: flex; gap: 9px; }
+.cl-slot {
+  width: clamp(34px, 5.2vh, 48px); height: clamp(44px, 6.6vh, 62px); border-radius: 10px;
+  border: 1.5px dashed var(--line-2); display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.16);
+}
+.cl-slot .cl-card { box-shadow: inset 0 -4px 7px rgba(0,0,0,0.22), inset 0 2px 4px rgba(255,255,255,0.32); }
+.cl-tag { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); }
+
+/* ===== side ===== */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+
+.tableau { transition: border-color .12s, box-shadow .12s; }
+.tableau.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.tableau.you.on { border-color: var(--you); box-shadow: 0 0 0 1px var(--you); }
+.tab-head { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
+.tab-name { font-family: var(--display); font-weight: 700; font-size: 15px; flex: 1; }
+.tableau.you .tab-name { color: var(--you); } .tableau.ai .tab-name { color: var(--foe); }
+.tab-sit { font-family: var(--mono); font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-3); }
+.tab-score { font-family: var(--display); font-weight: 800; font-size: 22px; color: var(--ink); }
+.tab-colors { display: flex; flex-wrap: wrap; gap: 7px; min-height: 26px; }
+.tab-empty { font-size: 11px; color: var(--ink-3); font-style: italic; }
+.tab-col { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px 3px 4px; border-radius: 999px; border: 1.5px solid var(--line); }
+.tab-col.good { border-color: rgba(94,196,107,0.55); background: rgba(94,196,107,0.1); }
+.tab-col.bad { border-color: rgba(255,122,122,0.4); background: rgba(255,122,122,0.07); }
+.tab-col.plus { border-color: rgba(255,210,74,0.5); background: rgba(255,210,74,0.1); }
+.tab-dot { width: 16px; height: 16px; border-radius: 5px; box-shadow: inset 0 -2px 3px rgba(0,0,0,0.25), inset 0 1px 2px rgba(255,255,255,0.35); }
+.tab-dot.p2 { width: auto; height: auto; padding: 0 4px; font-family: var(--display); font-weight: 700; font-size: 10px; color: #6b4a08; background: #ffd98a; border-radius: 5px; }
+.tab-cn { font-family: var(--display); font-weight: 700; font-size: 13px; color: var(--ink); }
+
+.deckbox { display: flex; align-items: center; gap: 9px; }
+.deck-l { font-family: var(--display); font-weight: 600; font-size: 13px; color: var(--ink-2); }
+.deck-n { font-family: var(--display); font-weight: 800; font-size: 20px; color: var(--ink); }
+.deck-flag { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-3); margin-left: auto; text-align: right; }
+.deck-flag.on { color: #ffd24a; }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 138px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--you); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 800; font-size: 22px; }
+.finalsc .you { color: var(--you); } .finalsc .foe { color: var(--foe); }
+.modal-body i { color: var(--accent-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

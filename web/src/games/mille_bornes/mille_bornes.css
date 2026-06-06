@@ -1,0 +1,133 @@
+/* MILLE BORNES — retro road-trip theme. Warm asphalt + sunset, signal-light accents.
+   Token VALUES live here; structural classes come from framework/tokens.css. */
+:root {
+  --bg: #1a1410;
+  --bg-2: #241b14;
+  --panel: #2c2118;
+  --panel-2: #34281d;
+  --ink: #f6ecdc;
+  --ink-2: #d3c2a6;
+  --ink-3: #9c8a72;
+  --line: #463524;
+  --line-2: #5c4630;
+  --accent: #e0742b;          /* sunset orange */
+  --accent-d: #b4541a;
+  --accent-hi: #ffae5e;
+  --accent-ink: #1a1410;
+  --trim: #d9a441;            /* roadsign amber */
+  --trim-hi: #f2c763;
+  --you: #6fc77a;             /* go green */
+  --foe: #e06464;            /* stop red */
+  --good: #6fc77a;
+  --warn: #e06464;
+  --sans: "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono: "JetBrains Mono", monospace;
+}
+
+body {
+  background:
+    radial-gradient(120% 80% at 50% -10%, #3a2a1c 0%, var(--bg) 60%),
+    var(--bg);
+}
+
+/* ---- stage layout: two seats stacked + side panel ---- */
+.mb-wrap { display: grid; grid-template-columns: 1fr 240px; gap: clamp(12px, 2vw, 22px); width: 100%; max-width: 1000px; align-items: stretch; }
+.mb-board { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+/* ---- a seat (battle area) ---- */
+.mb-seat {
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1.5px solid var(--line); border-radius: 14px; padding: 12px 14px;
+  display: grid; grid-template-columns: 150px 1fr auto; gap: 14px; align-items: center;
+}
+.mb-seat.foe { border-color: #4a3022; }
+.mb-seat.you { border-color: #2f4a30; }
+.mb-seat.active { box-shadow: 0 0 0 1.5px var(--trim); }
+
+.mb-seat-id { display: flex; flex-direction: column; gap: 4px; }
+.mb-seat-name { font-family: var(--display); font-weight: 700; font-size: 18px; }
+.mb-seat-name.you { color: var(--you); }
+.mb-seat-name.foe { color: var(--foe); }
+.mb-odo { font-family: var(--mono); font-size: 11px; color: var(--ink-3); letter-spacing: .08em; }
+.mb-odo b { color: var(--ink); font-size: 13px; }
+.mb-bar { height: 7px; border-radius: 4px; background: var(--bg-2); overflow: hidden; margin-top: 3px; border: 1px solid var(--line); }
+.mb-bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-d), var(--accent-hi)); transition: width .3s; }
+
+/* battle status: signal light + hazard chips */
+.mb-status { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.mb-light { display: flex; align-items: center; gap: 8px; }
+.mb-bulb { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #00000055; background: #4a4036; box-shadow: inset 0 1px 2px #0006; }
+.mb-bulb.go { background: var(--good); box-shadow: 0 0 9px var(--good), inset 0 1px 2px #fff4; }
+.mb-bulb.stop { background: var(--warn); box-shadow: 0 0 9px var(--warn), inset 0 1px 2px #fff4; }
+.mb-light-label { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); }
+.mb-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.mb-chip {
+  font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: .04em;
+  padding: 3px 7px; border-radius: 20px; text-transform: uppercase;
+}
+.mb-chip.hazard { background: #4a1e1e; color: #ffb3b3; border: 1px solid #793333; }
+.mb-chip.limit { background: #4a3a16; color: var(--trim-hi); border: 1px solid #7a601f; }
+.mb-chip.none { color: var(--ink-3); font-style: italic; text-transform: none; }
+
+.mb-safeties { display: flex; gap: 5px; justify-self: end; flex-wrap: wrap; max-width: 130px; justify-content: flex-end; }
+.mb-safety {
+  font-family: var(--mono); font-size: 9px; font-weight: 600; padding: 4px 7px; border-radius: 7px;
+  background: linear-gradient(180deg, #355c39, #243f27); color: #c9f0cd; border: 1px solid #4d8052;
+  box-shadow: 0 2px 5px #0005; text-align: center; line-height: 1.15;
+}
+
+/* ---- hand ---- */
+.mb-hand-wrap { background: var(--panel); border: 1.5px solid var(--line); border-radius: 14px; padding: 10px 12px; }
+.mb-hand-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.mb-hand-title { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: .16em; color: var(--ink-3); }
+.mb-hand-hint { font-family: var(--mono); font-size: 9px; color: var(--ink-3); }
+.mb-hand { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.mb-card {
+  width: 84px; min-height: 108px; border-radius: 10px; padding: 8px 7px;
+  display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 4px;
+  border: 1.5px solid var(--line-2); cursor: default; position: relative;
+  background: var(--panel-2); color: var(--ink); text-align: center;
+  transition: transform .12s, box-shadow .12s, border-color .12s;
+}
+.mb-card .mb-card-kind { font-family: var(--mono); font-size: 8px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.mb-card .mb-card-main { font-family: var(--display); font-weight: 700; font-size: 17px; line-height: 1; }
+.mb-card .mb-card-km { font-family: var(--display); font-weight: 700; font-size: 30px; line-height: 1; }
+.mb-card .mb-card-sub { font-size: 10px; color: var(--ink-2); line-height: 1.15; }
+
+.mb-card.distance { background: linear-gradient(180deg, #2e3a4a, #232c38); border-color: #3d5169; }
+.mb-card.distance .mb-card-km { color: #9ecbff; }
+.mb-card.hazard { background: linear-gradient(180deg, #45211f, #321817); border-color: #6e3531; }
+.mb-card.hazard .mb-card-main { color: #ff9b8e; }
+.mb-card.remedy { background: linear-gradient(180deg, #243f27, #1c3220); border-color: #3c6541; }
+.mb-card.remedy .mb-card-main { color: #9ee6a4; }
+.mb-card.safety { background: linear-gradient(180deg, #4a3a16, #362a10); border-color: #7a601f; }
+.mb-card.safety .mb-card-main { color: var(--trim-hi); }
+
+.mb-card.playable { cursor: pointer; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 4px 12px #0006; }
+.mb-card.playable:hover { transform: translateY(-4px); box-shadow: 0 0 0 1.5px var(--accent-hi), 0 8px 18px #0007; }
+.mb-card.dim { opacity: .42; filter: grayscale(.4); }
+.mb-card.selected { border-color: var(--trim); box-shadow: 0 0 0 2px var(--trim); transform: translateY(-4px); }
+.mb-card-empty { width: 84px; min-height: 108px; border: 1.5px dashed var(--line); border-radius: 10px; }
+
+.mb-actions { display: flex; gap: 9px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
+.mb-btn {
+  font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  padding: 9px 16px; border-radius: 8px; cursor: pointer; transition: filter .12s, opacity .12s;
+  background: var(--accent); color: var(--accent-ink); border: 1.5px solid var(--accent-d);
+}
+.mb-btn:hover:not(:disabled) { filter: brightness(1.1); }
+.mb-btn.ghost { background: var(--panel); color: var(--ink); border-color: var(--line-2); }
+.mb-btn:disabled { opacity: .4; cursor: not-allowed; }
+.mb-deckcount { font-family: var(--mono); font-size: 10px; color: var(--ink-3); margin-left: auto; letter-spacing: .08em; }
+
+/* ---- side panel / log ---- */
+.mb-side { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.mb-side .panel { display: flex; flex-direction: column; gap: 6px; }
+.logbox { overflow-y: auto; max-height: 320px; display: flex; flex-direction: column; gap: 2px; }
+
+@media (max-height: 760px) {
+  .mb-card { min-height: 96px; width: 78px; }
+  .mb-card .mb-card-km { font-size: 26px; }
+}

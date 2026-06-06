@@ -1,0 +1,171 @@
+/* ==========================================================
+   QUARTO — "The rival picks your piece."
+   Theme: a hushed abstract gallery — deep aubergine walls, plinth-grey board,
+   amethyst trim. Pieces read as plinth sculptures: size = tall/short,
+   fill colour = dark/light, silhouette = square/round, a bored hole = hollow.
+   Display: Sora · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #15111c;
+  --bg-2:    #0d0a12;
+  --panel:   #211a2c;
+  --panel-2: #1a1424;
+  --ink:     #efeaf6;
+  --ink-2:   #b3a7c6;
+  --ink-3:   #6f6483;
+  --line:    #2c2438;
+  --line-2:  #443a58;
+
+  /* token contract -> this theme (amethyst primary, light text on accent) */
+  --accent:  #8a6fd6;  --accent-d:#6a4fb8;  --accent-hi:#b79ff0;
+  --trim:    #b79ff0;  --trim-hi:#d6c7f4;
+  --you:     #b79ff0;  --foe:#b3a7c6;
+  --good:    #79d6a8;  --warn:#e0894e;
+
+  /* game-specific: piece materials */
+  --plinth:   #2a2336;  --plinth-2:#221b2d;
+  --p-dark:   #2b2536;  --p-dark-hi:#4a4258;  /* dark piece body */
+  --p-light:  #e7e0f2;  --p-light-hi:#ffffff; /* light piece body */
+  --p-edge:   #0c0910;
+  --gold:     #b79ff0;  --gold-hi:#d6c7f4;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Sora", system-ui, sans-serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -6%, rgba(138,111,214,0.10) 0%, transparent 54%),
+    radial-gradient(ellipse at 50% 122%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 248px; gap: clamp(18px, 2.6vw, 40px); }
+
+/* ---- board ---- */
+.qt-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.qt-board {
+  --cell: clamp(58px, min(15vh, 10vw), 104px);
+  display: grid;
+  grid-template-columns: repeat(4, var(--cell));
+  grid-template-rows: repeat(4, var(--cell));
+  gap: 6px; padding: 14px;
+  background: linear-gradient(160deg, var(--plinth), var(--plinth-2));
+  border: 1.5px solid var(--line-2); border-radius: 16px;
+  box-shadow: 0 20px 54px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+.qt-cell {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 50% 36%, #241d30, #1a1424);
+  border: 1px solid var(--line); border-radius: 10px;
+  cursor: default; transition: box-shadow 0.14s, background 0.14s;
+}
+.qt-cell.open { cursor: pointer; }
+.qt-cell.open:hover { background: radial-gradient(circle at 50% 36%, #322647, #241a36); box-shadow: inset 0 0 0 1.5px var(--gold); }
+.qt-cell.open::after {
+  content: ""; position: absolute; width: 18%; height: 18%; border-radius: 50%;
+  background: rgba(183,159,240,0.35); box-shadow: 0 0 8px rgba(183,159,240,0.4);
+}
+.qt-cell.open:hover::after { display: none; }
+.qt-cell.last { box-shadow: inset 0 0 0 1.5px rgba(183,159,240,0.45); }
+.qt-cell.win { background: radial-gradient(circle at 50% 36%, #3a2c58, #2a1f42); box-shadow: inset 0 0 0 2px var(--gold-hi), 0 0 18px rgba(183,159,240,0.5); }
+
+/* ---- pieces ---- */
+/* A piece is a centred silhouette. Height scales for tall/short, radius for square/round,
+   colour for dark/light, and a punched hole for hollow. */
+.qt-piece {
+  display: inline-flex; align-items: center; justify-content: center;
+  --pw: 56%;          /* relative footprint */
+  width: var(--pw);
+  animation: qt-set 0.18s ease-out;
+}
+.qt-piece .qt-body {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  width: 100%;
+}
+@keyframes qt-set { from { transform: translateY(-8%) scale(0.7); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* shape: square vs round silhouette (use aspect via padding trick on body) */
+.qt-piece.square .qt-body { aspect-ratio: 1 / 1; border-radius: 16%; }
+.qt-piece.round  .qt-body { aspect-ratio: 1 / 1; border-radius: 50%; }
+
+/* height: tall pieces are larger / more imposing */
+.qt-piece.tall  { --pw: 70%; }
+.qt-piece.short { --pw: 48%; }
+
+/* colour / material */
+.qt-piece.dark .qt-body {
+  background: radial-gradient(circle at 36% 28%, var(--p-dark-hi), var(--p-dark));
+  border: 1px solid var(--p-edge);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.5), inset 0 -3px 5px rgba(0,0,0,0.45), inset 0 2px 3px rgba(255,255,255,0.08);
+}
+.qt-piece.light .qt-body {
+  background: radial-gradient(circle at 36% 28%, var(--p-light-hi), var(--p-light));
+  border: 1px solid #b6abcf;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.45), inset 0 -3px 5px rgba(0,0,0,0.18);
+}
+
+/* fill: hollow pieces get a punched hole */
+.qt-hole {
+  width: 38%; height: 38%; border-radius: inherit;
+  background: radial-gradient(circle at 50% 40%, var(--bg-2), #000);
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.7), inset 0 -1px 2px rgba(255,255,255,0.05);
+}
+.qt-piece.square .qt-hole { border-radius: 10%; }
+.qt-piece.round  .qt-hole { border-radius: 50%; }
+
+/* big variant used in the "hand" stage */
+.qt-piece.big { --pw: 64px; }
+.qt-piece.big.tall { --pw: 78px; }
+.qt-piece.big.short { --pw: 54px; }
+
+/* ---- side ---- */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; min-width: 0; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+
+.handbox { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.handbox .panel-l { align-self: flex-start; }
+.hand-stage {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; min-height: 92px;
+  background: radial-gradient(circle at 50% 30%, #241d30, #181222);
+  border: 1px solid var(--line); border-radius: 11px; padding: 8px;
+}
+.hand-name { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gold-hi); text-align: center; }
+.hand-empty { font-family: var(--display); font-size: 26px; color: var(--ink-3); }
+
+.poolbox.active { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.qt-pool {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px;
+}
+.qt-poolslot {
+  display: flex; align-items: center; justify-content: center;
+  aspect-ratio: 1 / 1; padding: 0;
+  background: radial-gradient(circle at 50% 34%, #221b2d, #181222);
+  border: 1px solid var(--line); border-radius: 9px;
+  cursor: default; transition: border-color 0.13s, box-shadow 0.13s, transform 0.1s;
+}
+.qt-poolslot.pickable { cursor: pointer; }
+.qt-poolslot.pickable:hover { border-color: var(--gold); box-shadow: 0 0 10px rgba(183,159,240,0.35); transform: translateY(-1px); }
+.qt-poolslot:disabled { opacity: 0.9; }
+.qt-poolslot .qt-piece { animation: none; }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 132px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--gold-hi); }
+.log-line.ai { color: var(--ink-2); }
+.log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- overlays ---- */
+.modal-body i { color: var(--gold-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) {
+  .title-main { font-size: 23px; }
+  .qt-board { --cell: clamp(52px, 12vh, 88px); }
+}

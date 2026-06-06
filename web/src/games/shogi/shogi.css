@@ -1,0 +1,237 @@
+/* ==========================================================
+   MINISHOGI (5×5) — "Drop and promote."
+   Theme: a warm kaya-wood shogi board with lacquered honey lines and pale
+   five-sided koma (tiles). Sente (you) tiles point UP and read dark-ink; Gote
+   (AI) tiles point DOWN and read in faded sepia. Hands flank the board.
+
+   Shared page skeleton lives in ../../framework/tokens.css; this file supplies the
+   token VALUES and the board / piece / hand classes.
+   ========================================================== */
+
+:root {
+  --bg:      #1c150d;
+  --bg-2:    #130d06;
+  --panel:   #2b2113;
+  --panel-2: #211810;
+  --ink:     #f3e9d4;
+  --ink-2:   #c3b08f;
+  --ink-3:   #897659;
+  --line:    #3a2a1a;
+  --line-2:  #523c24;
+
+  /* token contract -> this theme */
+  --accent:    #b25a1f;  --accent-d:#8c4416;  --accent-hi:#d97c38;
+  --accent-ink:#fff4e4;
+  --trim:      #e0a94e;  --trim-hi:#f6cf78;
+  --you:       #e0a94e;  --foe:#c3b08f;
+  --good:      #84c08a;  --warn:#e0894e;
+
+  /* game-specific */
+  --board:    #e6c485;  --board-2:#dcb771;  --bline:#9a6a2c;
+  --tile:     #f1ddb0;  --tile-hi:#fbeaccc;  --tile-edge:#bb934d;
+  --tile-foe: #e3cfa3;
+  --p0-ink:   #2c2118;
+  --p1-ink:   #6f5a3f;
+  --promo-ink:#9c2f18;
+  --gold:     #e0a94e;  --gold-d:#a87c1e;  --gold-hi:#f6cf78;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(120% 90% at 50% -10%, rgba(224, 169, 78, 0.10), transparent 60%),
+    var(--bg);
+  pointer-events: none;
+}
+
+/* ---- board layout: Gote hand · board · Sente hand ---- */
+.boardwrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0 14px;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(5, 1fr);
+  gap: 0;
+  width: min(78vmin, 460px);
+  aspect-ratio: 1 / 1;
+  background:
+    linear-gradient(150deg, var(--board), var(--board-2));
+  border: 3px solid var(--bline);
+  border-radius: 6px;
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(255, 244, 220, 0.18);
+  padding: 4px;
+}
+
+.cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(122, 82, 38, 0.55);
+  cursor: pointer;
+  user-select: none;
+}
+.cell.alt { background: rgba(122, 82, 38, 0.06); }
+.cell.last { background: rgba(224, 169, 78, 0.22); }
+.cell:hover { background: rgba(224, 169, 78, 0.12); }
+
+/* ---- koma (pieces) — five-sided pointed tile ---- */
+.pc {
+  position: relative;
+  width: 80%;
+  height: 84%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, var(--tile-hi, #fbeacc), var(--tile));
+  border: 1px solid var(--tile-edge);
+  /* pentagon koma silhouette, point at top for sente */
+  clip-path: polygon(50% 0%, 92% 26%, 84% 100%, 16% 100%, 8% 26%);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+  color: var(--p0-ink);
+  transition: transform 0.08s ease, filter 0.08s ease;
+}
+.pc .g {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: clamp(15px, 5.6vmin, 30px);
+  line-height: 1;
+  padding-top: 8%;
+}
+.pc.p1 {
+  background: linear-gradient(0deg, var(--tile-hi, #fbeacc), var(--tile-foe));
+  color: var(--p1-ink);
+  /* gote tiles point the other way (down) */
+  clip-path: polygon(16% 0%, 84% 0%, 92% 74%, 50% 100%, 8% 74%);
+}
+.pc.p1 .g {
+  transform: rotate(180deg);
+  padding-top: 0;
+  padding-bottom: 8%;
+}
+.pc.promo { color: var(--promo-ink); }
+.pc.sel {
+  filter: brightness(1.08);
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 0 0 2px var(--trim), 0 6px 12px rgba(0, 0, 0, 0.5);
+}
+
+/* ---- legal-move targets ---- */
+.tgt {
+  position: absolute;
+  width: 30%;
+  height: 30%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(178, 90, 31, 0.85), rgba(178, 90, 31, 0.4));
+  pointer-events: none;
+  box-shadow: 0 0 6px rgba(178, 90, 31, 0.6);
+}
+.tgt.cap {
+  width: 80%;
+  height: 80%;
+  background: none;
+  border: 3px solid var(--accent-hi);
+  border-radius: 8px;
+  box-shadow: 0 0 8px rgba(217, 124, 56, 0.7);
+}
+.tgt.drop {
+  background: radial-gradient(circle, rgba(224, 169, 78, 0.9), rgba(224, 169, 78, 0.35));
+  box-shadow: 0 0 6px rgba(224, 169, 78, 0.7);
+}
+
+/* ---- hands ---- */
+.hand {
+  width: min(78vmin, 460px);
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.hand.foe { border-color: var(--line); }
+.hand-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  white-space: nowrap;
+  min-width: 124px;
+}
+.hand.mine .hand-label { color: var(--you); }
+.hand-pieces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+  flex: 1;
+}
+.hand-empty {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  opacity: 0.7;
+}
+
+.hp {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 7px 5px;
+  background: linear-gradient(180deg, var(--tile-hi, #fbeacc), var(--tile));
+  border: 1px solid var(--tile-edge);
+  border-radius: 5px;
+  color: var(--p0-ink);
+  cursor: default;
+  font-family: var(--display);
+}
+.hp .hg { font-size: 17px; font-weight: 700; line-height: 1; }
+.hp .hn { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--accent-d); }
+.hp.active { cursor: pointer; }
+.hp.active:hover { filter: brightness(1.06); transform: translateY(-1px); }
+.hp.armed {
+  box-shadow: 0 0 0 2px var(--trim), 0 3px 8px rgba(0, 0, 0, 0.4);
+  transform: translateY(-1px);
+}
+
+/* ---- modal extras ---- */
+.btn-modal.ghost {
+  background: transparent;
+  border: 1px solid var(--line-2);
+  color: var(--ink-2);
+}
+.btn-modal.ghost:hover { border-color: var(--trim); color: var(--ink); }
+.modal-body kbd {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--ink-2);
+}
+
+@media (max-width: 560px) {
+  .hand-label { min-width: 0; font-size: 9px; }
+}

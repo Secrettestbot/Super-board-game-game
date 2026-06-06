@@ -1,0 +1,164 @@
+/* ==========================================================
+   JOTTO — "Crack the hidden word."
+   Theme: codebreaker's parchment — warm aged-paper field, ink-blue type,
+   brass accents, a red-cipher seal. Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #211c14;
+  --bg-2:    #181410;
+  --panel:   #efe4cb;
+  --panel-2: #e7d9ba;
+  --ink:     #2c2417;
+  --ink-2:   #6a5c44;
+  --ink-3:   #9c8c6e;
+  --line:    #cdbb95;
+  --line-2:  #b7a079;
+
+  /* token contract -> this theme (brass primary, dark ink text) */
+  --accent:    #b9892f;  --accent-d:#8c6418;  --accent-hi:#d8a94e;  --accent-ink:#241a06;
+  --trim:      #a8412f;  --trim-hi:#c8624e;
+  --you:       #2f6e8c;  --foe:#a8412f;
+  --good:      #3f7a4a;  --warn:#b35a1e;
+
+  /* game-specific */
+  --paper:     #f3e9d2;  --paper-2:#e7d9ba;  --paper-line:#cdbb95;
+  --cell:      #f7efdb;  --cell-line:#cabb95;
+  --seal:      #a8412f;  --seal-hi:#c8624e;
+  --tile-on:   #2f6e8c;  --tile-out:#cdbb95;  --tile-maybe:#b9892f;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(185,137,47,0.10) 0%, transparent 52%),
+    radial-gradient(ellipse at 10% 112%, rgba(168,65,47,0.08) 0%, transparent 46%);
+}
+
+.stage { grid-template-columns: minmax(0, 1fr) 268px; gap: clamp(16px, 2.2vw, 30px); align-items: start; }
+
+/* ---- title mark ---- */
+.title-mark { width: 40px; height: 40px; }
+
+/* ---- main column: the play sheet ---- */
+.jt-sheet {
+  background: linear-gradient(168deg, var(--paper), var(--paper-2));
+  border: 2px solid var(--line-2); border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.35);
+  padding: clamp(14px, 1.8vw, 22px);
+  min-height: 0;
+}
+
+.jt-colhead {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  margin-bottom: 12px;
+}
+.jt-col-title {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-3); text-align: center;
+  padding-bottom: 6px; border-bottom: 1.5px solid var(--paper-line);
+}
+.jt-col-title.you  { color: var(--you); }
+.jt-col-title.foe  { color: var(--foe); }
+
+.jt-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.jt-stack { display: flex; flex-direction: column; gap: 7px; min-height: 0; }
+
+/* ---- a single guess row: 5 letter tiles + jot badge ---- */
+.jt-row { display: flex; align-items: center; gap: 8px; }
+.jt-tiles { display: flex; gap: 4px; }
+.jt-tile {
+  width: clamp(26px, 3vw, 34px); height: clamp(30px, 3.4vw, 40px);
+  display: grid; place-items: center;
+  font-family: var(--display); font-weight: 700; font-size: clamp(14px, 1.7vw, 19px);
+  color: var(--ink); text-transform: uppercase;
+  background: var(--cell); border: 1.5px solid var(--cell-line); border-radius: 6px;
+  box-shadow: inset 0 -2px 0 rgba(0,0,0,0.05);
+}
+.jt-row.foe .jt-tile { background: #f6ece4; border-color: #d9b9aa; }
+.jt-row.win .jt-tile { background: var(--good); border-color: var(--good); color: #fff; }
+
+.jt-jot {
+  margin-left: auto;
+  min-width: 30px; height: 28px; padding: 0 8px;
+  display: grid; place-items: center;
+  font-family: var(--mono); font-weight: 600; font-size: 15px;
+  border-radius: 7px; color: var(--accent-ink);
+  background: var(--accent); border: 1.5px solid var(--accent-d);
+}
+.jt-jot.zero { background: var(--paper-2); color: var(--ink-3); border-color: var(--paper-line); }
+.jt-jot.full { background: var(--good); color: #fff; border-color: var(--good); }
+
+.jt-empty { color: var(--ink-3); font-size: 12px; font-style: italic; padding: 8px 2px; }
+
+/* ---- input row ---- */
+.jt-input-wrap {
+  margin-top: 16px; padding-top: 14px; border-top: 1.5px dashed var(--paper-line);
+  display: flex; gap: 10px; align-items: center;
+}
+.jt-input {
+  flex: 1;
+  font-family: var(--display); font-weight: 600; font-size: 20px; letter-spacing: 0.32em;
+  text-transform: uppercase; color: var(--ink);
+  background: var(--cell); border: 2px solid var(--line-2); border-radius: 9px;
+  padding: 9px 14px; outline: none;
+}
+.jt-input::placeholder { color: var(--ink-3); letter-spacing: 0.1em; font-size: 14px; }
+.jt-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(185,137,47,0.22); }
+.jt-input.bad { border-color: var(--trim); box-shadow: 0 0 0 3px rgba(168,65,47,0.2); }
+
+.jt-go {
+  font-family: var(--display); font-weight: 700; font-size: 15px;
+  color: var(--accent-ink); background: var(--accent); border: 1.5px solid var(--accent-d);
+  border-radius: 9px; padding: 10px 18px; cursor: pointer;
+  box-shadow: 0 3px 0 var(--accent-d);
+}
+.jt-go:hover:not(:disabled) { background: var(--accent-hi); }
+.jt-go:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 var(--accent-d); }
+.jt-go:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+
+.jt-warn { color: var(--trim); font-size: 12px; font-weight: 600; margin-top: 8px; min-height: 16px; }
+
+/* ---- side panels ---- */
+.side { display: flex; flex-direction: column; gap: 14px; }
+
+.jt-secret {
+  text-align: center;
+}
+.jt-secret .lab { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); }
+.jt-secret .word {
+  font-family: var(--display); font-weight: 700; font-size: 26px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--seal); margin-top: 4px;
+}
+
+/* ---- letter-tracking aid ---- */
+.jt-track-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 8px;
+}
+.jt-letter {
+  aspect-ratio: 1; display: grid; place-items: center;
+  font-family: var(--mono); font-weight: 600; font-size: 12px; text-transform: uppercase;
+  border-radius: 5px; cursor: pointer; user-select: none;
+  background: var(--cell); border: 1.5px solid var(--cell-line); color: var(--ink-2);
+}
+.jt-letter.in   { background: var(--tile-on);  color: #fff; border-color: var(--tile-on); }
+.jt-letter.out  { background: transparent; color: var(--ink-3); border-color: var(--paper-line); text-decoration: line-through; opacity: 0.55; }
+.jt-letter.maybe{ background: var(--tile-maybe); color: var(--accent-ink); border-color: var(--accent-d); }
+
+.jt-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 9px; font-size: 10px; color: var(--ink-2); }
+.jt-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.jt-swatch { width: 11px; height: 11px; border-radius: 3px; border: 1px solid var(--cell-line); }
+.jt-swatch.in { background: var(--tile-on); }
+.jt-swatch.out { background: var(--paper-2); }
+.jt-swatch.maybe { background: var(--tile-maybe); }
+
+/* ---- result reveal ---- */
+.jt-reveal {
+  display: flex; justify-content: center; gap: 5px; margin: 12px 0 2px;
+}
+.jt-reveal .jt-tile { background: var(--paper); }

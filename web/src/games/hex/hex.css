@@ -1,0 +1,141 @@
+/* ==========================================================
+   HEX — "Connect your edges."
+   Theme: deep indigo night, amber vs slate stones, a rhombus of clipped hexagons framed by
+   the two coloured edge pairs (amber top/bottom, slate left/right).
+   Display: Jost · Body: Manrope · Mono: JetBrains Mono.
+
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #0d101a;
+  --bg-2:    #080a12;
+  --panel:   #161b29;
+  --panel-2: #11151f;
+  --ink:     #eef1f8;
+  --ink-2:   #a7b0c6;
+  --ink-3:   #5f6883;
+  --line:    #232a3c;
+  --line-2:  #343d54;
+
+  /* token contract -> this theme (amber primary, dark text) */
+  --accent:  #e0a23c;  --accent-d:#b27716;  --accent-hi:#f6c469;  --accent-ink:#241606;
+  --trim:    #e0a23c;  --trim-hi:#f6c469;
+  --you:     #f6c469;  --foe:#9db2dc;
+  --good:    #6fcf97;  --warn:#e0894e;
+
+  /* game-specific */
+  --amber:    #e8a93c;  --amber-d:#a86c12;  --amber-hi:#ffd27a;
+  --slate:    #7e93b8;  --slate-d:#475067;  --slate-hi:#aebfe0;
+  --hexface:  #1d2435;  --hexface-2:#161c2b;  --hexline:#2e3850;
+
+  --sans:    "Manrope", system-ui, sans-serif;
+  --display: "Jost", system-ui, sans-serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(224,162,60,0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 12% 108%, rgba(126,147,184,0.07) 0%, transparent 48%),
+    radial-gradient(ellipse at 88% 108%, rgba(126,147,184,0.07) 0%, transparent 48%);
+}
+
+.stage { grid-template-columns: auto 224px; gap: clamp(16px, 2.4vw, 36px); }
+
+.hx-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+
+/* The frame holds the coloured edge bars; the board parallelogram sits inside. */
+.hx-frame {
+  --cell: clamp(22px, min(5.2vh, 3.0vw), 40px);   /* hex width */
+  --row-h: calc(var(--cell) * 0.86);              /* vertical step (overlap rows slightly) */
+  position: relative;
+  padding: calc(var(--cell) * 0.42) calc(var(--cell) * 0.5);
+  border-radius: 14px;
+  background: linear-gradient(160deg, #131a2a, #0c111c);
+  border: 1.5px solid var(--line);
+  box-shadow: 0 18px 50px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+/* Coloured edge cues — amber along top & bottom (yours), slate down the slanted sides (rival's). */
+.hx-edge { position: absolute; pointer-events: none; border-radius: 4px; }
+.hx-edge.top, .hx-edge.bottom { left: 8%; right: 8%; height: 4px; }
+.hx-edge.top    { top: 5px;    background: linear-gradient(90deg, transparent, var(--amber), transparent); box-shadow: 0 0 12px rgba(232,169,60,0.55); }
+.hx-edge.bottom { bottom: 5px; background: linear-gradient(90deg, transparent, var(--amber), transparent); box-shadow: 0 0 12px rgba(232,169,60,0.55); }
+.hx-edge.left, .hx-edge.right { top: 12%; bottom: 12%; width: 4px; }
+.hx-edge.left  { left: 5px;  background: linear-gradient(180deg, transparent, var(--slate), transparent); box-shadow: 0 0 12px rgba(126,147,184,0.55); transform: skewY(-14deg); transform-origin: top; }
+.hx-edge.right { right: 5px; background: linear-gradient(180deg, transparent, var(--slate), transparent); box-shadow: 0 0 12px rgba(126,147,184,0.55); transform: skewY(-14deg); transform-origin: top; }
+
+.hx-board { display: flex; flex-direction: column; position: relative; z-index: 1; }
+
+/* Each row is shifted half a cell right of the one above — the classic rhombus. */
+.hx-row { display: flex; height: var(--row-h); }
+.hx-row:nth-child(1)  { margin-left: calc(var(--cell) * 0.0); }
+.hx-row:nth-child(2)  { margin-left: calc(var(--cell) * 0.5); }
+.hx-row:nth-child(3)  { margin-left: calc(var(--cell) * 1.0); }
+.hx-row:nth-child(4)  { margin-left: calc(var(--cell) * 1.5); }
+.hx-row:nth-child(5)  { margin-left: calc(var(--cell) * 2.0); }
+.hx-row:nth-child(6)  { margin-left: calc(var(--cell) * 2.5); }
+.hx-row:nth-child(7)  { margin-left: calc(var(--cell) * 3.0); }
+.hx-row:nth-child(8)  { margin-left: calc(var(--cell) * 3.5); }
+.hx-row:nth-child(9)  { margin-left: calc(var(--cell) * 4.0); }
+.hx-row:nth-child(10) { margin-left: calc(var(--cell) * 4.5); }
+.hx-row:nth-child(11) { margin-left: calc(var(--cell) * 5.0); }
+
+.hx-cell {
+  position: relative; flex: 0 0 auto;
+  width: var(--cell); height: var(--cell);
+  margin: 0 1px; padding: 0; border: 0; background: none;
+  display: flex; align-items: center; justify-content: center;
+  cursor: default;
+}
+.hx-cell:not(:disabled) { cursor: pointer; }
+
+/* Pointy-top hexagon face via clip-path. */
+.hx-hex {
+  position: absolute; inset: 0;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  background: linear-gradient(155deg, var(--hexface), var(--hexface-2));
+  box-shadow: inset 0 0 0 1px var(--hexline);
+  transition: filter 0.12s, background 0.12s;
+}
+.hx-cell:not(:disabled):hover .hx-hex { background: linear-gradient(155deg, #28324a, #1d2538); filter: brightness(1.12); }
+
+.hx-stone {
+  position: relative; z-index: 2;
+  width: 66%; height: 66%; border-radius: 50%;
+  animation: drop 0.16s ease-out;
+}
+.hx-stone.y { background: radial-gradient(circle at 36% 30%, var(--amber-hi), var(--amber) 55%, var(--amber-d)); box-shadow: 0 2px 4px rgba(0,0,0,0.5), inset 0 -2px 3px rgba(0,0,0,0.35); }
+.hx-stone.s { background: radial-gradient(circle at 36% 30%, var(--slate-hi), var(--slate) 55%, var(--slate-d)); box-shadow: 0 2px 4px rgba(0,0,0,0.5), inset 0 -2px 3px rgba(0,0,0,0.35); }
+@keyframes drop { from { transform: scale(0.4); opacity: 0.4; } to { transform: none; opacity: 1; } }
+
+.hx-cell.last .hx-hex { box-shadow: inset 0 0 0 2px var(--accent-hi); }
+.hx-cell.win .hx-hex { box-shadow: inset 0 0 0 2px var(--good); background: linear-gradient(155deg, #1f3a2c, #16291f); }
+.hx-cell.win .hx-stone { box-shadow: 0 0 10px rgba(111,207,151,0.8), 0 2px 4px rgba(0,0,0,0.5); }
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.players { display: flex; flex-direction: column; gap: 9px; }
+.pl { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--line); }
+.pl.y.on { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber); }
+.pl.s.on { border-color: var(--slate); box-shadow: 0 0 0 1px var(--slate); }
+.pl-stone { width: 20px; height: 20px; border-radius: 50%; flex: 0 0 auto; }
+.pl-stone.y { background: radial-gradient(circle at 36% 30%, var(--amber-hi), var(--amber) 55%, var(--amber-d)); }
+.pl-stone.s { background: radial-gradient(circle at 36% 30%, var(--slate-hi), var(--slate) 55%, var(--slate-d)); }
+.pl-txt { display: flex; flex-direction: column; line-height: 1.25; }
+.pl-txt b { font-family: var(--display); font-weight: 600; font-size: 14px; }
+.pl-txt i { font-family: var(--mono); font-style: normal; font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 156px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--amber-hi); } .log-line.ai { color: var(--slate-hi); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; margin: 12px 0; font-family: var(--display); font-weight: 600; font-size: 19px; }
+.finalsc .you { color: var(--amber-hi); } .finalsc .foe { color: var(--slate-hi); }
+.modal-body i { color: var(--amber-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

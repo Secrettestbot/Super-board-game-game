@@ -1,0 +1,188 @@
+/* ==========================================================
+   KALAH (6, 4) — "Sow, capture, bank."
+   Theme: fired terracotta clay — rust-red board, smooth scooped pits, two tall
+   end stores, little river-stone seeds in bone & ochre.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #1c0f0a;
+  --bg-2:    #130a06;
+  --panel:   #2c1810;
+  --panel-2: #22120b;
+  --ink:     #f6e7d6;
+  --ink-2:   #cda88c;
+  --ink-3:   #936f57;
+  --line:    #3e2417;
+  --line-2:  #5c3722;
+
+  /* token contract -> this theme (fired clay / rust primary, dark text on it) */
+  --accent:    #e07a3e;  --accent-d:#b1521c;  --accent-hi:#f59c5e;  --accent-ink:#2a1305;
+  --trim:      #e8a25b;  --trim-hi:#f6c483;
+  --you:       #f1b46e;  --foe:#d98a64;
+  --good:      #8fbf6a;  --warn:#e07043;
+
+  /* game-specific */
+  --clay:      #9a4a30;  --clay-d:#74331f;  --clay-hi:#b75d3c;
+  --clay-edge: #4d2414;
+  --pit:       #2f160c;  --pit-d:#1d0d06;
+  --seed:      #e9d6b4;  --seed-d:#b29268;
+  --you-glow:  #f6c483;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(224,122,62,0.09) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 232px; gap: clamp(18px, 2.6vw, 38px); }
+
+.kl-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+
+/* The fired-clay board: a store on each end, a 2x6 pit grid in the middle. */
+.kl-board {
+  --pit-w: clamp(46px, min(9.4vh, 6.4vw), 84px);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: clamp(12px, 1.6vw, 24px);
+  padding: clamp(16px, 2vw, 28px);
+  background:
+    repeating-linear-gradient(98deg, rgba(0,0,0,0.05) 0 7px, rgba(255,255,255,0.02) 7px 14px),
+    linear-gradient(158deg, var(--clay-hi), var(--clay) 46%, var(--clay-d));
+  border: 3px solid var(--clay-edge);
+  border-radius: 30px;
+  box-shadow:
+    0 20px 50px rgba(0,0,0,0.62),
+    inset 0 2px 0 rgba(255,255,255,0.09),
+    inset 0 -3px 8px rgba(0,0,0,0.42);
+}
+
+.kl-pits { display: grid; grid-template-rows: 1fr 1fr; gap: clamp(8px, 1.2vw, 16px); }
+.kl-row { display: grid; grid-template-columns: repeat(6, var(--pit-w)); gap: clamp(8px, 1.1vw, 16px); }
+
+/* Scooped hollow shared by pits + stores. */
+.kl-pit, .kl-store {
+  background: radial-gradient(ellipse at 50% 32%, var(--pit), var(--pit-d) 80%);
+  box-shadow:
+    inset 0 4px 9px rgba(0,0,0,0.66),
+    inset 0 -2px 3px rgba(255,255,255,0.05),
+    0 1px 0 rgba(255,255,255,0.06);
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.kl-pit {
+  width: var(--pit-w); height: var(--pit-w);
+  border-radius: 50%;
+  border: 1.5px solid #1c0c05;
+  cursor: default;
+  padding: 0;
+  transition: transform 0.12s, box-shadow 0.12s;
+  font-family: var(--display);
+}
+.kl-pit.empty .kl-seedfield { display: none; }
+
+.kl-pit.playable {
+  cursor: pointer;
+  box-shadow:
+    inset 0 4px 9px rgba(0,0,0,0.55),
+    0 0 0 2px var(--you-glow),
+    0 0 16px rgba(246,196,131,0.45);
+}
+.kl-pit.playable:hover { transform: translateY(-2px) scale(1.04); }
+.kl-pit.last::after {
+  content: ""; position: absolute; inset: 8%; border-radius: 50%;
+  box-shadow: inset 0 0 0 2px rgba(246,196,131,0.75); pointer-events: none;
+}
+
+.kl-count {
+  position: absolute; z-index: 2;
+  font-family: var(--display); font-weight: 700;
+  font-size: clamp(15px, 2.2vh, 22px);
+  color: var(--ink);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7);
+}
+.kl-num {
+  position: absolute; bottom: -2px; right: -2px;
+  font-family: var(--mono); font-size: 8.5px; font-weight: 600;
+  color: var(--ink-3);
+  background: var(--clay-d); border: 1px solid #2a1409;
+  border-radius: 6px; padding: 0 4px;
+  pointer-events: none;
+}
+.kl-pit.ai .kl-num { top: -2px; bottom: auto; }
+
+/* Stores: tall scooped wells at each end. */
+.kl-store {
+  width: clamp(54px, 6vw, 92px);
+  height: calc(var(--pit-w) * 2 + clamp(8px, 1.2vw, 16px));
+  border-radius: 999px;
+  border: 1.5px solid #1c0c05;
+  flex-direction: column; gap: 4px;
+  padding: 14px 6px;
+}
+.kl-store.on { box-shadow: inset 0 4px 9px rgba(0,0,0,0.6), 0 0 0 2px var(--accent), 0 0 18px rgba(224,122,62,0.42); }
+.kl-store-count {
+  position: relative; z-index: 2;
+  font-family: var(--display); font-weight: 700; font-size: clamp(22px, 3.2vh, 34px);
+  color: var(--ink); text-shadow: 0 1px 5px rgba(0,0,0,0.9);
+}
+.kl-store-label {
+  font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-3); position: relative; z-index: 2;
+}
+
+/* River-stone seeds scattered inside pits / stores. */
+.kl-seedfield {
+  position: absolute; inset: 14%;
+  display: flex; flex-wrap: wrap; gap: 3px;
+  align-items: center; justify-content: center;
+  pointer-events: none; opacity: 0.92;
+}
+.kl-seed {
+  width: clamp(7px, 1.1vh, 11px); height: clamp(7px, 1.1vh, 11px);
+  border-radius: 50%;
+  background: radial-gradient(circle at 36% 30%, #f2e3c6, var(--seed-d));
+  box-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
+.kl-seed.s1 { background: radial-gradient(circle at 36% 30%, #ecd6ab, #a07f54); }
+.kl-seed.s2 { background: radial-gradient(circle at 36% 30%, #f4e7c9, #b89a6c); transform: rotate(8deg); }
+.kl-seed.s3 { background: radial-gradient(circle at 36% 30%, #e2c89a, #957a4d); }
+.kl-store .kl-seedfield { inset: 16% 18%; align-content: center; }
+
+/* ---- side panel ---- */
+.kl-side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.kl-panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.kl-scoreboard { display: flex; flex-direction: column; gap: 9px; }
+.kl-sc { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.kl-sc.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.kl-sc-dot { width: 16px; height: 16px; border-radius: 50%; flex: 0 0 auto; box-shadow: 0 1px 2px rgba(0,0,0,0.5); }
+.kl-sc-dot.you { background: radial-gradient(circle at 36% 30%, #f6c483, #b1521c); }
+.kl-sc-dot.ai { background: radial-gradient(circle at 36% 30%, #e2c89a, #936f57); }
+.kl-sc-name { font-family: var(--display); font-weight: 600; font-size: 14px; flex: 1; }
+.kl-sc-n { font-family: var(--display); font-weight: 700; font-size: 20px; color: var(--ink); }
+.kl-bar { height: 7px; border-radius: 4px; background: var(--seed-d); overflow: hidden; }
+.kl-bar-you { height: 100%; background: linear-gradient(90deg, #b1521c, #f6c483); border-right: 1px solid var(--line-2); }
+
+.kl-logbox { flex: 1 1 auto; min-height: 40px; max-height: 168px; overflow-y: auto; }
+.kl-log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.kl-log-line.you { color: var(--trim-hi); }
+.kl-log-line.ai { color: var(--foe); }
+.kl-log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- overlays ---- */
+.kl-finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 22px; }
+.kl-finalsc .you { color: var(--trim-hi); }
+.kl-finalsc .foe { color: var(--foe); }
+.modal-body i { color: var(--trim-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

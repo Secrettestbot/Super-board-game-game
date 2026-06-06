@@ -1,0 +1,181 @@
+/* ==========================================================
+   WORD DUEL — "Race the machine to the hidden word."
+   Theme: neon arcade terminal — deep indigo night, cyan glow, magenta foe,
+   classic Wordle green/amber/slate tiles. Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #0d1020;
+  --bg-2:    #080a16;
+  --panel:   #161a2e;
+  --panel-2: #1d2238;
+  --ink:     #eef1fb;
+  --ink-2:   #aab1cf;
+  --ink-3:   #6e76a0;
+  --line:    #2a3052;
+  --line-2:  #3a4170;
+
+  /* token contract -> this theme (cyan primary on dark ink) */
+  --accent:    #36d6c4;  --accent-d:#1f9c8f;  --accent-hi:#5cf2e2;  --accent-ink:#06201d;
+  --trim:      #e0467e;  --trim-hi:#f56f9c;
+  --you:       #36d6c4;  --foe:#e0467e;
+  --good:      #54b06a;  --warn:#e0a13a;
+
+  /* Wordle tile palette */
+  --tile-green:  #4f9e63;  --tile-green-d:#3e7e4f;
+  --tile-yellow: #c9a23b;  --tile-yellow-d:#a3812a;
+  --tile-grey:   #3a3f57;  --tile-grey-d:#2a2e42;
+  --tile-empty:  #1a1f33;  --tile-empty-line:#343a5c;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(54,214,196,0.10) 0%, transparent 52%),
+    radial-gradient(ellipse at 92% 108%, rgba(224,70,126,0.09) 0%, transparent 48%);
+}
+
+.stage { grid-template-columns: minmax(0, 1fr) 300px; gap: clamp(16px, 2.2vw, 30px); align-items: start; }
+
+/* ---- title mark ---- */
+.title-mark { width: 40px; height: 40px; }
+
+/* ===========================================================
+   MAIN COLUMN — your board + AI progress
+   =========================================================== */
+.wd-board {
+  background: linear-gradient(168deg, var(--panel), var(--panel-2));
+  border: 1.5px solid var(--line-2); border-radius: 18px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+  padding: clamp(16px, 2vw, 24px);
+  min-height: 0;
+}
+
+.wd-colhead {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--you); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+}
+.wd-colhead::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+/* ---- the 9-row guess grid ---- */
+.wd-grid { display: flex; flex-direction: column; gap: 7px; }
+.wd-grow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; max-width: 380px; }
+
+.wd-tile {
+  aspect-ratio: 1; display: grid; place-items: center;
+  font-family: var(--display); font-weight: 700;
+  font-size: clamp(18px, 2.4vw, 28px); text-transform: uppercase;
+  color: var(--ink);
+  background: var(--tile-empty);
+  border: 2px solid var(--tile-empty-line);
+  border-radius: 8px;
+  transition: background 0.15s, border-color 0.15s;
+}
+/* the live row being typed */
+.wd-tile.draft.filled { border-color: var(--line-2); }
+.wd-tile.draft.cursor { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(54,214,196,0.18); }
+
+.wd-tile.green  { background: var(--tile-green);  border-color: var(--tile-green-d);  color: #fff; }
+.wd-tile.yellow { background: var(--tile-yellow); border-color: var(--tile-yellow-d); color: #1a1505; }
+.wd-tile.grey   { background: var(--tile-grey);   border-color: var(--tile-grey-d);   color: var(--ink-2); }
+
+/* ---- input row ---- */
+.wd-input-wrap {
+  margin-top: 16px; padding-top: 14px; border-top: 1.5px dashed var(--line);
+  display: flex; gap: 10px; align-items: center;
+}
+.wd-input {
+  flex: 1;
+  font-family: var(--display); font-weight: 600; font-size: 20px; letter-spacing: 0.32em;
+  text-transform: uppercase; color: var(--ink);
+  background: var(--bg-2); border: 2px solid var(--line-2); border-radius: 10px;
+  padding: 10px 14px; outline: none;
+}
+.wd-input::placeholder { color: var(--ink-3); letter-spacing: 0.08em; font-size: 14px; }
+.wd-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(54,214,196,0.2); }
+.wd-input.bad { border-color: var(--trim); box-shadow: 0 0 0 3px rgba(224,70,126,0.2); }
+.wd-input:disabled { opacity: 0.55; }
+
+.wd-go {
+  font-family: var(--display); font-weight: 700; font-size: 15px;
+  color: var(--accent-ink); background: var(--accent); border: 1.5px solid var(--accent-d);
+  border-radius: 10px; padding: 11px 20px; cursor: pointer;
+  box-shadow: 0 3px 0 var(--accent-d);
+}
+.wd-go:hover:not(:disabled) { background: var(--accent-hi); }
+.wd-go:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 var(--accent-d); }
+.wd-go:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+
+.wd-warn { color: var(--trim); font-size: 12px; font-weight: 600; margin-top: 8px; min-height: 16px; }
+
+/* ===========================================================
+   ON-SCREEN KEYBOARD
+   =========================================================== */
+.wd-kb { margin-top: 16px; display: flex; flex-direction: column; gap: 6px; }
+.wd-kb-row { display: flex; gap: 5px; justify-content: center; }
+.wd-key {
+  flex: 1; min-width: 0; max-width: 40px; height: 44px;
+  display: grid; place-items: center;
+  font-family: var(--mono); font-weight: 600; font-size: 13px; text-transform: uppercase;
+  color: var(--ink); background: var(--panel-2);
+  border: 1.5px solid var(--line-2); border-radius: 6px; cursor: pointer; user-select: none;
+}
+.wd-key.wide { max-width: 64px; font-size: 11px; flex: 1.6; }
+.wd-key:hover { border-color: var(--accent); }
+.wd-key:active { transform: translateY(1px); }
+.wd-key.green  { background: var(--tile-green);  border-color: var(--tile-green-d);  color: #fff; }
+.wd-key.yellow { background: var(--tile-yellow); border-color: var(--tile-yellow-d); color: #1a1505; }
+.wd-key.grey   { background: var(--tile-grey);   border-color: var(--tile-grey-d);   color: var(--ink-3); }
+
+/* ===========================================================
+   SIDE — AI progress + race log
+   =========================================================== */
+.side { display: flex; flex-direction: column; gap: 14px; }
+
+.wd-foehead {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--foe); display: flex; align-items: center; gap: 8px;
+}
+.wd-foehead::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+.wd-foe-count {
+  font-family: var(--display); font-weight: 700; font-size: 26px; color: var(--foe);
+  line-height: 1; margin: 2px 0 8px;
+}
+.wd-foe-count span { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-weight: 500; }
+
+/* compact colored rows showing the AI's pattern (letters hidden — it's a race, not a peek) */
+.wd-foe-grid { display: flex; flex-direction: column; gap: 5px; }
+.wd-foe-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+.wd-foe-cell {
+  aspect-ratio: 1; border-radius: 4px;
+  background: var(--tile-empty); border: 1.5px solid var(--tile-empty-line);
+}
+.wd-foe-cell.green  { background: var(--tile-green);  border-color: var(--tile-green-d); }
+.wd-foe-cell.yellow { background: var(--tile-yellow); border-color: var(--tile-yellow-d); }
+.wd-foe-cell.grey   { background: var(--tile-grey);   border-color: var(--tile-grey-d); }
+.wd-foe-empty { color: var(--ink-3); font-size: 12px; font-style: italic; padding: 6px 0; }
+
+.wd-thinking { color: var(--foe); font-size: 11px; font-family: var(--mono); margin-top: 8px; }
+.wd-thinking::after { content: " ●"; animation: wdpulse 1s infinite; }
+@keyframes wdpulse { 0%,100% { opacity: 0.3 } 50% { opacity: 1 } }
+
+.wd-log { display: flex; flex-direction: column; gap: 4px; }
+.wd-log-line { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+.wd-log-line.you { color: var(--you); }
+.wd-log-line.foe { color: var(--foe); }
+.wd-log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- result reveal ---- */
+.wd-reveal { display: flex; justify-content: center; gap: 6px; margin: 14px 0 4px; }
+.wd-reveal .wd-tile { width: 46px; height: 46px; aspect-ratio: auto; background: var(--tile-green); border-color: var(--tile-green-d); color: #fff; }
+
+kbd {
+  font-family: var(--mono); font-size: 11px; background: var(--panel-2);
+  border: 1px solid var(--line-2); border-radius: 4px; padding: 1px 5px;
+}

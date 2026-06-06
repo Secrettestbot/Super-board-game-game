@@ -1,0 +1,164 @@
+/* ==========================================================
+   CAN'T STOP — "Press your luck up the pyramid."
+   Theme: bright tabletop — warm cream board, candy-colored numbered columns,
+   three runner pawns, four chunky dice. Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #1a1430;
+  --bg-2:    #120e24;
+  --panel:   #241c44;
+  --panel-2: #1c1638;
+  --ink:     #f3eefe;
+  --ink-2:   #b7add8;
+  --ink-3:   #756a9c;
+  --line:    #322a5a;
+  --line-2:  #463a78;
+
+  /* token contract -> this theme (sunny amber primary, dark text on it) */
+  --accent:    #ffc24b;  --accent-d:#d8920f;  --accent-hi:#ffd97a;  --accent-ink:#3a2400;
+  --trim:      #ff7aa8;  --trim-hi:#ffa9c7;
+  --you:       #6fe0c0;  --foe:#ff9a76;
+  --good:      #6fe0a0;  --warn:#ff7d7d;
+
+  /* game-specific */
+  --board:     #2a2150;  --board-2:#221b42;
+  --cell:      #352b62;  --cell-line:#473a7e;
+  --you-pawn:  #5fd6b8;  --you-pawn-d:#2f9c82;
+  --foe-pawn:  #ff8e6a;  --foe-pawn-d:#cc5836;
+  --runner:    #ffd24b;  --runner-d:#cf9a14;
+  --claim-you: #6fe0c0;  --claim-foe:#ff9a76;
+  --die:       #fbf7ff;  --die-pip:#2a2150;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(255,194,75,0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 12% 110%, rgba(255,122,168,0.07) 0%, transparent 45%),
+    radial-gradient(ellipse at 88% 115%, rgba(111,224,192,0.06) 0%, transparent 45%);
+}
+
+.stage { grid-template-columns: auto 236px; gap: clamp(16px, 2.4vw, 34px); }
+
+/* ---- Board: eleven vertical tracks ---- */
+.cs-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.cs-board {
+  --col-w: clamp(28px, min(4.6vw, 6.4vh), 50px);
+  --step:  clamp(13px, min(1.95vh, 3.2vw), 22px);
+  display: flex; gap: clamp(3px, 0.5vw, 7px);
+  align-items: flex-end;
+  padding: clamp(10px, 1.4vw, 16px);
+  background: linear-gradient(165deg, var(--board), var(--board-2));
+  border: 2px solid var(--line-2); border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.cs-col { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.cs-col.claimed-you { filter: saturate(1.1); }
+.cs-track {
+  display: flex; flex-direction: column-reverse; gap: 3px;
+  width: var(--col-w); position: relative;
+}
+.cs-step {
+  height: var(--step); border-radius: 5px;
+  background: var(--cell); border: 1px solid var(--cell-line);
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+}
+/* top cell of each column slightly accented */
+.cs-step.top { border-color: var(--accent-d); box-shadow: inset 0 0 0 1px rgba(255,194,75,0.25); }
+
+/* permanent markers (small dots pinned to a side) */
+.cs-mark { width: 9px; height: 9px; border-radius: 50%; position: absolute; }
+.cs-mark.you { left: 4px; background: radial-gradient(circle at 35% 30%, #b8fff0, var(--you-pawn)); border: 1px solid var(--you-pawn-d); }
+.cs-mark.ai  { right: 4px; background: radial-gradient(circle at 35% 30%, #ffd0bb, var(--foe-pawn)); border: 1px solid var(--foe-pawn-d); }
+
+/* the active turn's runner pawn (centered, glowing) */
+.cs-runner {
+  width: 64%; height: 70%; border-radius: 6px;
+  background: radial-gradient(circle at 38% 28%, #fff0bf, var(--runner));
+  border: 1px solid var(--runner-d);
+  box-shadow: 0 0 10px rgba(255,210,75,0.55), inset 0 -2px 2px rgba(0,0,0,0.25);
+  animation: pop 0.18s ease-out;
+}
+@keyframes pop { from { transform: scale(0.5); } to { transform: none; } }
+
+.cs-head {
+  width: var(--col-w); height: clamp(20px, 2.6vh, 28px); border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--display); font-weight: 700; font-size: clamp(11px, 1.5vw, 15px);
+  color: #2a1c0a; background: linear-gradient(160deg, #ffe39a, #ffc24b);
+  border: 1px solid var(--accent-d); box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+.cs-col.claimed-you .cs-head { background: linear-gradient(160deg, #9ff5dd, var(--claim-you)); border-color: var(--you-pawn-d); }
+.cs-col.claimed-ai  .cs-head { background: linear-gradient(160deg, #ffc3aa, var(--claim-foe)); border-color: var(--foe-pawn-d); }
+.cs-flag { font-size: 0.8em; margin-left: 3px; }
+
+/* ---- Side panel ---- */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.cs-score { display: flex; flex-direction: column; gap: 9px; }
+.cs-row { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.cs-row.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.cs-pawn { width: 16px; height: 16px; border-radius: 5px; flex: 0 0 auto; }
+.cs-pawn.you { background: radial-gradient(circle at 35% 30%, #b8fff0, var(--you-pawn)); border: 1px solid var(--you-pawn-d); }
+.cs-pawn.ai  { background: radial-gradient(circle at 35% 30%, #ffd0bb, var(--foe-pawn)); border: 1px solid var(--foe-pawn-d); }
+.cs-who { font-family: var(--display); font-weight: 600; font-size: 14px; flex: 1; }
+.cs-claims { font-family: var(--display); font-weight: 700; font-size: 20px; }
+.cs-owned { font-family: var(--mono); font-size: 10px; color: var(--ink-3); letter-spacing: 0.08em; min-height: 13px; }
+
+/* ---- Dice + controls ---- */
+.cs-control { display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+.cs-dice { display: flex; gap: 7px; justify-content: center; min-height: 38px; }
+.cs-die {
+  width: clamp(30px, 3.4vw, 38px); height: clamp(30px, 3.4vw, 38px);
+  border-radius: 9px; background: linear-gradient(155deg, #fff, var(--die));
+  border: 1px solid #d6cfe6; box-shadow: 0 3px 5px rgba(0,0,0,0.3);
+  display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+  padding: 5px; gap: 1px;
+}
+.cs-pip { border-radius: 50%; background: var(--die-pip); align-self: center; justify-self: center; width: 5px; height: 5px; }
+.cs-pip.off { background: transparent; }
+
+.cs-pairs { display: flex; flex-direction: column; gap: 6px; }
+.cs-pl { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); text-align: center; }
+.cs-pair {
+  font-family: var(--display); font-weight: 700; font-size: 15px;
+  padding: 8px 10px; border-radius: 9px; cursor: pointer; text-align: center;
+  background: var(--panel); color: var(--ink); border: 1.5px solid var(--line-2);
+  transition: all 0.12s; display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.cs-pair.usable:hover { border-color: var(--accent); color: var(--accent-hi); transform: translateY(-1px); }
+.cs-pair.dead { opacity: 0.4; cursor: not-allowed; text-decoration: line-through; }
+.cs-pair .amp { color: var(--ink-3); font-weight: 400; font-size: 0.8em; }
+
+.cs-btns { display: flex; gap: 8px; }
+.cs-btn {
+  flex: 1; font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; padding: 11px 8px; border-radius: 9px; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink); border: 1.5px solid var(--accent-d);
+  transition: filter 0.12s;
+}
+.cs-btn:hover { filter: brightness(1.08); }
+.cs-btn.stop { background: var(--panel); color: var(--ink); border-color: var(--line-2); }
+.cs-btn.stop:hover { border-color: var(--trim); color: var(--trim-hi); filter: none; }
+.cs-btn:disabled { opacity: 0.35; cursor: default; filter: none; }
+
+.cs-hint { font-family: var(--sans); font-size: 11px; font-style: italic; color: var(--ink-2); text-align: center; min-height: 15px; }
+
+.logbox { flex: 1 1 auto; min-height: 38px; max-height: 124px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.5; color: var(--ink-2); }
+.log-line.you { color: var(--you); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- Overlays ---- */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 20px; }
+.finalsc .you { color: var(--you); } .finalsc .foe { color: var(--foe); }
+.modal-body i { color: var(--trim-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } .cs-board { --step: clamp(11px, 1.7vh, 18px); } }

@@ -1,0 +1,201 @@
+/* ==========================================================
+   LUDO — "Race four tokens home."
+   Theme: a warm felt cross-board with four bold player colours
+   (yellow / red / blue / green) on a slate table.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Shared shell: ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #131722;
+  --bg-2:    #0c0f17;
+  --panel:   #1c2230;
+  --panel-2: #161b27;
+  --ink:     #eef1f8;
+  --ink-2:   #aab2c6;
+  --ink-3:   #687388;
+  --line:    #2a3142;
+  --line-2:  #3a4458;
+
+  /* token contract → this theme */
+  --accent:  #e8c14a;  --accent-d:#b8901f;  --accent-hi:#f7da72;  --accent-ink:#241b03;
+  --trim:    #5b8fd6;  --trim-hi:#9cc2ff;
+  --you:     #f0cf5e;  --foe:#d9786f;
+  --good:    #6fc79a;  --warn:#e08a52;
+
+  /* four player colours */
+  --p0:      #e8c14a;  --p0-d:#a9881f;  --p0-hi:#f7da72;   /* yellow (you) */
+  --p1:      #e0584f;  --p1-d:#9c322c;  --p1-hi:#f47d74;   /* red */
+  --p2:      #4aa3e0;  --p2-d:#26659c;  --p2-hi:#74c0f4;   /* blue */
+  --p3:      #5bbf6a;  --p3-d:#2f8c3f;  --p3-hi:#7ddc8b;   /* green */
+
+  --felt:    #20283a;
+  --felt-2:  #1a212f;
+  --cell:    #2b3346;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(ellipse at 50% -10%, rgba(91,143,214,0.10) 0%, transparent 54%),
+              radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 226px; gap: clamp(16px, 2.4vw, 34px); }
+
+.ludo-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+
+/* ---- board: a 15×15 grid ---- */
+.ludo-board {
+  --c: clamp(20px, min(4.9vh, 4.1vw), 34px);
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(15, var(--c));
+  grid-template-rows: repeat(15, var(--c));
+  gap: 1px;
+  padding: 12px;
+  background:
+    linear-gradient(150deg, rgba(91,143,214,0.07), transparent 60%),
+    var(--felt-2);
+  border: 2px solid var(--line-2);
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(156,194,255,0.07);
+}
+
+/* corner home bases */
+.ludo-base {
+  border-radius: 12px;
+  padding: 7%;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1;
+}
+.ludo-base.p0 { background: color-mix(in srgb, var(--p0) 26%, var(--felt)); border: 2px solid var(--p0-d); }
+.ludo-base.p1 { background: color-mix(in srgb, var(--p1) 26%, var(--felt)); border: 2px solid var(--p1-d); }
+.ludo-base.p2 { background: color-mix(in srgb, var(--p2) 26%, var(--felt)); border: 2px solid var(--p2-d); }
+.ludo-base.p3 { background: color-mix(in srgb, var(--p3) 26%, var(--felt)); border: 2px solid var(--p3-d); }
+.ludo-base-inner {
+  width: 86%; height: 86%; border-radius: 10px;
+  background: var(--felt-2);
+  box-shadow: inset 0 2px 8px rgba(0,0,0,0.4);
+}
+
+/* centre */
+.ludo-center {
+  position: relative; z-index: 1;
+  display: grid; place-items: center;
+  background: var(--felt);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.ludo-tri { position: absolute; width: 0; height: 0; }
+.ludo-tri.p0 { border-left: calc(var(--c) * 1.5) solid transparent; border-right: calc(var(--c) * 1.5) solid transparent; border-top: calc(var(--c) * 1.5) solid var(--p0); bottom: 0; }
+.ludo-tri.p1 { border-top: calc(var(--c) * 1.5) solid transparent; border-bottom: calc(var(--c) * 1.5) solid transparent; border-right: calc(var(--c) * 1.5) solid var(--p1); left: 0; }
+.ludo-tri.p2 { border-left: calc(var(--c) * 1.5) solid transparent; border-right: calc(var(--c) * 1.5) solid transparent; border-bottom: calc(var(--c) * 1.5) solid var(--p2); top: 0; }
+.ludo-tri.p3 { border-top: calc(var(--c) * 1.5) solid transparent; border-bottom: calc(var(--c) * 1.5) solid transparent; border-left: calc(var(--c) * 1.5) solid var(--p3); right: 0; }
+
+/* path + column + yard cells */
+.ludo-cell {
+  position: relative; z-index: 2;
+  background: var(--cell);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+}
+.ludo-cell.path { background: #313a4f; }
+.ludo-cell.safe { background: #394560; }
+.ludo-cell.start.p0 { background: color-mix(in srgb, var(--p0) 60%, #313a4f); }
+.ludo-cell.start.p1 { background: color-mix(in srgb, var(--p1) 60%, #313a4f); }
+.ludo-cell.start.p2 { background: color-mix(in srgb, var(--p2) 60%, #313a4f); }
+.ludo-cell.start.p3 { background: color-mix(in srgb, var(--p3) 60%, #313a4f); }
+.ludo-cell.col.p0 { background: color-mix(in srgb, var(--p0) 50%, #313a4f); }
+.ludo-cell.col.p1 { background: color-mix(in srgb, var(--p1) 50%, #313a4f); }
+.ludo-cell.col.p2 { background: color-mix(in srgb, var(--p2) 50%, #313a4f); }
+.ludo-cell.col.p3 { background: color-mix(in srgb, var(--p3) 50%, #313a4f); }
+.ludo-cell.yardslot { background: transparent; border-color: transparent; z-index: 3; }
+.ludo-cell.last { box-shadow: 0 0 0 2px var(--accent-hi), 0 0 10px rgba(247,218,114,0.5); }
+
+.ludo-star { font-size: calc(var(--c) * 0.5); color: rgba(255,255,255,0.4); line-height: 1; }
+
+/* tokens */
+.ludo-token {
+  position: relative;
+  width: 76%; height: 76%;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.55), inset 0 2px 3px rgba(255,255,255,0.35), inset 0 -3px 4px rgba(0,0,0,0.4);
+  transition: transform 0.1s;
+}
+.ludo-token.p0 { background: radial-gradient(circle at 35% 30%, var(--p0-hi), var(--p0) 60%, var(--p0-d)); border: 1.5px solid var(--p0-d); }
+.ludo-token.p1 { background: radial-gradient(circle at 35% 30%, var(--p1-hi), var(--p1) 60%, var(--p1-d)); border: 1.5px solid var(--p1-d); }
+.ludo-token.p2 { background: radial-gradient(circle at 35% 30%, var(--p2-hi), var(--p2) 60%, var(--p2-d)); border: 1.5px solid var(--p2-d); }
+.ludo-token.p3 { background: radial-gradient(circle at 35% 30%, var(--p3-hi), var(--p3) 60%, var(--p3-d)); border: 1.5px solid var(--p3-d); }
+.ludo-token.movable {
+  cursor: pointer;
+  animation: ludo-pulse 1.1s ease-in-out infinite;
+}
+.ludo-token.movable:hover { transform: scale(1.12); }
+@keyframes ludo-pulse {
+  0%, 100% { box-shadow: 0 2px 5px rgba(0,0,0,0.55), inset 0 2px 3px rgba(255,255,255,0.35), 0 0 0 0 rgba(247,218,114,0.0); }
+  50%      { box-shadow: 0 2px 5px rgba(0,0,0,0.55), inset 0 2px 3px rgba(255,255,255,0.35), 0 0 0 4px rgba(247,218,114,0.55); }
+}
+.ludo-stack {
+  font-family: var(--mono); font-size: calc(var(--c) * 0.34); font-weight: 700;
+  color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+}
+
+/* ---- side panels ---- */
+.side { display: flex; flex-direction: column; gap: 12px; width: 226px; min-height: 0; }
+
+.ludo-score { display: flex; flex-direction: column; gap: 4px; }
+.ludo-pr {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 9px; border-radius: 8px;
+  border: 1.5px solid transparent;
+  transition: all 0.15s;
+}
+.ludo-pr.on { background: var(--panel); border-color: var(--line-2); }
+.ludo-dot { width: 13px; height: 13px; border-radius: 50%; flex: none; box-shadow: inset 0 1px 2px rgba(255,255,255,0.4); }
+.ludo-dot.p0 { background: var(--p0); } .ludo-dot.p1 { background: var(--p1); }
+.ludo-dot.p2 { background: var(--p2); } .ludo-dot.p3 { background: var(--p3); }
+.ludo-pname { font-size: 13px; font-weight: 600; color: var(--ink); flex: 1; }
+.ludo-pr.on .ludo-pname { color: var(--ink); }
+.ludo-pr:not(.on) .ludo-pname { color: var(--ink-2); }
+.ludo-home { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--ink-2); }
+
+.ludo-control { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.ludo-dicebox { display: flex; align-items: center; gap: 14px; }
+.ludo-die {
+  width: 46px; height: 46px;
+  display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+  gap: 2px; padding: 6px;
+  background: linear-gradient(145deg, #f4f5fa, #cfd5e2);
+  border: 1.5px solid #aab2c6; border-radius: 9px;
+  box-shadow: 0 3px 7px rgba(0,0,0,0.4);
+}
+.ludo-pip { border-radius: 50%; background: #2a2f3c; }
+.ludo-pip.off { background: transparent; }
+.ludo-rollbtn {
+  font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; padding: 11px 20px; border-radius: 9px; cursor: pointer;
+  background: var(--panel); color: var(--ink-3); border: 1.5px solid var(--line-2);
+  transition: all 0.13s;
+}
+.ludo-rollbtn.live { background: var(--accent); color: var(--accent-ink); border-color: var(--accent-d); cursor: pointer; }
+.ludo-rollbtn.live:hover { filter: brightness(1.1); }
+.ludo-rollbtn:disabled { cursor: default; }
+.ludo-hint { font-size: 11px; color: var(--ink-3); text-align: center; line-height: 1.4; min-height: 1.4em; }
+
+.logbox { flex: 1; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 2px; }
+.log-line.ai { color: var(--foe); }
+
+.finalsc { display: flex; justify-content: center; padding: 8px 0 2px; font-family: var(--display); font-size: 16px; }
+.finalsc .you { color: var(--p0-hi); }
+.finalsc .foe { color: var(--foe); }
+
+@media (max-height: 720px) {
+  .ludo-board { --c: clamp(18px, min(4.4vh, 3.8vw), 30px); }
+  .ludo-die { width: 40px; height: 40px; }
+}

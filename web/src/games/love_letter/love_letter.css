@@ -1,0 +1,172 @@
+/* ==========================================================
+   LOVE LETTER — "Win her heart."
+   Theme: a romantic royal court — deep claret velvet, parchment cards with crests
+   and a wax-seal motif, gilt trim.
+   Display: Cormorant Garamond · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #1b0a12;
+  --bg-2:    #120710;
+  --panel:   #2a0f1d;
+  --panel-2: #210b17;
+  --ink:     #f6e7ec;
+  --ink-2:   #d3a9b8;
+  --ink-3:   #9a6f81;
+  --line:    #3c1626;
+  --line-2:  #592138;
+
+  /* token contract -> this theme (gilt/rose accent on dark, light ink) */
+  --accent:    #d8a4b6;  --accent-d:#9e5a73;  --accent-hi:#f0c6d4;  --accent-ink:#2a0a16;
+  --trim:      #d8b15a;  --trim-hi:#f1d27a;
+  --you:       #f0c6d4;  --foe:#caa37a;
+  --good:      #7fc89a;  --warn:#e58a6a;
+
+  /* game-specific */
+  --claret:    #5a1530;  --claret-d:#3f0e21;
+  --gold:      #d8b15a;  --gold-hi:#f1d27a;
+  --parch:     #f3e4c8;  --parch-2:#e6d2ad;  --parch-edge:#caa86f;  --parch-ink:#5a2a18;
+  --seal:      #b13a52;  --seal-hi:#d8556f;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Cormorant Garamond", "Playfair Display", Georgia, serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(216,177,90,0.10) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 120%, rgba(90,21,48,0.55) 0%, transparent 55%),
+    radial-gradient(ellipse at 12% 30%, rgba(177,58,82,0.10) 0%, transparent 40%);
+}
+
+.stage { grid-template-columns: auto 232px; gap: clamp(16px, 2.4vw, 34px); }
+
+/* ---- table ---- */
+.ll-wrap {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: clamp(10px, 1.8vh, 22px); min-height: 0; align-self: center;
+}
+.ll-seat { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.ll-seat-label {
+  font-family: var(--display); font-weight: 600; font-size: 18px; color: var(--ink);
+  display: inline-flex; align-items: center; gap: 8px; letter-spacing: 0.02em;
+}
+.ll-seal { width: 13px; height: 13px; border-radius: 50%; background: radial-gradient(circle at 38% 32%, var(--seal-hi), var(--seal)); box-shadow: inset 0 -1px 2px rgba(0,0,0,0.35); }
+.ll-seal.you { background: radial-gradient(circle at 38% 32%, var(--gold-hi), var(--gold)); }
+.ll-out { font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--warn); border: 1px solid var(--warn); border-radius: 5px; padding: 1px 6px; }
+.ll-prot { font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--good); border: 1px solid var(--good); border-radius: 5px; padding: 1px 6px; }
+
+.ll-table-line {
+  width: min(360px, 70vw); text-align: center; position: relative;
+}
+.ll-table-line::before { content: ""; position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--line-2), transparent); }
+.ll-table-line span {
+  position: relative; background: var(--bg); padding: 0 12px;
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-3);
+}
+
+.ll-foe-cards, .ll-you-cards { display: flex; gap: 12px; }
+.ll-peek { font-family: var(--mono); font-size: 10px; color: var(--gold-hi); letter-spacing: 0.06em; }
+
+/* ---- cards ---- */
+.ll-card {
+  --w: clamp(78px, min(15vh, 11vw), 122px);
+  width: var(--w); height: calc(var(--w) * 1.42);
+  border-radius: 11px; position: relative; padding: 0;
+  border: 1.5px solid var(--parch-edge);
+  box-shadow: 0 10px 26px rgba(0,0,0,0.5);
+  font-family: var(--display); color: var(--parch-ink);
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.14s ease, box-shadow 0.14s ease, filter 0.14s ease;
+}
+.ll-card.face {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.5), transparent 60%),
+    linear-gradient(165deg, var(--parch) 0%, var(--parch-2) 100%);
+  cursor: default;
+}
+.ll-card.back {
+  background:
+    repeating-linear-gradient(45deg, rgba(0,0,0,0.06) 0 6px, transparent 6px 12px),
+    linear-gradient(160deg, var(--claret) 0%, var(--claret-d) 100%);
+  border-color: var(--gold-d, #9e7a2a);
+}
+.ll-card.back.flip {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.5), transparent 60%),
+    linear-gradient(165deg, var(--parch) 0%, var(--parch-2) 100%);
+  border-color: var(--parch-edge);
+  animation: llflip 0.26s ease-out;
+}
+@keyframes llflip { from { transform: rotateY(70deg); } to { transform: none; } }
+.ll-card.empty { background: rgba(255,255,255,0.03); border: 1.5px dashed var(--line-2); box-shadow: none; }
+
+.ll-card.face.playable { cursor: pointer; border-color: var(--gold); box-shadow: 0 0 0 2px rgba(216,177,90,0.45), 0 12px 28px rgba(0,0,0,0.55); }
+.ll-card.face.playable:hover { transform: translateY(-7px); box-shadow: 0 0 0 2px var(--gold-hi), 0 18px 34px rgba(0,0,0,0.6); }
+.ll-card.face.locked { filter: grayscale(0.4) brightness(0.86); }
+
+.ll-crest { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+.ll-seal-big {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: radial-gradient(circle at 38% 30%, var(--seal-hi), var(--seal) 70%, #7c2236);
+  box-shadow: inset 0 -3px 5px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.4);
+  position: relative;
+}
+.ll-seal-big::after { content: "♥"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: rgba(255,230,235,0.85); font-size: 20px; }
+
+/* card face content */
+.ll-cf { width: 100%; height: 100%; padding: 8px 8px 9px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.ll-cf-top { width: 100%; display: flex; justify-content: flex-start; }
+.ll-cf-val { font-family: var(--display); font-weight: 700; font-size: 22px; line-height: 1; color: var(--claret); }
+.ll-cf-crest { margin: 2px 0 4px; }
+.ll-cf-crest .ll-seal-big { width: clamp(28px, 5vh, 40px); height: clamp(28px, 5vh, 40px); }
+.ll-cf-crest .ll-seal-big::after { font-size: clamp(14px, 2.6vh, 19px); }
+.ll-cf-name { font-family: var(--display); font-weight: 700; font-size: clamp(15px, 2.4vh, 20px); color: var(--claret-d); letter-spacing: 0.01em; }
+.ll-cf-blurb { font-family: var(--sans); font-size: clamp(8px, 1.25vh, 10px); line-height: 1.28; color: var(--parch-ink); opacity: 0.82; margin-top: 3px; }
+
+/* ---- side ---- */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; min-height: 0; }
+
+.ll-tokens { display: flex; flex-direction: column; gap: 7px; }
+.ll-tok-row { display: flex; align-items: center; justify-content: space-between; }
+.ll-tok-name { font-family: var(--display); font-weight: 700; font-size: 16px; }
+.ll-tok-name.you { color: var(--you); } .ll-tok-name.foe { color: var(--foe); }
+.ll-pips { display: inline-flex; gap: 5px; }
+.ll-pip { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--line-2); background: transparent; }
+.ll-pip.lit { background: radial-gradient(circle at 38% 32%, var(--gold-hi), var(--gold)); border-color: var(--gold-d, #9e7a2a); box-shadow: 0 0 6px rgba(216,177,90,0.5); }
+
+.ll-discard .ll-disc-grid { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.ll-disc-empty { font-size: 11px; color: var(--ink-3); font-style: italic; }
+.ll-chip {
+  font-family: var(--mono); font-size: 9.5px; padding: 2px 6px; border-radius: 6px;
+  border: 1px solid var(--line-2); color: var(--ink-2); display: inline-flex; gap: 3px; align-items: center;
+}
+.ll-chip b { color: var(--gold-hi); }
+.ll-chip.you { border-color: var(--accent-d); }
+.ll-chip.foe { border-color: var(--line-2); }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 168px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--accent-hi); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- guard guess picker ---- */
+.ll-guess { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 14px; }
+.ll-guess-btn {
+  font-family: var(--display); font-weight: 700; font-size: 15px; color: var(--ink);
+  background: var(--panel-2); border: 1.5px solid var(--line-2); border-radius: 9px;
+  padding: 9px 4px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  transition: all 0.12s;
+}
+.ll-guess-btn b { font-size: 18px; color: var(--gold-hi); }
+.ll-guess-btn:hover { border-color: var(--gold); color: var(--gold-hi); transform: translateY(-2px); }
+
+/* ---- overlays ---- */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 26px; }
+.finalsc .you { color: var(--you); } .finalsc .foe { color: var(--foe); }
+.modal-body i { color: var(--gold-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } .ll-cf-blurb { display: none; } }

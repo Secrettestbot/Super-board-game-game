@@ -1,0 +1,127 @@
+/* ==========================================================
+   ABALONE — "Shove and eject."
+   Theme: a circular wooden board with recessed hex cups; glossy onyx & ivory marbles.
+   Display: Cormorant Garamond · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #1a120c;
+  --bg-2:    #120c08;
+  --panel:   #271a11;
+  --panel-2: #1f150d;
+  --ink:     #f3ead9;
+  --ink-2:   #c2a888;
+  --ink-3:   #87664a;
+  --line:    #38271a;
+  --line-2:  #4d3722;
+
+  /* token contract -> this theme (warm amber primary, dark text) */
+  --accent:  #c98a3c;  --accent-d:#9a6320;  --accent-hi:#e7ab5d;  --accent-ink:#2a1705;
+  --trim:    #d39a4d;  --trim-hi:#eab866;
+  --you:     #eab866;  --foe:#c2a888;
+  --good:    #7bc28a;  --warn:#e08a4e;
+
+  /* game-specific */
+  --wood:    #6b4426;  --wood-2:#5a3820;  --wood-rim:#7e5230;
+  --cup:     #3a2415;  --cup-2:#2a1a0e;
+  --onyx:    #1b1b1d;  --onyx-hi:#54545a;
+  --ivory:   #efe9da;  --ivory-d:#bcb49d;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Cormorant Garamond", Georgia, serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(201,138,60,0.08) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+/* The display font reads small at the framework's default size — give it room. */
+.title-main { font-size: 36px; letter-spacing: 0.5px; }
+.turn-banner { font-size: 23px; letter-spacing: 0.3px; }
+
+.stage { grid-template-columns: auto 232px; gap: clamp(16px, 2.4vw, 36px); }
+
+.ab-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.ab-board {
+  width: clamp(300px, min(72vh, 52vw), 580px);
+  height: auto;
+  filter: drop-shadow(0 18px 48px rgba(0,0,0,0.6));
+}
+
+/* wooden disc (solid fill + rim ring — SVG fill can't take CSS gradients) */
+.ab-wood   { fill: var(--wood); stroke: #3d2715; stroke-width: 3; }
+.ab-wood-rim { fill: none; stroke: var(--wood-rim); stroke-width: 2; opacity: 0.55; }
+
+/* recessed hex cups */
+.ab-cup-g { cursor: pointer; }
+.ab-cup {
+  fill: var(--cup);
+  stroke: var(--cup-2); stroke-width: 1.4;
+}
+.ab-cup-g:hover .ab-cup { fill: #452917; }
+.ab-cup.target { fill: #3f3018; stroke: var(--accent); stroke-width: 1.6; }
+.ab-hint { fill: rgba(231,171,93,0.55); filter: drop-shadow(0 0 4px rgba(231,171,93,0.5)); pointer-events: none; }
+.ab-lastmark { fill: none; stroke: rgba(234,184,102,0.5); stroke-width: 1.4; stroke-dasharray: 3 3; pointer-events: none; }
+
+/* marbles */
+.ab-marble { stroke: rgba(0,0,0,0.55); stroke-width: 0.6; transition: transform 0.1s; }
+.ab-marble.b { fill: var(--onyx); }
+.ab-marble.w { fill: var(--ivory); stroke: var(--ivory-d); }
+.ab-marble.sel { stroke: var(--accent-hi); stroke-width: 2.4; filter: drop-shadow(0 0 5px rgba(234,184,102,0.7)); }
+.ab-marble.last { stroke: var(--trim); stroke-width: 1.8; }
+.ab-gloss { pointer-events: none; }
+.ab-gloss.b { fill: rgba(120,120,130,0.7); }
+.ab-gloss.w { fill: rgba(255,255,255,0.85); }
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.scoreboard { display: flex; flex-direction: column; gap: 9px; }
+.sc { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.sc.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sc-marble { width: 18px; height: 18px; border-radius: 50%; flex: 0 0 auto; }
+.sc-marble.b { background: radial-gradient(circle at 36% 30%, #4a4a52, var(--onyx)); border: 1px solid #000; }
+.sc-marble.w { background: radial-gradient(circle at 36% 30%, #fff, var(--ivory-d)); }
+.sc-name { font-family: var(--display); font-weight: 600; font-size: 18px; flex: 1; letter-spacing: 0.3px; }
+.sc-n { font-family: var(--display); font-weight: 700; font-size: 24px; color: var(--ink); }
+.sc-of { font-size: 14px; color: var(--ink-3); }
+.sc-cap { font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); text-align: center; padding-top: 2px; }
+
+/* direction pad */
+.ab-controls { display: flex; flex-direction: column; gap: 8px; }
+.ab-pad-l { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); }
+.ab-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.ab-dir {
+  font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+  padding: 9px 0; border-radius: 8px; cursor: pointer;
+  background: var(--panel); color: var(--ink); border: 1.5px solid var(--line-2);
+  transition: all 0.12s;
+}
+.ab-dir:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-hi); }
+.ab-dir.off, .ab-dir:disabled { opacity: 0.32; cursor: not-allowed; }
+.ab-clear {
+  grid-column: 1 / -1;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 7px 0; border-radius: 8px; cursor: pointer;
+  background: transparent; color: var(--ink-3); border: 1.5px solid var(--line);
+  transition: all 0.12s;
+}
+.ab-clear:hover:not(:disabled) { color: var(--warn); border-color: var(--warn); }
+.ab-clear:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 132px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--trim-hi); } .log-line.ai { color: var(--ink-2); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 26px; }
+.finalsc .you { color: var(--trim-hi); } .finalsc .foe { color: var(--ivory); }
+.modal-body i { color: var(--trim-hi); font-style: normal; font-weight: 600; }
+.modal-title { font-size: 40px; }
+
+@media (max-height: 720px) { .title-main { font-size: 30px; } .ab-board { width: clamp(280px, 60vh, 500px); } }

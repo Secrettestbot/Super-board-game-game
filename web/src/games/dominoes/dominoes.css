@@ -1,0 +1,153 @@
+/* ==========================================================
+   DOMINOES — "Match the ends, dump the bones."
+   Theme: green baize parlour, ivory tiles with onyx pips, ebony backs.
+   Display: Oswald · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #0f1611;
+  --bg-2:    #0a0f0c;
+  --panel:   #19231c;
+  --panel-2: #131c16;
+  --ink:     #eef3ee;
+  --ink-2:   #a6bbac;
+  --ink-3:   #647a6a;
+  --line:    #243029;
+  --line-2:  #354a3c;
+
+  /* token contract -> this theme (warm ivory primary, dark text) */
+  --accent:  #e7dcc0;  --accent-d:#b9ad8c;  --accent-hi:#f6efdc;  --accent-ink:#231d10;
+  --trim:    #d8b15a;  --trim-hi:#f1d27a;
+  --you:     #f6efdc;  --foe:#a6bbac;
+  --good:    #6fc090;  --warn:#e0894e;
+
+  /* game-specific */
+  --ivory:   #ece8db;  --ivory-d:#c9c4b1;  --ivory-edge:#b8b29c;
+  --ebony:   #1c211b;  --ebony-2:#262d24;
+  --onyx:    #1c211b;
+  --felt:    #1f6a3f;  --felt-2:#175831;  --felt-line:#16492b;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Oswald", system-ui, sans-serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(ellipse at 50% -8%, rgba(216,177,90,0.05) 0%, transparent 52%), radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.5) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 232px; gap: clamp(16px, 2.4vw, 34px); }
+
+/* ---- Board ---- */
+.dm-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.dm-board {
+  --tw: clamp(28px, min(4.6vh, 3.1vw), 40px);   /* short side of a tile */
+  display: flex; flex-direction: column; gap: clamp(10px, 1.8vh, 20px);
+  padding: clamp(14px, 2vh, 22px) clamp(16px, 2vw, 26px);
+  background: radial-gradient(ellipse at 50% 30%, var(--felt), var(--felt-2));
+  border: 2px solid #123a23; border-radius: 16px;
+  box-shadow: 0 16px 44px rgba(0,0,0,0.55), inset 0 0 60px rgba(0,0,0,0.22);
+  width: clamp(440px, 56vw, 660px);
+}
+
+/* rival's face-down rack */
+.dm-rival { display: flex; align-items: center; gap: 10px; }
+.dm-rival-l { font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(236,232,219,0.55); white-space: nowrap; }
+.dm-backs { display: flex; gap: 4px; flex-wrap: wrap; }
+.dm-back {
+  width: calc(var(--tw) * 0.62); height: calc(var(--tw) * 1.18); border-radius: 4px;
+  background: linear-gradient(160deg, var(--ebony-2), var(--ebony));
+  border: 1px solid #000; box-shadow: inset 0 1px 1px rgba(255,255,255,0.06), 0 2px 4px rgba(0,0,0,0.4);
+}
+
+/* line of play */
+.dm-line-area {
+  display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-height: calc(var(--tw) * 1.3);
+  padding: 8px; border-radius: 10px; background: rgba(0,0,0,0.16);
+  border: 1px solid var(--felt-line);
+}
+.dm-line { display: flex; align-items: center; gap: 3px; flex: 1 1 auto; flex-wrap: wrap; justify-content: center; }
+.dm-end {
+  flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--display); font-weight: 700; font-size: 15px; color: var(--ebony);
+  background: var(--trim); box-shadow: 0 0 0 2px rgba(241,210,122,0.35), 0 2px 6px rgba(0,0,0,0.4);
+}
+
+/* a laid tile (horizontal pair) */
+.dm-line-tile {
+  display: flex; background: linear-gradient(165deg, var(--ivory), var(--ivory-d));
+  border: 1px solid var(--ivory-edge); border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.4); overflow: hidden;
+}
+.dm-line-tile .dm-half { width: calc(var(--tw) * 0.86); height: calc(var(--tw) * 0.86); }
+.dm-line-tile .dm-half + .dm-half { border-left: 1px solid var(--ivory-edge); }
+.dm-line-tile.dbl { flex-direction: column; }
+.dm-line-tile.dbl .dm-half + .dm-half { border-left: none; border-top: 1px solid var(--ivory-edge); }
+
+/* your face-up rack (vertical tiles) */
+.dm-yourhand { display: flex; gap: clamp(5px, 0.8vw, 9px); flex-wrap: wrap; justify-content: center; align-items: flex-end; }
+.dm-tile {
+  display: flex; background: linear-gradient(165deg, var(--ivory), var(--ivory-d));
+  border: 1px solid var(--ivory-edge); border-radius: 6px;
+  box-shadow: 0 3px 7px rgba(0,0,0,0.45); cursor: default; transition: transform 0.12s, box-shadow 0.12s, outline-color 0.12s;
+  outline: 2px solid transparent; outline-offset: 2px;
+}
+.dm-tile.v { flex-direction: column; }
+.dm-tile.v .dm-half { width: calc(var(--tw) * 1.15); height: calc(var(--tw) * 1.15); }
+.dm-tile.v .dm-half + .dm-half { border-top: 1px solid var(--ivory-edge); }
+.dm-tile.playable { cursor: pointer; outline-color: rgba(216,177,90,0.45); }
+.dm-tile.playable:hover { transform: translateY(-5px); box-shadow: 0 9px 16px rgba(0,0,0,0.5); }
+.dm-tile.selected { outline-color: var(--trim-hi); transform: translateY(-5px); box-shadow: 0 0 0 1px var(--trim-hi), 0 9px 16px rgba(0,0,0,0.5); }
+
+/* pip grids */
+.dm-pips { width: 100%; height: 100%; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); padding: 14%; gap: 4%; }
+.pip { border-radius: 50%; background: transparent; }
+.pip.on { background: radial-gradient(circle at 38% 32%, #3a423a, var(--onyx)); box-shadow: inset 0 -1px 1px rgba(0,0,0,0.45); }
+
+/* action row */
+.dm-actions { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 34px; }
+.dm-endpick { display: flex; align-items: center; gap: 8px; }
+.dm-endpick span { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(236,232,219,0.7); }
+.dm-endbtn, .dm-stuck {
+  font-family: var(--display); font-weight: 600; font-size: 13px; letter-spacing: 0.03em;
+  padding: 7px 16px; border-radius: 8px; cursor: pointer;
+  background: var(--trim); color: var(--ebony); border: 1.5px solid var(--accent-d);
+  transition: filter 0.12s, transform 0.1s;
+}
+.dm-endbtn:hover, .dm-stuck:hover { filter: brightness(1.08); }
+.dm-stuck { background: var(--ivory); }
+
+/* ---- Side ---- */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.scoreboard { display: flex; flex-direction: column; gap: 8px; }
+.sc { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.sc.on { border-color: var(--trim); box-shadow: 0 0 0 1px var(--trim); }
+.sc-chip { width: 18px; height: 14px; border-radius: 3px; flex: 0 0 auto; border: 1px solid #000; }
+.sc-chip.you { background: linear-gradient(165deg, var(--ivory), var(--ivory-d)); }
+.sc-chip.ai { background: linear-gradient(160deg, var(--ebony-2), var(--ebony)); }
+.sc-name { font-family: var(--display); font-weight: 600; font-size: 14px; flex: 1; letter-spacing: 0.02em; }
+.sc-n { font-family: var(--display); font-weight: 700; font-size: 22px; }
+
+.stats { display: flex; flex-direction: column; gap: 6px; }
+.stat { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: var(--ink-2); }
+.stat span { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.stat b { font-family: var(--display); font-weight: 700; font-size: 16px; color: var(--ink); }
+.stat.ends b { color: var(--trim-hi); letter-spacing: 0.04em; }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 150px; overflow-y: auto; }
+.logbox .log-line { font-size: 11px; line-height: 1.55; }
+.logbox .log-line.you { color: var(--trim-hi); }
+.logbox .log-line.ai { color: var(--ink-2); }
+.logbox .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- Overlays ---- */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0 6px; font-family: var(--display); font-weight: 700; font-size: 24px; }
+.finalsc .you { color: var(--trim-hi); } .finalsc .foe { color: var(--ivory); }
+.dm-final-note { text-align: center; font-size: 12.5px; color: var(--ink-2); margin: 0; }
+.modal-body i { color: var(--trim-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } .dm-board { --tw: clamp(24px, 3.6vh, 34px); } }

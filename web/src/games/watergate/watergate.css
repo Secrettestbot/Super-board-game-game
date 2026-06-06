@@ -1,0 +1,176 @@
+/* ==========================================================
+   WATERGATE — "All the president's cards."
+   Theme: 1970s newsprint & political — warm aged-paper surfaces, ink-black type,
+   a Post-blue "you" and an oxblood "foe". Display: Baloo 2 · Body: Inter · Mono: JetBrains.
+   Built for this codebase. Shared shell in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #2a2622;
+  --bg-2:    #201d1a;
+  --panel:   #34302a;
+  --panel-2: #2c2823;
+  --ink:     #f4ecd8;
+  --ink-2:   #cabfa6;
+  --ink-3:   #8c8270;
+  --line:    #45403a;
+  --line-2:  #5a544b;
+
+  /* token contract -> this theme (newsprint blue primary, dark ink on it) */
+  --accent:    #c79a3e;  --accent-d:#8f6c1f;  --accent-hi:#e6c068;  --accent-ink:#241c08;
+  --trim:      #b5462f;  --trim-hi:#d96a4f;
+  --you:       #5b8fc7;  --foe:#c0533c;
+  --good:      #7bb673;  --warn:#d4824a;
+
+  /* game-specific */
+  --paper:     #efe5cd;  --paper-2:#e3d7ba;
+  --paper-ink: #2b2722;
+  --rail:      #d8cbab;  --rail-line:#bcab84;
+  --tok-mom:   #c0533c;  --tok-mom-d:#8c3221;
+  --tok-ev:    #5b8fc7;  --tok-ev-d:#33618f;
+  --tok-inf:   #6f9c63;  --tok-inf-d:#4a6e40;
+  --linked:    #c79a3e;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(199,154,62,0.08) 0%, transparent 55%),
+    radial-gradient(ellipse at 10% 110%, rgba(91,143,199,0.06) 0%, transparent 45%),
+    radial-gradient(ellipse at 90% 115%, rgba(192,83,60,0.06) 0%, transparent 45%);
+}
+
+.stage { grid-template-columns: auto 244px; gap: clamp(16px, 2.2vw, 30px); }
+
+/* ---- main column ---- */
+.wg-wrap { display: flex; flex-direction: column; gap: clamp(12px, 1.8vw, 20px); min-height: 0; }
+
+/* ---- tug-of-war board ---- */
+.wg-board {
+  background: linear-gradient(165deg, var(--paper), var(--paper-2));
+  border: 2px solid var(--rail-line); border-radius: 14px;
+  padding: clamp(12px, 1.6vw, 18px);
+  box-shadow: 0 16px 44px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.25);
+  color: var(--paper-ink);
+}
+
+.wg-ends { display: flex; justify-content: space-between; margin-bottom: 10px; }
+.wg-end { display: flex; flex-direction: column; }
+.wg-end.you { align-items: flex-end; text-align: right; }
+.wg-end-l { font-family: var(--display); font-weight: 700; font-size: clamp(13px, 1.5vw, 17px); letter-spacing: 0.04em; }
+.wg-end.foe .wg-end-l { color: var(--tok-mom-d); }
+.wg-end.you .wg-end-l { color: var(--tok-ev-d); }
+.wg-end-s { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: #8a7c5e; }
+
+.wg-lanes { display: flex; flex-direction: column; gap: clamp(7px, 1vw, 11px); }
+.wg-lane { display: grid; grid-template-columns: 1fr 86px; align-items: center; gap: 10px; }
+
+.wg-rail {
+  position: relative; height: clamp(24px, 3.2vh, 32px);
+  background: var(--rail);
+  border: 1.5px solid var(--rail-line); border-radius: 999px;
+  box-shadow: inset 0 1px 4px rgba(0,0,0,0.18);
+}
+.wg-center {
+  position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px;
+  transform: translateX(-50%);
+  background: repeating-linear-gradient(var(--rail-line) 0 4px, transparent 4px 8px);
+}
+
+.wg-tok {
+  position: absolute; top: 50%; transform: translate(-50%, -50%);
+  width: clamp(22px, 2.8vh, 28px); height: clamp(22px, 2.8vh, 28px);
+  border-radius: 50%; border: 2px solid rgba(0,0,0,0.25);
+  font-family: var(--display); font-weight: 700; font-size: 12px;
+  color: #fff; cursor: default; padding: 0; line-height: 1;
+  transition: left 0.32s cubic-bezier(.4,1.2,.5,1), box-shadow 0.2s, transform 0.15s;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.35);
+}
+.wg-tok.momentum  { background: radial-gradient(circle at 35% 30%, #e07861, var(--tok-mom) 60%, var(--tok-mom-d)); }
+.wg-tok.evidence  { background: radial-gradient(circle at 35% 30%, #7fb0e0, var(--tok-ev) 60%, var(--tok-ev-d)); }
+.wg-tok.informant { background: radial-gradient(circle at 35% 30%, #95c187, var(--tok-inf) 60%, var(--tok-inf-d)); }
+.wg-tok.linked  { background: radial-gradient(circle at 35% 30%, var(--accent-hi), var(--linked) 60%, var(--accent-d)); color: var(--accent-ink); box-shadow: 0 0 0 3px rgba(199,154,62,0.4), 0 3px 8px rgba(0,0,0,0.4); }
+.wg-tok.atwall  { box-shadow: 0 0 0 3px rgba(192,83,60,0.5), 0 3px 8px rgba(0,0,0,0.4); }
+.wg-tok.pickable {
+  cursor: pointer;
+  box-shadow: 0 0 0 3px rgba(91,143,199,0.55), 0 0 16px rgba(91,143,199,0.5), 0 3px 8px rgba(0,0,0,0.4);
+  animation: wg-pulse 1.1s ease-in-out infinite;
+}
+.wg-tok.pickable:hover { transform: translate(-50%, -50%) scale(1.14); }
+@keyframes wg-pulse { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.22); } }
+
+.wg-lane-tag {
+  font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: #7c6f52; text-align: left;
+}
+
+/* ---- hand ---- */
+.wg-hand {
+  background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 12px;
+  padding: clamp(10px, 1.4vw, 14px);
+}
+.wg-hand-l { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); margin-bottom: 9px; }
+.wg-cards { display: flex; gap: clamp(8px, 1vw, 12px); flex-wrap: wrap; }
+.wg-empty { font-size: 12px; color: var(--ink-3); font-style: italic; padding: 12px 4px; }
+
+.wg-card {
+  width: clamp(76px, 9vw, 96px);
+  background: linear-gradient(160deg, var(--paper), var(--paper-2));
+  border: 1.5px solid var(--rail-line); border-radius: 9px;
+  padding: 9px 8px; color: var(--paper-ink);
+  box-shadow: 0 5px 14px rgba(0,0,0,0.3);
+  transition: transform 0.14s, box-shadow 0.14s;
+}
+.wg-card.armed { transform: translateY(-5px); box-shadow: 0 0 0 2px var(--tok-ev), 0 8px 18px rgba(0,0,0,0.4); }
+.wg-card-val { font-family: var(--display); font-weight: 700; font-size: clamp(24px, 3vw, 32px); line-height: 1; color: var(--tok-ev-d); }
+.wg-card-ev {
+  font-family: var(--mono); font-size: 8.5px; font-weight: 600; letter-spacing: 0.08em;
+  color: var(--trim); margin: 3px 0 8px; text-transform: uppercase;
+}
+.wg-card-btns { display: flex; flex-direction: column; gap: 5px; }
+.wg-cbtn {
+  font-family: var(--sans); font-size: 11px; font-weight: 600;
+  border: 1px solid var(--rail-line); border-radius: 6px; padding: 4px 0; cursor: pointer;
+  transition: filter 0.12s, transform 0.1s;
+}
+.wg-cbtn.val { background: var(--tok-ev); color: #fff; border-color: var(--tok-ev-d); }
+.wg-cbtn.ev  { background: var(--paper-2); color: var(--paper-ink); }
+.wg-cbtn:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
+.wg-cbtn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.wg-prompt {
+  margin-top: 10px; font-size: 12px; color: var(--ink-2);
+  display: flex; align-items: center; gap: 10px;
+}
+.wg-prompt b { color: var(--accent-hi); }
+.wg-cancel {
+  font-family: var(--sans); font-size: 11px; font-weight: 600;
+  background: transparent; color: var(--trim-hi); border: 1px solid var(--trim);
+  border-radius: 6px; padding: 3px 10px; cursor: pointer; margin-left: auto;
+}
+.wg-cancel:hover { background: rgba(181,70,47,0.16); }
+
+/* ---- side status ---- */
+.side { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.wg-status { display: flex; flex-direction: column; gap: 7px; }
+.wg-srow { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.wg-dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+.wg-dot.you { background: var(--you); }
+.wg-dot.foe { background: var(--foe); }
+.wg-who { font-family: var(--display); font-weight: 600; color: var(--ink); }
+.wg-goal { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--ink-2); }
+.wg-bar { height: 7px; background: var(--bg-2); border-radius: 999px; overflow: hidden; border: 1px solid var(--line); }
+.wg-bar-fill { height: 100%; transition: width 0.35s ease; border-radius: 999px; }
+.wg-bar-fill.you { background: linear-gradient(90deg, var(--tok-ev-d), var(--you)); }
+.wg-bar-fill.foe { background: linear-gradient(90deg, var(--tok-mom-d), var(--foe)); }
+.wg-round { margin-top: 4px; font-family: var(--mono); font-size: 10px; color: var(--ink-3); letter-spacing: 0.04em; }
+
+.logbox { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+
+.finalsc { font-size: 14px; margin: 4px 0 2px; }
+.finalsc .you { color: var(--you); }
+.finalsc .foe { color: var(--foe); }

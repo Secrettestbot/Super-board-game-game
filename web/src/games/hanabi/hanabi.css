@@ -1,0 +1,238 @@
+/* ==========================================================
+   HANABI — "A silent fireworks display against the night sky."
+   Theme: deep midnight blue sky, faint nebula glows, five firework colours.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Built for this codebase. Structural classes come from ../../framework/tokens.css;
+   this file styles the cards, fireworks, tokens, and discard.
+   ========================================================== */
+
+:root {
+  --bg:      #0a0f26;
+  --bg-2:    #060a1a;
+  --panel:   #131a3c;
+  --panel-2: #0f1531;
+  --ink:     #eef2ff;
+  --ink-2:   #aab3da;
+  --ink-3:   #6b73a0;
+  --line:    #232c5a;
+  --line-2:  #344078;
+
+  /* token contract -> this theme (golden spark primary, dark text on it) */
+  --accent:    #ffd34d;  --accent-d:#cc9a14;  --accent-hi:#ffe488;  --accent-ink:#2a1d00;
+  --trim:      #5ad1ff;  --trim-hi:#9be4ff;
+  --you:       #7dffb0;  --foe:#ff7d8f;
+  --good:      #7dffb0;  --warn:#ff7d8f;
+
+  /* five firework colours */
+  --fw-red:    #ff5d73;  --fw-red-d:#a82c3e;
+  --fw-yellow: #ffd34d;  --fw-yellow-d:#b58f12;
+  --fw-green:  #5ddf8f;  --fw-green-d:#26905a;
+  --fw-blue:   #5aa8ff;  --fw-blue-d:#2861b0;
+  --fw-white:  #e7ecff;  --fw-white-d:#8f97c4;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 22% -6%, rgba(90,168,255,0.10) 0%, transparent 48%),
+    radial-gradient(ellipse at 82% 8%, rgba(255,93,115,0.07) 0%, transparent 45%),
+    radial-gradient(ellipse at 50% 116%, rgba(125,255,176,0.06) 0%, transparent 48%);
+}
+
+.stage { grid-template-columns: minmax(0, 1fr) 232px; gap: clamp(14px, 2.2vw, 30px); align-items: stretch; }
+
+/* ---------------- generic firework color tinting ---------------- */
+.color-red    { --fw: var(--fw-red);    --fw-d: var(--fw-red-d); }
+.color-yellow { --fw: var(--fw-yellow); --fw-d: var(--fw-yellow-d); }
+.color-green  { --fw: var(--fw-green);  --fw-d: var(--fw-green-d); }
+.color-blue   { --fw: var(--fw-blue);   --fw-d: var(--fw-blue-d); }
+.color-white  { --fw: var(--fw-white);  --fw-d: var(--fw-white-d); }
+
+.color-red-txt    { color: var(--fw-red); }
+.color-yellow-txt { color: var(--fw-yellow); }
+.color-green-txt  { color: var(--fw-green); }
+.color-blue-txt   { color: var(--fw-blue); }
+.color-white-txt  { color: var(--fw-white); }
+
+/* ---------------- table layout ---------------- */
+.hb-table {
+  display: flex; flex-direction: column; gap: clamp(10px, 1.4vw, 18px);
+  min-width: 0; min-height: 0;
+}
+
+/* ---------------- fireworks + tokens row ---------------- */
+.hb-stacks {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: clamp(12px, 2vw, 26px);
+  background: linear-gradient(165deg, var(--panel), var(--panel-2));
+  border: 1.5px solid var(--line-2); border-radius: 14px;
+  padding: clamp(10px, 1.3vw, 16px) clamp(14px, 1.8vw, 22px);
+  box-shadow: 0 14px 38px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.hb-stacksrow { display: flex; gap: clamp(8px, 1.1vw, 14px); }
+.hb-stack {
+  width: clamp(48px, 6vw, 64px); height: clamp(62px, 8vw, 82px);
+  border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--fw) 26%, transparent), transparent 70%), var(--bg-2);
+  border: 1.5px solid color-mix(in srgb, var(--fw) 45%, var(--line));
+  position: relative; transition: box-shadow 0.2s;
+}
+.hb-stack.done {
+  box-shadow: 0 0 18px color-mix(in srgb, var(--fw) 55%, transparent), inset 0 0 14px color-mix(in srgb, var(--fw) 22%, transparent);
+  border-color: var(--fw);
+}
+.hb-stacknum {
+  font-family: var(--display); font-weight: 700; font-size: clamp(22px, 3vw, 34px); line-height: 1;
+  color: var(--fw); text-shadow: 0 0 10px color-mix(in srgb, var(--fw) 50%, transparent);
+}
+.hb-stacklbl { font-family: var(--mono); font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-3); margin-top: 4px; }
+
+.hb-tokens { display: flex; flex-direction: column; gap: 9px; }
+.hb-tokgroup { display: flex; align-items: center; gap: 8px; }
+.hb-toklab { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-3); width: 38px; }
+.hb-toknum { font-family: var(--display); font-weight: 700; font-size: 17px; }
+.hb-toknum i { font-style: normal; font-size: 11px; color: var(--ink-3); font-weight: 500; }
+.hb-toknum.clue { color: var(--trim-hi); }
+.hb-toknum.fuse { color: var(--foe); }
+.hb-pips { display: flex; gap: 3px; }
+.hb-tpip { width: 8px; height: 8px; border-radius: 50%; }
+.hb-tpip.clue { background: var(--trim); box-shadow: 0 0 6px color-mix(in srgb, var(--trim) 60%, transparent); }
+.hb-tpip.fuse { background: var(--foe); box-shadow: 0 0 6px color-mix(in srgb, var(--foe) 60%, transparent); }
+.hb-tpip.off { background: var(--line); box-shadow: none; }
+
+/* ---------------- cards ---------------- */
+.hb-card {
+  position: relative;
+  width: clamp(46px, 5.6vw, 60px); height: clamp(64px, 7.8vw, 84px);
+  border-radius: 9px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--display); user-select: none;
+}
+/* face-up partner card */
+.hb-cardwrap { position: relative; }
+.hb-card.color-red, .hb-card.color-yellow, .hb-card.color-green, .hb-card.color-blue, .hb-card.color-white {
+  background: linear-gradient(160deg, color-mix(in srgb, var(--fw) 88%, white 8%), var(--fw-d));
+  border: 1.5px solid color-mix(in srgb, var(--fw) 60%, #000 18%);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.22);
+}
+.hb-glyph { font-size: clamp(20px, 2.6vw, 30px); color: rgba(0,0,0,0.30); }
+.color-yellow .hb-glyph, .color-white .hb-glyph { color: rgba(0,0,0,0.34); }
+.hb-pip {
+  position: absolute; font-weight: 700; font-size: clamp(13px, 1.6vw, 17px);
+  color: #10142e; text-shadow: 0 1px 0 rgba(255,255,255,0.3);
+}
+.hb-pip.tl { top: 4px; left: 7px; }
+.hb-pip.br { bottom: 4px; right: 7px; transform: rotate(180deg); }
+.color-red .hb-pip, .color-blue .hb-pip, .color-green .hb-pip { color: #0c0f24; }
+
+.hb-cluedot {
+  position: absolute; top: -4px; right: -4px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--accent); border: 1.5px solid var(--bg-2);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+/* face-DOWN (your own) card — only clue knowledge shown */
+.hb-card.hb-back {
+  background:
+    repeating-linear-gradient(135deg, rgba(255,255,255,0.025) 0 6px, transparent 6px 12px),
+    linear-gradient(160deg, #1b2350, #121737);
+  border: 1.5px solid var(--line-2);
+  flex-direction: column; gap: 5px; cursor: pointer;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05);
+  transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+.hb-card.hb-back:hover { transform: translateY(-4px); border-color: var(--trim); }
+.hb-card.hb-back.clued { border-color: color-mix(in srgb, var(--accent) 55%, var(--line-2)); }
+.hb-card.hb-back.sel {
+  border-color: var(--accent); transform: translateY(-6px);
+  box-shadow: 0 12px 26px rgba(0,0,0,0.5), 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+.hb-slot { position: absolute; top: 4px; left: 6px; font-family: var(--mono); font-size: 9px; color: var(--ink-3); }
+.hb-known { font-family: var(--display); font-weight: 700; line-height: 1; }
+.kn-color { font-size: clamp(10px, 1.2vw, 12px); color: var(--ink-2); text-transform: capitalize; }
+.kn-value { font-size: clamp(18px, 2.2vw, 26px); color: var(--ink); }
+
+/* ---------------- partners ---------------- */
+.hb-partners { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(10px, 1.4vw, 18px); }
+.hb-partner, .hb-you {
+  background: linear-gradient(165deg, var(--panel), var(--panel-2));
+  border: 1.5px solid var(--line); border-radius: 14px;
+  padding: clamp(8px, 1vw, 12px) clamp(10px, 1.2vw, 14px);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.hb-partner.active, .hb-you.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent), 0 14px 34px rgba(0,0,0,0.4);
+}
+.hb-partner.choosing { border-color: var(--trim); box-shadow: 0 0 0 1px color-mix(in srgb, var(--trim) 40%, transparent); }
+
+.hb-phead { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.hb-pname { font-family: var(--display); font-weight: 700; font-size: 15px; color: var(--ink); }
+.hb-pname.you { color: var(--you); }
+.hb-pmeta { font-family: var(--mono); font-size: 9.5px; color: var(--ink-3); }
+.hb-cluebtn {
+  margin-left: auto; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+  background: var(--bg-2); color: var(--trim-hi); border: 1px solid var(--line-2); border-radius: 6px;
+  padding: 4px 10px; cursor: pointer; transition: all 0.14s;
+}
+.hb-cluebtn:hover { border-color: var(--trim); color: var(--trim-hi); }
+.hb-cluebtn.on { background: var(--trim); color: #07203a; border-color: var(--trim); }
+
+.hb-hand { display: flex; gap: clamp(5px, 0.7vw, 9px); flex-wrap: wrap; }
+.yourhand { gap: clamp(7px, 0.9vw, 12px); }
+
+.hb-clueopts { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 9px; }
+.hb-clab { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-3); margin: 2px 0 5px; }
+.hb-cluerow { display: flex; gap: 6px; margin-bottom: 7px; }
+.hb-cchip, .hb-vchip {
+  width: 30px; height: 30px; border-radius: 7px; cursor: pointer;
+  font-family: var(--display); font-weight: 700; font-size: 14px;
+  border: 1.5px solid var(--line-2); transition: transform 0.1s, filter 0.1s;
+}
+.hb-cchip { color: #0c0f24; }
+.hb-cchip.color-red { background: var(--fw-red); border-color: var(--fw-red-d); }
+.hb-cchip.color-yellow { background: var(--fw-yellow); border-color: var(--fw-yellow-d); }
+.hb-cchip.color-green { background: var(--fw-green); border-color: var(--fw-green-d); }
+.hb-cchip.color-blue { background: var(--fw-blue); border-color: var(--fw-blue-d); }
+.hb-cchip.color-white { background: var(--fw-white); border-color: var(--fw-white-d); }
+.hb-vchip { background: var(--bg-2); color: var(--ink); }
+.hb-cchip:hover:not(.dead), .hb-vchip:hover:not(.dead) { transform: translateY(-2px); filter: brightness(1.12); }
+.hb-cchip.dead, .hb-vchip.dead { opacity: 0.22; cursor: not-allowed; filter: grayscale(0.6); }
+
+/* ---------------- your zone + actions ---------------- */
+.hb-you { padding-bottom: clamp(10px, 1.2vw, 14px); }
+.hb-actions { display: flex; align-items: center; gap: 10px; margin-top: 11px; }
+.hb-act {
+  font-family: var(--sans); font-weight: 700; font-size: 13px;
+  border-radius: 8px; padding: 8px 16px; cursor: pointer; border: 1.5px solid transparent;
+  transition: filter 0.12s, transform 0.1s;
+}
+.hb-act.play { background: var(--accent); color: var(--accent-ink); }
+.hb-act.discard { background: var(--bg-2); color: var(--ink-2); border-color: var(--line-2); }
+.hb-act:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
+.hb-act:disabled { opacity: 0.35; cursor: not-allowed; }
+.hb-acthint { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+
+/* ---------------- side: discard + log ---------------- */
+.side { display: flex; flex-direction: column; gap: 14px; min-height: 0; max-height: 100%; }
+.hb-discardpanel { flex: none; }
+.hb-discardgrid { display: flex; flex-direction: column; gap: 6px; margin-top: 9px; }
+.hb-drow { display: flex; align-items: center; gap: 9px; }
+.hb-dswatch { width: 13px; height: 13px; border-radius: 4px; background: var(--fw); border: 1px solid color-mix(in srgb, var(--fw) 55%, #000); flex: none; }
+.hb-dvals { font-family: var(--mono); font-size: 12px; color: var(--ink-2); letter-spacing: 0.12em; }
+
+.logbox { flex: 1; min-height: 80px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+.log-line.clue { color: var(--trim-hi); }
+.log-line.play { color: var(--good); }
+.log-line.good { color: var(--accent-hi); font-weight: 600; }
+.log-line.fuse { color: var(--foe); }
+.log-line.discard { color: var(--ink-2); }
+
+/* ---------------- result modal ---------------- */
+.finalsc { text-align: center; font-family: var(--display); font-size: 16px; margin: 6px 0 4px; }
+.finalsc .you { color: var(--you); }
+.finalsc .foe { color: var(--foe); }

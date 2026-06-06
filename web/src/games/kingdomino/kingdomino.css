@@ -1,0 +1,170 @@
+/* ==========================================================
+   KINGDOMINO — "Lay your land, claim your crowns."
+   Theme: a storybook kingdom on a deep slate table — parchment panels,
+   six friendly terrain hues, gilded crowns. A 5x5 realm grown domino by domino.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Shared structural classes live in ../../framework/tokens.css; this file supplies
+   the token values plus board / tile / terrain / crown styling.
+   ========================================================== */
+
+:root {
+  --bg:      #1b2230;
+  --bg-2:    #131822;
+  --panel:   #232c3d;
+  --panel-2: #1c2433;
+  --ink:     #eef3fb;
+  --ink-2:   #aeb9cc;
+  --ink-3:   #6c7791;
+  --line:    #313c52;
+  --line-2:  #43506c;
+
+  /* token contract -> this theme (gilded gold primary, dark text on it) */
+  --accent:    #e8b94a;  --accent-d:#bb8d1c;  --accent-hi:#f6d784;  --accent-ink:#2a1d02;
+  --trim:      #7ec8ff;  --trim-hi:#a9dcff;
+  --you:       #7ee0b0;  --foe:#ff9a76;
+  --good:      #7ee0b0;  --warn:#ff8d6e;
+
+  /* terrain palette (six friendly hues) */
+  --t-wheat:   #e8c45a;  --t-wheat-d:#b8932f;
+  --t-forest:  #3f9b5b;  --t-forest-d:#2a6e3e;
+  --t-water:   #4aa6d8;  --t-water-d:#2e76a0;
+  --t-grass:   #8cc24b;  --t-grass-d:#5f8c2b;
+  --t-swamp:   #9a7b52;  --t-swamp-d:#6d5536;
+  --t-mine:    #5a5f6e;  --t-mine-d:#3a3e4b;
+  --t-castle:  #c0563f;  --t-castle-d:#8a3c2a;
+
+  --crown:     #f6d784;  --crown-d:#bb8d1c;
+  --cell-empty:#222b3b;  --cell-line:#37425a;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(232,185,74,0.08) 0%, transparent 52%),
+    radial-gradient(ellipse at 14% 112%, rgba(126,200,255,0.06) 0%, transparent 46%),
+    radial-gradient(ellipse at 88% 114%, rgba(63,155,91,0.06) 0%, transparent 46%);
+}
+
+.stage { grid-template-columns: auto auto; gap: clamp(14px, 2vw, 30px); align-items: start; }
+
+/* ---- Kingdom boards ---- */
+.kd-realms { display: flex; gap: clamp(14px, 2.4vw, 36px); align-items: flex-start; justify-content: center; flex-wrap: wrap; }
+
+.kd-realm { display: flex; flex-direction: column; gap: 8px; }
+.kd-realm-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.kd-realm-name { font-family: var(--display); font-weight: 700; font-size: 16px; }
+.kd-realm.you  .kd-realm-name { color: var(--you); }
+.kd-realm.foe  .kd-realm-name { color: var(--foe); }
+.kd-realm-score { font-family: var(--mono); font-size: 13px; color: var(--ink-2); }
+.kd-realm-score b { color: var(--accent-hi); font-size: 16px; }
+
+.kd-grid {
+  --cell: clamp(36px, min(7.4vw, 9vh), 62px);
+  display: grid;
+  grid-template-columns: repeat(5, var(--cell));
+  grid-template-rows: repeat(5, var(--cell));
+  gap: 3px;
+  padding: 10px;
+  background: linear-gradient(165deg, var(--panel), var(--panel-2));
+  border: 2px solid var(--line-2);
+  border-radius: 14px;
+  box-shadow: 0 16px 44px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.kd-realm.foe .kd-grid { opacity: 0.96; }
+
+.kd-cell {
+  border-radius: 7px;
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--cell-empty);
+  border: 1.5px solid var(--cell-line);
+  transition: transform 0.08s, box-shadow 0.12s;
+}
+.kd-cell.empty.legal {
+  cursor: pointer;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1.5px var(--accent), 0 0 14px rgba(232,185,74,0.35);
+}
+.kd-cell.empty.legal:hover { transform: scale(1.05); }
+.kd-cell.empty.ghost { background: rgba(232,185,74,0.22); border-color: var(--accent-hi); }
+
+/* terrain fills */
+.kd-cell.t-wheat  { background: linear-gradient(160deg, var(--t-wheat),  var(--t-wheat-d));  border-color: var(--t-wheat-d); }
+.kd-cell.t-forest { background: linear-gradient(160deg, var(--t-forest), var(--t-forest-d)); border-color: var(--t-forest-d); }
+.kd-cell.t-water  { background: linear-gradient(160deg, var(--t-water),  var(--t-water-d));  border-color: var(--t-water-d); }
+.kd-cell.t-grass  { background: linear-gradient(160deg, var(--t-grass),  var(--t-grass-d));  border-color: var(--t-grass-d); }
+.kd-cell.t-swamp  { background: linear-gradient(160deg, var(--t-swamp),  var(--t-swamp-d));  border-color: var(--t-swamp-d); }
+.kd-cell.t-mine   { background: linear-gradient(160deg, var(--t-mine),   var(--t-mine-d));   border-color: var(--t-mine-d); }
+.kd-cell.t-castle { background: radial-gradient(circle at 50% 38%, var(--t-castle), var(--t-castle-d)); border-color: var(--t-castle-d); }
+
+.kd-cell .castle-mark { font-size: calc(var(--cell) * 0.5); line-height: 1; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.4)); }
+
+/* crowns */
+.kd-crowns { display: flex; gap: 2px; }
+.kd-crown { width: calc(var(--cell) * 0.26); height: calc(var(--cell) * 0.26); display: block; }
+
+/* ---- Side panel: draft lineup + claimed tile ---- */
+.kd-side { display: flex; flex-direction: column; gap: 14px; width: clamp(210px, 22vw, 260px); }
+
+.kd-claimed-tile { display: flex; gap: 0; border-radius: 9px; overflow: hidden; border: 2px solid var(--line-2); box-shadow: 0 6px 16px rgba(0,0,0,0.4); }
+.kd-claimed-tile.empty { color: var(--ink-3); font-size: 12px; padding: 14px; justify-content: center; background: var(--panel-2); border-style: dashed; }
+
+.kd-domino { display: flex; gap: 0; border-radius: 9px; overflow: hidden; border: 1.5px solid var(--line-2); }
+.kd-domino .kd-half {
+  width: 46px; height: 46px; position: relative;
+  display: flex; align-items: center; justify-content: center;
+}
+.kd-half.t-wheat  { background: linear-gradient(160deg, var(--t-wheat),  var(--t-wheat-d)); }
+.kd-half.t-forest { background: linear-gradient(160deg, var(--t-forest), var(--t-forest-d)); }
+.kd-half.t-water  { background: linear-gradient(160deg, var(--t-water),  var(--t-water-d)); }
+.kd-half.t-grass  { background: linear-gradient(160deg, var(--t-grass),  var(--t-grass-d)); }
+.kd-half.t-swamp  { background: linear-gradient(160deg, var(--t-swamp),  var(--t-swamp-d)); }
+.kd-half.t-mine   { background: linear-gradient(160deg, var(--t-mine),   var(--t-mine-d)); }
+.kd-half .kd-crowns { position: absolute; top: 3px; left: 0; right: 0; justify-content: center; }
+.kd-half .kd-crown { width: 13px; height: 13px; }
+
+/* draft lineup rows */
+.kd-lineup { display: flex; flex-direction: column; gap: 7px; }
+.kd-draft-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 8px; border-radius: 10px;
+  background: var(--panel-2); border: 1.5px solid var(--line);
+  transition: border-color 0.12s, transform 0.08s;
+}
+.kd-draft-row.claimable { cursor: pointer; }
+.kd-draft-row.claimable:hover { border-color: var(--accent); transform: translateX(2px); }
+.kd-draft-row.claimed-you { border-color: var(--you); background: rgba(126,224,176,0.10); }
+.kd-draft-row.claimed-foe { border-color: var(--foe); background: rgba(255,154,118,0.10); }
+.kd-draft-num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); width: 22px; text-align: right; }
+.kd-draft-tag { margin-left: auto; font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; }
+.kd-draft-tag.you { color: var(--you); }
+.kd-draft-tag.foe { color: var(--foe); }
+
+.kd-rotate-row { display: flex; gap: 8px; }
+.kd-rotate-btn {
+  flex: 1; font-family: var(--sans); font-weight: 600; font-size: 12px;
+  padding: 8px 10px; border-radius: 9px; cursor: pointer;
+  background: var(--panel); color: var(--ink); border: 1.5px solid var(--line-2);
+}
+.kd-rotate-btn:hover { border-color: var(--accent); color: var(--accent-hi); }
+
+.kd-discard-btn {
+  font-family: var(--sans); font-weight: 600; font-size: 12px;
+  padding: 9px 10px; border-radius: 9px; cursor: pointer;
+  background: transparent; color: var(--warn); border: 1.5px solid var(--warn);
+}
+.kd-discard-btn:hover { background: rgba(255,141,110,0.12); }
+
+.kd-hint { font-size: 11px; line-height: 1.5; color: var(--ink-2); }
+.kd-hint b { color: var(--accent-hi); }
+
+/* result modal score table */
+.kd-scoretable { margin: 4px 0 8px; }
+.kd-st-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.kd-st-row b { font-family: var(--mono); }
+.kd-st-you b { color: var(--you); }
+.kd-st-foe b { color: var(--foe); }
