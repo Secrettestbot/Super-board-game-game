@@ -1,14 +1,18 @@
 /* BREAKTHROUGH — UI (built for this codebase). 8x8 two-tone board on the framework shell,
-   vs an alpha-beta minimax AI. Click a pawn to see its legal steps & diagonal captures;
-   reach the far row to break through. */
+   vs an alpha-beta minimax AI or a remote opponent. Click a pawn to see its legal steps &
+   diagonal captures; reach the far row to break through. Seat-relative: your side comes from
+   mySeat (0 = White, 1 = Black), the board flips so your pawns sit nearest you, and the AI
+   for any empty seat is driven by useGameSession. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { breakthroughAdapter, SIDE } from './net'
 import * as BT from './logic'
-import type { BreakthroughState, Move } from './logic'
+import type { Move, Pawn } from './logic'
 
 const { N } = BT
 
@@ -22,21 +26,22 @@ const TITLE_MARK = (
 )
 
 export function Breakthrough() {
-  const [s, setS] = useState<BreakthroughState>(() => BT.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(breakthroughAdapter)
+  const myColor: Pawn = SIDE[mySeat] // seat 0 = White, seat 1 = Black
+  const oppColor: Pawn = myColor === 'w' ? 'b' : 'w'
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number | null>(null)
 
-  function newGame() { setS(BT.makeGame()); setSel(null); setShowRules(false) }
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
 
-  useAITurn(!s.winner && s.turn === 'b', () => setS(p => BT.aiMove(p)), { delayMs: 520 })
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => { if (showRules) setShowRules(false); else setSel(null) },
   })
 
-  const yourTurn = !s.winner && s.turn === 'w'
-  const myMoves = useMemo(() => yourTurn ? BT.legalMoves(s.board, 'w') : [], [yourTurn, s.board])
+  const yourTurn = !s.winner && isMyTurn
+  const myMoves = useMemo(() => yourTurn ? BT.legalMoves(s.board, myColor) : [], [yourTurn, s.board, myColor])
   const dests = useMemo(() => {
     const map = new Map<number, Move>()
     if (sel !== null) for (const m of myMoves) if (m.from === sel) map.set(m.to, m)
@@ -44,20 +49,35 @@ export function Breakthrough() {
   }, [myMoves, sel])
   const movable = useMemo(() => new Set(myMoves.map(m => m.from)), [myMoves])
   const { w, b } = BT.counts(s.board)
+  const myCount = myColor === 'w' ? w : b
+  const oppCount = myColor === 'w' ? b : w
+
+  // Flip the board so the local player's home rows sit at the bottom.
+  const flip = mySeat !== 0
+  const order = useMemo(
+    () => flip ? Array.from({ length: N * N }, (_, i) => N * N - 1 - i) : Array.from({ length: N * N }, (_, i) => i),
+    [flip],
+  )
 
   function clickCell(i: number) {
     if (!yourTurn) return
     const m = dests.get(i)
-    if (m) { setS(BT.move(s, m, 'w')); setSel(null); return }
-    if (s.board[i] === 'w' && movable.has(i)) { setSel(i === sel ? null : i); return }
+    if (m) { dispatch({ from: m.from, to: m.to }); setSel(null); return }
+    if (s.board[i] === myColor && movable.has(i)) { setSel(i === sel ? null : i); return }
     setSel(null)
   }
 
+  const myWin = s.winner === myColor
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+
   let banner: string, bk = ''
-  if (s.winner === 'w') { bk = 'win'; banner = 'You broke through — you win!' }
-  else if (s.winner === 'b') { bk = 'lose'; banner = 'The rival broke through' }
+  if (s.winner === myColor) { bk = 'win'; banner = 'You broke through — you win!' }
+  else if (s.winner === oppColor) { bk = 'lose'; banner = `${oppLabel} broke through` }
   else if (yourTurn) { bk = 'you'; banner = sel === null ? 'Your turn — pick a pawn' : 'Choose where to advance' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  else { bk = 'foe'; banner = net.online ? `${oppLabel} is moving…` : 'The rival is thinking…' }
+
+  const oppName = oppColor === 'w' ? 'White' : 'Black'
+  const myName = myColor === 'w' ? 'White' : 'Black'
 
   return (
     <>
@@ -75,7 +95,8 @@ export function Breakthrough() {
       >
         <div className="bt-wrap">
           <div className="bt-board">
-            {s.board.map((v, i) => {
+            {order.map((i) => {
+              const v = s.board[i]
               const isDark = ((Math.floor(i / N) + (i % N)) % 2) === 1
               const dest = dests.get(i)
               const cls = 'bt-cell' + (isDark ? ' dark' : ' light')
@@ -94,30 +115,40 @@ export function Breakthrough() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel scoreboard">
-            <div className={'sc b' + (s.turn === 'b' && !s.winner ? ' on' : '')}><span className="sc-pawn b"></span><span className="sc-name">Rival · Black</span><span className="sc-n">{b}</span></div>
-            <div className={'sc w' + (s.turn === 'w' && !s.winner ? ' on' : '')}><span className="sc-pawn w"></span><span className="sc-name">You · White</span><span className="sc-n">{w}</span></div>
+            <div className={'sc ' + oppColor + (s.turn === oppColor && !s.winner ? ' on' : '')}>
+              <span className={'sc-pawn ' + oppColor}></span>
+              <span className="sc-name">{net.online ? 'Opponent' : 'Rival'} · {oppName}</span>
+              <span className="sc-n">{oppCount}</span>
+            </div>
+            <div className={'sc ' + myColor + (s.turn === myColor && !s.winner ? ' on' : '')}>
+              <span className={'sc-pawn ' + myColor}></span>
+              <span className="sc-name">You · {myName}</span>
+              <span className="sc-n">{myCount}</span>
+            </div>
           </div>
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}</div>
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} w={w} b={b} onNew={newGame} />}
+      {s.winner && <ResultModal won={myWin} oppLabel={oppLabel} my={myCount} opp={oppCount} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, w, b, onNew }: { s: BreakthroughState; w: number; b: number; onNew: () => void }) {
-  const won = s.winner === 'w'
+function ResultModal({ won, oppLabel, my, opp, onNew }: { won: boolean; oppLabel: string; my: number; opp: number; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Line broken' : 'Outrun'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {w}</span><span className="foe">Rival {b}</span></div>
+      <div className="finalsc"><span className="you">You {my}</span><span className="foe">{oppLabel} {opp}</span></div>
     </Modal>
   )
 }
@@ -127,9 +158,9 @@ function RulesModal({ onClose }: { onClose: () => void }) {
     <Modal eyebrow="How to play" title="Breakthrough" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Begin</button>}>
       <div className="modal-body">
-        <p>You are <b>White</b> at the bottom and move <i>up</i>. A pawn steps one square <b>straight- or diagonally-forward</b> onto an empty square.</p>
+        <p>March your pawns toward the far rank. A pawn steps one square <b>straight- or diagonally-forward</b> onto an empty square.</p>
         <p>You may <b>capture only on the diagonals</b> — landing on an enemy pawn one step forward-left or forward-right and removing it. You can <b>never</b> capture straight ahead, and there is no double move.</p>
-        <p>The first player to land a pawn on the <b>far home row</b> wins instantly. You also win if the rival has no pieces or no legal move.</p>
+        <p>The first player to land a pawn on the <b>far home row</b> wins instantly. You also win if your opponent has no pieces or no legal move.</p>
         <p><b>Keys:</b> <kbd>N</kbd> new game · <kbd>?</kbd> rules · <kbd>Esc</kbd> deselect / close.</p>
       </div>
     </Modal>

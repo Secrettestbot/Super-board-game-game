@@ -1,16 +1,21 @@
 /* CHECKERS / ENGLISH DRAUGHTS — UI (built for this codebase). Hardwood 8x8 board on the
-   framework shell, glossy red & black discs, vs a minimax alpha-beta AI. Click a piece to
-   see its legal landings; captures are forced and multi-jumps resolve in one move. */
+   framework shell, glossy red & black discs, vs a minimax alpha-beta AI — or a remote human
+   via useGameSession. Click a piece to see its legal landings; captures are forced and
+   multi-jumps resolve in one move. Seat-relative: your side comes from mySeat, the board
+   flips for the Black seat so your discs sit nearest you. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { checkersAdapter } from './net'
 import * as CK from './logic'
-import type { CheckersState, Move } from './logic'
+import type { Move, Side } from './logic'
 
 const { N } = CK
+const SIDE: Side[] = ['r', 'b'] // seat -> side
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -23,53 +28,75 @@ const TITLE_MARK = (
 )
 
 export function Checkers() {
-  const [s, setS] = useState<CheckersState>(() => CK.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(checkersAdapter)
+  const mySide = SIDE[mySeat] // 'r' for seat 0, 'b' for seat 1
+  const oppSide: Side = mySide === 'r' ? 'b' : 'r'
   const [sel, setSel] = useState<number | null>(null)
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(CK.makeGame()); setSel(null); setShowRules(false) }
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
 
-  useAITurn(!s.winner && s.turn === 'b', () => setS(p => CK.aiMove(p)), { delayMs: 520 })
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => { if (showRules) setShowRules(false); else setSel(null) },
   })
 
-  const yourTurn = !s.winner && s.turn === 'r'
+  const yourTurn = !s.winner && isMyTurn
 
-  // all legal moves for the human this turn, and which source squares can move
-  const legal = useMemo(() => (yourTurn ? CK.legalMoves(s.board, 'r') : []), [yourTurn, s.board])
+  // all legal moves for the local player this turn, and which source squares can move
+  const legal = useMemo(() => (yourTurn ? CK.legalMoves(s.board, mySide) : []), [yourTurn, s.board, mySide])
   const movableFrom = useMemo(() => new Set(legal.map(m => m.from)), [legal])
-  // landings (and capture squares) for the currently selected piece
   const selMoves = useMemo<Move[]>(() => (sel == null ? [] : legal.filter(m => m.from === sel)), [sel, legal])
   const targets = useMemo(() => new Set(selMoves.map(m => m.to)), [selMoves])
 
   const c = CK.counts(s.board)
+  const mine = (p: CK.Piece) => (mySide === 'r' ? p === 'r' || p === 'R' : p === 'b' || p === 'B')
 
   function clickCell(i: number) {
     if (!yourTurn) return
     const p = s.board[i]
     // selecting one of your movable pieces
-    if ((p === 'r' || p === 'R') && movableFrom.has(i)) {
+    if (mine(p) && movableFrom.has(i)) {
       setSel(i === sel ? null : i)
       return
     }
     // moving to a highlighted target
     if (sel != null && targets.has(i)) {
       const m = selMoves.find(mv => mv.to === i)!
-      setS(CK.move(s, m, 'r'))
+      dispatch({ from: m.from, to: m.to })
       setSel(null)
     }
   }
 
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+  const myWin = s.winner === mySide
+
   let banner: string, bk = ''
-  if (s.winner === 'r') { bk = 'win'; banner = 'You win — the board is yours' }
-  else if (s.winner === 'b') { bk = 'lose'; banner = 'The rival wins this one' }
-  else if (yourTurn) { bk = 'you'; banner = movableFrom.size ? 'Your turn — move a red disc' : 'Your turn' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  if (s.winner) {
+    if (myWin) { bk = 'win'; banner = 'You win — the board is yours' }
+    else { bk = 'lose'; banner = `${oppLabel} wins this one` }
+  } else if (yourTurn) {
+    bk = 'you'; banner = movableFrom.size ? 'Your turn — move a disc' : 'Your turn'
+  } else {
+    bk = 'foe'; banner = net.online ? `${oppLabel} is moving…` : 'The rival is thinking…'
+  }
 
   const lastSet = s.last ? new Set([s.last.from, s.last.to]) : new Set<number>()
+  // flip the board for the Black seat so the local player's pieces sit at the bottom
+  const flip = mySide === 'b'
+  const order = useMemo(
+    () => Array.from({ length: N * N }, (_, k) => (flip ? N * N - 1 - k : k)),
+    [flip],
+  )
+
+  // scoreboard counts relative to the local player
+  const myCount = mySide === 'r' ? c.r : c.b
+  const oppCount = mySide === 'r' ? c.b : c.r
+  const myKings = mySide === 'r' ? c.rk : c.bk
+  const oppKings = mySide === 'r' ? c.bk : c.rk
+  const myName = mySide === 'r' ? 'Red' : 'Black'
+  const oppName = oppSide === 'r' ? 'Red' : 'Black'
 
   return (
     <>
@@ -87,14 +114,15 @@ export function Checkers() {
       >
         <div className="ck-wrap">
           <div className="ck-board">
-            {s.board.map((p, i) => {
+            {order.map((i) => {
+              const p = s.board[i]
               const dark = (Math.floor(i / N) + (i % N)) % 2 === 1
               const cls =
                 'ck-cell ' + (dark ? 'dark' : 'light') +
                 (i === sel ? ' sel' : '') +
                 (targets.has(i) ? ' target' : '') +
                 (lastSet.has(i) ? ' last' : '')
-              const pickable = yourTurn && ((p === 'r' || p === 'R') && movableFrom.has(i) || targets.has(i))
+              const pickable = yourTurn && ((mine(p) && movableFrom.has(i)) || targets.has(i))
               return (
                 <div key={i} className={cls + (pickable ? ' pick' : '')} onClick={() => clickCell(i)}>
                   {p && (
@@ -110,20 +138,23 @@ export function Checkers() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel scoreboard">
-            <div className={'sc r' + (s.turn === 'r' && !s.winner ? ' on' : '')}>
-              <span className="sc-disc r" />
-              <span className="sc-name">You · Red</span>
-              <span className="sc-n">{c.r}</span>
+            <div className={'sc ' + mySide + (s.turn === mySide && !s.winner ? ' on' : '')}>
+              <span className={'sc-disc ' + mySide} />
+              <span className="sc-name">You · {myName}</span>
+              <span className="sc-n">{myCount}</span>
             </div>
-            <div className={'sc b' + (s.turn === 'b' && !s.winner ? ' on' : '')}>
-              <span className="sc-disc b" />
-              <span className="sc-name">Rival · Black</span>
-              <span className="sc-n">{c.b}</span>
+            <div className={'sc ' + oppSide + (s.turn === oppSide && !s.winner ? ' on' : '')}>
+              <span className={'sc-disc ' + oppSide} />
+              <span className="sc-name">{oppLabel} · {oppName}</span>
+              <span className="sc-n">{oppCount}</span>
             </div>
             <div className="sc-kings">
-              <span>{c.rk} king{c.rk === 1 ? '' : 's'}</span>
-              <span>{c.bk} king{c.bk === 1 ? '' : 's'}</span>
+              <span>{myKings} king{myKings === 1 ? '' : 's'}</span>
+              <span>{oppKings} king{oppKings === 1 ? '' : 's'}</span>
             </div>
           </div>
           <div className="panel logbox">
@@ -132,22 +163,23 @@ export function Checkers() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} c={c} onNew={newGame} />}
+      {s.winner && <ResultModal won={myWin} myName={myName} oppName={oppName} oppLabel={oppLabel} myCount={myCount} oppCount={oppCount} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, c, onNew }: { s: CheckersState; c: ReturnType<typeof CK.counts>; onNew: () => void }) {
-  const won = s.winner === 'r'
+function ResultModal({ won, myName, oppName, oppLabel, myCount, oppCount, onNew }: {
+  won: boolean; myName: string; oppName: string; oppLabel: string; myCount: number; oppCount: number; onNew: () => void
+}) {
   return (
     <Modal
       eyebrow={won ? 'Cleared the board' : 'Boxed in'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">Red {c.r}</span><span className="foe">Black {c.b}</span></div>
+      <div className="finalsc"><span className="you">{myName} {myCount}</span><span className="foe">{oppName} {oppCount}</span></div>
     </Modal>
   )
 }

@@ -7,10 +7,12 @@
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { chineseCheckersAdapter } from './net'
 import * as CC from './logic'
-import type { State, Move, Player } from './logic'
+import type { Move, Player } from './logic'
 
 // ---- pixel layout: project cube coords -> SVG x/y ----
 // axial: px = x + z/2 in "column" units, row = z (using y up). We use the standard
@@ -47,64 +49,62 @@ const TITLE_MARK = (
 )
 
 export function ChineseCheckers() {
-  const [s, setS] = useState<State>(() => CC.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(chineseCheckersAdapter)
+  const me = mySeat as Player          // seat 0 = South/teal, seat 1 = North/coral
+  const foe = (me === 0 ? 1 : 0) as Player
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number | null>(null)
 
-  function newGame() { setS(CC.makeGame()); setSel(null); setShowRules(false) }
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
 
-  // AI is player 1; one move per turn — tick on the move path so it re-arms each turn.
-  useAITurn(
-    s.winner == null && s.turn === 1,
-    () => { setS(p => CC.aiTurn(p, 1)); setSel(null) },
-    { delayMs: 560, tick: s.last },
-  )
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => { setShowRules(false); setSel(null) },
   })
 
-  const yourTurn = s.winner == null && s.turn === 0
+  const yourTurn = s.winner == null && isMyTurn
 
   // moves available for the selected peg -> map of destination id -> full path
   const destPaths = useMemo(() => {
     const m = new Map<number, Move>()
-    if (sel != null && yourTurn && s.board[sel] === 0) {
+    if (sel != null && yourTurn && s.board[sel] === me) {
       for (const path of CC.movesForPeg(s, sel)) m.set(path[path.length - 1], path)
     }
     return m
-  }, [sel, yourTurn, s])
+  }, [sel, yourTurn, s, me])
 
   const lastSet = useMemo(() => new Set(s.last ?? []), [s.last])
-  const youHaveMove = yourTurn && CC.legalMoves(s, 0).length > 0
+  const youHaveMove = yourTurn && CC.legalMoves(s, me).length > 0
 
   function clickHole(id: number) {
     if (!yourTurn) return
-    if (s.board[id] === 0) { setSel(prev => (prev === id ? null : id)); return }
+    if (s.board[id] === me) { setSel(prev => (prev === id ? null : id)); return }
     if (sel != null && destPaths.has(id)) {
-      setS(CC.applyMove(s, destPaths.get(id)!))
+      dispatch({ path: destPaths.get(id)! })
       setSel(null)
     }
   }
 
-  // progress readout: pegs already home in each player's target
-  const youHome = CC.TARGET[0].filter(id => s.board[id] === 0).length
-  const foeHome = CC.TARGET[1].filter(id => s.board[id] === 1).length
+  // progress readout: pegs already home in each player's target (relative to mySeat)
+  const youHome = CC.TARGET[me].filter(id => s.board[id] === me).length
+  const foeHome = CC.TARGET[foe].filter(id => s.board[id] === foe).length
+
+  const foeLabel = net.online ? 'Opponent' : 'Rival'
 
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You Win — the star is yours' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'Rival Wins — they filled the point first' }
+  if (s.winner === me) { bk = 'win'; banner = 'You Win — the star is yours' }
+  else if (s.winner === foe) { bk = 'lose'; banner = `${foeLabel} Wins — they filled the point first` }
   else if (yourTurn) {
     bk = 'you'
     banner = sel != null
       ? (destPaths.size ? 'Click a glowing hole to move there' : 'That peg has no move — pick another')
       : 'Your turn — click one of your pegs'
-  } else { bk = 'foe'; banner = 'Rival is plotting a jump chain…' }
+  } else { bk = 'foe'; banner = `${foeLabel} is plotting a jump chain…` }
 
   const hint = youHaveMove
     ? 'Build a ladder of your own pegs across the board — long jump chains leap the whole field in one move.'
-    : (yourTurn ? 'No moves available.' : 'Watch the coral pegs hop the gaps.')
+    : (yourTurn ? 'No moves available.' : 'Watch the rival pegs hop the gaps.')
 
   return (
     <>
@@ -115,7 +115,7 @@ export function ChineseCheckers() {
         subtitle="race all ten pegs across the hexagram into the opposite point"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={<>You {youHome}/10 &nbsp;·&nbsp; Rival {foeHome}/10</>}
+        modeLeft={<>You {youHome}/10 &nbsp;·&nbsp; {foeLabel} {foeHome}/10</>}
         banner={banner}
         bannerClass={bk}
         modeRight={<>N · new &nbsp; ? · rules</>}
@@ -147,7 +147,7 @@ export function ChineseCheckers() {
                   <circle className={'cc-slot' + homeCls} r={SP * 0.30} />
                   {inLast && <circle className="cc-last" r={SP * 0.42} />}
                   {occ != null && (
-                    <circle className={'cc-peg ' + (occ === 0 ? 'you' : 'foe') + (isSel ? ' sel' : '')}
+                    <circle className={'cc-peg ' + (occ === me ? 'you' : 'foe') + (isSel ? ' sel' : '')}
                       r={SP * 0.34} />
                   )}
                   {isDest && <circle className="cc-dot" r={SP * 0.16} />}
@@ -158,15 +158,16 @@ export function ChineseCheckers() {
         </div>
 
         <div className="side">
+          <div className="panel"><OnlineBar net={net} /></div>
           <div className="panel turnbox">
             <div className={'tn you' + (yourTurn ? ' on' : '')}>
               <span className="tn-chip you" />
-              <span className="tn-name">You · Teal</span>
+              <span className="tn-name">You · {me === 0 ? 'Teal' : 'Coral'}</span>
               <span className="tn-tag">{youHome}/10 home</span>
             </div>
             <div className={'tn foe' + (!yourTurn && s.winner == null ? ' on' : '')}>
               <span className="tn-chip foe" />
-              <span className="tn-name">Rival · Coral</span>
+              <span className="tn-name">{foeLabel} · {foe === 0 ? 'Teal' : 'Coral'}</span>
               <span className="tn-tag">{foeHome}/10 home</span>
             </div>
           </div>
@@ -174,24 +175,23 @@ export function ChineseCheckers() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal winner={s.winner} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={s.winner === me} foeLabel={foeLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ winner, onNew }: { winner: Player; onNew: () => void }) {
-  const won = winner === 0
+function ResultModal({ won, foeLabel, onNew }: { won: boolean; foeLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Point filled' : 'Outraced'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${foeLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
         <span className={won ? 'you' : 'foe'}>
-          {won ? 'All ten pegs reached the far point' : 'The rival filled the point first'}
+          {won ? 'All ten pegs reached the far point' : `The ${foeLabel.toLowerCase()} filled the point first`}
         </span>
       </div>
     </Modal>

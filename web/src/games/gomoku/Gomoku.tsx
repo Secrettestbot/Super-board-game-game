@@ -1,14 +1,17 @@
 /* GOMOKU / FIVE IN A ROW — UI (built for this codebase). A 15x15 wooden goban on the
-   framework shell, vs a pattern/threat AI. Stones sit on the intersections; the winning
-   five lights up at the end. */
+   framework shell, vs a pattern/threat AI or a remote opponent online. Stones sit on the
+   intersections; the winning five lights up at the end. Seat-relative: your stone colour
+   comes from mySeat (0 = Black, 1 = White). */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { gomokuAdapter } from './net'
 import * as GK from './logic'
-import type { GomokuState } from './logic'
+import type { Stone } from './logic'
 
 const { N } = GK
 const STAR = new Set([3 * N + 3, 3 * N + 11, 11 * N + 3, 11 * N + 11, 7 * N + 7])
@@ -23,15 +26,20 @@ const TITLE_MARK = (
 )
 
 export function Gomoku() {
-  const [s, setS] = useState<GomokuState>(() => GK.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(gomokuAdapter)
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(GK.makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  useAITurn(!s.winner && s.turn === 'w', () => setS(p => GK.aiMove(p)), { delayMs: 520 })
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
 
-  const yourTurn = !s.winner && s.turn === 'b'
+  const myStone: Stone = mySeat === 1 ? 'w' : 'b'
+  const oppStone: Stone = myStone === 'b' ? 'w' : 'b'
+  const myName = myStone === 'b' ? 'Black' : 'White'
+  const oppName = oppStone === 'b' ? 'Black' : 'White'
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+
+  const yourTurn = !s.winner && isMyTurn
   const winSet = useMemo(() => new Set(s.win ?? []), [s.win])
   const counts = useMemo(() => {
     let b = 0, w = 0
@@ -39,14 +47,20 @@ export function Gomoku() {
     return { b, w }
   }, [s.board])
 
-  function clickPoint(i: number) { if (yourTurn && !s.board[i]) setS(GK.place(s, i, 'b')) }
+  function clickPoint(i: number) { if (yourTurn && !s.board[i]) dispatch(i) }
+
+  const iWon = s.winner === myStone
+  const oppWon = s.winner === oppStone
 
   let banner: string, bk = ''
-  if (s.winner === 'b') { bk = 'win'; banner = 'Five in a row — you win!' }
-  else if (s.winner === 'w') { bk = 'lose'; banner = 'The rival lines up five — you lose' }
+  if (iWon) { bk = 'win'; banner = 'Five in a row — you win!' }
+  else if (oppWon) { bk = 'lose'; banner = `${oppLabel} lines up five — you lose` }
   else if (s.winner === 'draw') { bk = ''; banner = 'The board is full — a draw' }
-  else if (yourTurn) { bk = 'you'; banner = 'Your turn — place a black stone' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  else if (yourTurn) { bk = 'you'; banner = `Your turn — place a ${myName.toLowerCase()} stone` }
+  else { bk = 'foe'; banner = net.online ? `Waiting for ${oppLabel}…` : `${oppLabel} is thinking…` }
+
+  const myCount = myStone === 'b' ? counts.b : counts.w
+  const oppCount = oppStone === 'b' ? counts.b : counts.w
 
   return (
     <>
@@ -68,7 +82,7 @@ export function Gomoku() {
               {s.board.map((v, i) => {
                 const r = Math.floor(i / N), c = i % N
                 return (
-                  <div key={i} className="gk-pt" onClick={() => clickPoint(i)}>
+                  <div key={i} className={'gk-pt' + (yourTurn && !v ? ' clickable' : '')} onClick={() => clickPoint(i)}>
                     {/* grid lines: half-segments so the outer edges sit flush */}
                     <span className={'gk-h' + (c === 0 ? ' l0' : '') + (c === N - 1 ? ' r0' : '')} />
                     <span className={'gk-v' + (r === 0 ? ' t0' : '') + (r === N - 1 ? ' b0' : '')} />
@@ -84,26 +98,28 @@ export function Gomoku() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel scoreboard">
-            <div className={'sc b' + (s.turn === 'b' && !s.winner ? ' on' : '')}><span className="sc-stone b" /><span className="sc-name">You · Black</span><span className="sc-n">{counts.b}</span></div>
-            <div className={'sc w' + (s.turn === 'w' && !s.winner ? ' on' : '')}><span className="sc-stone w" /><span className="sc-name">Rival · White</span><span className="sc-n">{counts.w}</span></div>
+            <div className={'sc ' + myStone + (s.turn === myStone && !s.winner ? ' on' : '')}><span className={'sc-stone ' + myStone} /><span className="sc-name">You · {myName}</span><span className="sc-n">{myCount}</span></div>
+            <div className={'sc ' + oppStone + (s.turn === oppStone && !s.winner ? ' on' : '')}><span className={'sc-stone ' + oppStone} /><span className="sc-name">{oppLabel} · {oppName}</span><span className="sc-n">{oppCount}</span></div>
           </div>
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}</div>
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {s.winner && <ResultModal won={iWon} draw={s.winner === 'draw'} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: GomokuState; onNew: () => void }) {
-  const won = s.winner === 'b', draw = s.winner === 'draw'
+function ResultModal({ won, draw, oppLabel, onNew }: { won: boolean; draw: boolean; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={draw ? 'Stalemate' : won ? 'Five in a row' : 'Out-played'}
-      title={draw ? 'A Draw' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'A Draw' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
@@ -112,7 +128,7 @@ function ResultModal({ s, onNew }: { s: GomokuState; onNew: () => void }) {
           ? <span className="you">No five was made</span>
           : won
             ? <span className="you">Your five completes the line</span>
-            : <span className="foe">The rival completes its line</span>}
+            : <span className="foe">{oppLabel} completes its line</span>}
       </div>
     </Modal>
   )

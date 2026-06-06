@@ -1,15 +1,19 @@
 /* REVERSI / OTHELLO — UI (built for this codebase). 8x8 felt board on the framework shell,
-   vs a positional alpha-beta AI. Legal squares are hinted; discs flip on capture. */
+   vs a positional alpha-beta AI, or a remote human via useGameSession. Legal squares are
+   hinted; discs flip on capture. Seat 0 plays Black (moves first), seat 1 plays White. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { reversiAdapter } from './net'
 import * as RV from './logic'
-import type { ReversiState } from './logic'
+import type { Disc } from './logic'
 
 const { N } = RV
+const DISC: Disc[] = ['b', 'w'] // seat -> disc
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -20,26 +24,34 @@ const TITLE_MARK = (
 )
 
 export function Reversi() {
-  const [s, setS] = useState<ReversiState>(() => RV.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(reversiAdapter)
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(RV.makeGame()); setShowRules(false) }
+  const myDisc = DISC[mySeat]            // your colour (seat 0 = Black, seat 1 = White)
+  const oppDisc: Disc = myDisc === 'b' ? 'w' : 'b'
+  const myName = myDisc === 'b' ? 'Black' : 'White'
+  const oppName = oppDisc === 'b' ? 'Black' : 'White'
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
 
-  useAITurn(!s.winner && s.turn === 'w', () => setS(p => RV.aiMove(p)), { delayMs: 480 })
+  function newGame() { netNew(); setShowRules(false) }
+
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
 
-  const yourTurn = !s.winner && s.turn === 'b'
-  const legal = useMemo(() => yourTurn ? new Set(RV.legalMoves(s.board, 'b')) : new Set<number>(), [yourTurn, s.board])
+  const yourTurn = !s.winner && isMyTurn
+  const legal = useMemo(() => yourTurn ? new Set(RV.legalMoves(s.board, myDisc)) : new Set<number>(), [yourTurn, s.board, myDisc])
   const { b, w } = RV.counts(s.board)
+  const myN = myDisc === 'b' ? b : w
+  const oppN = myDisc === 'b' ? w : b
 
-  function clickCell(i: number) { if (yourTurn && legal.has(i)) setS(RV.place(s, i, 'b')) }
+  function clickCell(i: number) { if (yourTurn && legal.has(i)) dispatch({ cell: i }) }
 
+  const iWon = s.winner === myDisc
   let banner: string, bk = ''
-  if (s.winner === 'b') { bk = 'win'; banner = `You win — ${b} to ${w}` }
-  else if (s.winner === 'w') { bk = 'lose'; banner = `The rival wins — ${w} to ${b}` }
-  else if (s.winner === 'draw') { bk = ''; banner = `A tie — ${b}–${w}` }
-  else if (yourTurn) { bk = 'you'; banner = 'Your turn — place a black disc' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  if (s.winner === myDisc) { bk = 'win'; banner = `You win — ${myN} to ${oppN}` }
+  else if (s.winner === oppDisc) { bk = 'lose'; banner = `${oppLabel} wins — ${oppN} to ${myN}` }
+  else if (s.winner === 'draw') { bk = ''; banner = `A tie — ${myN}–${oppN}` }
+  else if (yourTurn) { bk = 'you'; banner = `Your turn — place a ${myName.toLowerCase()} disc` }
+  else { bk = 'foe'; banner = net.online ? `${oppLabel} is thinking…` : 'The rival is thinking…' }
 
   return (
     <>
@@ -67,31 +79,32 @@ export function Reversi() {
         </div>
 
         <div className="side">
+          <div className="panel"><OnlineBar net={net} /></div>
           <div className="panel scoreboard">
-            <div className={"sc b" + (s.turn === 'b' && !s.winner ? " on" : "")}><span className="sc-disc b"></span><span className="sc-name">You · Black</span><span className="sc-n">{b}</span></div>
-            <div className={"sc w" + (s.turn === 'w' && !s.winner ? " on" : "")}><span className="sc-disc w"></span><span className="sc-name">Rival · White</span><span className="sc-n">{w}</span></div>
-            <div className="sc-bar"><div className="sc-bar-b" style={{ width: `${(b / (b + w)) * 100}%` }} /></div>
+            <div className={"sc " + myDisc + (s.turn === myDisc && !s.winner ? " on" : "")}><span className={"sc-disc " + myDisc}></span><span className="sc-name">You · {myName}</span><span className="sc-n">{myN}</span></div>
+            <div className={"sc " + oppDisc + (s.turn === oppDisc && !s.winner ? " on" : "")}><span className={"sc-disc " + oppDisc}></span><span className="sc-name">{oppLabel} · {oppName}</span><span className="sc-n">{oppN}</span></div>
+            <div className="sc-bar"><div className="sc-bar-b" style={{ width: `${(myN / (myN + oppN)) * 100}%` }} /></div>
           </div>
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={"log-line " + l.t}>{l.x}</div>)}</div>
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} b={b} w={w} onNew={newGame} />}
+      {s.winner && <ResultModal winner={s.winner} won={iWon} myN={myN} oppN={oppN} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, b, w, onNew }: { s: ReversiState; b: number; w: number; onNew: () => void }) {
-  const won = s.winner === 'b', draw = s.winner === 'draw'
+function ResultModal({ winner, won, myN, oppN, oppLabel, onNew }: { winner: Disc | 'draw'; won: boolean; myN: number; oppN: number; oppLabel: string; onNew: () => void }) {
+  const draw = winner === 'draw'
   return (
     <Modal
       eyebrow={draw ? 'Dead even' : won ? 'Board control' : 'Out-flipped'}
-      title={draw ? 'A Tie' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'A Tie' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {b}</span><span className="foe">Rival {w}</span></div>
+      <div className="finalsc"><span className="you">You {myN}</span><span className="foe">{oppLabel} {oppN}</span></div>
     </Modal>
   )
 }

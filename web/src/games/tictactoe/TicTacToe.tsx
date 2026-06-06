@@ -1,12 +1,14 @@
-/* TIC-TAC-TOE — UI (built for this codebase). 3x3 board on the framework shell, vs a
-   perfect minimax AI. */
+/* TIC-TAC-TOE — UI (built for this codebase). 3x3 board on the framework shell. Solo:
+   you play X vs a perfect minimax AI. Online: the hook fills the empty seat with a
+   remote human and the view is seat-relative (your mark comes from mySeat). */
 
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
-import * as TTT from './logic'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { ticTacToeAdapter } from './net'
 import type { Mark, TTTState } from './logic'
 
 const TITLE_MARK = (
@@ -26,25 +28,32 @@ function CellMark({ m }: { m: Mark }) {
 }
 
 export function TicTacToe() {
-  const [s, setS] = useState<TTTState>(() => TTT.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(ticTacToeAdapter)
+  const myMark: Mark = mySeat === 1 ? 'o' : 'x' // seat 0 = X, seat 1 = O
+  const oppMark: Mark = myMark === 'x' ? 'o' : 'x'
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(TTT.makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  useAITurn(!s.winner && s.turn === 'o', () => setS(p => TTT.aiMove(p)), { delayMs: 420 })
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
 
-  const yourTurn = !s.winner && s.turn === 'x'
-  function clickCell(i: number) { if (yourTurn && !s.board[i]) setS(TTT.place(s, i, 'x')) }
+  const yourTurn = !s.winner && isMyTurn
+  function clickCell(i: number) { if (yourTurn && !s.board[i]) dispatch(i) }
+
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+  const myWin = s.winner === myMark
+  const oppWin = s.winner === oppMark
 
   let banner: string, bk = ''
-  if (s.winner === 'x') { bk = 'win'; banner = 'You win' }
-  else if (s.winner === 'o') { bk = 'lose'; banner = 'The rival wins' }
+  if (myWin) { bk = 'win'; banner = 'You win' }
+  else if (oppWin) { bk = 'lose'; banner = `The ${oppLabel.toLowerCase()} wins` }
   else if (s.winner === 'draw') { bk = ''; banner = 'A draw' }
-  else if (yourTurn) { bk = 'you'; banner = 'Your move — place an X' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  else if (yourTurn) { bk = 'you'; banner = `Your move — place ${myMark === 'x' ? 'an X' : 'an O'}` }
+  else { bk = 'foe'; banner = net.online ? `The ${oppLabel.toLowerCase()} is moving…` : 'The rival is thinking…' }
 
   const lineSet = new Set(s.line || [])
+  const myActive = !s.winner && s.turn === myMark
+  const oppActive = !s.winner && s.turn === oppMark
 
   return (
     <>
@@ -72,42 +81,43 @@ export function TicTacToe() {
         </div>
 
         <div className="side">
+          <OnlineBar net={net} />
           <div className="panel players">
-            <div className={"pl x" + (s.turn === 'x' && !s.winner ? " on" : "")}><span className="pl-mk x">✕</span><span className="pl-name">You · X</span></div>
-            <div className={"pl o" + (s.turn === 'o' && !s.winner ? " on" : "")}><span className="pl-mk o">○</span><span className="pl-name">Rival · O</span></div>
+            <div className={"pl " + myMark + (myActive ? " on" : "")}><span className={"pl-mk " + myMark}>{myMark === 'x' ? '✕' : '○'}</span><span className="pl-name">You · {myMark.toUpperCase()}</span></div>
+            <div className={"pl " + oppMark + (oppActive ? " on" : "")}><span className={"pl-mk " + oppMark}>{oppMark === 'x' ? '✕' : '○'}</span><span className="pl-name">{oppLabel} · {oppMark.toUpperCase()}</span></div>
           </div>
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={"log-line " + l.t}>{l.x}</div>)}</div>
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
-      {showRules && <RulesModal onClose={() => setShowRules(false)} />}
+      {s.winner && <ResultModal winner={s.winner} won={myWin} oppLabel={oppLabel} onNew={newGame} />}
+      {showRules && <RulesModal myMark={myMark} oppLabel={oppLabel} onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: TTTState; onNew: () => void }) {
-  const won = s.winner === 'x', draw = s.winner === 'draw'
+function ResultModal({ winner, won, oppLabel, onNew }: { winner: TTTState['winner']; won: boolean; oppLabel: string; onNew: () => void }) {
+  const draw = winner === 'draw'
   return (
     <Modal
       eyebrow={draw ? 'Stalemate' : won ? 'Against the odds' : 'Outplayed'}
-      title={draw ? 'A Draw' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'A Draw' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc">{draw ? 'Neither side slipped.' : won ? 'You out-thought a perfect player.' : 'Three in a row for the rival.'}</div>
+      <div className="finalsc">{draw ? 'Neither side slipped.' : won ? 'You out-thought your opponent.' : `Three in a row for the ${oppLabel.toLowerCase()}.`}</div>
     </Modal>
   )
 }
 
-function RulesModal({ onClose }: { onClose: () => void }) {
+function RulesModal({ myMark, oppLabel, onClose }: { myMark: Mark; oppLabel: string; onClose: () => void }) {
   return (
     <Modal eyebrow="How to play" title="Tic-Tac-Toe" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Begin</button>}>
       <div className="modal-body">
-        <p>Take turns marking the squares of a 3×3 grid. You are <b>X</b> and move first; the rival is <b>O</b>.</p>
+        <p>Take turns marking the squares of a 3×3 grid. You are <b>{myMark.toUpperCase()}</b>; the {oppLabel.toLowerCase()} is <b>{myMark === 'x' ? 'O' : 'X'}</b>. X moves first.</p>
         <p>The first to line up <b>three of their mark</b> in a row — across, down, or diagonally — wins. Fill the grid with no line and it's a draw.</p>
-        <p>The rival plays a <i>perfect</i> game, so flawless play ends level. One slip and it pounces.</p>
+        <p>Solo, the rival plays a <i>perfect</i> game, so flawless play ends level. One slip and it pounces.</p>
         <p><b>Keys:</b> <kbd>N</kbd> new game · <kbd>?</kbd> rules · <kbd>Esc</kbd> close.</p>
       </div>
     </Modal>
