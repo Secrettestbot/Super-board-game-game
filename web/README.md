@@ -59,6 +59,31 @@ npm run build     # type-check + production build to dist/
 npm run preview   # serve the production build
 ```
 
+## Online play (serverless P2P)
+
+Every multiplayer-capable game (142 of the 148 — the 6 single-player puzzles have no second
+seat) can be played **online against another person, with no game server**. The model is
+**host-authoritative**: the host runs the real `logic.ts`, each guest sends move *intents* and
+renders a per-seat *view*, and any unfilled seats keep playing as the existing AI (so a 6-player
+game can be 2 humans + 4 bots). Solo-vs-AI play is unchanged.
+
+How to connect (manual signaling, no broker):
+
+1. The host opens a game and clicks **Host online** → gets a shareable link (`…/chess.html#offer=…`).
+2. A friend opens that link; their browser generates an **answer code** to send back.
+3. The host pastes the answer code → connected. (Repeat per guest for 3+ player games.)
+
+Players connect **peer-to-peer over WebRTC**; public STUN is used only for NAT discovery (no game
+data passes through it). Hidden-information games (cards, hidden roles, dice cups, Stratego ranks,
+Hanabi's own-hand, Battleship's fleet, …) send each player only a **redacted view** so secrets
+never cross the wire — guarded by per-game leak tests.
+
+**Hosting:** the static build deploys to **GitHub Pages** via `.github/workflows/pages.yml`
+(enable once in repo *Settings → Pages → Build and deployment: GitHub Actions*). Live WebRTC needs
+a real browser pair, so the connection itself is proven by **deterministic host+guest integration
+tests** over an in-memory transport (`src/net/transport.ts`'s `memoryPair`); the per-game recipe is
+in [`src/net/PORTING.md`](src/net/PORTING.md).
+
 ## How it's organized
 
 It's a **multi-page app** (Vite MPA): the library is the root entry and every game is
