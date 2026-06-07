@@ -1,0 +1,234 @@
+/* ==========================================================
+   TAK — "Stack stones, raise walls, build a road."
+   Theme: warm wood + stone. Carved walnut board, sanded maple cells, cream/amber
+   stones for You, slate-grey for the Rival, a brass-ringed capstone, and a glowing
+   road on victory. Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #1b140d;
+  --bg-2:    #130d08;
+  --panel:   #2a1f14;
+  --panel-2: #211810;
+  --ink:     #f4ecdf;
+  --ink-2:   #c9b89c;
+  --ink-3:   #8a775c;
+  --line:    #3a2c1c;
+  --line-2:  #564026;
+
+  /* token contract -> warm brass primary, dark text on it */
+  --accent:    #e0a850;  --accent-d:#a9762c;  --accent-hi:#f3c878;  --accent-ink:#2a1c08;
+  --trim:      #d98a4e;  --trim-hi:#f0b27a;
+  --you:       #e9c486;  --foe:#9fb0bd;
+  --good:      #8fd49a;  --warn:#e08a6a;
+
+  /* game-specific */
+  --wood:      #3a2a1a;  --wood-2:#2c2012;  --wood-edge:#6b4a2a;
+  --cell:      #c8a877;  --cell-2:#b89866;  --cell-line:#8a6a3e;
+  --you-stone: #f0d9a8;  --you-stone-d:#b89048;  --you-stone-ink:#5a3f10;
+  --foe-stone: #aeb9c4;  --foe-stone-d:#5e6b78;  --foe-stone-ink:#1b2229;
+  --cap-ring:  #e8c252;
+  --road-glow: #ffd97a;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(224,168,80,0.09) 0%, transparent 50%),
+    radial-gradient(ellipse at 14% 112%, rgba(217,138,78,0.06) 0%, transparent 45%),
+    radial-gradient(ellipse at 86% 115%, rgba(159,176,189,0.05) 0%, transparent 45%);
+}
+
+.stage { grid-template-columns: auto 244px; gap: clamp(16px, 2.4vw, 34px); }
+.side { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.logbox { flex: 1; min-height: 60px; overflow-y: auto; display: flex; flex-direction: column-reverse; gap: 2px; }
+
+/* ---- Board ---- */
+.tk-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.tk-boardframe {
+  --cellsz: clamp(46px, min(11vh, 9.2vw), 92px);
+  padding: clamp(12px, 1.6vw, 20px);
+  background: linear-gradient(155deg, var(--wood), var(--wood-2));
+  border: 3px solid var(--wood-edge);
+  border-radius: 18px;
+  box-shadow: 0 20px 54px rgba(0,0,0,0.55), inset 0 2px 0 rgba(255,255,255,0.05), inset 0 -3px 8px rgba(0,0,0,0.4);
+}
+.tk-board {
+  display: grid;
+  grid-template-columns: repeat(5, var(--cellsz));
+  grid-template-rows: repeat(5, var(--cellsz));
+  gap: clamp(4px, 0.6vw, 8px);
+}
+
+.tk-sq {
+  position: relative;
+  border-radius: 9px;
+  background: linear-gradient(160deg, var(--cell), var(--cell-2));
+  border: 1.5px solid var(--cell-line);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -2px 4px rgba(0,0,0,0.22);
+  display: flex; align-items: center; justify-content: center;
+  transition: box-shadow 0.12s, transform 0.08s, filter 0.12s;
+}
+.tk-sq.clickable { cursor: pointer; }
+.tk-sq.clickable:hover { filter: brightness(1.06); box-shadow: inset 0 0 0 2px var(--accent-hi), inset 0 -2px 4px rgba(0,0,0,0.22); }
+.tk-sq.last { box-shadow: inset 0 0 0 2px rgba(240,178,122,0.55), inset 0 -2px 4px rgba(0,0,0,0.22); }
+.tk-sq.picked { box-shadow: inset 0 0 0 3px var(--accent), 0 0 14px rgba(224,168,80,0.4); }
+.tk-sq.adjdir { box-shadow: inset 0 0 0 2px var(--good); cursor: pointer; }
+.tk-sq.droptarget { box-shadow: inset 0 0 0 3px var(--good), 0 0 14px rgba(143,212,154,0.45); cursor: pointer; animation: tk-pulse 1.1s ease-in-out infinite; }
+@keyframes tk-pulse { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.14); } }
+.tk-sq.road {
+  box-shadow: inset 0 0 0 3px var(--road-glow), 0 0 20px rgba(255,217,122,0.6);
+  animation: tk-road 1.4s ease-in-out infinite;
+}
+@keyframes tk-road { 0%,100% { filter: brightness(1.04); } 50% { filter: brightness(1.22); } }
+
+.tk-empty { width: 0; height: 0; }
+
+/* ---- Pieces ---- */
+.tk-piece {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+}
+/* FLAT: a fat low disc lying flat */
+.tk-piece.flat {
+  width: 64%; height: 64%;
+  border-radius: 50%;
+}
+.tk-piece.you.flat {
+  background: radial-gradient(circle at 38% 32%, #fff3d8, var(--you-stone) 60%, var(--you-stone-d));
+  border: 2px solid var(--you-stone-d);
+  box-shadow: 0 3px 6px rgba(0,0,0,0.35), inset 0 2px 3px rgba(255,255,255,0.6);
+}
+.tk-piece.foe.flat {
+  background: radial-gradient(circle at 38% 32%, #e2e9ef, var(--foe-stone) 60%, var(--foe-stone-d));
+  border: 2px solid var(--foe-stone-d);
+  box-shadow: 0 3px 6px rgba(0,0,0,0.35), inset 0 2px 3px rgba(255,255,255,0.45);
+}
+/* WALL: a tall thin slab standing on edge */
+.tk-piece.wall {
+  width: 26%; height: 72%;
+  border-radius: 4px;
+  transform: rotate(-14deg);
+}
+.tk-piece.you.wall {
+  background: linear-gradient(100deg, #fff3d8, var(--you-stone) 55%, var(--you-stone-d));
+  border: 2px solid var(--you-stone-d);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.5);
+}
+.tk-piece.foe.wall {
+  background: linear-gradient(100deg, #e2e9ef, var(--foe-stone) 55%, var(--foe-stone-d));
+  border: 2px solid var(--foe-stone-d);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.4);
+}
+/* CAPSTONE: a tall rounded crown with a brass ring dot */
+.tk-piece.cap {
+  width: 52%; height: 52%;
+  border-radius: 50% 50% 48% 48%;
+}
+.tk-piece.you.cap {
+  background: radial-gradient(circle at 36% 28%, #fff6df, var(--you-stone) 55%, var(--you-stone-d));
+  border: 2.5px solid var(--cap-ring);
+  box-shadow: 0 4px 9px rgba(0,0,0,0.45), 0 0 8px rgba(232,194,82,0.4), inset 0 2px 3px rgba(255,255,255,0.6);
+}
+.tk-piece.foe.cap {
+  background: radial-gradient(circle at 36% 28%, #eef3f8, var(--foe-stone) 55%, var(--foe-stone-d));
+  border: 2.5px solid var(--cap-ring);
+  box-shadow: 0 4px 9px rgba(0,0,0,0.45), 0 0 8px rgba(232,194,82,0.4), inset 0 2px 3px rgba(255,255,255,0.5);
+}
+.tk-cap-dot {
+  width: 30%; height: 30%; border-radius: 50%;
+  background: var(--cap-ring);
+  box-shadow: 0 0 6px rgba(232,194,82,0.8);
+}
+
+/* stack height badge */
+.tk-count {
+  position: absolute; top: 2px; right: 4px;
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  color: var(--ink); background: rgba(20,12,4,0.7);
+  border-radius: 6px; padding: 0 4px; line-height: 1.4;
+  border: 1px solid var(--line-2); z-index: 3;
+}
+/* buried-piece bar (owner-colored segments) */
+.tk-stackbar {
+  position: absolute; left: 4px; bottom: 3px;
+  display: flex; gap: 2px; z-index: 2;
+}
+.tk-seg { width: 5px; height: 5px; border-radius: 1.5px; }
+.tk-seg.you { background: var(--you-stone); border: 1px solid var(--you-stone-d); }
+.tk-seg.foe { background: var(--foe-stone); border: 1px solid var(--foe-stone-d); }
+
+/* ---- Side panels ---- */
+.panel-l { margin-bottom: 8px; }
+
+.tk-supply { display: flex; flex-direction: column; gap: 7px; }
+.tk-srow {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 9px; border-radius: 9px;
+  background: var(--bg-2); border: 1.5px solid var(--line);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.tk-srow.on { border-color: var(--accent-d); box-shadow: 0 0 0 1px rgba(224,168,80,0.3); }
+.tk-pawn { width: 16px; height: 16px; border-radius: 50%; flex: none; }
+.tk-pawn.you { background: radial-gradient(circle at 36% 30%, #fff3d8, var(--you-stone) 60%, var(--you-stone-d)); border: 1.5px solid var(--you-stone-d); }
+.tk-pawn.foe { background: radial-gradient(circle at 36% 30%, #e2e9ef, var(--foe-stone) 60%, var(--foe-stone-d)); border: 1.5px solid var(--foe-stone-d); }
+.tk-who { font-weight: 600; font-size: 13px; color: var(--ink); flex: 1; }
+.tk-cnt {
+  font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--accent-hi);
+  display: flex; flex-direction: column; align-items: center; line-height: 1.05; min-width: 36px;
+}
+.tk-cl { font-size: 8px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+
+.tk-control { display: flex; flex-direction: column; gap: 10px; }
+.tk-types { display: flex; flex-direction: column; gap: 6px; }
+.tk-type {
+  display: flex; align-items: center; gap: 9px;
+  font-family: var(--sans); font-size: 13px; font-weight: 600; color: var(--ink-2);
+  padding: 8px 10px; cursor: pointer; text-align: left;
+  background: var(--bg-2); border: 1.5px solid var(--line); border-radius: 9px;
+  transition: all 0.12s;
+}
+.tk-type:hover:not(:disabled) { border-color: var(--line-2); color: var(--ink); }
+.tk-type.sel { border-color: var(--accent); color: var(--ink); background: rgba(224,168,80,0.12); box-shadow: 0 0 0 1px rgba(224,168,80,0.35); }
+.tk-type:disabled { opacity: 0.4; cursor: not-allowed; }
+.tk-ico { width: 18px; height: 18px; flex: none; display: inline-block; }
+.tk-ico.flat { border-radius: 50%; background: radial-gradient(circle at 36% 30%, #fff3d8, var(--you-stone) 60%, var(--you-stone-d)); border: 2px solid var(--you-stone-d); }
+.tk-ico.wall { width: 8px; height: 18px; border-radius: 2px; transform: rotate(-14deg); background: linear-gradient(100deg, #fff3d8, var(--you-stone) 55%, var(--you-stone-d)); border: 2px solid var(--you-stone-d); }
+.tk-ico.cap { border-radius: 50% 50% 48% 48%; background: radial-gradient(circle at 36% 28%, #fff6df, var(--you-stone) 55%, var(--you-stone-d)); border: 2px solid var(--cap-ring); }
+
+.tk-hint { font-size: 11px; line-height: 1.5; color: var(--ink-3); }
+.tk-hint b { color: var(--accent-hi); }
+
+.tk-moveui { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 9px; }
+.tk-carry { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); font-weight: 600; }
+.tk-carrybtns { display: flex; gap: 4px; }
+.tk-cbtn {
+  font-family: var(--mono); font-size: 12px; font-weight: 600;
+  width: 26px; height: 26px; cursor: pointer;
+  background: var(--bg-2); color: var(--ink-2); border: 1.5px solid var(--line); border-radius: 7px;
+  transition: all 0.1s;
+}
+.tk-cbtn:hover { border-color: var(--line-2); color: var(--ink); }
+.tk-cbtn.sel { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+.tk-mvbtns { display: flex; gap: 7px; }
+.tk-btn {
+  flex: 1; font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; padding: 9px; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink); border: none; border-radius: 8px;
+  transition: filter 0.12s, opacity 0.12s;
+}
+.tk-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.tk-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.tk-btn.ghost { background: var(--panel); color: var(--ink-2); border: 1.5px solid var(--line-2); }
+
+/* ---- Result modal extras ---- */
+.finalsc { font-size: 15px; text-align: center; margin: 4px 0 10px; color: var(--ink-2); }
+.finalsc .you { color: var(--accent-hi); font-weight: 600; }
+.finalsc .foe { color: var(--foe); font-weight: 600; }
+.tk-final-flats { font-family: var(--mono); font-size: 12px; text-align: center; color: var(--ink-3); }

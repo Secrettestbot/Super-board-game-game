@@ -1,0 +1,122 @@
+/* ==========================================================
+   HAVANNAH — "Bridge. Fork. Ring."
+   Theme: warm dusk over a cool slate hex-field. You are EMBER (warm amber/coral); the AI is
+   FROST (cool steel-cyan). The board is a hexagon of pointy-top hex cells, corners and edges
+   subtly marked, the winning structure lit in gold.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Shared structural classes live in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #11131c;
+  --bg-2:    #0a0b12;
+  --panel:   #1a1e2b;
+  --panel-2: #14171f;
+  --ink:     #f0eef0;
+  --ink-2:   #b3aeb8;
+  --ink-3:   #6c6678;
+  --line:    #2a2c3b;
+  --line-2:  #3a3d4f;
+
+  /* token contract -> this theme (ember warm primary, dark ink on it) */
+  --accent:    #e8743c;  --accent-d:#b04d1f;  --accent-hi:#ff9c63;  --accent-ink:#2a1206;
+  --trim:      #e8a13c;  --trim-hi:#ffc874;
+  --you:       #ff9c63;  --foe:#76c7d6;
+  --good:      #ffcf57;  --warn:#e8894e;
+
+  /* game-specific */
+  --ember:    #e8743c;  --ember-d:#a8451c;  --ember-hi:#ffac74;
+  --frost:    #5fa8c4;  --frost-d:#356678;  --frost-hi:#9bd6e6;
+  --hexface:  #20242f;  --hexface-2:#171a23;  --hexline:#33384a;
+  --hex-corner: #3a3144;  --hex-edge: #2c2f3e;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(232,116,60,0.09) 0%, transparent 52%),
+    radial-gradient(ellipse at 8% 110%, rgba(95,168,196,0.07) 0%, transparent 48%),
+    radial-gradient(ellipse at 92% 110%, rgba(95,168,196,0.07) 0%, transparent 48%);
+}
+
+.stage { grid-template-columns: auto 232px; gap: clamp(16px, 2.4vw, 36px); }
+
+.hv-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+
+.hv-frame {
+  position: relative;
+  padding: 14px;
+  border-radius: 16px;
+  background: linear-gradient(160deg, #181c28, #0e1119);
+  border: 1.5px solid var(--line);
+  box-shadow: 0 18px 50px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+.hv-svg { display: block; width: clamp(320px, min(64vh, 52vw), 620px); height: auto; }
+
+/* hex cell faces (SVG polygons) */
+.hv-cell { cursor: default; transition: filter 0.12s; }
+.hv-cell.playable { cursor: pointer; }
+.hv-face {
+  fill: var(--hexface);
+  stroke: var(--hexline);
+  stroke-width: 1.2;
+  transition: fill 0.12s, stroke 0.12s;
+}
+.hv-cell.corner .hv-face { fill: var(--hex-corner); stroke: #4a4258; }
+.hv-cell.edge   .hv-face { fill: var(--hex-edge);   stroke: #3a3d50; }
+.hv-cell.playable:hover .hv-face { fill: #2c3242; filter: brightness(1.15); }
+
+/* stones */
+.hv-stone { transition: opacity 0.12s; }
+.hv-stone.p0 { fill: url(#emberGrad); }
+.hv-stone.p1 { fill: url(#frostGrad); }
+.hv-stone-ring { fill: none; stroke: rgba(0,0,0,0.35); stroke-width: 1.4; }
+
+/* last-move marker */
+.hv-cell.last .hv-face { stroke: var(--accent-hi); stroke-width: 2.2; }
+
+/* winning structure highlight */
+.hv-cell.win .hv-face { fill: #4a3a17; stroke: var(--good); stroke-width: 2.4; }
+.hv-cell.win .hv-stone { filter: drop-shadow(0 0 5px rgba(255,207,87,0.9)); }
+
+/* corner / edge dot cue */
+.hv-mark { pointer-events: none; }
+.hv-mark.corner { fill: var(--ember-hi); opacity: 0.5; }
+.hv-mark.edge   { fill: var(--frost-hi); opacity: 0.28; }
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.players { display: flex; flex-direction: column; gap: 9px; }
+.pl { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--line); }
+.pl.p0.on { border-color: var(--ember); box-shadow: 0 0 0 1px var(--ember); }
+.pl.p1.on { border-color: var(--frost); box-shadow: 0 0 0 1px var(--frost); }
+.pl-stone { width: 20px; height: 20px; border-radius: 50%; flex: 0 0 auto; }
+.pl-stone.p0 { background: radial-gradient(circle at 36% 30%, var(--ember-hi), var(--ember) 55%, var(--ember-d)); }
+.pl-stone.p1 { background: radial-gradient(circle at 36% 30%, var(--frost-hi), var(--frost) 55%, var(--frost-d)); }
+.pl-txt { display: flex; flex-direction: column; line-height: 1.25; }
+.pl-txt b { font-family: var(--display); font-weight: 600; font-size: 14px; }
+.pl-txt i { font-family: var(--mono); font-style: normal; font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+
+.goals { display: flex; flex-direction: column; gap: 7px; }
+.goal { display: flex; align-items: baseline; gap: 8px; font-size: 11.5px; color: var(--ink-2); }
+.goal b { font-family: var(--display); font-weight: 600; color: var(--trim-hi); font-size: 12px; min-width: 46px; }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 150px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--ember-hi); }
+.log-line.ai { color: var(--frost-hi); }
+.log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; margin: 12px 0; font-family: var(--display); font-weight: 600; font-size: 19px; }
+.finalsc .you { color: var(--ember-hi); }
+.finalsc .foe { color: var(--frost-hi); }
+.modal-body i { color: var(--ember-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

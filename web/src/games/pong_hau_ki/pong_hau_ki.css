@@ -1,0 +1,95 @@
+/* ==========================================================
+   PONG HAU K'I — "Trap the rival."
+   Theme: warm aged-wood board, a clean square + X, red & blue lacquered discs.
+   Display: Noto Serif · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #14110d;
+  --bg-2:    #0c0a07;
+  --panel:   #241d15;
+  --panel-2: #1b150f;
+  --ink:     #f3ece0;
+  --ink-2:   #c0ac90;
+  --ink-3:   #7d6b53;
+  --line:    #312618;
+  --line-2:  #4a3a25;
+
+  /* token contract -> this theme (warm amber primary, dark text on accent) */
+  --accent:  #d79a3e;  --accent-d:#a06f1e;  --accent-hi:#f0bd66;  --accent-ink:#231603;
+  --trim:    #d79a3e;  --trim-hi:#f0bd66;
+  --you:     #e7765a;  --foe:#7fa6dc;
+  --good:    #7cc28d;  --warn:#e0894e;
+
+  /* game-specific */
+  --red:     #d8543f;  --red-hi:#f0795f;  --red-d:#9c3322;
+  --blue:    #4f80c8;  --blue-hi:#74a2e6;  --blue-d:#2f578f;
+  --wood:    #6f5532;  --wood-edge:#8a6f4e;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Noto Serif", Georgia, serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(ellipse at 50% -8%, rgba(215,154,62,0.06) 0%, transparent 52%), radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 230px; gap: clamp(18px, 2.6vw, 38px); }
+
+/* board */
+.phk-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.phk-board {
+  width: clamp(280px, min(62vh, 46vw), 440px);
+  height: clamp(280px, min(62vh, 46vw), 440px);
+  background: radial-gradient(circle at 42% 32%, #3a2c19, #251b10 78%);
+  border: 2px solid #15100a;
+  border-radius: 16px;
+  box-shadow: 0 16px 44px rgba(0,0,0,0.6), inset 0 0 60px rgba(0,0,0,0.35);
+  padding: 4px;
+}
+
+.phk-edge { stroke: var(--wood-edge); stroke-width: 1.1; stroke-linecap: round; opacity: 0.85; }
+.phk-node { fill: #d9c39a; stroke: #1c140b; stroke-width: 0.5; }
+.phk-hit { fill: transparent; }
+
+.phk-point { cursor: default; }
+.phk-point.movable, .phk-point.target { cursor: pointer; }
+.phk-point.target:hover .phk-dot { opacity: 1; }
+
+.phk-dot { fill: var(--accent-hi); opacity: 0.7; animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 0.5; r: 2.7px; } 50% { opacity: 0.95; r: 3.4px; } }
+
+.phk-disc { stroke-width: 0.7; transition: transform 0.12s; }
+.phk-disc.r { fill: var(--red); stroke: var(--red-d); filter: drop-shadow(0 1.5px 1.5px rgba(0,0,0,0.5)); }
+.phk-disc.b { fill: var(--blue); stroke: var(--blue-d); filter: drop-shadow(0 1.5px 1.5px rgba(0,0,0,0.5)); }
+.phk-point.movable .phk-disc.r { stroke: var(--red-hi); stroke-width: 1.1; }
+.phk-point.movable:hover .phk-disc.r { filter: drop-shadow(0 0 4px rgba(240,121,95,0.7)); }
+.phk-point.sel .phk-disc { stroke: var(--accent-hi); stroke-width: 1.6; }
+.phk-point.sel .phk-disc.r { filter: drop-shadow(0 0 5px rgba(240,189,102,0.8)); }
+.phk-point.last .phk-disc { stroke: var(--accent-hi); stroke-width: 1.3; }
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.turnbox { display: flex; flex-direction: column; gap: 9px; }
+.tn { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.tn.r.on { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
+.tn.b.on { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
+.tn-disc { width: 18px; height: 18px; border-radius: 50%; flex: 0 0 auto; }
+.tn-disc.r { background: radial-gradient(circle at 38% 30%, var(--red-hi), var(--red)); border: 1px solid var(--red-d); }
+.tn-disc.b { background: radial-gradient(circle at 38% 30%, var(--blue-hi), var(--blue)); border: 1px solid var(--blue-d); }
+.tn-name { font-family: var(--display); font-weight: 700; font-size: 14px; flex: 1; }
+.tn-hint { font-size: 11px; line-height: 1.5; color: var(--ink-3); font-style: italic; padding: 2px 2px 0; }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 150px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--red-hi); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalmsg { text-align: center; margin: 12px 0; font-family: var(--display); font-size: 17px; color: var(--ink-2); }
+.modal-body i { color: var(--accent-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

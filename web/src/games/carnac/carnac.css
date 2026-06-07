@@ -1,0 +1,113 @@
+/* ==========================================================
+   CARNAC — "Standing stones at dusk."
+   Theme: a windswept Breton field, dusk-violet sky over a grassy grid; pale upright
+   menhirs (you, vertical) and low grey dolmens (rival, horizontal).
+   Display: Marcellus · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #14130f;
+  --bg-2:    #0c0b08;
+  --panel:   #20211a;
+  --panel-2: #191a14;
+  --ink:     #f1efe4;
+  --ink-2:   #b7b6a0;
+  --ink-3:   #74745f;
+  --line:    #2c2d22;
+  --line-2:  #41432f;
+
+  /* token contract -> this theme (warm dusk gold primary, dark text) */
+  --accent:  #d6a85c;  --accent-d:#a87c22;  --accent-hi:#f0cc83;  --accent-ink:#241803;
+  --trim:    #d6a85c;  --trim-hi:#f0cc83;
+  --you:     #efe6cf;  --foe:#aab1a0;
+  --good:    #7fc28a;  --warn:#dd8a4c;
+
+  /* game-specific */
+  --grass:   #38492a;  --grass-2:#2c3a22;  --grass-line:#46582f;
+  --menhir:  #d9d2bf;  --menhir-d:#9b9580;  --menhir-cap:#efe9da;
+  --dolmen:  #9aa091;  --dolmen-d:#6c7164;  --dolmen-cap:#b7bcab;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Marcellus", "Caudex", Georgia, serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(108,82,140,0.22) 0%, transparent 54%),
+    radial-gradient(ellipse at 50% 118%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 230px; gap: clamp(18px, 2.6vw, 38px); }
+
+.ck-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.ck-board {
+  --cell: clamp(34px, min(9vh, 6.6vw), 64px);
+  display: grid;
+  grid-template-columns: repeat(var(--cols), var(--cell));
+  grid-template-rows: repeat(var(--rows), var(--cell));
+  gap: 2px; padding: 11px;
+  background: linear-gradient(180deg, var(--grass-line), var(--grass-2));
+  border: 2px solid #1f2a16; border-radius: 13px;
+  box-shadow: 0 18px 48px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.ck-cell {
+  background: radial-gradient(circle at 50% 34%, var(--grass), var(--grass-2));
+  display: flex; align-items: center; justify-content: center;
+  position: relative; cursor: default; border-radius: 3px;
+}
+.ck-cell.hint { cursor: pointer; }
+.ck-cell.hint:hover { background: radial-gradient(circle at 50% 34%, #4a6038, #38492a); }
+.ck-cell.last::after {
+  content: ""; position: absolute; inset: 9%; border-radius: 4px;
+  box-shadow: inset 0 0 0 2px rgba(240,204,131,0.65); pointer-events: none;
+}
+
+/* placed stones — menhir vertical (tall, light), dolmen horizontal (low, grey) */
+.ck-stone { width: 70%; height: 70%; animation: rise 0.18s ease-out; }
+.ck-stone.m {
+  width: 56%; height: 86%; border-radius: 7px 7px 4px 4px;
+  background: linear-gradient(180deg, var(--menhir-cap), var(--menhir) 30%, var(--menhir-d));
+  box-shadow: 0 3px 5px rgba(0,0,0,0.5), inset 0 -3px 5px rgba(0,0,0,0.28), inset 0 2px 2px rgba(255,255,255,0.3);
+  border: 1px solid #7c7560;
+}
+.ck-stone.d {
+  width: 86%; height: 52%; border-radius: 6px;
+  background: linear-gradient(180deg, var(--dolmen-cap), var(--dolmen) 38%, var(--dolmen-d));
+  box-shadow: 0 3px 5px rgba(0,0,0,0.5), inset 0 -3px 5px rgba(0,0,0,0.28), inset 0 2px 2px rgba(255,255,255,0.22);
+  border: 1px solid #565b4e;
+}
+@keyframes rise { from { transform: scale(0.6); opacity: 0.4; } to { transform: none; opacity: 1; } }
+
+.ck-ghost {
+  width: 40%; height: 64%; border-radius: 6px;
+  background: rgba(240,204,131,0.16);
+  box-shadow: inset 0 0 0 1.5px rgba(240,204,131,0.5);
+}
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.turnbox { display: flex; flex-direction: column; gap: 9px; }
+.tt { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.tt.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.tt-glyph { flex: 0 0 auto; }
+.tt-glyph.m { width: 13px; height: 22px; border-radius: 4px 4px 2px 2px; background: linear-gradient(180deg, var(--menhir-cap), var(--menhir-d)); border: 1px solid #7c7560; }
+.tt-glyph.d { width: 22px; height: 12px; border-radius: 3px; background: linear-gradient(180deg, var(--dolmen-cap), var(--dolmen-d)); border: 1px solid #565b4e; }
+.tt-name { font-family: var(--display); font-weight: 600; font-size: 14px; flex: 1; letter-spacing: 0.2px; }
+.tt-n { font-family: var(--display); font-size: 21px; color: var(--ink); }
+.tt-cap { font-size: 10.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 1.2px; text-align: center; padding-top: 2px; }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 150px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--accent-hi); } .log-line.ai { color: var(--ink-2); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; margin: 12px 0; font-family: var(--display); font-size: 18px; text-align: center; }
+.finalsc .you { color: var(--accent-hi); } .finalsc .foe { color: var(--foe); }
+.modal-body i { color: var(--accent-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

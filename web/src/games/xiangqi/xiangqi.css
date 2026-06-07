@@ -1,0 +1,85 @@
+/* ==========================================================
+   XIANGQI — "Cross the river."
+   Theme: a lacquered hardwood xiangqi board, honey lines, ivory discs with carved glyphs —
+   red for you, ebony-ink for the rival. The river runs across the middle.
+   Display: Noto Serif SC fallback -> serif · Body: Inter · Mono: JetBrains Mono.
+
+   Shared page skeleton lives in ../../framework/tokens.css; this file supplies the token
+   values, the board/piece classes, and a few overrides where this game differs.
+   ========================================================== */
+
+:root {
+  --bg:      #1b140d;
+  --bg-2:    #120c07;
+  --panel:   #2a2014;
+  --panel-2: #201810;
+  --ink:     #f1e7d3;
+  --ink-2:   #bcab90;
+  --ink-3:   #80715a;
+  --line:    #38291a;
+  --line-2:  #4e3a23;
+
+  /* token contract -> this theme */
+  --accent:  #b0331f;  --accent-d:#8a2818;  --accent-hi:#d8543a;
+  --trim:    #d8a44e;  --trim-hi:#f1cd72;
+  --you:     #d8543a;  --foe:#bcab90;
+  --good:    #7ac08a;  --warn:#e0894e;
+
+  /* game-specific */
+  --board:   #e3c88f;  --board-2:#d8ba78;  --gline:#7a5226;
+  --disc:    #f0e2c4;  --disc-edge:#b89058;
+  --red:     #b0331f;  --red-hi:#d8543a;
+  --black:   #2a2620;  --black-hi:#4a4438;
+  --gold:    #d8a44e;  --gold-d:#a87c1e;  --gold-hi:#f1cd72;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Noto Serif SC", "Songti SC", serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(ellipse at 50% -8%, rgba(216,164,78,0.08) 0%, transparent 52%), radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.5) 0%, transparent 55%);
+}
+
+.app { max-width: 1040px; }
+
+/* slightly heavier banner than the framework default */
+.turn-banner { font-size: 21px; font-weight: 700; }
+
+.stage { grid-template-columns: auto 220px; gap: clamp(18px, 2.6vw, 38px); }
+.boardwrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.board { position: relative; --bw: clamp(280px, min(58vh, 44vw), 470px); width: var(--bw); height: calc(var(--bw) * 1.11); }
+.grid { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 14px 36px rgba(0,0,0,0.55)); }
+.board-bg { fill: var(--board); stroke: #6a4520; stroke-width: 1; }
+.gl { stroke: var(--gline); stroke-width: 0.5; }
+.river-t { fill: #7a5226; font-family: var(--display); font-size: 4.6px; letter-spacing: 1px; opacity: 0.7; }
+
+.points { position: absolute; inset: 0; }
+.pt { position: absolute; width: 11%; height: 9.9%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.pc { width: 92%; height: 92%; border-radius: 50%; background: radial-gradient(circle at 38% 32%, #f7eed6, var(--disc)); border: 1.5px solid var(--disc-edge); box-shadow: 0 2px 4px rgba(0,0,0,0.45), inset 0 1px 1px rgba(255,255,255,0.6); display: flex; align-items: center; justify-content: center; }
+.pc .g { font-family: var(--display); font-weight: 700; font-size: calc(var(--bw) * 0.052); line-height: 1; }
+.pc.r { box-shadow: 0 2px 4px rgba(0,0,0,0.45), inset 0 0 0 1.5px rgba(176,51,31,0.4); } .pc.r .g { color: var(--red); }
+.pc.b { box-shadow: 0 2px 4px rgba(0,0,0,0.45), inset 0 0 0 1.5px rgba(42,38,32,0.4); } .pc.b .g { color: var(--black); }
+.pc.sel { box-shadow: 0 0 0 2.5px var(--gold-hi), 0 3px 7px rgba(0,0,0,0.5); transform: scale(1.05); }
+.pt:hover .pc.r { transform: scale(1.05); }
+.tgt { width: 28%; height: 28%; border-radius: 50%; background: rgba(122,82,38,0.55); box-shadow: 0 0 8px rgba(216,164,78,0.5); }
+.tgt.cap { width: 90%; height: 90%; background: transparent; border-radius: 50%; border: 2.5px solid var(--gold-hi); box-shadow: 0 0 9px rgba(241,205,114,0.5); }
+.pt.lastpt::after { content: ""; position: absolute; width: 96%; height: 96%; border-radius: 50%; box-shadow: inset 0 0 0 1.5px rgba(216,164,78,0.5); }
+
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { border-radius: 13px; padding: 12px 13px; }
+.players { display: flex; flex-direction: column; gap: 8px; }
+.pl { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); font-family: var(--display); font-weight: 700; font-size: 15px; }
+.pl.on { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.pl-dot { width: 16px; height: 16px; border-radius: 50%; }
+.pl-dot.r { background: var(--red); } .pl-dot.b { background: var(--black); border: 1px solid #555; }
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 200px; overflow-y: auto; }
+.log-line { color: var(--ink-2); }
+
+/* this game styles the modal eye in the display serif rather than the mono default */
+.overlay { background: rgba(8,5,3,0.82); }
+.modal { max-width: 520px; }
+.modal-eye { font-family: var(--display); font-size: 13px; letter-spacing: 0.2em; text-transform: none; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

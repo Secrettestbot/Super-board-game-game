@@ -1,0 +1,179 @@
+/* ==========================================================
+   THE MIND — "Wordless cooperation under a quiet sky."
+   Theme: cosmic / zen — deep midnight blues, a soft aurora glow, a single glowing
+   pile card, calm typography. Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Built for this codebase. Shared structural classes live in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #0c1022;
+  --bg-2:    #080b18;
+  --panel:   #141a30;
+  --panel-2: #0f1426;
+  --ink:     #eef2ff;
+  --ink-2:   #aeb8dd;
+  --ink-3:   #6b76a0;
+  --line:    #232c4a;
+  --line-2:  #33406b;
+
+  /* token contract -> this theme (cosmic blue primary, deep-ink text on it) */
+  --accent:    #6fb4ff;  --accent-d:#3a78c8;  --accent-hi:#a7d2ff;  --accent-ink:#06122a;
+  --trim:      #9d7bff;  --trim-hi:#c4adff;
+  --you:       #6fb4ff;  --foe:#ff8aa6;
+  --good:      #6fe0b4;  --warn:#ffba6e;
+
+  /* game-specific */
+  --pile-glow: #ffd36e;
+  --pile-face: #fdf6e3;
+  --pile-ink:  #2a2208;
+  --card-face: #1b2342;
+  --card-line: #3a4775;
+  --card-low:  #6fb4ff;
+  --heart:     #ff8aa6;
+  --star:      #ffd36e;
+  --tension-1: #6fe0b4;
+  --tension-2: #ffd36e;
+  --tension-3: #ff8aa6;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(111,180,255,0.10) 0%, transparent 52%),
+    radial-gradient(ellipse at 14% 112%, rgba(157,123,255,0.09) 0%, transparent 46%),
+    radial-gradient(ellipse at 88% 116%, rgba(255,211,110,0.05) 0%, transparent 44%);
+}
+
+.stage { grid-template-columns: minmax(0, 1fr) 240px; gap: clamp(16px, 2.4vw, 34px); }
+
+.tm-stage {
+  display: grid; grid-template-columns: minmax(0, 1fr) 240px;
+  gap: clamp(16px, 2vw, 30px); width: 100%; min-height: 0;
+}
+.tm-center { display: flex; flex-direction: column; gap: clamp(14px, 1.8vw, 24px); min-width: 0; }
+
+/* ---- shared pile ---- */
+.tm-pile-panel { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: clamp(18px, 2.4vw, 30px); }
+.tm-pile-label, .tm-hand-label, .tm-partners-label {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--ink-3); align-self: flex-start;
+}
+.tm-pile { display: flex; align-items: center; justify-content: center; padding: 8px 0; }
+.tm-pile-card {
+  width: clamp(94px, 11vw, 138px); aspect-ratio: 3 / 4;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--display); font-weight: 700;
+  font-size: clamp(40px, 5.4vw, 64px);
+  color: var(--pile-ink);
+  background: radial-gradient(circle at 50% 30%, var(--pile-face), #f0e4c0);
+  border-radius: 16px;
+  border: 2px solid var(--pile-glow);
+  box-shadow: 0 0 34px rgba(255,211,110,0.35), 0 18px 44px rgba(0,0,0,0.5), inset 0 2px 0 rgba(255,255,255,0.6);
+}
+.tm-pile-card.empty {
+  color: var(--ink-3);
+  background: linear-gradient(165deg, var(--card-face), var(--panel-2));
+  border: 2px dashed var(--line-2);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,0.03);
+}
+.tm-pile-sub { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+
+/* ---- tension meter ---- */
+.tm-tension { width: 100%; max-width: 340px; margin-top: 6px; }
+.tm-tension-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+.tm-tension-cap { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3); }
+.tm-tension-val { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+.tm-tension-bar { height: 8px; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--line); overflow: hidden; }
+.tm-tension-fill {
+  height: 100%; border-radius: 6px; background: var(--tension-1);
+  transition: width 0.35s ease, background 0.35s ease;
+  box-shadow: 0 0 10px rgba(111,224,180,0.5);
+}
+.tm-tension-fill.warm { background: var(--tension-2); box-shadow: 0 0 10px rgba(255,211,110,0.5); }
+.tm-tension-fill.hot  { background: var(--tension-3); box-shadow: 0 0 12px rgba(255,138,166,0.6); }
+
+.tm-revealed {
+  font-family: var(--mono); font-size: 12px; color: var(--warn);
+  background: rgba(255,186,110,0.08); border: 1px solid rgba(255,186,110,0.25);
+  border-radius: 8px; padding: 6px 12px; margin-top: 2px;
+}
+
+/* ---- your hand ---- */
+.tm-hand-panel { display: flex; flex-direction: column; gap: 14px; padding: clamp(16px, 2vw, 24px); }
+.tm-hand { display: flex; flex-wrap: wrap; gap: 10px; min-height: 76px; align-items: center; }
+.tm-hand-empty { font-family: var(--mono); font-size: 13px; color: var(--ink-3); }
+.tm-card {
+  position: relative;
+  width: clamp(48px, 5vw, 60px); aspect-ratio: 3 / 4;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--display); font-weight: 700; font-size: clamp(20px, 2.4vw, 26px);
+  color: var(--ink);
+  background: linear-gradient(165deg, var(--card-face), var(--panel-2));
+  border: 1.5px solid var(--card-line); border-radius: 11px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+.tm-card.lowest {
+  color: var(--accent-hi);
+  border-color: var(--card-low);
+  box-shadow: 0 0 20px rgba(111,180,255,0.45), 0 8px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.tm-card-tag {
+  position: absolute; bottom: -9px; left: 50%; transform: translateX(-50%);
+  font-family: var(--mono); font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--accent-ink); background: var(--accent); padding: 1px 6px; border-radius: 6px;
+}
+
+/* ---- buttons ---- */
+.tm-btns { display: flex; gap: 12px; flex-wrap: wrap; }
+.tm-btn {
+  font-family: var(--sans); font-weight: 600; font-size: 14px;
+  padding: 11px 20px; border-radius: 11px; cursor: pointer;
+  border: 1.5px solid var(--line-2); color: var(--ink);
+  background: linear-gradient(165deg, var(--panel), var(--panel-2));
+  transition: transform 0.1s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.tm-btn:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--accent); }
+.tm-btn:active:not(:disabled) { transform: translateY(0); }
+.tm-btn.play {
+  background: linear-gradient(165deg, var(--accent), var(--accent-d));
+  color: var(--accent-ink); border-color: var(--accent-d);
+  box-shadow: 0 8px 22px rgba(111,180,255,0.3);
+}
+.tm-btn.star { color: var(--star); border-color: rgba(255,211,110,0.4); }
+.tm-btn.star:hover:not(:disabled) { border-color: var(--star); }
+.tm-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---- side: status ---- */
+.tm-status { display: flex; flex-direction: column; gap: 12px; }
+.tm-stat-row { display: flex; align-items: center; justify-content: space-between; }
+.tm-stat-cap { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); }
+.tm-hearts, .tm-stars { display: flex; gap: 5px; }
+.tm-heart { color: var(--heart); font-size: 18px; text-shadow: 0 0 10px rgba(255,138,166,0.5); }
+.tm-heart.off { color: var(--line-2); text-shadow: none; }
+.tm-star { color: var(--star); font-size: 17px; text-shadow: 0 0 10px rgba(255,211,110,0.5); }
+.tm-star.off { color: var(--line-2); text-shadow: none; }
+.tm-level { font-family: var(--mono); font-size: 14px; color: var(--ink); }
+
+/* ---- side: partners ---- */
+.tm-partners { display: flex; flex-direction: column; gap: 10px; }
+.tm-partner { display: flex; align-items: center; gap: 9px; }
+.tm-partner-dot {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--trim);
+  box-shadow: 0 0 9px rgba(157,123,255,0.7); flex: none;
+}
+.tm-partner-name { font-family: var(--sans); font-weight: 600; font-size: 13px; color: var(--ink); flex: 1; }
+.tm-partner-cards { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+.tm-partner-hint { font-family: var(--sans); font-size: 11px; color: var(--ink-3); font-style: italic; margin-top: 2px; line-height: 1.4; }
+
+/* ---- log ---- */
+.logbox .log-line.good { color: var(--good); }
+.logbox .log-line.win { color: var(--accent-hi); }
+
+@media (max-width: 880px) {
+  .stage { grid-template-columns: 1fr; }
+  .tm-stage { grid-template-columns: 1fr; }
+}

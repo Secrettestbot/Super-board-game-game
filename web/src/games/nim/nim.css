@@ -1,0 +1,113 @@
+/* ==========================================================
+   NIM — "Balance the heaps."
+   Theme: minimal, tense, geometric. Glowing violet tokens / matchsticks
+   standing on a dark field; clean modern look.
+   Display: Space Grotesk · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #0c0b14;
+  --bg-2:    #07060d;
+  --panel:   #161422;
+  --panel-2: #110f1c;
+  --ink:     #ecebf6;
+  --ink-2:   #a8a3c6;
+  --ink-3:   #66627f;
+  --line:    #221f33;
+  --line-2:  #352f52;
+
+  /* token contract -> this theme (electric violet primary, light text) */
+  --accent:  #7c6cff;  --accent-d:#5a48e0;  --accent-hi:#b6abff;
+  --trim:    #8a7cff;  --trim-hi:#b6abff;
+  --you:     #b6abff;  --foe:#ff8da6;
+  --good:    #6fe0b0;  --warn:#ff8da6;
+
+  /* game-specific */
+  --tok:      #8a7cff;  --tok-hi:#cfc7ff;  --tok-d:#5a48e0;
+  --armed:    #ff7aa3;  --armed-hi:#ffb3c8;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Space Grotesk", system-ui, sans-serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(124,108,255,0.10) 0%, transparent 55%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.6) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 220px; gap: clamp(18px, 2.8vw, 40px); }
+
+/* ---- field of heaps ---- */
+.nm-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.nm-field {
+  display: flex; align-items: flex-end; justify-content: center;
+  gap: clamp(22px, 4vw, 56px);
+  padding: 22px clamp(20px, 4vw, 44px) 18px;
+  background: linear-gradient(180deg, rgba(124,108,255,0.04), rgba(0,0,0,0.18));
+  border: 1.5px solid var(--line-2); border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+.nm-heap { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.nm-tokens {
+  display: flex; flex-direction: column-reverse; align-items: center; gap: 11px;
+  min-height: clamp(150px, 30vh, 240px); justify-content: flex-start;
+  padding: 8px 16px; border-radius: 12px;
+}
+
+/* a token = a glowing standing matchstick/pill */
+.nm-token {
+  --w: clamp(22px, 4.4vh, 34px);
+  width: var(--w); height: calc(var(--w) * 1.05);
+  padding: 0; border: none; border-radius: 999px; cursor: pointer;
+  background: radial-gradient(circle at 50% 30%, var(--tok-hi), var(--tok) 55%, var(--tok-d));
+  box-shadow: 0 0 10px rgba(124,108,255,0.45), inset 0 -3px 5px rgba(0,0,0,0.35), inset 0 2px 3px rgba(255,255,255,0.3);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease, opacity 0.18s ease;
+  animation: pop 0.16s ease-out;
+}
+.nm-token:disabled { cursor: default; }
+.nm-token.armed {
+  background: radial-gradient(circle at 50% 30%, var(--armed-hi), var(--armed) 55%, #d34d72);
+  box-shadow: 0 0 16px rgba(255,122,163,0.6), inset 0 -3px 5px rgba(0,0,0,0.3), inset 0 2px 3px rgba(255,255,255,0.4);
+  transform: translateY(-2px) scale(1.06);
+}
+@keyframes pop { from { transform: scale(0.4); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.nm-empty { font-family: var(--mono); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3); padding: 8px 0; }
+
+.nm-heap-label {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--ink-3); display: flex; align-items: center; gap: 8px;
+  border-top: 1.5px solid var(--line-2); padding-top: 10px; min-width: 84px; justify-content: center;
+}
+.nm-heap-n { font-family: var(--display); font-weight: 700; font-size: 17px; color: var(--ink); letter-spacing: 0; }
+
+/* ---- side ---- */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+
+.turnbox { display: flex; flex-direction: column; gap: 9px; }
+.tn { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--line); transition: all 0.13s; }
+.tn.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 18px rgba(124,108,255,0.25); }
+.tn-dot { width: 14px; height: 14px; border-radius: 50%; flex: 0 0 auto; }
+.tn-dot.you { background: radial-gradient(circle at 40% 30%, var(--tok-hi), var(--tok)); box-shadow: 0 0 8px rgba(124,108,255,0.6); }
+.tn-dot.ai { background: radial-gradient(circle at 40% 30%, var(--armed-hi), var(--armed)); box-shadow: 0 0 8px rgba(255,122,163,0.55); }
+.tn-name { font-family: var(--display); font-weight: 600; font-size: 15px; }
+.tn.you.on .tn-name { color: var(--you); }
+.tn.ai.on .tn-name { color: var(--foe); }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 168px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--accent-hi); }
+.log-line.ai { color: var(--foe); }
+.log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- overlays ---- */
+.modal-body i { color: var(--trim-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

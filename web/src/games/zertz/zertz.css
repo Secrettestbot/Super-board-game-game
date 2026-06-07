@@ -1,0 +1,138 @@
+/* ==========================================================
+   ZÈRTZ — "The shrinking ring board."
+   Theme: a cool slate-and-teal lab table; the hex board is a cluster of carved
+   stone rings; neutral marbles in pearl-white, smoke-grey, obsidian-black.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #11171d;
+  --bg-2:    #0b0f14;
+  --panel:   #1a242e;
+  --panel-2: #141c25;
+  --ink:     #eef4f7;
+  --ink-2:   #a8bcc6;
+  --ink-3:   #647683;
+  --line:    #25323d;
+  --line-2:  #36495a;
+
+  /* token contract → this theme (teal primary, dark ink on it) */
+  --accent:    #34d8c0;  --accent-d:#168f7e;  --accent-hi:#7af2e0;  --accent-ink:#04231f;
+  --trim:      #f0a64a;  --trim-hi:#ffc77e;
+  --you:       #34d8c0;  --foe:#f08a6a;
+  --good:      #5fe0a0;  --warn:#ff7d7d;
+
+  /* game-specific */
+  --ring:      #2b3a47;  --ring-2:#222e39;  --ring-edge:#3d5666;
+  --ring-rim:  #50708380;
+  --slot:      #131b22;
+  --mw:        #f3f1ea;  --mw-d:#bfbcae;  --mw-hi:#ffffff;   /* white marble */
+  --mg:        #8b97a0;  --mg-d:#5f6b74;  --mg-hi:#b6c0c7;   /* grey marble  */
+  --mk:        #1c2228;  --mk-d:#0a0d10;  --mk-hi:#3a444d;   /* black marble */
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(52,216,192,0.08) 0%, transparent 52%),
+    radial-gradient(ellipse at 14% 112%, rgba(240,166,74,0.06) 0%, transparent 46%),
+    radial-gradient(ellipse at 88% 116%, rgba(52,216,192,0.05) 0%, transparent 46%);
+}
+
+.stage { grid-template-columns: auto 250px; gap: clamp(16px, 2.4vw, 34px); }
+
+/* ---- Board ---- */
+.zt-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.zt-board {
+  position: relative;
+  background: linear-gradient(165deg, var(--panel), var(--panel-2));
+  border: 2px solid var(--line-2); border-radius: 20px;
+  padding: clamp(10px, 1.6vw, 22px);
+  box-shadow: 0 18px 54px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.zt-svg { display: block; width: clamp(300px, min(58vw, 70vh), 620px); height: auto; }
+
+/* spaces (rings) */
+.zt-ring { fill: var(--ring); stroke: var(--ring-edge); stroke-width: 1.4; transition: fill .12s, stroke .12s; }
+.zt-ring-inner { fill: var(--slot); }
+.zt-space.removable .zt-ring { stroke: var(--trim); }
+.zt-space.selectable { cursor: pointer; }
+.zt-space.selectable .zt-ring { fill: var(--ring-2); stroke: var(--accent); }
+.zt-space.selectable:hover .zt-ring { fill: #2f4350; stroke: var(--accent-hi); }
+.zt-space.remove-target { cursor: pointer; }
+.zt-space.remove-target .zt-ring { stroke: var(--trim-hi); stroke-width: 2.2; stroke-dasharray: 4 3; }
+.zt-space.remove-target:hover .zt-ring { fill: #3a2a1a; }
+.zt-space.jump-src.selectable .zt-ring { stroke: var(--accent-hi); stroke-width: 2.4; }
+.zt-space.jump-dst { cursor: pointer; }
+.zt-space.jump-dst .zt-ring-inner { fill: #123028; stroke: var(--accent); stroke-width: 2; }
+.zt-space.last .zt-ring { stroke: var(--accent-hi); }
+
+/* marbles */
+.zt-marble { stroke-width: 1; }
+.zt-marble.w  { fill: url(#gw); stroke: var(--mw-d); }
+.zt-marble.g  { fill: url(#gg); stroke: var(--mg-d); }
+.zt-marble.k  { fill: url(#gk); stroke: var(--mk-d); }
+.zt-space.jump-src .zt-marble { filter: drop-shadow(0 0 4px var(--accent)); }
+.zt-mh { fill: rgba(255,255,255,0.55); }
+
+/* ---- Side panels ---- */
+.side { display: flex; flex-direction: column; gap: clamp(10px, 1.4vw, 16px); min-height: 0; }
+.panel-l { margin-bottom: 8px; }
+
+.zt-supply { display: flex; flex-direction: column; gap: 9px; }
+.zt-srow { display: flex; align-items: center; gap: 10px; }
+.zt-chip { width: 22px; height: 22px; border-radius: 50%; flex: none; box-shadow: inset 0 -2px 3px rgba(0,0,0,0.4), inset 0 2px 3px rgba(255,255,255,0.18); }
+.zt-chip.w { background: radial-gradient(circle at 35% 30%, var(--mw-hi), var(--mw) 55%, var(--mw-d)); }
+.zt-chip.g { background: radial-gradient(circle at 35% 30%, var(--mg-hi), var(--mg) 55%, var(--mg-d)); }
+.zt-chip.k { background: radial-gradient(circle at 35% 30%, var(--mk-hi), var(--mk) 60%, var(--mk-d)); }
+.zt-clabel { flex: 1; font-size: 12px; color: var(--ink-2); }
+.zt-ccount { font-family: var(--mono); font-size: 13px; color: var(--ink); font-weight: 600; }
+.zt-srow.pick { cursor: pointer; border-radius: 9px; padding: 3px 6px; margin: -3px -6px; border: 1.5px solid transparent; }
+.zt-srow.pick:hover { background: var(--panel); border-color: var(--line-2); }
+.zt-srow.pick.on { background: #0f2a26; border-color: var(--accent); }
+.zt-srow.pick.dim { opacity: 0.35; cursor: not-allowed; }
+
+/* captured sets */
+.zt-scores { display: flex; flex-direction: column; gap: 10px; }
+.zt-player { border-radius: 10px; padding: 8px 10px; border: 1.5px solid var(--line); }
+.zt-player.on { border-color: var(--accent); background: #0f2a26; }
+.zt-phead { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+.zt-pawn { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.zt-pawn.you { background: var(--you); box-shadow: 0 0 6px var(--you); }
+.zt-pawn.foe { background: var(--foe); box-shadow: 0 0 6px var(--foe); }
+.zt-pname { flex: 1; font-weight: 600; font-size: 13px; color: var(--ink); }
+.zt-set { display: flex; gap: 12px; }
+.zt-setcol { display: flex; align-items: center; gap: 5px; }
+.zt-dot { width: 16px; height: 16px; border-radius: 50%; }
+.zt-dot.w { background: radial-gradient(circle at 35% 30%, var(--mw-hi), var(--mw) 55%, var(--mw-d)); }
+.zt-dot.g { background: radial-gradient(circle at 35% 30%, var(--mg-hi), var(--mg) 55%, var(--mg-d)); }
+.zt-dot.k { background: radial-gradient(circle at 35% 30%, var(--mk-hi), var(--mk) 60%, var(--mk-d)); }
+.zt-num { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--ink); }
+.zt-num.has { color: var(--accent-hi); }
+
+/* control hints */
+.zt-control { display: flex; flex-direction: column; gap: 8px; }
+.zt-step { font-size: 12.5px; color: var(--ink-2); line-height: 1.45; }
+.zt-step b { color: var(--ink); }
+.zt-btn {
+  font-family: var(--sans); font-weight: 600; font-size: 12.5px;
+  background: var(--panel); color: var(--ink-2);
+  border: 1.5px solid var(--line-2); border-radius: 9px; padding: 7px 10px; cursor: pointer;
+}
+.zt-btn:hover { border-color: var(--accent); color: var(--ink); }
+.zt-btn.go { background: var(--accent); color: var(--accent-ink); border-color: var(--accent-d); }
+.zt-btn:disabled { opacity: 0.4; cursor: default; }
+.zt-btnrow { display: flex; gap: 8px; }
+
+.logbox { max-height: 168px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.log-line { font-size: 11.5px; line-height: 1.4; color: var(--ink-2); }
+.log-line.you { color: var(--you); }
+.log-line.ai  { color: var(--foe); }
+.log-line.sys { color: var(--ink-3); font-style: italic; }
+
+.title-mark { width: 40px; height: 40px; }

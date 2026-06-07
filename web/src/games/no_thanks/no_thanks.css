@@ -1,0 +1,149 @@
+/* ==========================================================
+   NO THANKS! — "Pay a chip, or pay the price."
+   Theme: deep felt-blue table, ivory number cards, clay poker chips, coral accent.
+   Display: Space Grotesk · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #11151d;
+  --bg-2:    #0a0d13;
+  --panel:   #1a2030;
+  --panel-2: #141927;
+  --ink:     #eef1f7;
+  --ink-2:   #a7b0c4;
+  --ink-3:   #626d85;
+  --line:    #232b3d;
+  --line-2:  #34405a;
+
+  /* token contract -> this theme (coral primary, light text) */
+  --accent:  #e8694c;  --accent-d:#b8462c;  --accent-hi:#ff8e72;  --accent-ink:#fff;
+  --trim:    #e8a14c;  --trim-hi:#ffc878;
+  --you:     #6fb6ff;  --foe:#a7b0c4;
+  --good:    #57c98a;  --warn:#e8a14c;
+
+  /* game-specific */
+  --card:    #f6f2e8;  --card-2:#e7e0cf;  --card-ink:#1d2330;
+  --chip:    #e8694c;  --chip-d:#b8462c;  --chip-ring:#ffd3c4;
+  --felt:    #173049;  --felt-2:#0f2235;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Space Grotesk", system-ui, sans-serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(ellipse at 50% -8%, rgba(232,105,76,0.07) 0%, transparent 52%),
+              radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.5) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 248px; gap: clamp(18px, 2.6vw, 40px); }
+
+/* ---- table + face-up card ---- */
+.nt-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; min-height: 0; }
+.nt-table {
+  display: flex; align-items: center; justify-content: center;
+  padding: clamp(26px, 5vh, 54px) clamp(40px, 8vw, 96px);
+  background: radial-gradient(ellipse at 50% 36%, var(--felt), var(--felt-2));
+  border: 2px solid #0c1c2c; border-radius: 20px;
+  box-shadow: inset 0 0 60px rgba(0,0,0,0.4), 0 18px 48px rgba(0,0,0,0.55);
+}
+
+.nt-card {
+  position: relative;
+  width: clamp(108px, 15vw, 150px);
+  height: clamp(150px, 21vw, 208px);
+  background: linear-gradient(160deg, var(--card), var(--card-2));
+  border: 1px solid #cbbf9f; border-radius: 14px;
+  box-shadow: 0 10px 26px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.7);
+  display: flex; align-items: center; justify-content: center;
+  animation: dealin 0.22s ease-out;
+}
+.nt-card.live { box-shadow: 0 10px 26px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.7), 0 0 0 3px var(--accent), 0 0 24px rgba(232,105,76,0.4); }
+.nt-card.empty { background: repeating-linear-gradient(45deg, #18293b, #18293b 8px, #152434 8px, #152434 16px); border-color: #2a3e54; box-shadow: inset 0 0 30px rgba(0,0,0,0.5); }
+.nt-empty-t { font-family: var(--mono); font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-3); text-align: center; line-height: 1.5; }
+@keyframes dealin { from { transform: translateY(-8px) scale(0.96); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.nt-big { font-family: var(--display); font-weight: 700; font-size: clamp(52px, 8vw, 80px); color: var(--card-ink); }
+.nt-corner { position: absolute; font-family: var(--display); font-weight: 600; font-size: 17px; color: var(--card-ink); opacity: 0.85; }
+.nt-corner.tl { top: 9px; left: 12px; }
+.nt-corner.br { bottom: 9px; right: 12px; transform: rotate(180deg); }
+
+/* chip pot stacked on the card */
+.nt-pot { position: absolute; right: -22px; bottom: 14px; width: 46px; height: 80px; }
+.nt-chip {
+  position: absolute; left: 0; width: 42px; height: 16px; border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 35%, var(--chip-ring) 0 18%, var(--chip) 19%, var(--chip-d) 100%);
+  border: 1px solid #7c2c18;
+  box-shadow: 0 2px 3px rgba(0,0,0,0.4);
+}
+.nt-pot-n {
+  position: absolute; right: -2px; top: -22px;
+  font-family: var(--display); font-weight: 700; font-size: 15px; color: var(--accent-hi);
+  background: var(--bg-2); border: 1.5px solid var(--accent-d); border-radius: 20px;
+  padding: 2px 9px;
+}
+
+/* ---- action buttons ---- */
+.nt-actions { display: flex; gap: 14px; }
+.nt-btn {
+  font-family: var(--display); font-weight: 600; font-size: 16px;
+  padding: 13px 24px; border-radius: 12px; cursor: pointer;
+  display: inline-flex; align-items: baseline; gap: 8px;
+  border: 1.5px solid var(--line-2); background: var(--panel); color: var(--ink);
+  transition: all 0.13s;
+}
+.nt-btn small { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.nt-btn.pass:not(:disabled):hover { border-color: var(--you); color: var(--you); }
+.nt-btn.pass:not(:disabled):hover small { color: var(--you); }
+.nt-btn.take { background: var(--accent); border-color: var(--accent-d); color: var(--accent-ink); }
+.nt-btn.take small { color: rgba(255,255,255,0.8); }
+.nt-btn.take:not(:disabled):hover { filter: brightness(1.1); }
+.nt-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---- side ---- */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+
+.pp { display: flex; flex-direction: column; gap: 9px; transition: border-color 0.13s, box-shadow 0.13s; }
+.pp.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.pp-head { display: flex; align-items: center; gap: 9px; }
+.pp-name { font-family: var(--display); font-weight: 600; font-size: 14px; flex: 1; }
+.pp.you .pp-name { color: var(--you); } .pp.ai .pp-name { color: var(--foe); }
+.pp-chips { display: inline-flex; align-items: center; gap: 6px; font-family: var(--display); font-weight: 700; font-size: 15px; color: var(--ink); }
+.pp-chipdot {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: radial-gradient(circle at 40% 32%, var(--chip-ring) 0 22%, var(--chip) 23%, var(--chip-d) 100%);
+  border: 1px solid #7c2c18; box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+.pp-score { font-family: var(--display); font-weight: 700; font-size: 18px; color: var(--warn); min-width: 34px; text-align: right; }
+.pp-score.good { color: var(--good); }
+
+.pp-coll { display: flex; flex-wrap: wrap; gap: 6px; min-height: 26px; align-content: flex-start; }
+.pp-empty { font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; color: var(--ink-3); font-style: italic; }
+.pp-run { display: inline-flex; }
+.pp-run.multi { background: rgba(232,161,76,0.1); border: 1px solid rgba(232,161,76,0.35); border-radius: 7px; padding: 1px; }
+.pp-mini {
+  font-family: var(--display); font-weight: 600; font-size: 12px; color: var(--ink-2);
+  background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 6px;
+  padding: 3px 7px; min-width: 22px; text-align: center;
+}
+.pp-run.multi .pp-mini { border-radius: 5px; margin: 0 1px; }
+.pp-mini.low { color: var(--card-ink); background: var(--card); border-color: #cbbf9f; }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 138px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--you); } .log-line.ai { color: var(--ink-2); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- overlays ---- */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0 6px; font-family: var(--display); font-weight: 700; font-size: 24px; }
+.finalsc .you { color: var(--you); } .finalsc .foe { color: var(--ink); }
+.finalsub { font-size: 12px; line-height: 1.55; color: var(--ink-2); text-align: center; margin: 0 0 2px; }
+.modal-body i { color: var(--accent-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) {
+  .title-main { font-size: 23px; }
+  .nt-card { width: clamp(96px, 13vw, 128px); height: clamp(134px, 18vw, 178px); }
+}

@@ -1,0 +1,148 @@
+/* KING OF TOKYO — kaiju city neon theme + dice/monster/Tokyo classes. */
+:root {
+  --bg: #0a0712;
+  --bg-2: #120c20;
+  --panel: #18102a;
+  --panel-2: #1f1638;
+  --ink: #f4ecff;
+  --ink-2: #c4b6e0;
+  --ink-3: #8479a8;
+  --line: #2c2148;
+  --line-2: #3a2c5e;
+  --accent: #ff2e88;
+  --accent-d: #c01566;
+  --accent-hi: #ff6fb0;
+  --accent-ink: #1a0410;
+  --trim: #29e0d8;
+  --trim-hi: #5cf6ee;
+  --you: #5cf6ee;
+  --foe: #ff7a59;
+  --good: #44e08a;
+  --warn: #ff5470;
+  --sans: "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono: "JetBrains Mono", monospace;
+}
+
+body {
+  background:
+    radial-gradient(1100px 600px at 50% -10%, rgba(255,46,136,0.10), transparent 60%),
+    radial-gradient(900px 500px at 90% 110%, rgba(41,224,216,0.08), transparent 60%),
+    var(--bg);
+}
+
+.kot-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: clamp(14px, 2vw, 28px);
+  align-items: start;
+  width: 100%;
+}
+
+/* ---- monster roster ---- */
+.kot-monsters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.kot-mon {
+  position: relative;
+  background: linear-gradient(160deg, var(--panel-2), var(--panel));
+  border: 1.5px solid var(--line-2);
+  border-radius: 14px;
+  padding: 12px 12px 13px;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.kot-mon.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 8px 26px rgba(255,46,136,0.22); }
+.kot-mon.you-mon.on { border-color: var(--you); box-shadow: 0 0 0 1px var(--you), 0 8px 26px rgba(92,246,238,0.22); }
+.kot-mon.dead { opacity: 0.4; filter: grayscale(0.7); }
+.kot-mon.in-tokyo { transform: translateY(-3px); }
+
+.kot-mon-head { display: flex; align-items: center; gap: 8px; }
+.kot-mon-emoji { font-size: 26px; line-height: 1; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
+.kot-mon-name { font-family: var(--display); font-weight: 700; font-size: 15px; color: var(--ink); flex: 1; }
+.kot-tokyo-badge {
+  font-family: var(--mono); font-size: 8px; font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--accent-ink); background: var(--accent);
+  border-radius: 5px; padding: 2px 5px;
+}
+
+.kot-stats { margin-top: 9px; display: grid; gap: 6px; }
+.kot-stat-row { display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11px; }
+.kot-stat-ic { width: 15px; text-align: center; }
+.kot-stat-l { color: var(--ink-3); width: 14px; }
+.kot-bar { flex: 1; height: 8px; background: var(--bg-2); border-radius: 5px; overflow: hidden; border: 1px solid var(--line); }
+.kot-bar-fill { height: 100%; border-radius: 5px; transition: width 0.25s; }
+.kot-bar-fill.hp { background: linear-gradient(90deg, var(--warn), var(--good)); }
+.kot-bar-fill.vp { background: linear-gradient(90deg, var(--accent), var(--accent-hi)); }
+.kot-stat-n { font-weight: 600; color: var(--ink); min-width: 38px; text-align: right; }
+.kot-energy { color: var(--trim-hi); }
+
+/* ---- Tokyo arena ---- */
+.kot-arena {
+  margin-top: 14px;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  background: var(--bg-2);
+  border: 1.5px dashed var(--line-2);
+  border-radius: 14px;
+  padding: 12px;
+}
+.kot-tokyo-plate {
+  font-family: var(--display); font-weight: 700; font-size: 14px;
+  color: var(--accent-hi); letter-spacing: 0.04em;
+  display: flex; align-items: center; gap: 8px;
+}
+.kot-tokyo-occ { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+.kot-tokyo-occ b { color: var(--ink); }
+
+/* ---- dice tray ---- */
+.kot-tray {
+  margin-top: 14px;
+  background: var(--panel);
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+}
+.kot-tray-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 11px; }
+.kot-tray-l { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); }
+.kot-reroll { font-family: var(--mono); font-size: 11px; color: var(--trim-hi); font-weight: 600; }
+
+.kot-dice { display: grid; grid-template-columns: repeat(6, 1fr); gap: 9px; }
+.kot-die {
+  aspect-ratio: 1 / 1;
+  display: flex; align-items: center; justify-content: center;
+  font-size: clamp(20px, 3vw, 30px);
+  background: linear-gradient(160deg, #2a1d47, #1a1230);
+  border: 2px solid var(--line-2);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform 0.1s, border-color 0.12s, box-shadow 0.12s;
+  user-select: none;
+}
+.kot-die:hover:not(:disabled) { transform: translateY(-2px); }
+.kot-die.kept {
+  border-color: var(--trim);
+  box-shadow: 0 0 0 1px var(--trim), 0 0 14px rgba(41,224,216,0.4);
+  background: linear-gradient(160deg, #15403c, #0f2e2b);
+}
+.kot-die:disabled { cursor: default; }
+.kot-die.idle { opacity: 0.5; }
+
+.kot-actions { margin-top: 13px; display: flex; gap: 10px; }
+.kot-btn {
+  flex: 1;
+  font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; padding: 12px; border-radius: 10px; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink); border: 1.5px solid var(--accent-d);
+  transition: filter 0.12s, opacity 0.12s;
+}
+.kot-btn.ghost { background: var(--panel-2); color: var(--ink); border-color: var(--line-2); }
+.kot-btn:hover:not(:disabled) { filter: brightness(1.12); }
+.kot-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* ---- side ---- */
+.kot-side { display: grid; gap: 12px; }
+.kot-side .panel-l { margin-bottom: 8px; }
+.kot-legend { display: grid; gap: 6px; }
+.kot-leg-row { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--ink-2); }
+.kot-leg-ic { font-size: 17px; width: 22px; text-align: center; }
+.kot-logbox { max-height: 220px; overflow-y: auto; display: grid; gap: 3px; }
+
+/* ---- yield prompt buttons ---- */
+.kot-yield { display: flex; gap: 10px; }

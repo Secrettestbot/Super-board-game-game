@@ -1,0 +1,144 @@
+/* ==========================================================
+   CHECKERS / ENGLISH DRAUGHTS — "Jump and crown."
+   Theme: warm hardwood board (honey light / walnut dark squares),
+   glossy red & onyx-black checker discs, gold king ring, amber move hints.
+   Display: Fraunces · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #1a120c;
+  --bg-2:    #0f0a06;
+  --panel:   #271a10;
+  --panel-2: #1f140c;
+  --ink:     #f6ead9;
+  --ink-2:   #c8ab8c;
+  --ink-3:   #8a6e55;
+  --line:    #3a2818;
+  --line-2:  #543a23;
+
+  /* token contract -> this theme (warm amber primary, dark text) */
+  --accent:  #e0a64a;  --accent-d:#a9711d;  --accent-hi:#f4c873;  --accent-ink:#2a1804;
+  --trim:    #e0a64a;  --trim-hi:#f4c873;
+  --you:     #f4c873;  --foe:#d68a8a;
+  --good:    #79c98c;  --warn:#e07a5f;
+
+  /* game-specific — hardwood + discs */
+  --wood-l:  #caa06a;  --wood-l2:#bb8e57;   /* honey light squares */
+  --wood-d:  #5d3b22;  --wood-d2:#4c2f1a;   /* walnut dark squares */
+  --frame:   #2a1a0e;  --frame-2:#3c2614;
+  --red:     #cf3030;  --red-hi:#f15a5a;  --red-d:#7e1414;
+  --black:   #26292e;  --black-hi:#4a4f57; --black-d:#0c0d10;
+  --crown:   #f4c873;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Fraunces", Georgia, serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(224,166,74,0.08) 0%, transparent 54%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 230px; gap: clamp(18px, 2.6vw, 38px); }
+
+.ck-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.ck-board {
+  --cell: clamp(34px, min(7.3vh, 4.9vw), 58px);
+  display: grid;
+  grid-template-columns: repeat(8, var(--cell));
+  grid-template-rows: repeat(8, var(--cell));
+  padding: 12px;
+  background: linear-gradient(145deg, var(--frame-2), var(--frame));
+  border: 2px solid #1c1109;
+  border-radius: 12px;
+  box-shadow: 0 16px 44px rgba(0,0,0,0.6), inset 0 0 0 3px rgba(244,200,115,0.08);
+}
+.ck-cell {
+  display: flex; align-items: center; justify-content: center;
+  position: relative; cursor: default;
+}
+.ck-cell.light { background: linear-gradient(145deg, var(--wood-l), var(--wood-l2)); }
+.ck-cell.dark  { background: linear-gradient(145deg, var(--wood-d), var(--wood-d2)); }
+.ck-cell.pick { cursor: pointer; }
+.ck-cell.last::after {
+  content: ""; position: absolute; inset: 0;
+  box-shadow: inset 0 0 0 3px rgba(244,200,115,0.55);
+  pointer-events: none;
+}
+.ck-cell.sel::after {
+  content: ""; position: absolute; inset: 0;
+  box-shadow: inset 0 0 0 3px var(--accent-hi);
+  pointer-events: none;
+}
+.ck-cell.target { cursor: pointer; }
+.ck-cell.target:hover { background: linear-gradient(145deg, #6f4828, #5d3b22); }
+
+.ck-disc {
+  width: 80%; height: 80%; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+  animation: drop 0.18s ease-out;
+}
+.ck-disc.r {
+  background: radial-gradient(circle at 38% 28%, var(--red-hi), var(--red) 55%, var(--red-d));
+  box-shadow: 0 3px 5px rgba(0,0,0,0.55), inset 0 -3px 5px rgba(0,0,0,0.4), inset 0 0 0 2px rgba(255,255,255,0.08);
+}
+.ck-disc.b {
+  background: radial-gradient(circle at 38% 28%, var(--black-hi), var(--black) 55%, var(--black-d));
+  box-shadow: 0 3px 5px rgba(0,0,0,0.6), inset 0 -3px 5px rgba(0,0,0,0.5), inset 0 0 0 2px rgba(255,255,255,0.05);
+}
+/* ridged checker rim */
+.ck-disc::before {
+  content: ""; position: absolute; inset: 12%; border-radius: 50%;
+  border: 1.5px dashed rgba(0,0,0,0.28);
+}
+.ck-crown {
+  width: 42%; height: 42%; border-radius: 50%;
+  border: 2.5px solid var(--crown);
+  box-shadow: 0 0 8px rgba(244,200,115,0.7), inset 0 0 4px rgba(244,200,115,0.5);
+  background: radial-gradient(circle at 50% 35%, rgba(244,200,115,0.35), transparent 70%);
+  z-index: 1;
+}
+@keyframes drop { from { transform: scale(0.6); } to { transform: none; } }
+
+.ck-dot {
+  width: 28%; height: 28%; border-radius: 50%;
+  background: rgba(244,200,115,0.55);
+  box-shadow: 0 0 8px rgba(244,200,115,0.5);
+}
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.scoreboard { display: flex; flex-direction: column; gap: 9px; }
+.sc { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.sc.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sc-disc { width: 18px; height: 18px; border-radius: 50%; flex: 0 0 auto; }
+.sc-disc.r { background: radial-gradient(circle at 38% 28%, var(--red-hi), var(--red-d)); border: 1px solid var(--red-d); }
+.sc-disc.b { background: radial-gradient(circle at 38% 28%, var(--black-hi), var(--black-d)); border: 1px solid #000; }
+.sc-name { font-family: var(--display); font-weight: 600; font-size: 14px; flex: 1; }
+.sc-n { font-family: var(--display); font-weight: 700; font-size: 20px; }
+.sc.r .sc-n { color: var(--red-hi); } .sc.b .sc-n { color: var(--ink); }
+.sc-kings {
+  display: flex; justify-content: space-between;
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--ink-3); padding: 0 4px;
+}
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 150px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--red-hi); }
+.log-line.ai  { color: var(--foe); }
+.log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 22px; }
+.finalsc .you { color: var(--red-hi); } .finalsc .foe { color: var(--ink); }
+.modal-body i { color: var(--accent-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

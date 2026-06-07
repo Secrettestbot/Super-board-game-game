@@ -1,0 +1,129 @@
+/* ==========================================================
+   FOX AND HOUNDS — "The hunt."
+   Theme: warm walnut checkerboard, a sly amber fox vs a slate pack of hounds,
+   gold move hints. Display: Fraunces · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #16110c;
+  --bg-2:    #0d0a06;
+  --panel:   #241b12;
+  --panel-2: #1b140d;
+  --ink:     #f4ece0;
+  --ink-2:   #c2ad95;
+  --ink-3:   #84705a;
+  --line:    #322619;
+  --line-2:  #4a3823;
+
+  /* token contract -> this theme (amber primary; light accent -> dark ink) */
+  --accent:  #e08a3c;  --accent-d:#a85f1c;  --accent-hi:#f6b367;  --accent-ink:#23150a;
+  --trim:    #e08a3c;  --trim-hi:#f6b367;
+  --you:     #f6b367;  --foe:#aeb6c2;
+  --good:    #6fc090;  --warn:#e0894e;
+
+  /* game-specific */
+  --light:   #c9a574;  --light-2:#b9925f;        /* light wood squares */
+  --dark:    #5a3b22;  --dark-2:#4a2f1a;         /* dark wood squares (the playable ones) */
+  --board-edge: #2c1b0e;
+  --fox:     #e8893a;  --fox-d:#9c5418;  --fox-hi:#ffd9a6;
+  --hound:   #9aa3b0;  --hound-d:#5b6472;
+  --gold:    #f0c46a;  --gold-hi:#ffdc8c;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Fraunces", Georgia, serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(224,138,60,0.07) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 236px; gap: clamp(18px, 2.6vw, 38px); }
+
+.fh-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.fh-board {
+  --cell: clamp(34px, min(7.3vh, 4.9vw), 58px);
+  display: grid;
+  grid-template-columns: repeat(8, var(--cell));
+  grid-template-rows: repeat(8, var(--cell));
+  padding: 10px; background: var(--board-edge);
+  border: 2px solid #1c1109; border-radius: 12px;
+  box-shadow: 0 16px 44px rgba(0,0,0,0.6);
+}
+.fh-cell {
+  display: flex; align-items: center; justify-content: center;
+  position: relative; cursor: default;
+}
+.fh-cell.light { background: linear-gradient(150deg, var(--light), var(--light-2)); }
+.fh-cell.dark  { background: linear-gradient(150deg, var(--dark), var(--dark-2)); }
+.fh-cell.target { cursor: pointer; }
+.fh-cell.target::before {
+  content: ""; position: absolute; inset: 7%; border-radius: 9px;
+  box-shadow: inset 0 0 0 2px var(--gold); background: rgba(240,196,106,0.12);
+}
+.fh-cell.target:hover::before { background: rgba(240,196,106,0.26); }
+.fh-cell.picked::after {
+  content: ""; position: absolute; inset: 6%; border-radius: 10px;
+  box-shadow: inset 0 0 0 2px var(--fox-hi);
+}
+.fh-cell.last::after {
+  content: ""; position: absolute; inset: 10%; border-radius: 50%;
+  box-shadow: inset 0 0 0 2px rgba(255,220,140,0.55); pointer-events: none;
+}
+
+.fh-piece {
+  width: 84%; height: 84%; display: flex; align-items: center; justify-content: center;
+  position: relative; z-index: 1; animation: pop 0.18s ease-out;
+  filter: drop-shadow(0 3px 4px rgba(0,0,0,0.55));
+}
+.fh-piece svg { width: 100%; height: 100%; }
+.fh-piece.fox { cursor: pointer; }
+.fh-piece.fox.live { animation: pop 0.18s ease-out, sway 2.4s ease-in-out infinite; }
+@keyframes pop { from { transform: scale(0.5); } to { transform: none; } }
+@keyframes sway { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+
+.fh-dot {
+  width: 24%; height: 24%; border-radius: 50%;
+  background: rgba(240,196,106,0.65); box-shadow: 0 0 7px rgba(240,196,106,0.5);
+  position: relative; z-index: 1;
+}
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+
+.turnbox { display: flex; flex-direction: column; gap: 9px; }
+.tn {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 10px; border-radius: 10px; border: 1.5px solid var(--line);
+}
+.tn.on { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.tn-mark { width: 24px; height: 24px; flex: 0 0 auto; }
+.tn-mark svg { width: 100%; height: 100%; }
+.tn-name { font-family: var(--display); font-weight: 600; font-size: 14px; flex: 1; }
+.tn-tag { font-family: var(--mono); font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); }
+.tn.fox .tn-tag { color: var(--fox-hi); }
+
+.hintbox { font-size: 11.5px; line-height: 1.5; color: var(--ink-2); }
+.hint-l { display: block; font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); margin-bottom: 4px; }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 148px; overflow-y: auto; }
+.logbox .log-line { font-size: 11px; line-height: 1.55; }
+.logbox .log-line.you { color: var(--fox-hi); }
+.logbox .log-line.ai { color: var(--foe); }
+.logbox .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc {
+  display: flex; justify-content: center; margin: 12px 0;
+  font-family: var(--display); font-weight: 600; font-size: 18px; text-align: center;
+}
+.finalsc .you { color: var(--gold-hi); }
+.modal-body i { color: var(--fox-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

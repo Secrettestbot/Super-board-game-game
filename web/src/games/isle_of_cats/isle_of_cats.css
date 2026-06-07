@@ -1,0 +1,192 @@
+/* ==========================================================
+   THE ISLE OF CATS — "Rescue cats and fill the fullest boat."
+   Theme: cozy nautical — deep sea-teal + driftwood, warm rope trim, soft cat-fur tones.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #10222a;
+  --bg-2:    #0b181e;
+  --panel:   #173039;
+  --panel-2: #122730;
+  --ink:     #eaf4f2;
+  --ink-2:   #b6cbcb;
+  --ink-3:   #6f8b8c;
+  --line:    #214049;
+  --line-2:  #2f5560;
+
+  /* token contract -> warm rope accent on deep teal, dark ink on it */
+  --accent:    #e8b04a;  --accent-d:#b9821f;  --accent-hi:#f6cd78;  --accent-ink:#241803;
+  --trim:      #c97f55;  --trim-hi:#e0a079;
+  --you:       #6fc7b8;  --foe:#e0865a;
+  --good:      #6fc7b8;  --warn:#e26d57;
+
+  /* cat-color palette (6 fur tones) — keep cohesive & distinct */
+  --cat-orange: #e8915a;
+  --cat-teal:   #5bb8ab;
+  --cat-gold:   #e3c057;
+  --cat-plum:   #b56a9e;
+  --cat-blue:   #6f97c8;
+  --cat-sage:   #94ab63;
+
+  /* boat surface */
+  --boat-bg:   #0d1d24;
+  --cell:      #16303a;  --cell-line:#234650;
+  --basket:    #5a4632;  --basket-line:#7a6042;
+  --room-line: #f6cd78;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+.ic-wrap {
+  display: flex; flex-direction: column;
+  gap: 12px; width: 100%; max-width: 1180px; margin: 0 auto;
+}
+
+.ic-main {
+  display: grid; grid-template-columns: 1.1fr 1fr 1.1fr; gap: 14px; align-items: start;
+}
+
+/* ---------------- BOAT BOX ---------------- */
+.ic-boatbox {
+  background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 14px;
+  padding: 12px; transition: border-color 0.15s, box-shadow 0.15s;
+}
+.ic-boatbox.active { border-color: var(--accent-d); box-shadow: 0 0 0 1px var(--accent-d), 0 6px 22px rgba(0,0,0,0.4); }
+.ic-bhead {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-family: var(--display); font-weight: 600; font-size: 16px; color: var(--ink);
+  margin-bottom: 9px;
+}
+.ic-pawn { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.ic-pawn.you { background: var(--you); }
+.ic-pawn.ai { background: var(--foe); }
+.ic-stat {
+  font-family: var(--mono); font-size: 10px; color: var(--ink-2);
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px;
+}
+.ic-stat.score { color: var(--accent-hi); border-color: var(--accent-d); }
+
+/* ---------------- BOAT GRID ---------------- */
+.ic-boat {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px;
+  background: var(--boat-bg);
+  border: 2px solid var(--line-2); border-radius: 10px;
+  /* a soft "hull" curve at the bottom corners */
+  border-bottom-left-radius: 26px; border-bottom-right-radius: 26px;
+  padding: 7px; aspect-ratio: 1; width: 100%;
+  position: relative;
+}
+.ic-cell {
+  position: relative;
+  background: var(--cell); border: 1px solid var(--cell-line); border-radius: 4px;
+  aspect-ratio: 1; transition: background 0.08s, box-shadow 0.08s;
+  display: flex; align-items: center; justify-content: center;
+}
+.ic-cell.filled { border-color: rgba(0,0,0,0.35); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.14); }
+.ic-cell.basket {
+  background: repeating-linear-gradient(45deg, var(--basket) 0 4px, #4a3a28 4px 8px);
+  border-color: var(--basket-line);
+}
+.ic-cell.basket::after {
+  content: "🧺"; font-size: 13px; line-height: 1; filter: saturate(0.85);
+}
+.ic-cell.room { box-shadow: inset 0 0 0 2px var(--room-tint, var(--room-line)); }
+.ic-cell.room::before {
+  content: ""; position: absolute; inset: 3px; border-radius: 3px;
+  background: var(--room-tint); opacity: 0.18;
+}
+.ic-cell.room.matched::before { opacity: 0; }
+.ic-cell.room.matched::after {
+  content: "★"; position: absolute; top: 1px; right: 2px; font-size: 9px;
+  color: rgba(0,0,0,0.55);
+}
+.ic-boat.interactive .ic-cell { cursor: pointer; }
+.ic-cell.preview { outline: 2px dashed var(--accent-hi); outline-offset: -2px; }
+.ic-cell.badpreview { box-shadow: inset 0 0 0 2px var(--warn); }
+
+/* cat colors */
+.cat-0 { background: var(--cat-orange); }
+.cat-1 { background: var(--cat-teal); }
+.cat-2 { background: var(--cat-gold); }
+.cat-3 { background: var(--cat-plum); }
+.cat-4 { background: var(--cat-blue); }
+.cat-5 { background: var(--cat-sage); }
+.ic-cell.filled .ic-paw { font-size: 12px; opacity: 0.5; }
+
+/* ---------------- MARKET / DRAFT ---------------- */
+.ic-market {
+  background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 14px;
+  padding: 12px; display: flex; flex-direction: column; gap: 10px;
+}
+.ic-mhead, .ic-olabel {
+  font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3);
+}
+.ic-tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }
+.ic-tile {
+  position: relative; background: var(--bg-2); border: 1.5px solid var(--line); border-radius: 11px;
+  padding: 12px 8px 10px; display: flex; flex-direction: column; align-items: center; gap: 8px;
+  min-height: 92px; justify-content: space-between; transition: border-color 0.13s, transform 0.1s;
+}
+.ic-tile.draftable { cursor: pointer; }
+.ic-tile.draftable:hover { border-color: var(--accent-d); transform: translateY(-1px); }
+.ic-tile.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.ic-tile.dim { opacity: 0.45; }
+.ic-tile-name {
+  font-family: var(--mono); font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3);
+}
+
+/* shape mini preview */
+.ic-mini-grid { display: flex; flex-direction: column; gap: 2px; }
+.ic-mini-row { display: flex; gap: 2px; }
+.ic-mini { width: 13px; height: 13px; border-radius: 2px; }
+.ic-mini.on { box-shadow: inset 0 0 0 1px rgba(0,0,0,0.32); }
+
+/* ---------------- ACTIONS ---------------- */
+.ic-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ic-orient { display: flex; flex-direction: column; gap: 4px; align-items: center; margin-right: 2px; }
+.ic-btn {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; padding: 9px 13px; border-radius: 9px; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink); border: 1.5px solid var(--accent-d);
+  transition: filter 0.12s;
+}
+.ic-btn:hover { filter: brightness(1.08); }
+.ic-btn.ghost { background: transparent; color: var(--ink-2); border-color: var(--line-2); }
+.ic-hint { font-size: 11px; color: var(--ink-3); font-style: italic; }
+
+/* ---------------- SCORE BREAKDOWN ---------------- */
+.ic-score {
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 9px; padding: 9px 10px;
+}
+.ic-score-row { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-family: var(--mono); font-size: 10.5px; color: var(--ink-2); }
+.ic-score-row .v { color: var(--ink); font-weight: 600; }
+.ic-score-row.total { border-top: 1px dashed var(--line-2); padding-top: 6px; margin-top: 2px;
+  font-size: 12px; color: var(--accent-hi); }
+.ic-colordots { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.ic-cdot { display: inline-flex; align-items: center; gap: 2px; font-family: var(--mono); font-size: 9px; color: var(--ink-3); }
+.ic-cdot i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+/* ---------------- LOG ---------------- */
+.ic-log {
+  max-height: 92px; overflow: auto;
+  display: flex; flex-direction: column-reverse; gap: 2px;
+}
+
+/* ---------------- RESULT ---------------- */
+.ic-finalsc {
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  font-family: var(--display); font-size: 24px; font-weight: 700; margin: 4px 0 2px;
+}
+.ic-finalsc .you { color: var(--you); }
+.ic-finalsc .foe { color: var(--foe); }
+.ic-finalsc .sep { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+
+@media (max-width: 960px) {
+  .ic-main { grid-template-columns: 1fr; }
+}

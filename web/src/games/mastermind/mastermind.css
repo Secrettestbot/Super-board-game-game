@@ -1,0 +1,145 @@
+/* ==========================================================
+   MASTERMIND — "Crack the code."
+   Theme: warm walnut decking, glossy coloured pegs in drilled holes,
+   tiny black/white feedback pegs, brass trim.
+   Display: Sora · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #1a130d;
+  --bg-2:    #110c07;
+  --panel:   #271c13;
+  --panel-2: #1f160e;
+  --ink:     #f3ece0;
+  --ink-2:   #c1ac92;
+  --ink-3:   #87715a;
+  --line:    #3a2a1c;
+  --line-2:  #4f3a26;
+
+  /* token contract -> this theme (brass primary, dark text) */
+  --accent:  #cf9f4e;  --accent-d:#9c7220;  --accent-hi:#ecc878;  --accent-ink:#2b1d06;
+  --trim:    #cf9f4e;  --trim-hi:#ecc878;
+  --you:     #ecc878;  --foe:#c1ac92;
+  --good:    #6fc090;  --warn:#e0894e;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Sora", system-ui, sans-serif;
+  --mono:    "JetBrains Mono", monospace;
+
+  /* game-specific: the 6 peg colours */
+  --p0: #e0433f;  --p0-hi:#ff7672;   /* red    */
+  --p1: #3f7fe0;  --p1-hi:#79aeff;   /* blue   */
+  --p2: #4bb265;  --p2-hi:#82e29a;   /* green  */
+  --p3: #e8c64a;  --p3-hi:#ffe486;   /* yellow */
+  --p4: #c46be0;  --p4-hi:#e7a4ff;   /* purple */
+  --p5: #e88a3a;  --p5-hi:#ffb56e;   /* orange */
+
+  --wood:   #3a2a1c;  --wood-2:#2c1f14;  --hole:#15100a;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(207,159,78,0.07) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 244px; gap: clamp(18px, 2.6vw, 38px); }
+
+/* ---- board: stacked guess rows on a walnut decking ---- */
+.mm-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.mm-board {
+  --peg: clamp(20px, min(4.1vh, 3vw), 34px);
+  display: flex; flex-direction: column-reverse; gap: clamp(5px, 0.9vh, 9px);
+  padding: 14px; background: linear-gradient(160deg, var(--wood), var(--wood-2));
+  border: 2px solid #1c130b; border-radius: 14px;
+  box-shadow: 0 16px 44px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.mm-row {
+  display: grid; grid-template-columns: auto auto; align-items: center; gap: 12px;
+  padding: 5px 8px; border-radius: 9px; background: rgba(0,0,0,0.12);
+}
+.mm-row.cur { background: rgba(207,159,78,0.10); box-shadow: inset 0 0 0 1.5px var(--accent-d); }
+.mm-row.done { opacity: 0.96; }
+
+/* the 4 colour pegs of a row */
+.mm-pegs { display: flex; gap: clamp(4px, 0.8vw, 8px); }
+.mm-hole {
+  width: var(--peg); height: var(--peg); border-radius: 50%;
+  background: radial-gradient(circle at 50% 40%, var(--hole), #0b0805);
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.7), inset 0 -1px 1px rgba(255,255,255,0.03);
+  display: flex; align-items: center; justify-content: center;
+}
+.mm-hole.pick { cursor: pointer; }
+.mm-hole.sel { box-shadow: inset 0 2px 4px rgba(0,0,0,0.7), 0 0 0 2px var(--accent-hi); }
+.mm-peg {
+  width: 84%; height: 84%; border-radius: 50%;
+  box-shadow: 0 2px 3px rgba(0,0,0,0.5), inset 0 2px 3px rgba(255,255,255,0.45), inset 0 -3px 4px rgba(0,0,0,0.35);
+  animation: drop 0.16s ease-out;
+}
+@keyframes drop { from { transform: translateY(-40%) scale(0.7); opacity: 0.4; } to { transform: none; opacity: 1; } }
+
+.mm-peg.c0 { background: radial-gradient(circle at 38% 28%, var(--p0-hi), var(--p0)); }
+.mm-peg.c1 { background: radial-gradient(circle at 38% 28%, var(--p1-hi), var(--p1)); }
+.mm-peg.c2 { background: radial-gradient(circle at 38% 28%, var(--p2-hi), var(--p2)); }
+.mm-peg.c3 { background: radial-gradient(circle at 38% 28%, var(--p3-hi), var(--p3)); }
+.mm-peg.c4 { background: radial-gradient(circle at 38% 28%, var(--p4-hi), var(--p4)); }
+.mm-peg.c5 { background: radial-gradient(circle at 38% 28%, var(--p5-hi), var(--p5)); }
+
+/* feedback: a 2x2 grid of tiny key-pegs */
+.mm-fb { display: grid; grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr); gap: 3px; padding: 4px; border-radius: 6px; background: rgba(0,0,0,0.25); }
+.mm-key { width: clamp(7px, 1.3vh, 11px); height: clamp(7px, 1.3vh, 11px); border-radius: 50%; background: radial-gradient(circle at 50% 45%, #1d150d, #0a0704); box-shadow: inset 0 1px 2px rgba(0,0,0,0.6); }
+.mm-key.black { background: radial-gradient(circle at 38% 30%, #555, #111); box-shadow: 0 1px 1px rgba(0,0,0,0.5); }
+.mm-key.white { background: radial-gradient(circle at 38% 30%, #fff, #cfc8ba); box-shadow: 0 1px 1px rgba(0,0,0,0.4); }
+
+.mm-num { font-family: var(--mono); font-size: 9px; color: var(--ink-3); width: 16px; text-align: right; }
+
+/* ---- side panel ---- */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+
+.remain { display: flex; align-items: baseline; gap: 8px; }
+.remain .big { font-family: var(--display); font-weight: 700; font-size: 30px; color: var(--accent-hi); line-height: 1; }
+.remain .lab { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); }
+
+/* colour palette */
+.palette { display: flex; flex-wrap: wrap; gap: 9px; }
+.swatch {
+  width: 32px; height: 32px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;
+  box-shadow: 0 2px 3px rgba(0,0,0,0.5), inset 0 2px 3px rgba(255,255,255,0.45), inset 0 -3px 4px rgba(0,0,0,0.35);
+  transition: transform 0.1s, border-color 0.1s;
+}
+.swatch:hover { transform: translateY(-2px); }
+.swatch.on { border-color: var(--accent-hi); box-shadow: 0 0 0 2px var(--accent-hi), inset 0 2px 3px rgba(255,255,255,0.45); }
+.swatch.c0 { background: radial-gradient(circle at 38% 28%, var(--p0-hi), var(--p0)); }
+.swatch.c1 { background: radial-gradient(circle at 38% 28%, var(--p1-hi), var(--p1)); }
+.swatch.c2 { background: radial-gradient(circle at 38% 28%, var(--p2-hi), var(--p2)); }
+.swatch.c3 { background: radial-gradient(circle at 38% 28%, var(--p3-hi), var(--p3)); }
+.swatch.c4 { background: radial-gradient(circle at 38% 28%, var(--p4-hi), var(--p4)); }
+.swatch.c5 { background: radial-gradient(circle at 38% 28%, var(--p5-hi), var(--p5)); }
+
+.mm-actions { display: flex; gap: 8px; }
+.mm-btn {
+  flex: 1; font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; padding: 10px 8px; border-radius: 9px; cursor: pointer;
+  background: var(--panel); color: var(--ink); border: 1.5px solid var(--line-2);
+  transition: all 0.13s;
+}
+.mm-btn:hover:not(:disabled) { border-color: var(--trim); color: var(--trim-hi); }
+.mm-btn.go { background: var(--accent); color: var(--accent-ink); border-color: var(--accent-d); }
+.mm-btn.go:hover:not(:disabled) { filter: brightness(1.1); }
+.mm-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 150px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--accent-hi); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* result modal — reveal the code */
+.reveal { display: flex; justify-content: center; gap: 9px; margin: 14px 0 4px; }
+.reveal .mm-hole { width: 30px; height: 30px; }
+.modal-body i { color: var(--accent-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

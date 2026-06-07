@@ -1,0 +1,212 @@
+/* ==========================================================
+   DEEP SEA ADVENTURE — "One tank. Three greedy divers."
+   Theme: deep-ocean blues fading to the abyss, with sub-yellow accents and brassy
+   treasure trim. Push-your-luck dice race down a treasure path.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #06121f;
+  --bg-2:    #030b14;
+  --panel:   #0d2236;
+  --panel-2: #0a1a2b;
+  --ink:     #eaf4fb;
+  --ink-2:   #9fc1d6;
+  --ink-3:   #5c7e93;
+  --line:    #17324a;
+  --line-2:  #244966;
+
+  /* token contract -> ocean theme (sub-yellow primary, deep ink on it) */
+  --accent:    #f5c542;  --accent-d:#c79412;  --accent-hi:#ffdd6b;  --accent-ink:#1a1402;
+  --trim:      #1f9bd6;  --trim-hi:#56c2f0;
+  --you:       #ffd95a;  --foe:#6fd0e8;
+  --good:      #58d6a0;  --warn:#ef6a52;
+
+  /* game-specific */
+  --sea-0:     #16557e;  /* shallow band */
+  --sea-1:     #114063;
+  --sea-2:     #0d2d49;
+  --sea-3:     #0a2038;  /* abyss band */
+  --sub:       #f5c542;  --sub-ink:#1a1402;
+  --tre:       #e9c46a;  --tre-2:#d9a93f;  --tre-ink:#2a1d04;  --tre-line:#b88a2a;
+  --blank:     #0a1a2b;  --blank-line:#1a3a55;
+  --d0:        #ffd95a;  --d1:#6fd0e8;  --d2:#b48ef0;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(31,155,214,0.10) 0%, transparent 30%),
+    radial-gradient(ellipse at 50% -8%, rgba(86,194,240,0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 120%, rgba(3,8,18,0.6) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: minmax(0, 1fr) 290px; gap: clamp(14px, 2vw, 28px); }
+
+.ds-main { display: flex; flex-direction: column; gap: clamp(12px, 1.6vw, 20px); min-width: 0; }
+
+/* ---- air gauge ---- */
+.ds-air-panel { display: flex; flex-direction: column; gap: 9px; }
+.ds-air-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.ds-air-val { font-family: var(--mono); font-size: 13px; color: var(--ink-2); }
+.ds-air-val b { color: var(--accent-hi); font-size: 22px; font-family: var(--display); }
+.ds-air-bar {
+  position: relative; height: 18px; border-radius: 10px; overflow: hidden;
+  background: var(--bg-2); border: 1px solid var(--line);
+}
+.ds-air-fill {
+  position: absolute; inset: 0 auto 0 0; border-radius: 10px;
+  background: linear-gradient(90deg, var(--trim), var(--trim-hi));
+  box-shadow: 0 0 14px rgba(86,194,240,0.4);
+  transition: width .3s ease, background .3s ease;
+}
+.ds-air-fill.low { background: linear-gradient(90deg, #c0461f, var(--warn)); box-shadow: 0 0 14px rgba(239,106,82,0.45); }
+
+/* ---- the path ---- */
+.ds-path-panel { display: flex; flex-direction: column; gap: 10px; }
+.ds-path {
+  display: flex; flex-wrap: wrap; gap: clamp(5px, 0.7vw, 8px); align-items: stretch;
+}
+.ds-cell {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  width: clamp(34px, 3.6vw, 46px); min-height: clamp(54px, 6.4vw, 72px);
+  border-radius: 9px; padding: 4px 2px 3px;
+  border: 1.5px solid var(--blank-line);
+  background: var(--sea-2);
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+.ds-cell.lvl0 { background: linear-gradient(170deg, var(--sea-0), var(--sea-1)); }
+.ds-cell.lvl1 { background: linear-gradient(170deg, var(--sea-1), var(--sea-2)); }
+.ds-cell.lvl2 { background: linear-gradient(170deg, var(--sea-2), var(--sea-3)); }
+.ds-cell.lvl3 { background: linear-gradient(170deg, var(--sea-3), #061525); }
+.ds-cell.sub {
+  background: linear-gradient(170deg, var(--sub), var(--tre-2)); border-color: var(--tre-line);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.4), 0 4px 12px rgba(245,197,66,0.25);
+}
+.ds-cell.land { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 6px 14px rgba(245,197,66,0.35); transform: translateY(-3px); }
+
+.ds-cell-tre {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  background: linear-gradient(160deg, var(--tre), var(--tre-2));
+  color: var(--tre-ink); border: 1px solid var(--tre-line); border-radius: 6px;
+  padding: 2px 4px; min-width: 22px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.45);
+}
+.ds-cell-val { font-family: var(--mono); font-weight: 600; font-size: clamp(11px, 1.3vw, 14px); line-height: 1; }
+.ds-cell-lv { font-size: 6px; letter-spacing: 0.5px; opacity: 0.7; }
+.ds-cell-stack { position: relative; }
+.ds-cell-stack::after {
+  content: ""; position: absolute; right: -3px; bottom: -3px; left: 3px; top: 3px;
+  border: 1px solid var(--tre-line); border-radius: 6px; z-index: -1; opacity: 0.6;
+}
+.ds-cell-blank { color: var(--ink-3); font-size: 9px; font-style: italic; opacity: 0.5; }
+.ds-cell-depth { position: absolute; top: 2px; left: 0; right: 0; text-align: center; font-family: var(--mono); font-size: 7px; color: var(--ink-3); }
+
+.ds-cell-divers { display: flex; gap: 1px; flex-wrap: wrap; justify-content: center; margin-top: 3px; min-height: 14px; }
+.ds-diver-pin {
+  width: 13px; height: 13px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 8px; font-weight: 700; color: #04121d;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+.ds-diver-pin.d0 { background: var(--d0); }
+.ds-diver-pin.d1 { background: var(--d1); }
+.ds-diver-pin.d2 { background: var(--d2); }
+
+/* ---- controls ---- */
+.ds-controls { display: flex; flex-direction: column; gap: 12px; }
+.ds-ctl-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ds-dice { display: flex; gap: 10px; align-items: center; }
+.ds-die {
+  width: clamp(36px, 4vw, 46px); height: clamp(36px, 4vw, 46px);
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(160deg, #f4ecd8, #e3d4b2);
+  color: #2a1d04; border: 1.5px solid #c8b387; border-radius: 10px;
+  box-shadow: 0 4px 9px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.6);
+  font-family: var(--display); font-weight: 700; font-size: clamp(17px, 1.9vw, 22px);
+}
+.ds-die.empty { background: var(--panel-2); color: var(--ink-3); border-color: var(--line); box-shadow: none; }
+
+.ds-carry { display: flex; flex-direction: column; gap: 6px; }
+.ds-carry-label { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-3); }
+.ds-carry-row {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 40px; padding: 8px 10px;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 11px;
+}
+.ds-carry-chip {
+  font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--tre-ink);
+  background: linear-gradient(160deg, var(--tre), var(--tre-2)); border: 1px solid var(--tre-line);
+  border-radius: 6px; padding: 3px 8px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.4);
+}
+.ds-carry-empty { color: var(--ink-3); font-style: italic; font-size: 13px; }
+.ds-carry-sum { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+.ds-carry-sum b { color: var(--accent-hi); font-size: 15px; }
+
+.ds-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.ds-btn {
+  flex: 1; min-width: 120px; padding: 11px 16px; border-radius: 11px;
+  font-family: var(--display); font-weight: 700; font-size: 14px; cursor: pointer;
+  background: linear-gradient(160deg, var(--accent-hi), var(--accent));
+  color: var(--accent-ink); border: 1px solid var(--accent-d);
+  box-shadow: 0 5px 14px rgba(245,197,66,0.26), inset 0 1px 0 rgba(255,255,255,0.4);
+  transition: transform .1s ease, filter .1s ease;
+}
+.ds-btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.06); }
+.ds-btn.alt {
+  background: linear-gradient(160deg, var(--trim-hi), var(--trim));
+  color: #04121d; border-color: #157aa8;
+  box-shadow: 0 5px 14px rgba(31,155,214,0.28), inset 0 1px 0 rgba(255,255,255,0.3);
+}
+.ds-btn.ghost {
+  background: var(--panel-2); color: var(--ink-2); border-color: var(--line-2);
+  box-shadow: none;
+}
+.ds-btn:disabled { opacity: 0.38; cursor: default; box-shadow: none; transform: none; }
+
+/* ---- side: divers ---- */
+.ds-side { display: flex; flex-direction: column; gap: 12px; }
+.ds-scores { display: flex; flex-direction: column; gap: 10px; }
+.ds-pc {
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.ds-pc.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 4px 12px rgba(245,197,66,0.2); }
+.ds-pc.you.on { border-color: var(--you); box-shadow: 0 0 0 1px var(--you), 0 4px 12px rgba(255,217,90,0.2); }
+.ds-pc-head { display: flex; align-items: center; gap: 8px; }
+.ds-pc-pin {
+  width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: #04121d;
+}
+.ds-pc-pin.d0 { background: var(--d0); }
+.ds-pc-pin.d1 { background: var(--d1); }
+.ds-pc-pin.d2 { background: var(--d2); }
+.ds-pc-name { font-family: var(--display); font-weight: 600; font-size: 15px; color: var(--ink); }
+.ds-pc.you .ds-pc-name { color: var(--you); }
+.ds-pc-bank { margin-left: auto; font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--accent-hi); }
+.ds-pc-stat { display: flex; gap: 10px; font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.ds-pc-stat .safe { color: var(--good); }
+.ds-pc-stat .out { color: var(--foe); }
+
+.ds-goal { font-family: var(--mono); font-size: 11px; color: var(--ink-3); text-align: center; margin-top: 2px; }
+
+/* ---- final modal ---- */
+.ds-final { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 2px; }
+.ds-final-row {
+  display: flex; gap: 8px; align-items: baseline; padding: 8px 12px;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px;
+  font-family: var(--mono); font-size: 13px; color: var(--ink-2);
+}
+.ds-final-row b { color: var(--ink); font-family: var(--sans); }
+.ds-final-row .pts { margin-left: auto; color: var(--accent-hi); font-weight: 600; }
+.ds-final-row.win { border-color: var(--accent); background: rgba(245,197,66,0.12); color: var(--ink); }
+
+@media (max-width: 880px) {
+  .stage { grid-template-columns: 1fr; }
+}

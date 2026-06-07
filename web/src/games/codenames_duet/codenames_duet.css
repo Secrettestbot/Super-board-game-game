@@ -1,0 +1,193 @@
+/* ==========================================================
+   CODENAMES DUET — "Two spies, one mission."
+   Theme: midnight agency — deep teal-black field, frosted-glass panels,
+   emerald agents, brass intel accents, a near-black assassin.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Built for this codebase. Shared shell in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #0c1512;
+  --bg-2:    #07100d;
+  --panel:   #15211d;
+  --panel-2: #182b25;
+  --ink:     #e8f1ec;
+  --ink-2:   #9db5ab;
+  --ink-3:   #6c857c;
+  --line:    #253a33;
+  --line-2:  #335249;
+
+  /* token contract -> this theme (brass/intel primary, emerald trim) */
+  --accent:    #d8b24a;  --accent-d:#a7841f;  --accent-hi:#eccb6a;  --accent-ink:#1a1305;
+  --trim:      #56c08d;  --trim-hi:#7fdcab;
+  --you:       #56c08d;  --foe:#d8b24a;
+  --good:      #4fb682;  --warn:#e08a3c;
+
+  /* game-specific */
+  --agent:     #2f7d57;  --agent-2:#236347;  --agent-line:#56c08d;  --agent-ink:#e7fff2;
+  --byst:      #243a33;  --byst-2:#1d3029;   --byst-line:#3a584e;
+  --assassin:  #0a0f0d;  --assassin-2:#161a18; --assassin-line:#4a3030; --assassin-red:#c5564a;
+  --card:      #1c2e28;  --card-2:#16241f;   --card-line:#2e4940;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(86,192,141,0.10) 0%, transparent 54%),
+    radial-gradient(ellipse at 12% 110%, rgba(216,178,74,0.07) 0%, transparent 48%);
+}
+
+.stage { grid-template-columns: minmax(0, 1fr) 290px; gap: clamp(16px, 2.2vw, 28px); align-items: start; }
+
+.title-mark { width: 42px; height: 42px; }
+
+/* ---- the board ---- */
+.cd-main { min-width: 0; }
+.cd-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: clamp(7px, 1vw, 12px);
+  background: linear-gradient(165deg, var(--panel), var(--bg-2));
+  border: 2px solid var(--line-2);
+  border-radius: 18px;
+  padding: clamp(10px, 1.4vw, 18px);
+  box-shadow: 0 20px 54px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.cd-card {
+  position: relative;
+  aspect-ratio: 5 / 3;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 11px;
+  border: 1.5px solid var(--card-line);
+  background: linear-gradient(168deg, var(--card), var(--card-2));
+  color: var(--ink);
+  font-family: var(--display); font-weight: 600;
+  font-size: clamp(10px, 1.18vw, 16px);
+  letter-spacing: 0.02em;
+  cursor: default;
+  text-transform: uppercase;
+  transition: transform 0.1s, box-shadow 0.12s, filter 0.12s;
+  overflow: hidden;
+}
+.cd-word { padding: 0 4px; text-align: center; line-height: 1.05; z-index: 1; }
+
+/* role coloring (the HUMAN's key card) */
+.cd-card.agent {
+  background: linear-gradient(168deg, var(--agent), var(--agent-2));
+  border-color: var(--agent-line); color: var(--agent-ink);
+  box-shadow: inset 0 0 0 1px rgba(127,220,171,0.22), 0 4px 12px rgba(0,0,0,0.35);
+}
+.cd-card.bystander {
+  background: linear-gradient(168deg, var(--byst), var(--byst-2));
+  border-color: var(--byst-line); color: var(--ink-2);
+}
+.cd-card.assassin {
+  background: linear-gradient(168deg, var(--assassin), var(--assassin-2));
+  border-color: var(--assassin-line); color: #9aa39e;
+  box-shadow: inset 0 0 0 1px rgba(197,86,74,0.28);
+}
+
+/* interactive states */
+.cd-card.tappable { cursor: pointer; }
+.cd-card.tappable:hover { transform: translateY(-2px); filter: brightness(1.12); box-shadow: 0 8px 20px rgba(0,0,0,0.5); }
+
+.cd-card.contacted {
+  filter: none; cursor: default;
+  border-color: var(--agent-line);
+  background: linear-gradient(168deg, var(--agent-line), var(--agent));
+  color: var(--agent-ink);
+  box-shadow: inset 0 0 0 2px rgba(127,220,171,0.5), 0 0 18px rgba(86,192,141,0.3);
+}
+.cd-card.spent {
+  opacity: 0.5; cursor: default; filter: grayscale(0.4);
+  text-decoration: line-through; text-decoration-color: rgba(255,255,255,0.3);
+}
+.cd-card:disabled { cursor: default; }
+
+.cd-mark {
+  position: absolute; top: 3px; right: 5px; font-size: 11px;
+  color: var(--trim-hi); z-index: 2; opacity: 0.9;
+}
+
+/* tap feedback flash */
+@keyframes cd-flash-good { 0% { box-shadow: 0 0 0 3px var(--trim-hi); } 100% { box-shadow: 0 0 0 3px transparent; } }
+@keyframes cd-flash-bad  { 0% { box-shadow: 0 0 0 3px var(--warn); } 100% { box-shadow: 0 0 0 3px transparent; } }
+@keyframes cd-flash-kill { 0% { box-shadow: 0 0 0 4px var(--assassin-red); } 100% { box-shadow: 0 0 0 4px transparent; } }
+.cd-card.flash-agent    { animation: cd-flash-good 0.6s ease-out; }
+.cd-card.flash-bystander{ animation: cd-flash-bad  0.6s ease-out; }
+.cd-card.flash-assassin { animation: cd-flash-kill 0.8s ease-out; }
+
+/* ---- side panels ---- */
+.side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.panel { background: linear-gradient(168deg, var(--panel-2), var(--panel)); border: 1.5px solid var(--line); border-radius: 14px; padding: 13px 14px; }
+
+.cd-clue-panel { text-align: center; }
+.cd-clue-big {
+  font-family: var(--display); font-weight: 700; font-size: 26px;
+  color: var(--accent-hi); margin: 6px 0 2px; letter-spacing: 0.02em;
+  text-shadow: 0 2px 10px rgba(216,178,74,0.25);
+}
+.cd-clue-sub { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); letter-spacing: 0.04em; }
+
+/* clue giver */
+.cd-give-row { display: flex; gap: 7px; margin: 9px 0 11px; }
+.cd-clue-input {
+  flex: 1 1 auto; min-width: 0;
+  font-family: var(--mono); font-size: 13px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  background: var(--bg-2); color: var(--ink);
+  border: 1.5px solid var(--line-2); border-radius: 8px; padding: 8px 10px;
+  outline: none;
+}
+.cd-clue-input:focus { border-color: var(--trim); }
+.cd-clue-num {
+  flex: 0 0 auto;
+  font-family: var(--mono); font-size: 13px; font-weight: 600;
+  background: var(--bg-2); color: var(--ink);
+  border: 1.5px solid var(--line-2); border-radius: 8px; padding: 8px 6px; cursor: pointer;
+}
+.cd-give-btn {
+  flex: 0 0 auto; cursor: pointer;
+  font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--accent); color: var(--accent-ink);
+  border: none; border-radius: 8px; padding: 8px 13px;
+  transition: filter 0.12s;
+}
+.cd-give-btn:hover:not(:disabled) { filter: brightness(1.1); }
+.cd-give-btn:disabled { opacity: 0.45; cursor: default; }
+
+.cd-sugg-label { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.13em; color: var(--ink-3); margin-bottom: 7px; }
+.cd-suggs { display: flex; flex-wrap: wrap; gap: 6px; }
+.cd-sugg {
+  cursor: pointer;
+  font-family: var(--sans); font-size: 12px; font-weight: 600;
+  background: var(--byst); color: var(--ink);
+  border: 1.5px solid var(--line-2); border-radius: 8px; padding: 6px 10px;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: all 0.12s;
+}
+.cd-sugg:hover { border-color: var(--trim); background: var(--agent-2); }
+.cd-sugg b { letter-spacing: 0.02em; }
+.cd-sugg-n {
+  font-family: var(--mono); font-weight: 700; font-size: 11px;
+  background: var(--accent); color: var(--accent-ink);
+  border-radius: 5px; padding: 1px 6px;
+}
+.cd-sugg-empty { font-size: 11.5px; color: var(--ink-3); font-style: italic; }
+
+/* legend */
+.cd-legend { font-size: 12.5px; }
+.cd-leg-row { display: flex; align-items: center; gap: 9px; margin-top: 7px; color: var(--ink-2); }
+.cd-sw { width: 15px; height: 15px; border-radius: 4px; flex: 0 0 auto; border: 1px solid var(--line-2); }
+.cd-sw.agent { background: linear-gradient(168deg, var(--agent), var(--agent-2)); border-color: var(--agent-line); }
+.cd-sw.bystander { background: linear-gradient(168deg, var(--byst), var(--byst-2)); }
+.cd-sw.assassin { background: var(--assassin); border-color: var(--assassin-line); }
+.cd-leg-note { margin-top: 11px; font-size: 11px; line-height: 1.5; color: var(--ink-3); font-style: italic; }
+
+.panel-l { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); }

@@ -1,0 +1,217 @@
+/* ==========================================================
+   THE FOX IN THE FOREST — "Win the middle."
+   Theme: a storybook fairytale wood at twilight — deep mossy plum-green ground,
+   gilt-edged painted cards, three suits (Bells gold, Keys teal, Moons violet), an
+   ornate decree. Display: Cormorant Garamond · Body: Inter · Mono: JetBrains Mono.
+
+   Shared shell lives in ../../framework/tokens.css; this file supplies the token
+   values, the card/trick/side classes, and overrides. The gilt primary button needs
+   dark text, so this theme sets --accent-ink.
+   ========================================================== */
+
+:root {
+  --bg:      #16121d;
+  --bg-2:    #0d0a13;
+  --panel:   #221b2c;
+  --panel-2: #1a1422;
+  --ink:     #f3ecdd;
+  --ink-2:   #bcaec2;
+  --ink-3:   #7a6e85;
+  --line:    #2e2538;
+  --line-2:  #463a54;
+
+  /* token contract -> this theme (gilt primary, dark text on it) */
+  --accent:  #d8b15a;  --accent-d:#a8801f;  --accent-hi:#f0d488;  --accent-ink:#2a1d05;
+  --trim:    #c79bd6;  --trim-hi:#e3c2ef;
+  --you:     #f0d488;  --foe:#e0a07a;
+  --good:    #7fc99a;  --warn:#e0894e;
+
+  /* game-specific */
+  --parch:   #f1e7cf;  --parch-2:#e4d4ad;  --parch-edge:#b89a5c;  --parch-ink:#3a2c18;
+  --gilt:    #d8b15a;  --gilt-hi:#f0d488;
+
+  /* suits */
+  --bells:   #d8a73f;  --bells-d:#9a7420;
+  --keys:    #3fa7a0;  --keys-d:#1f7068;
+  --moons:   #9163b6;  --moons-d:#634085;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Cormorant Garamond", Georgia, serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(199,155,214,0.10) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 118%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.app { max-width: 1280px; }
+.title-main { line-height: 0.94; letter-spacing: 0.01em; font-size: 32px; }
+.turn-banner { font-size: 23px; font-weight: 600; letter-spacing: 0.01em; }
+
+/* ===== STAGE ===== */
+.stage { grid-template-columns: 1fr 300px; gap: clamp(14px, 2vw, 26px); align-items: stretch; padding: 6px 28px 14px; }
+
+.fx-table { display: grid; grid-template-rows: auto 1fr auto; min-height: 0; gap: 8px; }
+
+/* ===== OPPONENT STRIP ===== */
+.fx-oppstrip { display: flex; align-items: center; gap: 14px; }
+.fx-opp-id { display: flex; flex-direction: column; gap: 1px; }
+.fx-opp-name { font-family: var(--display); font-weight: 700; font-size: 21px; letter-spacing: 0.02em; }
+.fx-opp-meta { font-family: var(--mono); font-size: 10px; color: var(--ink-3); letter-spacing: 0.04em; }
+.fx-opp-hand { display: flex; gap: 3px; margin-left: 4px; flex-wrap: wrap; max-width: 360px; }
+.fx-cardback { width: 22px; height: 34px; border-radius: 4px;
+  background: repeating-linear-gradient(135deg, #2a2136 0 5px, #211a2b 5px 10px);
+  border: 1.5px solid var(--line-2); box-shadow: 0 2px 4px rgba(0,0,0,0.4); flex: 0 0 auto; position: relative; }
+.fx-cardback::after { content: ""; position: absolute; inset: 4px; border: 1px solid rgba(199,155,214,0.3); border-radius: 2px; }
+.fx-opp-tag { margin-left: auto; display: flex; align-items: center; gap: 18px; }
+.fx-opp-stat { text-align: center; }
+.fx-opp-stat b { display: block; font-family: var(--display); font-weight: 700; font-size: 24px; color: var(--foe); line-height: 1; }
+.fx-opp-stat span { font-family: var(--mono); font-size: 8px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-3); }
+
+/* ===== FELT / FOREST FLOOR ===== */
+.fx-felt { position: relative; border-radius: 18px; min-height: 0;
+  background: radial-gradient(ellipse at 50% 40%, #243224 0%, #182018 60%, #121810 100%);
+  border: 1.5px solid var(--line); box-shadow: inset 0 0 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.03);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 14px; overflow: hidden; }
+.fx-felt::before { content: ""; position: absolute; width: 240px; height: 240px; border-radius: 50%;
+  border: 1.5px dashed rgba(199,155,214,0.14); pointer-events: none; }
+.fx-felt::after { content: ""; position: absolute; width: 130px; height: 130px; border-radius: 50%;
+  border: 1px dashed rgba(216,177,90,0.12); pointer-events: none; }
+
+.fx-trick { display: flex; gap: 30px; align-items: flex-end; z-index: 1; min-height: 150px; }
+.fx-slot { display: flex; flex-direction: column; align-items: center; gap: 7px; }
+.fx-slot-who { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-3); }
+.fx-slot.win .fx-slot-who { color: var(--gilt-hi); }
+.fx-slot.win .fx-card { box-shadow: 0 0 0 2px var(--gilt-hi), 0 8px 18px rgba(0,0,0,0.5); }
+.fx-empty { width: 92px; height: 132px; border-radius: 11px; border: 1.5px dashed var(--line-2); opacity: 0.5; }
+
+.fx-hint { font-family: var(--mono); font-size: 11px; color: var(--ink-3); letter-spacing: 0.04em; z-index: 1; text-align: center; }
+
+/* hand-end card */
+.fx-handend { display: flex; flex-direction: column; align-items: center; gap: 13px; z-index: 1; text-align: center; }
+.fx-he-title { font-family: var(--display); font-weight: 700; font-size: 26px; color: var(--gilt-hi); letter-spacing: 0.02em; }
+.fx-he-row { display: flex; gap: 26px; font-family: var(--sans); font-size: 13px; color: var(--ink-2); }
+.fx-he-row .you b { color: var(--gilt-hi); } .fx-he-row .foe b { color: var(--foe); }
+.fx-continue { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 11px 18px; border-radius: 9px; cursor: pointer; background: var(--gilt); color: var(--accent-ink);
+  border: 1.5px solid var(--accent-d); transition: filter 0.12s; }
+.fx-continue:hover { filter: brightness(1.08); }
+
+/* ===== CARDS ===== */
+.fx-card { border-radius: 11px; flex: 0 0 auto; position: relative;
+  background: linear-gradient(165deg, var(--parch) 0%, var(--parch-2) 100%);
+  border: 1.5px solid var(--parch-edge);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.45), inset 0 0 0 2px rgba(255,255,255,0.18);
+  display: flex; flex-direction: column; justify-content: space-between; padding: 7px 8px; overflow: hidden; }
+.fx-card .fx-corner { font-family: var(--display); font-weight: 700; line-height: 0.8; display: flex; flex-direction: column; align-items: flex-start; z-index: 1; }
+.fx-card .fx-corner.br { align-items: flex-end; transform: rotate(180deg); }
+.fx-card .fx-rank { font-size: 21px; color: var(--parch-ink); }
+.fx-card .fx-glyph { font-size: 13px; line-height: 1; margin-top: 1px; }
+.fx-card .fx-center { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 40px; pointer-events: none; opacity: 0.9; text-shadow: 0 2px 3px rgba(0,0,0,0.18); }
+.fx-card .fx-power { position: absolute; bottom: 5px; left: 0; right: 0; text-align: center;
+  font-family: var(--mono); font-size: 7px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--parch-ink); opacity: 0.7; z-index: 1; }
+.fx-card.odd { box-shadow: 0 4px 10px rgba(0,0,0,0.45), inset 0 0 0 2px rgba(216,177,90,0.45); }
+
+/* suit colours (glyph + accents) */
+.fx-card.suit-bells .fx-glyph, .fx-card.suit-bells .fx-center { color: var(--bells-d); }
+.fx-card.suit-keys  .fx-glyph, .fx-card.suit-keys  .fx-center { color: var(--keys-d); }
+.fx-card.suit-moons .fx-glyph, .fx-card.suit-moons .fx-center { color: var(--moons-d); }
+.fx-card.suit-bells { border-color: #c79a4e; }
+.fx-card.suit-keys  { border-color: #5fa39c; }
+.fx-card.suit-moons { border-color: #9072b0; }
+
+/* sizes per context */
+.fx-trick .fx-card { width: 94px; height: 134px; }
+.fx-trick .fx-card .fx-rank { font-size: 23px; }
+.fx-trick .fx-card .fx-center { font-size: 46px; }
+.fx-card.played-in { animation: fxDrop 0.26s cubic-bezier(.3,1.3,.5,1); }
+@keyframes fxDrop { from { transform: translateY(-12px) scale(0.94); } to { transform: none; } }
+
+/* ===== YOUR HAND ===== */
+.fx-handrow { display: flex; flex-direction: column; gap: 7px; }
+.fx-hand-label { display: flex; align-items: baseline; gap: 10px; }
+.fx-hand-label .hl-name { font-family: var(--display); font-weight: 700; font-size: 21px; letter-spacing: 0.02em; }
+.fx-hand-label .hl-hint { font-family: var(--mono); font-size: 10px; color: var(--ink-3); letter-spacing: 0.04em; }
+.fx-hand-label .hl-stat { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--gilt-hi); letter-spacing: 0.04em; }
+.fx-hand-cards { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-end; min-height: 96px; }
+.fx-hand-cards .fx-card { width: 60px; height: 90px; cursor: pointer; transition: transform 0.13s, box-shadow 0.13s; }
+.fx-hand-cards .fx-card .fx-rank { font-size: 16px; }
+.fx-hand-cards .fx-card .fx-center { font-size: 30px; }
+.fx-hand-cards .fx-card .fx-glyph { font-size: 11px; }
+.fx-hand-cards .fx-card .fx-power { font-size: 6px; bottom: 4px; }
+.fx-hand-cards .fx-card.playable:hover { transform: translateY(-9px); box-shadow: 0 0 0 2px var(--gilt-hi), 0 10px 18px rgba(0,0,0,0.5); }
+.fx-hand-cards .fx-card.illegal { opacity: 0.38; cursor: not-allowed; filter: grayscale(0.4); }
+.fx-hand-cards.locked .fx-card { cursor: default; }
+
+.fx-swap-row { display: flex; gap: 8px; margin-top: 2px; }
+.fx-swap-btn { font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+  background: var(--panel); color: var(--trim-hi); border: 1.5px solid var(--trim); transition: all 0.12s; }
+.fx-swap-btn:hover { background: var(--trim); color: var(--bg-2); }
+.fx-swap-btn.ghost { color: var(--ink-3); border-color: var(--line-2); }
+.fx-swap-btn.ghost:hover { background: var(--panel-2); color: var(--ink-2); border-color: var(--ink-3); }
+
+/* ===== SIDE PANEL ===== */
+.side { display: flex; flex-direction: column; gap: 9px; min-height: 0; }
+.panel { padding: 11px 13px; }
+.panel-l { margin-bottom: 9px; }
+
+/* decree */
+.fx-decree { background: var(--panel); border-color: var(--line-2); }
+.fx-decree-body { display: flex; align-items: center; gap: 13px; }
+.fx-decree .fx-decree-card { width: 64px; height: 94px; box-shadow: 0 4px 12px rgba(0,0,0,0.5), inset 0 0 0 2px rgba(216,177,90,0.55); }
+.fx-decree .fx-decree-card .fx-rank { font-size: 17px; } .fx-decree .fx-decree-card .fx-center { font-size: 32px; }
+.fx-decree-meta { display: flex; flex-direction: column; gap: 3px; }
+.fx-trump-name { font-family: var(--display); font-weight: 700; font-size: 24px; color: var(--gilt-hi); line-height: 1; }
+.fx-trump-sub { font-family: var(--sans); font-size: 12px; font-style: italic; color: var(--ink-2); }
+.fx-draw-n { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); margin-top: 4px; }
+
+/* scoreboard */
+.fx-scoreboard { flex: 0 0 auto; }
+.fx-sb-tot { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 8px; padding-bottom: 9px; border-bottom: 1px solid var(--line); }
+.fx-sb-tot .sbt { text-align: center; }
+.fx-sb-tot .sbt .who { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-3); }
+.fx-sb-tot .sbt .pts { font-family: var(--display); font-weight: 700; font-size: 34px; line-height: 1; }
+.fx-sb-tot .sbt.you .pts { color: var(--gilt-hi); } .fx-sb-tot .sbt.foe .pts { color: var(--foe); }
+.fx-target { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.fx-tricks { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px;
+  font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); }
+.fx-tricks .fx-tval { font-family: var(--display); font-size: 16px; letter-spacing: 0.02em; color: var(--ink-2); }
+.fx-tricks .fx-tval .you { color: var(--gilt-hi); } .fx-tricks .fx-tval .foe { color: var(--foe); }
+.fx-sb-head, .fx-sb-row { display: grid; grid-template-columns: 22px 1fr 1fr; gap: 6px; align-items: center; font-size: 11px; padding: 2px 0; }
+.fx-sb-head { font-family: var(--mono); font-size: 8px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+.fx-sb-rows { display: flex; flex-direction: column; gap: 2px; max-height: 130px; overflow-y: auto; }
+.fx-sb-row .rd { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.fx-sb-row .cell { display: flex; align-items: center; gap: 6px; font-family: var(--mono); }
+.fx-sb-row .cell .bt { color: var(--ink-2); font-size: 10px; }
+.fx-sb-row .cell .dl { margin-left: auto; font-family: var(--display); font-weight: 700; font-size: 13px; }
+.fx-sb-row .cell .dl.pos { color: var(--good); }
+
+/* log */
+.logbox { flex: 1 1 auto; min-height: 40px; overflow-y: auto; }
+.log-line { color: var(--ink-2); }
+.log-line.you { color: var(--gilt-hi); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ===== OVERLAYS (overrides) ===== */
+.overlay { background: rgba(8,6,12,0.82); }
+.modal { max-width: 560px; max-height: 88vh; overflow-y: auto; }
+.modal-title { letter-spacing: 0.02em; }
+.modal-body i { color: var(--gilt-hi); font-style: normal; font-weight: 600; }
+.fx-legend { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 12px; }
+.fx-legend .rl-item { display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; color: var(--ink-2); }
+.fx-legend .rl-item b { color: var(--ink); }
+.fx-legend .rl-pip { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--display); font-weight: 700; font-size: 14px; color: var(--accent-ink);
+  background: radial-gradient(circle at 38% 32%, var(--gilt-hi), var(--gilt)); border: 1px solid var(--accent-d); }
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 30px; }
+.finalsc .you { color: var(--gilt-hi); } .finalsc .foe { color: var(--foe); }
+
+@media (max-height: 780px) {
+  .title-main { font-size: 26px; }
+  .fx-trick .fx-card { width: 80px; height: 116px; }
+  .fx-felt::before { width: 190px; height: 190px; }
+}

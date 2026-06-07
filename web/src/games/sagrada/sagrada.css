@@ -1,0 +1,187 @@
+/* ==========================================================
+   SAGRADA — "Build a window of light."
+   Theme: stained glass on dark cathedral stone — leaded grids, five jewel-tone
+   dice (ruby/amber/emerald/sapphire/amethyst), printed restriction sockets.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Built for this codebase. Shared structural classes in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #16121f;
+  --bg-2:    #0d0a16;
+  --panel:   #221b30;
+  --panel-2: #1a1426;
+  --ink:     #f4eefb;
+  --ink-2:   #beb2d4;
+  --ink-3:   #786a94;
+  --line:    #322746;
+  --line-2:  #483861;
+
+  /* token contract -> this theme (warm gilt accent, dark ink on it) */
+  --accent:    #e9b949;  --accent-d:#b88a18;  --accent-hi:#ffd97a;  --accent-ink:#2e2000;
+  --trim:      #8a6ed8;  --trim-hi:#b6a0f0;
+  --you:       #6fd0e0;  --foe:#ff9a76;
+  --good:      #6fe0a0;  --warn:#ff7d7d;
+
+  /* die jewel tones (face + darker rim) */
+  --die-red:    #e2453f;  --die-red-d:#8e2420;
+  --die-yellow: #f0c54a;  --die-yellow-d:#a8821f;
+  --die-green:  #4fb56b;  --die-green-d:#296a3b;
+  --die-blue:   #4d7fe0;  --die-blue-d:#274a91;
+  --die-purple: #9a63d6;  --die-purple-d:#5b3489;
+
+  --glass:     #2a2138;  --glass-2:#231b30;
+  --lead:      #4a3b64;  --lead-hi:#5d4a7c;
+  --pip:       #fbf6ff;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(233,185,73,0.07) 0%, transparent 52%),
+    radial-gradient(ellipse at 10% 110%, rgba(138,110,216,0.08) 0%, transparent 46%),
+    radial-gradient(ellipse at 92% 115%, rgba(77,127,224,0.06) 0%, transparent 46%);
+}
+
+.stage { grid-template-columns: auto 252px; gap: clamp(16px, 2.4vw, 34px); align-items: start; }
+
+/* ---- Layout ---- */
+.sg-main { display: flex; flex-direction: column; gap: clamp(12px, 1.8vh, 22px); min-width: 0; }
+.sg-windows { display: flex; gap: clamp(14px, 2vw, 30px); flex-wrap: wrap; justify-content: center; }
+
+.sg-board {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: clamp(10px, 1.4vw, 16px);
+  background: linear-gradient(165deg, var(--panel), var(--panel-2));
+  border: 2px solid var(--line-2); border-radius: 16px;
+  box-shadow: 0 16px 44px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.sg-board.you   { border-color: color-mix(in srgb, var(--you) 55%, var(--line-2)); }
+.sg-board.foe   { opacity: 0.95; }
+.sg-board.active { box-shadow: 0 0 0 2px var(--accent), 0 16px 44px rgba(0,0,0,0.5); }
+
+.sg-board-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sg-board-who {
+  font-family: var(--display); font-weight: 700; font-size: 15px;
+  display: flex; align-items: center; gap: 8px;
+}
+.sg-pawn { width: 13px; height: 13px; border-radius: 4px; }
+.sg-pawn.you { background: radial-gradient(circle at 35% 30%, #c4f3fb, var(--you)); border: 1px solid #2f9aac; }
+.sg-pawn.foe { background: radial-gradient(circle at 35% 30%, #ffd0bb, var(--foe)); border: 1px solid #cc5836; }
+.sg-board-score { font-family: var(--mono); font-size: 12px; color: var(--accent-hi); font-weight: 600; }
+.sg-secret { font-family: var(--mono); font-size: 9.5px; color: var(--ink-3); letter-spacing: 0.06em; }
+
+/* ---- The 5x4 leaded grid ---- */
+.sg-grid {
+  --cw: clamp(34px, min(5vw, 8vh), 58px);
+  display: grid;
+  grid-template-columns: repeat(5, var(--cw));
+  grid-template-rows: repeat(4, var(--cw));
+  gap: 4px;
+  padding: 6px;
+  background:
+    repeating-linear-gradient(0deg, var(--lead) 0 2px, transparent 2px 4px),
+    var(--glass-2);
+  border-radius: 8px;
+}
+
+.sg-cell {
+  position: relative;
+  border-radius: 6px;
+  background: linear-gradient(150deg, var(--glass), var(--glass-2));
+  border: 1.5px solid var(--lead);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+/* printed colour restriction — tinted glass socket */
+.sg-cell.req-red    { background: linear-gradient(150deg, color-mix(in srgb, var(--die-red) 28%, var(--glass)), var(--glass-2)); }
+.sg-cell.req-yellow { background: linear-gradient(150deg, color-mix(in srgb, var(--die-yellow) 30%, var(--glass)), var(--glass-2)); }
+.sg-cell.req-green  { background: linear-gradient(150deg, color-mix(in srgb, var(--die-green) 28%, var(--glass)), var(--glass-2)); }
+.sg-cell.req-blue   { background: linear-gradient(150deg, color-mix(in srgb, var(--die-blue) 28%, var(--glass)), var(--glass-2)); }
+.sg-cell.req-purple { background: linear-gradient(150deg, color-mix(in srgb, var(--die-purple) 30%, var(--glass)), var(--glass-2)); }
+/* printed value restriction — faint engraved number */
+.sg-req-val {
+  font-family: var(--mono); font-weight: 600;
+  font-size: calc(var(--cw) * 0.42); color: var(--ink-3); opacity: 0.6;
+}
+/* legal target highlight (interactive) */
+.sg-cell.target { cursor: pointer; border-color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent), 0 0 8px rgba(233,185,73,0.4); }
+.sg-cell.target:hover { background: rgba(233,185,73,0.18); }
+.sg-cell.selectable { cursor: default; }
+
+/* ---- Die face (shared) ---- */
+.sg-die {
+  width: 86%; height: 86%; border-radius: 7px;
+  display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+  padding: 13%; gap: 1px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.22);
+  animation: drop 0.16s ease-out;
+}
+@keyframes drop { from { transform: scale(0.55); opacity: 0; } to { transform: none; opacity: 1; } }
+.sg-die.red    { background: radial-gradient(circle at 32% 26%, color-mix(in srgb,#fff 26%,var(--die-red)), var(--die-red)); border: 1px solid var(--die-red-d); }
+.sg-die.yellow { background: radial-gradient(circle at 32% 26%, color-mix(in srgb,#fff 30%,var(--die-yellow)), var(--die-yellow)); border: 1px solid var(--die-yellow-d); }
+.sg-die.green  { background: radial-gradient(circle at 32% 26%, color-mix(in srgb,#fff 26%,var(--die-green)), var(--die-green)); border: 1px solid var(--die-green-d); }
+.sg-die.blue   { background: radial-gradient(circle at 32% 26%, color-mix(in srgb,#fff 26%,var(--die-blue)), var(--die-blue)); border: 1px solid var(--die-blue-d); }
+.sg-die.purple { background: radial-gradient(circle at 32% 26%, color-mix(in srgb,#fff 28%,var(--die-purple)), var(--die-purple)); border: 1px solid var(--die-purple-d); }
+.sg-die.yellow .sg-pip { background: #4a3500; }
+.sg-pip { border-radius: 50%; background: var(--pip); align-self: center; justify-self: center; width: 78%; height: 78%; max-width: 7px; max-height: 7px; }
+.sg-pip.off { background: transparent; box-shadow: none; }
+
+/* ---- Draft pool ---- */
+.sg-pool-wrap {
+  background: linear-gradient(165deg, var(--panel), var(--panel-2));
+  border: 2px solid var(--line-2); border-radius: 14px;
+  padding: clamp(10px, 1.4vw, 16px);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.sg-pool-title { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-3); }
+.sg-pool { display: flex; gap: clamp(8px, 1.2vw, 14px); justify-content: center; flex-wrap: wrap; min-height: 46px; align-items: center; }
+.sg-pool-die {
+  width: clamp(40px, 4.6vw, 54px); height: clamp(40px, 4.6vw, 54px);
+  border-radius: 9px; position: relative; cursor: default;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.12s;
+}
+.sg-pool-die.draftable { cursor: pointer; }
+.sg-pool-die.draftable:hover { transform: translateY(-3px); }
+.sg-pool-die.sel { box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(233,185,73,0.5); border-radius: 11px; }
+.sg-pool-empty { font-family: var(--sans); font-style: italic; color: var(--ink-3); font-size: 12px; }
+
+/* ---- Side panel ---- */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: start; }
+.sg-objs { display: flex; flex-direction: column; gap: 8px; }
+.sg-obj-h { font-family: var(--mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-3); margin-bottom: 2px; }
+.sg-obj {
+  border: 1.5px solid var(--line); border-radius: 9px; padding: 8px 10px;
+  background: var(--panel-2);
+}
+.sg-obj.priv { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.sg-obj-name { font-family: var(--display); font-weight: 600; font-size: 13px; color: var(--ink); display: flex; align-items: center; gap: 7px; }
+.sg-obj-desc { font-family: var(--sans); font-size: 10.5px; color: var(--ink-2); line-height: 1.4; margin-top: 3px; }
+.sg-swatch { width: 12px; height: 12px; border-radius: 3px; flex: 0 0 auto; }
+.sg-swatch.red { background: var(--die-red); } .sg-swatch.yellow { background: var(--die-yellow); }
+.sg-swatch.green { background: var(--die-green); } .sg-swatch.blue { background: var(--die-blue); }
+.sg-swatch.purple { background: var(--die-purple); }
+
+.sg-scorebox { display: flex; flex-direction: column; gap: 6px; }
+.sg-srow { display: flex; align-items: center; gap: 8px; }
+.sg-srow .sg-who { font-family: var(--display); font-weight: 600; font-size: 13px; flex: 1; }
+.sg-srow .sg-pts { font-family: var(--mono); font-weight: 600; font-size: 16px; color: var(--accent-hi); }
+
+.logbox { flex: 1 1 auto; min-height: 38px; max-height: 132px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.5; color: var(--ink-2); }
+.log-line.you { color: var(--you); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- Result modal breakdown ---- */
+.sg-final { display: flex; gap: 22px; justify-content: center; margin: 10px 0 4px; }
+.sg-fcol { min-width: 150px; }
+.sg-fcol h4 { font-family: var(--display); font-weight: 700; font-size: 15px; margin: 0 0 6px; }
+.sg-fcol.you h4 { color: var(--you); } .sg-fcol.foe h4 { color: var(--foe); }
+.sg-fline { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; color: var(--ink-2); padding: 1px 0; }
+.sg-fline.tot { border-top: 1px solid var(--line-2); margin-top: 4px; padding-top: 5px; color: var(--ink); font-weight: 600; font-size: 13px; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } .sg-grid { --cw: clamp(30px, min(4.4vw, 7vh), 48px); } }

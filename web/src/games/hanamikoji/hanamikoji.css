@@ -1,0 +1,178 @@
+/* ==========================================================
+   HANAMIKOJI — "The geisha's favor."
+   Theme: an elegant Kyoto hanamachi at dusk — deep indigo lacquer, plum and gold,
+   washi-paper item cards. Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #150a22;
+  --bg-2:    #0e0617;
+  --panel:   #221237;
+  --panel-2: #1a0e2c;
+  --ink:     #f4ecff;
+  --ink-2:   #c9b6e2;
+  --ink-3:   #8c76a8;
+  --line:    #34204e;
+  --line-2:  #4a2f6b;
+
+  /* token contract -> indigo/plum/gold */
+  --accent:    #e0b24e;  --accent-d:#a87c2a;  --accent-hi:#f4d278;  --accent-ink:#241036;
+  --trim:      #c97aa0;  --trim-hi:#e79bc0;
+  --you:       #f4d278;  --foe:#d36c8e;
+  --good:      #6fd0a0;  --warn:#e58a6a;
+
+  /* game-specific */
+  --gold:      #e0b24e;  --gold-hi:#f4d278;  --gold-d:#9c7826;
+  --plum:      #d36c8e;  --plum-hi:#e79bc0;
+  --indigo:    #2a1646;  --indigo-2:#1e0f34;
+  --washi:     #f3ead6;  --washi-2:#e6d8ba;  --washi-edge:#cdb78a;  --washi-ink:#3a2a16;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(224,178,78,0.10) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, rgba(42,22,70,0.6) 0%, transparent 55%),
+    radial-gradient(ellipse at 84% 22%, rgba(211,108,142,0.10) 0%, transparent 42%);
+}
+
+.stage { grid-template-columns: auto 246px; gap: clamp(16px, 2.4vw, 34px); }
+
+/* ---- center column ---- */
+.hk-wrap {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: clamp(12px, 2vh, 26px); min-height: 0; align-self: center;
+}
+
+/* ---- geisha tracks ---- */
+.hk-tracks { display: flex; gap: clamp(6px, 0.9vw, 12px); align-items: stretch; }
+.hk-geisha {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: linear-gradient(180deg, var(--indigo) 0%, var(--indigo-2) 100%);
+  border: 1.5px solid var(--line); border-radius: 13px;
+  padding: 9px 7px; min-width: 66px;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+.hk-geisha.own-you { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold-d), 0 6px 18px rgba(224,178,78,0.18); }
+.hk-geisha.own-foe { border-color: var(--plum); box-shadow: 0 0 0 1px var(--plum), 0 6px 18px rgba(211,108,142,0.16); }
+
+.hk-side {
+  display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; align-items: center;
+  min-height: 26px; width: 100%; padding: 2px 0;
+}
+.hk-side.foe { align-items: flex-start; }
+.hk-side.you { align-items: flex-end; }
+
+.hk-dot { width: 11px; height: 11px; border-radius: 50%; box-shadow: inset 0 -1px 2px rgba(0,0,0,0.35); }
+.hk-dot.you { background: radial-gradient(circle at 36% 30%, var(--gold-hi), var(--gold)); }
+.hk-dot.foe { background: radial-gradient(circle at 36% 30%, var(--plum-hi), var(--plum)); }
+.hk-dot.empty { background: transparent; box-shadow: none; width: 11px; height: 11px; }
+
+/* ---- geisha token (charm + favor) ---- */
+.hk-token {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: radial-gradient(circle at 50% 30%, #34204e, #1a0e2c);
+  border: 1.5px solid var(--line-2); border-radius: 10px; padding: 6px 4px; width: 100%;
+}
+.hk-charm {
+  font-family: var(--display); font-weight: 700; font-size: 22px; line-height: 1;
+  color: var(--gold-hi); text-shadow: 0 1px 0 rgba(0,0,0,0.4);
+}
+.hk-gname {
+  font-family: var(--sans); font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
+  color: var(--ink-2); text-transform: uppercase;
+}
+.hk-favor {
+  font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.12em; font-weight: 600;
+  padding: 1px 6px; border-radius: 5px; margin-top: 2px;
+  color: var(--ink-3); border: 1px solid var(--line);
+}
+.hk-favor.you { color: var(--accent-ink); background: var(--gold); border-color: var(--gold-d); }
+.hk-favor.foe { color: #2a0a16; background: var(--plum); border-color: var(--plum); }
+
+/* ---- your hand ---- */
+.hk-hand-area { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.hk-hand-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3); }
+.hk-hand { display: flex; gap: clamp(6px, 0.9vw, 11px); flex-wrap: wrap; justify-content: center; }
+
+.hk-card {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; width: 58px; height: 80px; border-radius: 10px; cursor: default;
+  background: linear-gradient(170deg, var(--washi) 0%, var(--washi-2) 100%);
+  border: 1.5px solid var(--washi-edge); color: var(--washi-ink);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.35); transition: transform 0.12s, box-shadow 0.12s, border-color 0.12s;
+}
+.hk-card.selectable { cursor: pointer; }
+.hk-card.selectable:hover { transform: translateY(-4px); box-shadow: 0 9px 18px rgba(0,0,0,0.45); }
+.hk-card.sel { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold), 0 9px 18px rgba(224,178,78,0.35); transform: translateY(-6px); }
+.hk-card.empty { color: var(--ink-3); background: var(--panel-2); border-style: dashed; border-color: var(--line-2); box-shadow: none; }
+.hk-card-charm { font-family: var(--display); font-weight: 700; font-size: 24px; line-height: 1; }
+.hk-card-name { font-family: var(--sans); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; }
+
+/* a top-corner accent stripe per geisha color family */
+.hk-card::before { content: ""; position: absolute; top: 6px; left: 6px; right: 6px; height: 4px; border-radius: 3px; }
+.hk-card.g0::before { background: #c0563f; }
+.hk-card.g1::before { background: #d98a3a; }
+.hk-card.g2::before { background: #b8a23c; }
+.hk-card.g3::before { background: #5aa66a; }
+.hk-card.g4::before { background: #3f8fb0; }
+.hk-card.g5::before { background: #6a6ac0; }
+.hk-card.g6::before { background: #a85ab0; }
+
+.hk-card.mini { width: 46px; height: 62px; }
+.hk-card.mini .hk-card-charm { font-size: 18px; }
+
+/* ---- side: your markers ---- */
+.hk-markers { display: flex; flex-direction: column; gap: 7px; }
+.hk-marker {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-family: var(--sans); font-size: 13px; font-weight: 600; color: var(--ink);
+  background: var(--indigo); border: 1.5px solid var(--line-2); border-radius: 9px;
+  padding: 9px 12px; cursor: pointer; text-align: left; transition: all 0.13s;
+}
+.hk-marker:hover:not(:disabled) { border-color: var(--gold); }
+.hk-marker.active { border-color: var(--gold); background: linear-gradient(180deg, #3a2456, var(--indigo)); box-shadow: 0 0 0 1px var(--gold-d); }
+.hk-marker.used { opacity: 0.42; cursor: default; }
+.hk-marker:disabled { cursor: default; }
+.hk-mk-name { letter-spacing: 0.01em; }
+.hk-mk-need { font-family: var(--mono); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.hk-marker.active .hk-mk-need { color: var(--gold-hi); }
+
+.hk-confirm {
+  margin-top: 4px; font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; padding: 10px; border-radius: 9px; cursor: pointer;
+  background: var(--gold); color: var(--accent-ink); border: 1.5px solid var(--gold-d); transition: filter 0.12s;
+}
+.hk-confirm:hover:not(:disabled) { filter: brightness(1.08); }
+.hk-confirm:disabled { opacity: 0.4; cursor: default; }
+
+/* ---- side: AI markers ---- */
+.hk-aimark-row { display: flex; gap: 6px; margin-top: 6px; }
+.hk-pip {
+  width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--ink-2);
+  background: var(--indigo); border: 1.5px solid var(--line-2);
+}
+.hk-pip.used { opacity: 0.4; color: var(--plum); border-color: var(--plum); }
+
+/* ---- choice modal options ---- */
+.hk-options { display: flex; gap: 14px; justify-content: center; margin-top: 6px; flex-wrap: wrap; }
+.hk-option {
+  display: flex; gap: 6px; padding: 10px; border-radius: 12px; cursor: pointer;
+  background: var(--indigo); border: 1.5px solid var(--line-2); transition: all 0.13s;
+}
+.hk-option:hover { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold-d), 0 8px 18px rgba(0,0,0,0.4); transform: translateY(-3px); }
+.hk-modal-note { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+
+/* ---- result/round modal ---- */
+.hk-final { display: flex; flex-direction: column; gap: 8px; align-items: center; margin: 6px 0 2px; }
+.hk-final span { font-family: var(--mono); font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 8px; }
+.hk-final .you { color: var(--gold-hi); background: rgba(224,178,78,0.12); border: 1px solid var(--gold-d); }
+.hk-final .foe { color: var(--plum-hi); background: rgba(211,108,142,0.12); border: 1px solid var(--plum); }
+
+.logbox { display: flex; flex-direction: column; gap: 3px; max-height: 220px; overflow: auto; }

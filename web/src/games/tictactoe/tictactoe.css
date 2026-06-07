@@ -1,0 +1,80 @@
+/* ==========================================================
+   TIC-TAC-TOE — "Three in a row."
+   Theme: a crisp modern slate. Teal X against coral O, thin grid, lots of calm space.
+   Display: Space Grotesk · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css;
+   this file supplies the token values + the board/mark classes.
+   ========================================================== */
+
+:root {
+  --bg:      #14171d;
+  --bg-2:    #0e1015;
+  --panel:   #1d212a;
+  --panel-2: #171b23;
+  --ink:     #eef1f6;
+  --ink-2:   #a6afbf;
+  --ink-3:   #69728a;
+  --line:    #262b36;
+  --line-2:  #38404f;
+
+  /* token contract -> this theme (teal primary, dark text on it) */
+  --accent:  #4ec5c0;  --accent-d:#2c7d79;  --accent-hi:#79e0db;  --accent-ink:#06221f;
+  --trim:    #4ec5c0;  --trim-hi:#79e0db;
+  --you:     #79e0db;  --foe:#e08a5a;
+  --good:    #6fc090;  --warn:#e0894e;
+
+  /* game-specific */
+  --x:       #4ec5c0;  --o:#e08a5a;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Space Grotesk", system-ui, sans-serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(ellipse at 50% -8%, rgba(78,197,192,0.07) 0%, transparent 52%), radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.5) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 220px; gap: clamp(18px, 2.6vw, 40px); }
+
+.ttt-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.ttt-board {
+  --cell: clamp(72px, min(21vh, 15vw), 132px);
+  display: grid; grid-template-columns: repeat(3, var(--cell)); grid-template-rows: repeat(3, var(--cell));
+  gap: 10px; padding: 14px; background: var(--panel-2); border: 1.5px solid var(--line);
+  border-radius: 18px; box-shadow: 0 16px 44px rgba(0,0,0,0.5);
+}
+.ttt-cell {
+  border-radius: 13px; background: #14181f; border: 1.5px solid var(--line);
+  display: flex; align-items: center; justify-content: center; padding: 14%;
+  cursor: default; transition: border-color 0.12s, background 0.12s, transform 0.12s;
+}
+.ttt-cell.open { cursor: pointer; }
+.ttt-cell.open:hover { border-color: var(--accent-d); background: #181d25; }
+.ttt-cell.win { border-color: var(--good); box-shadow: inset 0 0 0 1.5px var(--good); }
+
+.mk { width: 100%; height: 100%; display: block; animation: pop 0.16s ease-out; }
+@keyframes pop { from { transform: scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }
+.mk-x line { stroke: var(--x); stroke-width: 11; stroke-linecap: round; }
+.mk-o circle { fill: none; stroke: var(--o); stroke-width: 11; }
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.players { display: flex; flex-direction: column; gap: 8px; }
+.pl { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--line); }
+.pl.on { border-color: var(--trim); box-shadow: 0 0 0 1px var(--trim); }
+.pl-mk { font-size: 18px; font-weight: 700; width: 20px; text-align: center; }
+.pl-mk.x { color: var(--x); } .pl-mk.o { color: var(--o); }
+.pl-name { font-family: var(--display); font-weight: 600; font-size: 14px; }
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 160px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--x); } .log-line.ai { color: var(--o); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { text-align: center; font-family: var(--sans); font-size: 13px; color: var(--ink-2); margin: 8px 0; }
+.modal-body i { color: var(--accent-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

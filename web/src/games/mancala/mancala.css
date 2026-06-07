@@ -1,0 +1,183 @@
+/* ==========================================================
+   MANCALA — Kalah rules. "Sow and bank."
+   Theme: carved warm timber, rounded pits with little stone seeds, two big end stores.
+   Display: Lora · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #1a1207;
+  --bg-2:    #110b04;
+  --panel:   #2a1d10;
+  --panel-2: #221709;
+  --ink:     #f4e9d6;
+  --ink-2:   #c2a883;
+  --ink-3:   #8a7150;
+  --line:    #3a2814;
+  --line-2:  #553a20;
+
+  /* token contract -> this theme (warm amber primary, dark text on it) */
+  --accent:  #d99b3e;  --accent-d:#a86c1c;  --accent-hi:#f3bd66;  --accent-ink:#2a1705;
+  --trim:    #d99b3e;  --trim-hi:#f3bd66;
+  --you:     #f3bd66;  --foe:#cfa06a;
+  --good:    #9bc46a;  --warn:#e08146;
+
+  /* game-specific */
+  --wood:    #7a5230;  --wood-d:#5a3a1e;  --wood-hi:#9a6b3d;
+  --pit:     #2c1c0d;  --pit-d:#1c1107;
+  --seed:    #d8c49a;  --seed-d:#a8916a;
+  --you-glow:#f3bd66;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Lora", Georgia, serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(217,155,62,0.08) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 230px; gap: clamp(18px, 2.6vw, 38px); }
+
+.mc-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+
+/* The carved board: a store on each end, a 2x6 pit grid in the middle. */
+.mc-board {
+  --pit-d: clamp(46px, min(9.4vh, 6.4vw), 84px);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: clamp(12px, 1.6vw, 24px);
+  padding: clamp(16px, 2vw, 28px);
+  background:
+    repeating-linear-gradient(96deg, rgba(0,0,0,0.05) 0 6px, rgba(255,255,255,0.018) 6px 12px),
+    linear-gradient(160deg, var(--wood-hi), var(--wood) 45%, var(--wood-d));
+  border: 3px solid #432c16;
+  border-radius: 28px;
+  box-shadow:
+    0 20px 50px rgba(0,0,0,0.6),
+    inset 0 2px 0 rgba(255,255,255,0.08),
+    inset 0 -3px 8px rgba(0,0,0,0.4);
+}
+
+.mc-pits { display: grid; grid-template-rows: 1fr 1fr; gap: clamp(8px, 1.2vw, 16px); }
+.mc-row { display: grid; grid-template-columns: repeat(6, var(--pit-d)); gap: clamp(8px, 1.1vw, 16px); }
+
+/* Carved hollow common to pits + stores. */
+.pit, .store {
+  background: radial-gradient(ellipse at 50% 32%, var(--pit), var(--pit-d) 80%);
+  box-shadow:
+    inset 0 4px 9px rgba(0,0,0,0.65),
+    inset 0 -2px 3px rgba(255,255,255,0.05),
+    0 1px 0 rgba(255,255,255,0.06);
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.pit {
+  width: var(--pit-d); height: var(--pit-d);
+  border-radius: 50%;
+  border: 1.5px solid #1a1006;
+  cursor: default;
+  padding: 0;
+  transition: transform 0.12s, box-shadow 0.12s;
+  font-family: var(--display);
+}
+.pit.empty .seedfield { display: none; }
+
+.pit.playable {
+  cursor: pointer;
+  box-shadow:
+    inset 0 4px 9px rgba(0,0,0,0.55),
+    0 0 0 2px var(--you-glow),
+    0 0 16px rgba(243,189,102,0.45);
+}
+.pit.playable:hover { transform: translateY(-2px) scale(1.04); }
+.pit.last::after {
+  content: ""; position: absolute; inset: 8%; border-radius: 50%;
+  box-shadow: inset 0 0 0 2px rgba(243,189,102,0.7); pointer-events: none;
+}
+
+.pit-count {
+  position: absolute; z-index: 2;
+  font-family: var(--display); font-weight: 700;
+  font-size: clamp(15px, 2.2vh, 22px);
+  color: var(--ink);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7);
+}
+.pit-num {
+  position: absolute; bottom: -2px; right: -2px;
+  font-family: var(--mono); font-size: 8.5px; font-weight: 600;
+  color: var(--ink-3);
+  background: var(--wood-d); border: 1px solid #2a1a0a;
+  border-radius: 6px; padding: 0 4px;
+  pointer-events: none;
+}
+.pit.ai .pit-num { top: -2px; bottom: auto; }
+
+/* Stores: tall rounded wells. */
+.store {
+  width: clamp(54px, 6vw, 92px);
+  height: calc(var(--pit-d) * 2 + clamp(8px, 1.2vw, 16px));
+  border-radius: 999px;
+  border: 1.5px solid #1a1006;
+  flex-direction: column; gap: 4px;
+  padding: 14px 6px;
+}
+.store.on { box-shadow: inset 0 4px 9px rgba(0,0,0,0.6), 0 0 0 2px var(--accent), 0 0 18px rgba(217,155,62,0.4); }
+.store-count {
+  position: relative; z-index: 2;
+  font-family: var(--display); font-weight: 700; font-size: clamp(22px, 3.2vh, 34px);
+  color: var(--ink); text-shadow: 0 1px 5px rgba(0,0,0,0.9);
+}
+.store-label {
+  font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-3); position: relative; z-index: 2;
+}
+
+/* Seed scatter inside pits/stores. */
+.seedfield {
+  position: absolute; inset: 14%;
+  display: flex; flex-wrap: wrap; gap: 3px;
+  align-items: center; justify-content: center;
+  pointer-events: none; opacity: 0.9;
+}
+.seed {
+  width: clamp(7px, 1.1vh, 11px); height: clamp(7px, 1.1vh, 11px);
+  border-radius: 50%;
+  background: radial-gradient(circle at 36% 30%, #efe2c4, var(--seed-d));
+  box-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
+.seed.s1 { background: radial-gradient(circle at 36% 30%, #e6d2a8, #9c8358); }
+.seed.s2 { background: radial-gradient(circle at 36% 30%, #f0e4c8, #b09a6e); transform: rotate(8deg); }
+.seed.s3 { background: radial-gradient(circle at 36% 30%, #ddc99c, #94794f); }
+.store .seedfield { inset: 16% 18%; align-content: center; }
+
+/* ---- side panel ---- */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.scoreboard { display: flex; flex-direction: column; gap: 9px; }
+.sc { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.sc.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sc-dot { width: 16px; height: 16px; border-radius: 50%; flex: 0 0 auto; box-shadow: 0 1px 2px rgba(0,0,0,0.5); }
+.sc-dot.you { background: radial-gradient(circle at 36% 30%, #f3bd66, #a86c1c); }
+.sc-dot.ai { background: radial-gradient(circle at 36% 30%, #d8c49a, #8a7150); }
+.sc-name { font-family: var(--display); font-weight: 600; font-size: 14px; flex: 1; }
+.sc-n { font-family: var(--display); font-weight: 700; font-size: 20px; color: var(--ink); }
+.sc-bar { height: 7px; border-radius: 4px; background: var(--seed-d); overflow: hidden; }
+.sc-bar-you { height: 100%; background: linear-gradient(90deg, #a86c1c, #f3bd66); border-right: 1px solid var(--line-2); }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 168px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--trim-hi); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- overlays ---- */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 22px; }
+.finalsc .you { color: var(--trim-hi); } .finalsc .foe { color: var(--foe); }
+.modal-body i { color: var(--trim-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

@@ -1,0 +1,157 @@
+/* ==========================================================
+   GO (9×9) — "Surround and live."
+   Theme: kaya-wood goban, onyx & shell stones, inked grid lines, jade move hints.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #1a140d;
+  --bg-2:    #0f0b07;
+  --panel:   #241a10;
+  --panel-2: #1c150c;
+  --ink:     #f3ebdc;
+  --ink-2:   #c4b393;
+  --ink-3:   #8a785a;
+  --line:    #392b1a;
+  --line-2:  #52401f;
+
+  /* token contract -> this theme (jade/amber primary, dark ink) */
+  --accent:    #5fb487;  --accent-d: #3c7d5b;  --accent-hi: #87d6a8;  --accent-ink: #07140d;
+  --trim:      #d8a94f;  --trim-hi:  #f0c878;
+  --you:       #f0c878;  --foe:      #c4b393;
+  --good:      #5fb487;  --warn:     #df8a4a;
+
+  /* game-specific */
+  --wood:    #d6a558;  --wood-2:#c08e42;  --wood-edge:#7d5722;
+  --gridline:#4a3315;
+  --black-stone-1:#52524f;  --black-stone-2:#161616;
+  --white-stone-1:#ffffff;  --white-stone-2:#cdc7b6;
+  --jade:    #5fb487;  --jade-hi:#87d6a8;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(216,169,79,0.07) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 240px; gap: clamp(18px, 2.6vw, 38px); }
+
+.go-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+
+/* The board is a 9x9 grid of "intersection cells". A stone is centered in its cell;
+   grid lines are painted as a background of evenly spaced lines aligned to cell centers. */
+.go-board {
+  --cell: clamp(34px, min(7.6vh, 5.1vw), 60px);
+  --pad: calc(var(--cell) / 2);
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(9, var(--cell));
+  grid-template-rows: repeat(9, var(--cell));
+  padding: var(--pad);
+  border-radius: 8px;
+  background:
+    /* vertical + horizontal lines, spaced one cell apart, starting at the first cell center */
+    repeating-linear-gradient(to right, transparent 0, transparent calc(var(--cell) - 1.3px), var(--gridline) calc(var(--cell) - 1.3px), var(--gridline) var(--cell)),
+    repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--cell) - 1.3px), var(--gridline) calc(var(--cell) - 1.3px), var(--gridline) var(--cell)),
+    radial-gradient(ellipse at 38% 28%, var(--wood), var(--wood-2));
+  background-position:
+    calc(var(--pad) - 0.65px) 0, 0 calc(var(--pad) - 0.65px), 0 0;
+  background-size:
+    calc(var(--cell) * 9) 100%, 100% calc(var(--cell) * 9), 100% 100%;
+  background-repeat: no-repeat, no-repeat, no-repeat;
+  border: 2px solid var(--wood-edge);
+  box-shadow: 0 18px 48px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.08);
+}
+
+.go-pt {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  cursor: default;
+}
+.go-board.active .go-pt.hint { cursor: pointer; }
+
+/* star points (hoshi) */
+.go-pt.star::before {
+  content: ""; position: absolute; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--gridline); top: 50%; left: 50%; transform: translate(-50%, -50%);
+}
+
+.go-stone {
+  width: 88%; height: 88%; border-radius: 50%; position: relative; z-index: 2;
+  animation: drop 0.13s ease-out;
+}
+.go-stone.black {
+  background: radial-gradient(circle at 36% 28%, var(--black-stone-1), var(--black-stone-2) 70%);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.55), inset 0 -2px 4px rgba(0,0,0,0.5);
+}
+.go-stone.white {
+  background: radial-gradient(circle at 36% 28%, var(--white-stone-1), var(--white-stone-2) 78%);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.45), inset 0 -2px 4px rgba(0,0,0,0.18);
+}
+.go-stone.last::after {
+  content: ""; position: absolute; inset: 28%; border-radius: 50%;
+  border: 2px solid var(--trim-hi); opacity: 0.92;
+  /* contrast marker dot color flips with stone */
+}
+.go-stone.white.last::after { border-color: var(--warn); }
+@keyframes drop { from { transform: scale(0.55); opacity: 0.4; } to { transform: none; opacity: 1; } }
+
+/* ko marker on the forbidden empty point */
+.go-ko {
+  width: 36%; height: 36%; position: absolute; z-index: 1;
+  border: 2px solid var(--warn); border-radius: 3px; opacity: 0.85;
+}
+
+/* legal-move ghost */
+.go-ghost {
+  width: 60%; height: 60%; border-radius: 50%; z-index: 1;
+  background: radial-gradient(circle at 38% 30%, rgba(95,180,135,0.55), rgba(95,180,135,0.18));
+  opacity: 0; transition: opacity 0.12s;
+}
+.go-board.active .go-pt.hint:hover .go-ghost { opacity: 1; }
+
+/* ===== side panel ===== */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 13px 14px; }
+
+.scoreboard { display: flex; flex-direction: column; gap: 9px; }
+.sc { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.sc.on { border-color: var(--trim); box-shadow: 0 0 0 1px var(--trim); }
+.sc-stone { width: 18px; height: 18px; border-radius: 50%; flex: 0 0 auto; }
+.sc-stone.black { background: radial-gradient(circle at 36% 28%, #54544f, #161616 72%); border: 1px solid #000; }
+.sc-stone.white { background: radial-gradient(circle at 36% 28%, #fff, var(--white-stone-2) 78%); }
+.sc-name { font-family: var(--display); font-weight: 600; font-size: 14px; flex: 1; }
+.sc-n { font-family: var(--mono); font-weight: 600; font-size: 20px; color: var(--ink); }
+
+.cap-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: var(--ink-3); padding: 4px 2px 0; border-top: 1px solid var(--line); margin-top: 2px; }
+.cap-n { font-family: var(--mono); color: var(--ink-2); }
+
+.info { display: flex; flex-direction: column; gap: 10px; }
+.info-line { font-size: 12px; line-height: 1.55; color: var(--ink-2); margin: 0; }
+.info-line b { color: var(--trim-hi); }
+.info-hint { font-size: 11px; color: var(--ink-3); font-style: italic; margin: 0; }
+
+.pass-btn {
+  font-family: var(--display); font-weight: 600; font-size: 14px;
+  padding: 9px 12px; border-radius: 10px; cursor: pointer;
+  color: var(--accent-ink); background: var(--jade); border: 1px solid var(--accent-d);
+  transition: filter 0.12s, transform 0.05s;
+}
+.pass-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.pass-btn:active:not(:disabled) { transform: translateY(1px); }
+.pass-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 22px; }
+.finalsc .you { color: var(--you); } .finalsc .foe { color: var(--white-stone-2); }
+.modal-body i { color: var(--jade-hi); font-style: normal; font-weight: 600; }
+.modal-body b { color: var(--trim-hi); }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

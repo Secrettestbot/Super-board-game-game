@@ -1,0 +1,155 @@
+/* ==========================================================
+   PARADE — "Mind the card-shedding parade."
+   Theme: whimsical Wonderland — warm twilight teal-purple ground,
+   bright primary-coloured cards, gold trim, a curling-ribbon parade line.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Built for this codebase. Shared shell in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #1a1530;
+  --bg-2:    #110d22;
+  --panel:   #241d3e;
+  --panel-2: #1d1734;
+  --ink:     #f4eefe;
+  --ink-2:   #b6abd4;
+  --ink-3:   #7a6fa0;
+  --line:    #352b54;
+  --line-2:  #4a3d72;
+
+  --accent:    #ffb13d;  --accent-d:#d98a16;  --accent-hi:#ffc869;  --accent-ink:#3a2406;
+  --trim:      #c879ff;  --trim-hi:#e0a8ff;
+  --you:       #6fe3c4;  --foe:#ff9bcb;
+  --good:      #6fe3c4;  --warn:#ff7e8e;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+
+  /* six distinct card colours */
+  --c-red:    #ef5572;
+  --c-blue:   #4f93ec;
+  --c-green:  #51c06f;
+  --c-purple: #a86cf0;
+  --c-orange: #ff9b3d;
+  --c-teal:   #36c5c0;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 15% -8%, rgba(200,121,255,0.12) 0%, transparent 48%),
+    radial-gradient(ellipse at 88% 2%, rgba(255,177,61,0.10) 0%, transparent 46%),
+    radial-gradient(ellipse at 50% 122%, rgba(0,0,0,0.5) 0%, transparent 56%);
+}
+
+.stage { grid-template-columns: minmax(0, 1fr) 250px; gap: clamp(16px, 2.4vw, 34px); align-items: stretch; }
+
+/* ===== main play column ===== */
+.pd-main {
+  display: flex; flex-direction: column; justify-content: center; gap: clamp(18px, 3vh, 36px);
+  min-width: 0; min-height: 0;
+}
+
+.pd-paradewrap, .pd-handwrap { display: flex; flex-direction: column; gap: 9px; }
+.pd-paradelabel, .pd-handlabel {
+  font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.18em;
+  color: var(--ink-3); display: flex; align-items: center; gap: 10px;
+}
+.pd-front { color: var(--trim-hi); font-size: 9px; }
+.pd-hint { color: var(--accent-hi); text-transform: none; letter-spacing: 0.04em; font-style: italic; }
+
+.pd-parade {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding: 14px 16px; border-radius: 16px;
+  background:
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.025) 0 14px, transparent 14px 28px),
+    var(--panel-2);
+  border: 1.5px solid var(--line); min-height: 76px;
+}
+
+/* card chip */
+.pd-card {
+  position: relative;
+  width: clamp(34px, 4.6vh, 44px); height: clamp(46px, 6.2vh, 60px);
+  border-radius: 9px;
+  background: linear-gradient(170deg, color-mix(in srgb, var(--cc) 85%, white 15%), var(--cc));
+  box-shadow: inset 0 -4px 7px rgba(0,0,0,0.28), inset 0 2px 4px rgba(255,255,255,0.4), 0 3px 7px rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; flex: 0 0 auto;
+  animation: pdpop 0.18s ease-out;
+}
+.pd-card .pd-cv { font-family: var(--display); font-weight: 700; font-size: clamp(16px, 2.4vh, 21px); text-shadow: 0 1px 2px rgba(0,0,0,0.4); }
+.pd-card.mini { width: 22px; height: 30px; border-radius: 6px; }
+.pd-card.mini .pd-cv { font-size: 13px; }
+.pd-card.dim { opacity: 0.4; filter: saturate(0.6); }
+.pd-card.dim::after {
+  content: "safe"; position: absolute; bottom: -14px; left: 0; right: 0; text-align: center;
+  font-family: var(--mono); font-size: 7px; letter-spacing: 0.1em; color: var(--ink-3); text-transform: uppercase;
+}
+.pd-card.doomed {
+  outline: 2px solid var(--warn); outline-offset: 1px;
+  box-shadow: inset 0 -4px 7px rgba(0,0,0,0.28), 0 0 0 2px var(--warn), 0 0 16px rgba(255,126,142,0.55);
+}
+.pd-card.doomed::after {
+  content: "✕"; position: absolute; top: -9px; right: -7px;
+  width: 16px; height: 16px; border-radius: 50%; background: var(--warn); color: #2a0309;
+  font-family: var(--sans); font-weight: 800; font-size: 11px; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+}
+@keyframes pdpop { from { transform: scale(0.6) translateY(-6px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.pd-empty { font-family: var(--sans); font-style: italic; color: var(--ink-3); font-size: 13px; }
+
+/* hand */
+.pd-hand { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; min-height: 80px; }
+.pd-handcard {
+  position: relative;
+  width: clamp(48px, 6.6vh, 64px); height: clamp(66px, 9.2vh, 90px); border-radius: 12px;
+  background: linear-gradient(170deg, color-mix(in srgb, var(--cc) 84%, white 16%), var(--cc));
+  border: 2px solid color-mix(in srgb, var(--cc) 60%, black 40%);
+  box-shadow: inset 0 -5px 9px rgba(0,0,0,0.28), inset 0 2px 5px rgba(255,255,255,0.4), 0 4px 9px rgba(0,0,0,0.45);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  color: #fff; cursor: default; transition: transform .1s, box-shadow .1s, filter .1s;
+}
+.pd-handcard .pd-cv { font-family: var(--display); font-weight: 700; font-size: clamp(22px, 3.4vh, 30px); line-height: 1; text-shadow: 0 1px 3px rgba(0,0,0,0.45); }
+.pd-handcard .pd-cc { font-family: var(--mono); font-size: 8px; text-transform: uppercase; letter-spacing: 0.12em; opacity: 0.85; }
+.pd-handcard.live { cursor: pointer; }
+.pd-handcard.live:hover, .pd-handcard.on { transform: translateY(-7px); filter: brightness(1.1); box-shadow: inset 0 -5px 9px rgba(0,0,0,0.28), 0 0 0 2px var(--accent-hi), 0 10px 18px rgba(0,0,0,0.5); }
+.pd-handcard:disabled { cursor: default; opacity: 0.78; }
+
+.pd-preview { font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em; color: var(--ink-2); min-height: 14px; }
+
+/* ===== side panels ===== */
+.side { display: flex; flex-direction: column; gap: 10px; align-self: stretch; min-height: 0; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 11px 12px; }
+
+.pp { transition: border-color .12s, box-shadow .12s; }
+.pp.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.pp.you.on { border-color: var(--you); box-shadow: 0 0 0 1px var(--you); }
+.pp.best { border-color: var(--good); box-shadow: 0 0 0 1.5px var(--good), 0 0 18px rgba(111,227,196,0.3); }
+.pp-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 9px; }
+.pp-name { font-family: var(--display); font-weight: 700; font-size: 15px; flex: 1; }
+.pp.you .pp-name { color: var(--you); } .pp.ai .pp-name { color: var(--foe); }
+.pp-count { font-family: var(--mono); font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-3); }
+.pp-score { font-family: var(--display); font-weight: 800; font-size: 22px; color: var(--ink); min-width: 22px; text-align: right; }
+
+.pp-colors { display: flex; gap: 6px; }
+.pp-col { display: inline-flex; align-items: center; gap: 3px; padding: 3px 6px 3px 4px; border-radius: 999px; border: 1.5px solid var(--line); }
+.pp-col.off { opacity: 0.4; }
+.pp-col.maj { border-color: color-mix(in srgb, var(--good) 55%, transparent); background: color-mix(in srgb, var(--good) 12%, transparent); }
+.pp-col.face { border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: color-mix(in srgb, var(--warn) 9%, transparent); }
+.pp-dot { width: 12px; height: 12px; border-radius: 4px; background: var(--cc); box-shadow: inset 0 -2px 3px rgba(0,0,0,0.3), inset 0 1px 2px rgba(255,255,255,0.4); }
+.pp-cn { font-family: var(--display); font-weight: 700; font-size: 12px; color: var(--ink); }
+
+.logbox { flex: 1 1 auto; min-height: 50px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--you); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; flex-direction: column; align-items: center; gap: 5px; margin: 12px 0; font-family: var(--display); font-weight: 800; font-size: 20px; }
+.finalsc .you { color: var(--you); } .finalsc .foe { color: var(--foe); }
+.finalsub { text-align: center; }
+.modal-body i { color: var(--accent-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

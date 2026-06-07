@@ -1,0 +1,148 @@
+/* ==========================================================
+   BATTLESHIP — "Seek and sink."
+   Theme: deep-water sonar grids, grey hulls, red hit markers, pale miss dots.
+   Display: Saira Condensed · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #061320;
+  --bg-2:    #030b14;
+  --panel:   #0d2233;
+  --panel-2: #0a1b29;
+  --ink:     #e7f3fb;
+  --ink-2:   #9bbdd2;
+  --ink-3:   #5b7e92;
+  --line:    #163349;
+  --line-2:  #244e6b;
+
+  /* token contract -> this theme (sonar-cyan primary, dark text) */
+  --accent:  #46c2e6;  --accent-d:#1f7fa0;  --accent-hi:#8fe2ff;  --accent-ink:#04212e;
+  --trim:    #46c2e6;  --trim-hi:#8fe2ff;
+  --you:     #8fe2ff;  --foe:#ff7a72;
+  --good:    #57d6a0;  --warn:#ff5a52;
+
+  /* game-specific */
+  --water:   #0b2c44;  --water-2:#082236;  --grid-line:#16455f;
+  --aim:     #103a55;
+  --hull:    #5e6c78;  --hull-hi:#8a99a6;  --hull-d:#3c4750;
+  --hit:     #ff5247;  --hit-hi:#ff8a82;
+  --miss:    #6f93a8;
+  --sonar:   #46c2e6;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Saira Condensed", "Oswald", system-ui, sans-serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(70,194,230,0.10) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.6) 0%, transparent 55%),
+    linear-gradient(180deg, #061320 0%, #03101c 100%);
+}
+
+.title-main { letter-spacing: 0.01em; }
+
+.stage { grid-template-columns: auto 224px; gap: clamp(16px, 2.4vw, 34px); }
+
+/* ---- boards: two grids side by side, stacking on narrow ---- */
+.bs-boards {
+  display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: center;
+  gap: clamp(14px, 2.2vw, 30px); min-height: 0;
+}
+.bs-board-wrap { display: flex; flex-direction: column; gap: 7px; }
+.bs-board-title {
+  font-family: var(--display); font-weight: 600; font-size: 15px; letter-spacing: 0.14em;
+  text-transform: uppercase; text-align: center; color: var(--ink-3);
+  padding-bottom: 2px; transition: color 0.15s;
+}
+.bs-board-title.on { color: var(--sonar); text-shadow: 0 0 12px rgba(70,194,230,0.5); }
+
+.bs-grid {
+  --cell: clamp(20px, min(4.6vh, 3.1vw), 36px);
+  display: grid;
+  grid-template-columns: calc(var(--cell) * 0.72) repeat(10, var(--cell));
+  grid-template-rows: calc(var(--cell) * 0.72) repeat(10, var(--cell));
+  gap: 2px; padding: 9px;
+  background: var(--water-2);
+  border: 2px solid #0e3147; border-radius: 11px;
+  box-shadow: 0 16px 44px rgba(0,0,0,0.55), inset 0 0 60px rgba(70,194,230,0.04);
+}
+.bs-corner { background: transparent; }
+.bs-coord {
+  font-family: var(--mono); font-size: 9.5px; font-weight: 600; color: var(--ink-3);
+  display: flex; align-items: center; justify-content: center; letter-spacing: 0.04em;
+}
+
+.bs-cell {
+  background: radial-gradient(circle at 50% 35%, var(--water), var(--water-2));
+  border: 1px solid var(--grid-line);
+  border-radius: 3px;
+  display: flex; align-items: center; justify-content: center;
+  position: relative; cursor: default;
+}
+.bs-grid.enemy .bs-cell.aim { cursor: crosshair; }
+.bs-grid.enemy .bs-cell.aim:hover {
+  background: radial-gradient(circle at 50% 35%, #15506f, var(--aim));
+  box-shadow: inset 0 0 0 1px var(--sonar), 0 0 10px rgba(70,194,230,0.4);
+}
+
+/* own ships (grey hulls) */
+.bs-cell.ship {
+  background: linear-gradient(160deg, var(--hull-hi), var(--hull) 45%, var(--hull-d));
+  border-color: #2a333a;
+  box-shadow: inset 0 1px 2px rgba(255,255,255,0.18), inset 0 -2px 3px rgba(0,0,0,0.45);
+}
+.bs-cell.sunk {
+  background: linear-gradient(160deg, #4a2422, #36181a);
+  border-color: #5a2a26;
+}
+
+/* shot markers */
+.bs-mark.hit {
+  color: var(--hit-hi); font-size: calc(var(--cell) * 0.66); line-height: 1;
+  text-shadow: 0 0 8px var(--hit); animation: pop 0.18s ease-out;
+}
+.bs-mark.miss {
+  width: 26%; height: 26%; border-radius: 50%;
+  background: var(--miss); opacity: 0.7; box-shadow: 0 0 5px rgba(111,147,168,0.5);
+}
+.bs-cell.hit { box-shadow: inset 0 0 0 1px rgba(255,82,71,0.55), inset 0 0 14px rgba(255,82,71,0.35); }
+.bs-cell.hit.ship, .bs-cell.hit.sunk { background: linear-gradient(160deg, #6b2a26, #3c1816); }
+@keyframes pop { from { transform: scale(0.3); } to { transform: none; } }
+
+/* ---- side panels ---- */
+.side { display: flex; flex-direction: column; gap: 9px; align-self: stretch; min-height: 0; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+
+.fleet.on { border-color: var(--sonar); box-shadow: 0 0 0 1px rgba(70,194,230,0.4); }
+.fleet .panel-l { margin-bottom: 7px; }
+.fleet-list { display: flex; flex-direction: column; gap: 5px; }
+.fleet-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fleet-name {
+  font-family: var(--display); font-weight: 500; font-size: 13px; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--ink);
+}
+.fleet-row.sunk .fleet-name { color: var(--hit); text-decoration: line-through; opacity: 0.85; }
+.fleet-pips { display: inline-flex; gap: 2px; }
+.pip {
+  width: 7px; height: 9px; border-radius: 2px; background: var(--hull);
+  box-shadow: inset 0 -1px 1px rgba(0,0,0,0.4);
+}
+.pip.hit { background: var(--hit); box-shadow: 0 0 5px rgba(255,82,71,0.6); }
+
+.logbox { flex: 1 1 auto; min-height: 40px; overflow-y: auto; }
+.log-line { font-size: 10.5px; line-height: 1.5; color: var(--ink-2); }
+.log-line.you { color: var(--accent-hi); }
+.log-line.ai { color: var(--foe); }
+.log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* ---- overlays ---- */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 600; font-size: 22px; letter-spacing: 0.04em; }
+.finalsc .you { color: var(--accent-hi); } .finalsc .foe { color: var(--foe); }
+.modal-body i { color: var(--accent-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

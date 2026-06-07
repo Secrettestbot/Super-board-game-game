@@ -1,0 +1,191 @@
+/* ==========================================================
+   MAHJONG SOLITAIRE — "Drain the turtle first."
+   Theme: warm felt green table, ivory bone tiles, jade trim, brass primary.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Built for this codebase. Shared shell in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #10231d;
+  --bg-2:    #0a1813;
+  --panel:   #163029;
+  --panel-2: #112720;
+  --ink:     #f3f7f1;
+  --ink-2:   #b6cbbf;
+  --ink-3:   #6f8c80;
+  --line:    #214138;
+  --line-2:  #2f5a4d;
+
+  /* token contract -> this theme (brass primary on dark ink) */
+  --accent:    #d8a24a;  --accent-d:#a9781f;  --accent-hi:#f0c172;  --accent-ink:#241704;
+  --trim:      #4fd1a5;  --trim-hi:#7ff0c8;
+  --you:       #7ff0c8;  --foe:#e6b96a;
+  --good:      #5fd6a0;  --warn:#e8794e;
+
+  /* game-specific — bone tiles + suit inks */
+  --tile-face:  #f4ecd8;
+  --tile-face2: #e9dec3;
+  --tile-edge:  #b9a878;
+  --tile-side:  #c9b995;   /* the visible bottom/right "thickness" of a tile */
+  --tile-side2: #a89868;
+  --tile-shadow: rgba(0,0,0,0.45);
+  --ink-bam:  #1f8a4c;   /* bamboo — green */
+  --ink-cir:  #2563c4;   /* circles — blue */
+  --ink-cha:  #b8341f;   /* characters/萬 — red */
+  --ink-wind: #2c3540;   /* winds — ink black */
+  --ink-drag: #8a2bd0;   /* dragons — purple-ish accent */
+  --ink-flo:  #d4327a;   /* flowers — magenta */
+  --ink-sea:  #d8821f;   /* seasons — amber */
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -6%, rgba(79,209,165,0.07) 0%, transparent 55%),
+    radial-gradient(ellipse at 50% 110%, rgba(216,162,74,0.05) 0%, transparent 55%);
+}
+
+/* ---- Stage layout: board + side panel ---- */
+.stage { grid-template-columns: auto 230px; gap: clamp(14px, 2.2vw, 30px); align-items: center; }
+
+.mj-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; overflow: auto; }
+.mj-stage {
+  position: relative;
+  padding: 18px 22px;
+  border-radius: 16px;
+  background:
+    radial-gradient(ellipse at 50% 40%, #1c4338 0%, #123128 70%, #0d2620 100%);
+  border: 1.5px solid var(--line-2);
+  box-shadow: inset 0 0 60px rgba(0,0,0,0.4), 0 12px 36px rgba(0,0,0,0.45);
+}
+
+/* ---- The layered board ---- */
+.mj-board { position: relative; margin: 0 auto; }
+
+.mj-tile {
+  position: absolute;
+  border-radius: 7px;
+  background: linear-gradient(160deg, var(--tile-face) 0%, var(--tile-face2) 100%);
+  border: 1px solid var(--tile-edge);
+  /* faux 3D: a brass-bone "thickness" cast down-right + drop shadow */
+  box-shadow:
+    2px 3px 0 0 var(--tile-side),
+    3px 4px 0 0 var(--tile-side2),
+    4px 7px 8px -2px var(--tile-shadow);
+  display: flex; align-items: center; justify-content: center;
+  cursor: default;
+  user-select: none;
+  transition: transform 0.08s ease, box-shadow 0.12s ease, filter 0.12s ease;
+}
+.mj-face {
+  font-family: "Noto Serif", Georgia, serif;
+  font-weight: 700;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: -0.5px;
+}
+
+/* suit colours */
+.suit-bam  .mj-face { color: var(--ink-bam); }
+.suit-cir  .mj-face { color: var(--ink-cir); }
+.suit-cha  .mj-face { color: var(--ink-cha); }
+.suit-wind .mj-face { color: var(--ink-wind); }
+.suit-drag .mj-face { color: var(--ink-drag); }
+.suit-flower .mj-face { color: var(--ink-flo); }
+.suit-season .mj-face { color: var(--ink-sea); }
+
+/* blocked tiles are dimmed; free tiles are clickable + glow */
+.mj-tile.blocked { filter: brightness(0.84) saturate(0.8); }
+.mj-tile.blocked .mj-face { opacity: 0.7; }
+
+.mj-tile.free { cursor: pointer; }
+.mj-tile.free:hover {
+  transform: translate(-1px, -2px);
+  box-shadow:
+    2px 3px 0 0 var(--tile-side),
+    3px 4px 0 0 var(--tile-side2),
+    5px 9px 12px -2px var(--tile-shadow),
+    0 0 0 2px var(--trim);
+}
+.mj-tile.free::after {
+  content: ""; position: absolute; inset: 0; border-radius: 7px;
+  box-shadow: inset 0 0 0 1.5px rgba(79,209,165,0.55);
+  pointer-events: none;
+}
+
+.mj-tile.selected {
+  transform: translate(-1px, -3px);
+  box-shadow:
+    2px 3px 0 0 var(--tile-side),
+    3px 4px 0 0 var(--tile-side2),
+    6px 10px 14px -2px var(--tile-shadow),
+    0 0 0 3px var(--accent);
+}
+.mj-tile.selected::after { box-shadow: inset 0 0 0 2px var(--accent-hi); }
+
+.mj-tile.hint { animation: mj-pulse 0.9s ease-in-out infinite; }
+.mj-tile.hint::after { box-shadow: inset 0 0 0 2px var(--accent); }
+@keyframes mj-pulse {
+  0%, 100% { box-shadow:
+    2px 3px 0 0 var(--tile-side), 3px 4px 0 0 var(--tile-side2),
+    4px 7px 8px -2px var(--tile-shadow), 0 0 0 1px var(--accent); }
+  50% { box-shadow:
+    2px 3px 0 0 var(--tile-side), 3px 4px 0 0 var(--tile-side2),
+    4px 7px 12px -1px var(--tile-shadow), 0 0 0 4px var(--accent-hi); }
+}
+
+/* ---- Side panel ---- */
+.side { display: flex; flex-direction: column; gap: 12px; align-self: stretch; justify-content: flex-start; }
+
+.mj-score { display: flex; flex-direction: column; gap: 2px; }
+.mj-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 9px; padding: 5px 4px; border-radius: 8px; }
+.mj-row.on { background: rgba(79,209,165,0.08); }
+.mj-pawn { width: 11px; height: 11px; border-radius: 3px; }
+.mj-pawn.you { background: var(--you); box-shadow: 0 0 8px rgba(127,240,200,0.5); }
+.mj-pawn.foe { background: var(--foe); box-shadow: 0 0 8px rgba(230,185,106,0.5); }
+.mj-who { font-family: var(--display); font-weight: 600; font-size: 15px; color: var(--ink); }
+.mj-left { font-family: var(--mono); font-size: 17px; font-weight: 600; color: var(--ink); }
+.mj-sub { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); padding: 0 4px 6px 24px; }
+
+.mj-oppwrap { display: flex; flex-direction: column; gap: 8px; }
+.mj-mini { display: flex; flex-direction: column; gap: 7px; }
+.mj-mini-grid {
+  display: grid; grid-template-columns: repeat(9, 1fr); gap: 3px;
+}
+.mj-dot { width: 100%; aspect-ratio: 1; border-radius: 2px; background: var(--tile-face); border: 1px solid var(--tile-edge); }
+.mj-dot.free { background: var(--foe); border-color: var(--accent-d); }
+.mj-dot.gone { background: transparent; border-color: var(--line); opacity: 0.4; }
+.mj-mini-bar { height: 7px; border-radius: 4px; background: var(--bg-2); overflow: hidden; border: 1px solid var(--line); }
+.mj-mini-fill { height: 100%; border-radius: 4px; transition: width 0.25s ease; }
+.mj-mini-fill.foe { background: linear-gradient(90deg, var(--foe), var(--accent-hi)); }
+
+.mj-controls { display: flex; flex-direction: column; gap: 9px; }
+.mj-btn {
+  font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 10px; border-radius: 9px; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink); border: 1.5px solid var(--accent-d);
+  transition: filter 0.12s;
+}
+.mj-btn:hover:not(:disabled) { filter: brightness(1.1); }
+.mj-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.mj-btn.ghost { background: var(--panel); color: var(--ink); border-color: var(--line-2); }
+.mj-btn.ghost:hover:not(:disabled) { border-color: var(--trim); color: var(--trim-hi); filter: none; }
+.mj-tip { font-size: 11px; line-height: 1.5; color: var(--ink-2); margin-top: 2px; }
+.mj-tip b { color: var(--trim-hi); }
+
+/* ---- Result modal extras ---- */
+.mj-final { display: flex; flex-direction: column; gap: 6px; }
+.mj-final-row { display: grid; grid-template-columns: 64px auto 1fr; align-items: baseline; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.mj-final-row span { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; }
+.mj-final-row span.you { color: var(--you); }
+.mj-final-row span.foe { color: var(--foe); }
+.mj-final-row b { font-family: var(--mono); font-size: 18px; color: var(--ink); }
+.mj-final-note { font-size: 12.5px; color: var(--ink-3); font-style: italic; margin-top: 6px; }
+
+@media (max-height: 720px) {
+  .mj-face { font-size: 21px; }
+}

@@ -1,0 +1,239 @@
+/* ==========================================================
+   CATAN DICE — "Roll resources, write your island."
+   Theme: warm island/settlers — parchment sea-charts, hex-tile resource colours,
+   chunky wooden dice. Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #16242b;
+  --bg-2:    #0f1a20;
+  --panel:   #1d3038;
+  --panel-2: #18272e;
+  --ink:     #f4ecdc;
+  --ink-2:   #c2b49b;
+  --ink-3:   #7d7a66;
+  --line:    #2c4049;
+  --line-2:  #3a525c;
+
+  /* token contract -> island theme (sun-gold primary, dark ink on it) */
+  --accent:    #e8a13a;  --accent-d:#b9760f;  --accent-hi:#ffc46a;  --accent-ink:#2a1900;
+  --trim:      #4fb3a3;  --trim-hi:#79d3c4;
+  --you:       #5ec9a8;  --foe:#e8866a;
+  --good:      #6fd99a;  --warn:#e87b6a;
+
+  /* resource colours (hex-tile inspired) */
+  --r-wood:    #4e8c4a;  --r-wood-d:#356030;
+  --r-brick:   #c8623c;  --r-brick-d:#9a4527;
+  --r-wheat:   #e3b94b;  --r-wheat-d:#b98e1f;
+  --r-sheep:   #8fc97a;  --r-sheep-d:#5f9a4e;
+  --r-ore:     #8b95a8;  --r-ore-d:#5d6678;
+  --r-gold:    #f2d56b;  --r-gold-d:#c9a52a;
+
+  /* structures */
+  --st-road:   #b98a52;
+  --st-settle: #5ec9a8;
+  --st-city:   #e8a13a;
+  --st-knight: #d36a6a;
+
+  --die:       #f7efe0;  --die-edge:#d8c9ab;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(232,161,58,0.09) 0%, transparent 52%),
+    radial-gradient(ellipse at 10% 112%, rgba(79,179,163,0.07) 0%, transparent 46%),
+    radial-gradient(ellipse at 92% 116%, rgba(200,98,60,0.06) 0%, transparent 46%);
+}
+
+.stage { grid-template-columns: minmax(0, 1fr) 244px; gap: clamp(16px, 2.2vw, 30px); }
+
+/* ---------- main layout ---------- */
+.cd-main { display: flex; flex-direction: column; gap: clamp(14px, 1.8vw, 22px); min-width: 0; }
+
+/* ---------- dice tray ---------- */
+.cd-tray {
+  background: linear-gradient(165deg, var(--panel), var(--panel-2));
+  border: 2px solid var(--line-2); border-radius: 16px;
+  padding: clamp(12px, 1.6vw, 20px);
+  box-shadow: 0 14px 38px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.cd-tray-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 12px; gap: 12px;
+}
+.cd-tray-title { font-family: var(--display); font-weight: 700; font-size: 1.05rem; color: var(--ink); }
+.cd-rolls { font-family: var(--mono); font-size: 0.8rem; color: var(--ink-2); }
+.cd-rolls b { color: var(--accent-hi); }
+
+.cd-dice { display: flex; gap: clamp(8px, 1.1vw, 14px); flex-wrap: wrap; }
+
+.cd-die {
+  --sz: clamp(52px, 8vw, 72px);
+  width: var(--sz); height: var(--sz);
+  border-radius: 14px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  background: linear-gradient(160deg, var(--die), var(--die-edge));
+  border: 2px solid rgba(0,0,0,0.18);
+  box-shadow: 0 6px 0 rgba(0,0,0,0.22), inset 0 2px 0 rgba(255,255,255,0.6);
+  cursor: pointer; position: relative;
+  transition: transform .08s ease, box-shadow .08s ease;
+  color: var(--accent-ink);
+  user-select: none;
+}
+.cd-die:hover:not(.empty):not(:disabled) { transform: translateY(-2px); }
+.cd-die:active:not(.empty) { transform: translateY(2px); box-shadow: 0 2px 0 rgba(0,0,0,0.22); }
+.cd-die.empty {
+  background: var(--panel-2); border: 2px dashed var(--line-2);
+  box-shadow: none; cursor: default;
+}
+.cd-die-icon { font-size: 1.55rem; line-height: 1; }
+.cd-die-label {
+  font-family: var(--mono); font-size: 0.56rem; text-transform: uppercase;
+  letter-spacing: 0.04em; font-weight: 600; opacity: 0.82;
+}
+.cd-die.kept {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 6px 0 var(--accent-d), inset 0 2px 0 rgba(255,255,255,0.6);
+}
+.cd-die.kept::after {
+  content: "KEEP"; position: absolute; top: -10px; right: -6px;
+  background: var(--accent); color: var(--accent-ink);
+  font-family: var(--mono); font-size: 0.5rem; font-weight: 700;
+  padding: 1px 5px; border-radius: 6px; letter-spacing: 0.06em;
+}
+
+/* resource accent stripe per die */
+.cd-die.wood   { box-shadow: 0 6px 0 var(--r-wood-d),  inset 0 2px 0 rgba(255,255,255,0.5); }
+.cd-die.brick  { box-shadow: 0 6px 0 var(--r-brick-d), inset 0 2px 0 rgba(255,255,255,0.5); }
+.cd-die.wheat  { box-shadow: 0 6px 0 var(--r-wheat-d), inset 0 2px 0 rgba(255,255,255,0.5); }
+.cd-die.sheep  { box-shadow: 0 6px 0 var(--r-sheep-d), inset 0 2px 0 rgba(255,255,255,0.5); }
+.cd-die.ore    { box-shadow: 0 6px 0 var(--r-ore-d),   inset 0 2px 0 rgba(255,255,255,0.5); }
+.cd-die.gold   { box-shadow: 0 6px 0 var(--r-gold-d),  inset 0 2px 0 rgba(255,255,255,0.5); }
+.cd-die.wood.kept,.cd-die.brick.kept,.cd-die.wheat.kept,.cd-die.sheep.kept,.cd-die.ore.kept,.cd-die.gold.kept {
+  box-shadow: 0 6px 0 var(--accent-d), inset 0 2px 0 rgba(255,255,255,0.6);
+}
+
+/* resource pool readout */
+.cd-pool { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.cd-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--mono); font-size: 0.78rem; font-weight: 600;
+  padding: 3px 9px; border-radius: 999px;
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--ink-2);
+}
+.cd-chip b { color: var(--ink); }
+.cd-chip.wood  { border-color: var(--r-wood); }
+.cd-chip.brick { border-color: var(--r-brick); }
+.cd-chip.wheat { border-color: var(--r-wheat); }
+.cd-chip.sheep { border-color: var(--r-sheep); }
+.cd-chip.ore   { border-color: var(--r-ore); }
+.cd-chip.gold  { border-color: var(--r-gold); color: var(--r-gold); }
+
+/* ---------- actions ---------- */
+.cd-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.cd-btn {
+  font-family: var(--sans); font-weight: 600; font-size: 0.86rem;
+  padding: 9px 16px; border-radius: 10px; cursor: pointer;
+  background: var(--panel-2); color: var(--ink); border: 1px solid var(--line-2);
+  transition: background .1s ease, transform .06s ease;
+}
+.cd-btn:hover:not(:disabled) { background: var(--line); }
+.cd-btn:active:not(:disabled) { transform: translateY(1px); }
+.cd-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.cd-btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent-d); }
+.cd-btn.primary:hover:not(:disabled) { background: var(--accent-hi); }
+
+/* ---------- build buttons ---------- */
+.cd-builds { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 6px; }
+.cd-build {
+  text-align: left; cursor: pointer;
+  padding: 10px 12px; border-radius: 12px;
+  background: var(--panel-2); border: 1.5px solid var(--line-2);
+  display: flex; flex-direction: column; gap: 4px;
+  transition: background .1s ease, border-color .1s ease, transform .06s ease;
+}
+.cd-build:hover:not(:disabled) { transform: translateY(-2px); }
+.cd-build:disabled { opacity: 0.42; cursor: not-allowed; }
+.cd-build.ok { border-color: var(--good); background: rgba(111,217,154,0.08); }
+.cd-build-name { font-family: var(--display); font-weight: 700; font-size: 0.96rem; display: flex; align-items: center; gap: 7px; }
+.cd-build-dot { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+.cd-build.road   .cd-build-dot { background: var(--st-road); }
+.cd-build.settlement .cd-build-dot { background: var(--st-settle); }
+.cd-build.city   .cd-build-dot { background: var(--st-city); }
+.cd-build.knight .cd-build-dot { background: var(--st-knight); }
+.cd-build-cost { font-family: var(--mono); font-size: 0.7rem; color: var(--ink-2); }
+.cd-build-pts { font-family: var(--mono); font-size: 0.68rem; color: var(--accent-hi); }
+
+/* ---------- sheets ---------- */
+.cd-sheets { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(12px, 1.6vw, 20px); }
+.cd-sheet {
+  background: linear-gradient(165deg, var(--panel), var(--panel-2));
+  border: 2px solid var(--line-2); border-radius: 16px;
+  padding: clamp(11px, 1.4vw, 16px);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.36);
+}
+.cd-sheet.active { border-color: var(--accent); }
+.cd-sheet.foe.active { border-color: var(--foe); }
+.cd-sheet-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+.cd-sheet-name { font-family: var(--display); font-weight: 700; font-size: 1.05rem; color: var(--ink); }
+.cd-sheet.you .cd-sheet-name { color: var(--you); }
+.cd-sheet.foe .cd-sheet-name { color: var(--foe); }
+.cd-sheet-turn {
+  font-family: var(--mono); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 2px 7px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-weight: 700;
+}
+.cd-sheet-score { margin-left: auto; font-family: var(--mono); font-weight: 700; font-size: 1.3rem; color: var(--accent-hi); }
+
+/* the linear build track */
+.cd-track { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+.cd-slot {
+  width: clamp(26px, 3.4vw, 34px); height: clamp(26px, 3.4vw, 34px);
+  border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  font-size: 0.95rem;
+  background: var(--panel-2); border: 1.5px solid var(--line);
+  color: var(--ink-3); position: relative;
+}
+.cd-slot.built.road       { background: var(--st-road);   border-color: var(--st-road);   color: #2a1c08; }
+.cd-slot.built.settlement { background: var(--st-settle); border-color: var(--st-settle); color: #0a2a22; }
+.cd-slot.built.city       { background: var(--st-city);   border-color: var(--st-city);   color: var(--accent-ink); }
+.cd-slot.next { border-color: var(--accent); border-style: dashed; box-shadow: 0 0 0 2px rgba(232,161,58,0.18); }
+
+.cd-knights { display: flex; align-items: center; gap: 5px; }
+.cd-knights-l { font-family: var(--mono); font-size: 0.66rem; color: var(--ink-2); margin-right: 4px; }
+.cd-knight {
+  width: clamp(22px, 2.8vw, 28px); height: clamp(22px, 2.8vw, 28px);
+  border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 0.85rem;
+  background: var(--panel-2); border: 1.5px solid var(--line); color: var(--ink-3);
+}
+.cd-knight.on { background: var(--st-knight); border-color: var(--st-knight); color: #2a0c0c; }
+
+/* score breakdown row in a sheet */
+.cd-breakdown { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 9px; font-family: var(--mono); font-size: 0.66rem; color: var(--ink-2); }
+.cd-breakdown span b { color: var(--ink); }
+.cd-breakdown .bonus b { color: var(--good); }
+.cd-breakdown .pen b { color: var(--warn); }
+
+/* ---------- side panel ---------- */
+.cd-scorebox { display: flex; flex-direction: column; gap: 8px; }
+.cd-srow { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.cd-srow.on { border-color: var(--accent); }
+.cd-srow-name { font-family: var(--display); font-weight: 700; font-size: 0.92rem; }
+.cd-srow.you .cd-srow-name { color: var(--you); }
+.cd-srow.foe .cd-srow-name { color: var(--foe); }
+.cd-srow-n { margin-left: auto; font-family: var(--mono); font-weight: 700; font-size: 1.1rem; color: var(--accent-hi); }
+.cd-round { font-family: var(--mono); font-size: 0.7rem; color: var(--ink-2); text-align: center; margin-top: 4px; }
+.cd-costs-help { font-family: var(--mono); font-size: 0.64rem; color: var(--ink-3); line-height: 1.5; margin-top: 6px; }
+
+/* shared structural helpers (these classes are game-local in this codebase) */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: start; min-height: 0; }
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.log-line.foe { color: var(--foe); }
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 22px; }
+.finalsc .you { color: var(--you); } .finalsc .foe { color: var(--foe); }

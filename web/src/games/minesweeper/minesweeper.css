@@ -1,0 +1,160 @@
+/* ==========================================================
+   MINESWEEPER — "Sweep and survive."
+   Theme: cool slate, beveled cells, crisp classic number colours, amber trim.
+   Display: Outfit · Body: Inter · Mono / counters: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #0e1219;
+  --bg-2:    #090c11;
+  --panel:   #1a2130;
+  --panel-2: #141a26;
+  --ink:     #eef2f8;
+  --ink-2:   #aab6c9;
+  --ink-3:   #66728a;
+  --line:    #232c3c;
+  --line-2:  #344058;
+
+  /* token contract -> this theme (amber primary, dark text) */
+  --accent:  #e3a23c;  --accent-d:#b87a18;  --accent-hi:#f6c069;  --accent-ink:#241704;
+  --trim:    #e3a23c;  --trim-hi:#f6c069;
+  --you:     #f6c069;  --foe:#aab6c9;
+  --good:    #57c98b;  --warn:#e8694e;
+
+  /* game-specific */
+  --cell-hi:   #2c3850;  --cell-lo:#161d2a;  --cell-face:#222c40;
+  --cell-open: #10151f;  --cell-edge:#0a0e15;
+  --n1:#5b8def; --n2:#46b87a; --n3:#e8694e; --n4:#9d6bd6;
+  --n5:#d18b2e; --n6:#39bdc7; --n7:#c5cdda; --n8:#7d8aa0;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Outfit", system-ui, sans-serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(227,162,60,0.06) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.5) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 218px; gap: clamp(16px, 2.4vw, 34px); }
+
+.ms-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+
+/* The board sizes its cells from the difficulty (--cols / --rows are set inline) so
+   even Expert (16×30) stays on a single screen via clamp() against the viewport. */
+.ms-board {
+  --gap: 2px;
+  --cell: clamp(15px, min(calc((92vw - 280px) / var(--cols)), calc(70vh / var(--rows))), 46px);
+  display: grid;
+  grid-template-columns: repeat(var(--cols), var(--cell));
+  grid-template-rows: repeat(var(--rows), var(--cell));
+  gap: var(--gap); padding: 9px;
+  background: var(--cell-edge);
+  border: 2px solid var(--line-2); border-radius: 12px;
+  box-shadow: 0 16px 44px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(0,0,0,0.4);
+}
+.ms-board.expert { --gap: 1.5px; }
+
+.ms-cell {
+  font-family: var(--display); font-weight: 800;
+  font-size: clamp(9px, calc(var(--cell) * 0.56), 24px);
+  line-height: 1; padding: 0; margin: 0; border: none;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 3px; cursor: pointer; user-select: none;
+  color: var(--ink); transition: filter 0.08s, background 0.08s;
+}
+
+/* hidden = raised bevel */
+.ms-cell.hidden {
+  background: linear-gradient(150deg, var(--cell-hi), var(--cell-lo));
+  box-shadow:
+    inset 1.5px 1.5px 0 rgba(255,255,255,0.08),
+    inset -1.5px -1.5px 0 rgba(0,0,0,0.45);
+}
+.ms-cell.hidden:hover { filter: brightness(1.22); }
+.ms-cell.hidden.flag { color: var(--accent-hi); text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+
+/* revealed = sunken */
+.ms-cell.open {
+  background: var(--cell-open);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.55);
+  cursor: default;
+  animation: ms-pop 0.12s ease-out;
+}
+@keyframes ms-pop { from { filter: brightness(1.6); } to { filter: none; } }
+
+.ms-cell.open.n1 { color: var(--n1); }
+.ms-cell.open.n2 { color: var(--n2); }
+.ms-cell.open.n3 { color: var(--n3); }
+.ms-cell.open.n4 { color: var(--n4); }
+.ms-cell.open.n5 { color: var(--n5); }
+.ms-cell.open.n6 { color: var(--n6); }
+.ms-cell.open.n7 { color: var(--n7); }
+.ms-cell.open.n8 { color: var(--n8); }
+
+.ms-cell.open.mine { color: var(--ink-2); }
+.ms-cell.open.mine.boom {
+  background: radial-gradient(circle at 50% 45%, var(--warn), #7a1f12);
+  color: #fff; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.5), 0 0 10px rgba(232,105,78,0.5);
+}
+.ms-board.dead .ms-cell.open.mine { color: #d6dde9; }
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+
+.ms-status { display: flex; align-items: center; gap: 12px; }
+.ms-face {
+  font-family: var(--display); font-size: 22px; font-weight: 800;
+  width: 46px; height: 46px; flex: 0 0 auto; border-radius: 11px; cursor: pointer;
+  background: linear-gradient(150deg, var(--cell-hi), var(--cell-lo));
+  border: 1.5px solid var(--line-2); color: var(--ink);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.08), inset -1px -1px 0 rgba(0,0,0,0.4);
+  transition: filter 0.12s;
+}
+.ms-face:hover { filter: brightness(1.2); }
+.ms-face.won { color: var(--good); }
+.ms-face.lost { color: var(--warn); }
+.ms-readouts { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.ms-readout { display: flex; align-items: baseline; justify-content: space-between; }
+.ms-rd-l { font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3); }
+.ms-counter {
+  font-family: var(--mono); font-weight: 700; font-size: 19px; letter-spacing: 0.06em;
+  color: var(--accent-hi); text-shadow: 0 0 8px rgba(246,192,105,0.25);
+}
+
+.ms-diff { display: flex; flex-direction: column; gap: 7px; }
+.ms-diff .panel-l { margin-bottom: 1px; }
+.ms-diff-btn {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  padding: 8px 11px; border-radius: 9px; cursor: pointer; text-align: left;
+  background: var(--panel); border: 1.5px solid var(--line); transition: all 0.12s;
+}
+.ms-diff-btn:hover { border-color: var(--line-2); }
+.ms-diff-btn.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.ms-diff-name { font-family: var(--display); font-weight: 600; font-size: 14px; color: var(--ink); }
+.ms-diff-btn.on .ms-diff-name { color: var(--accent-hi); }
+.ms-diff-meta { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+
+.ms-mode { display: flex; flex-direction: column; gap: 8px; }
+.ms-toggle {
+  display: flex; align-items: center; gap: 9px;
+  padding: 9px 11px; border-radius: 9px; cursor: pointer;
+  background: var(--panel); border: 1.5px solid var(--line); transition: all 0.12s;
+  font-family: var(--display); font-weight: 600; font-size: 13px; color: var(--ink-2);
+}
+.ms-toggle:hover { border-color: var(--line-2); color: var(--ink); }
+.ms-toggle.on { border-color: var(--accent); color: var(--accent-hi); box-shadow: 0 0 0 1px var(--accent); }
+.ms-toggle-icon { font-size: 15px; }
+.ms-toggle kbd { font-family: var(--mono); font-size: 10px; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 3px; padding: 0 5px; color: var(--ink-2); }
+.ms-hint { font-family: var(--mono); font-size: 9.5px; line-height: 1.5; letter-spacing: 0.04em; color: var(--ink-3); }
+
+.modal-body kbd { vertical-align: baseline; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

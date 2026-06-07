@@ -1,0 +1,208 @@
+/* ==========================================================
+   ALHAMBRA — "Moorish builder."
+   Theme: warm terracotta + glazed tile blues/greens on dark plaster.
+   Display: Baloo 2 · Body: Inter · Mono: JetBrains Mono.
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #1a1410;
+  --bg-2:    #120d0a;
+  --panel:   #261c15;
+  --panel-2: #1f1610;
+  --ink:     #f6ecdc;
+  --ink-2:   #cdb89c;
+  --ink-3:   #8a7458;
+  --line:    #3a2c20;
+  --line-2:  #574230;
+
+  /* token contract -> this theme (glazed terracotta primary, dark ink on it) */
+  --accent:    #d98c4a;  --accent-d:#a8632a;  --accent-hi:#f0ac6e;  --accent-ink:#2a1505;
+  --trim:      #4bb3a6;  --trim-hi:#7fd6c9;
+  --you:       #6fd0c0;  --foe:#e8965a;
+  --good:      #7fd08a;  --warn:#e87d6a;
+
+  /* four currencies (money colors) */
+  --green:     #5fae5a;  --green-d:#3c7d38;
+  --blue:      #4a8fd6;  --blue-d:#2f63a3;
+  --orange:    #e0904a;  --orange-d:#b06424;
+  --yellow:    #e6c34a;  --yellow-d:#b3941f;
+
+  /* six building types (glazed-tile hues, distinct from currencies) */
+  --pavilion:  #c65d7b;  /* rose */
+  --seraglio:  #8a6fd0;  /* violet */
+  --arcade:    #4bb3a6;  /* teal */
+  --chambers:  #d98c4a;  /* terracotta */
+  --garden:    #6cae54;  /* leaf */
+  --tower:     #6f8fc0;  /* slate-blue */
+
+  --card-bg:   #2c2018;  --card-line:#46341f;
+  --tile-ink:  #15100a;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Baloo 2", system-ui, cursive;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -6%, rgba(217,140,74,0.10) 0%, transparent 54%),
+    radial-gradient(ellipse at 8% 110%, rgba(75,179,166,0.07) 0%, transparent 48%),
+    radial-gradient(ellipse at 94% 112%, rgba(138,111,208,0.06) 0%, transparent 46%);
+}
+
+.stage {
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: clamp(14px, 2vw, 26px);
+  align-items: stretch;
+}
+
+/* ---- main column ---- */
+.al-main { display: flex; flex-direction: column; gap: clamp(10px, 1.4vh, 16px); min-height: 0; min-width: 0; overflow: auto; }
+
+.al-section-l {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--ink-3); margin-bottom: 5px;
+}
+
+/* ---- market rows ---- */
+.al-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* money market cards */
+.al-money {
+  position: relative;
+  width: 62px; height: 84px; border-radius: 10px;
+  background: linear-gradient(155deg, var(--card-bg), #20160f);
+  border: 1.5px solid var(--card-line);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 4px 10px rgba(0,0,0,0.4);
+  user-select: none;
+}
+.al-money.empty { opacity: 0.25; background: none; border-style: dashed; }
+.al-money .al-cur-band {
+  position: absolute; top: 0; left: 0; right: 0; height: 8px;
+  border-radius: 9px 9px 0 0;
+}
+.al-money .al-mval { font-family: var(--display); font-size: 30px; font-weight: 700; color: var(--ink); }
+.al-money .al-mcur { font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+.al-money.pick { cursor: pointer; }
+.al-money.pick:hover { border-color: var(--accent); }
+.al-money.chosen { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 4px 12px rgba(0,0,0,0.5); }
+
+.cur-green  { color: var(--green); }   .bg-green  { background: var(--green); }
+.cur-blue   { color: var(--blue); }    .bg-blue   { background: var(--blue); }
+.cur-orange { color: var(--orange); }  .bg-orange { background: var(--orange); }
+.cur-yellow { color: var(--yellow); }  .bg-yellow { background: var(--yellow); }
+
+/* building market tiles */
+.al-tile {
+  position: relative;
+  width: 96px; min-height: 96px; border-radius: 10px;
+  background: linear-gradient(155deg, var(--card-bg), #20160f);
+  border: 1.5px solid var(--card-line);
+  padding: 8px; display: flex; flex-direction: column; gap: 6px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 4px 10px rgba(0,0,0,0.4);
+}
+.al-tile.empty { opacity: 0.25; background: none; border-style: dashed; }
+.al-tile.afford { border-color: var(--accent-d); }
+.al-tile.exact { box-shadow: 0 0 0 1.5px var(--accent), inset 0 1px 0 rgba(255,255,255,0.05); }
+.al-tile-name { font-family: var(--display); font-size: 13px; font-weight: 600; text-transform: capitalize; }
+.al-tile-swatch { width: 100%; height: 14px; border-radius: 5px; }
+.al-tile-cost {
+  display: flex; align-items: baseline; gap: 4px;
+  font-family: var(--mono); font-size: 11px; color: var(--ink-2);
+}
+.al-tile-cost .num { font-size: 17px; font-weight: 600; color: var(--ink); }
+.al-tile-cost .chip {
+  display: inline-block; width: 10px; height: 10px; border-radius: 3px;
+}
+.al-mini-btn {
+  margin-top: auto;
+  font-family: var(--sans); font-size: 11px; font-weight: 600;
+  border: 1px solid var(--line-2); border-radius: 6px; background: var(--panel);
+  color: var(--ink-2); padding: 4px 6px; cursor: pointer;
+}
+.al-mini-btn.buy { background: var(--accent); color: var(--accent-ink); border-color: var(--accent-d); }
+.al-mini-btn:disabled { opacity: 0.4; cursor: default; }
+.al-mini-btn:not(:disabled):hover { filter: brightness(1.1); }
+
+/* swatch helpers per building */
+.b-pavilion { background: var(--pavilion); }
+.b-seraglio { background: var(--seraglio); }
+.b-arcade   { background: var(--arcade); }
+.b-chambers { background: var(--chambers); }
+.b-garden   { background: var(--garden); }
+.b-tower    { background: var(--tower); }
+
+/* ---- your hand by currency ---- */
+.al-hand { display: flex; gap: 10px; flex-wrap: wrap; }
+.al-hand-stack {
+  border: 1.5px solid var(--line); border-radius: 10px; padding: 7px 9px;
+  background: var(--panel-2); min-width: 64px;
+}
+.al-hand-stack .al-hc-top { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.al-hand-stack .al-hc-dot { width: 11px; height: 11px; border-radius: 3px; }
+.al-hand-stack .al-hc-lbl { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); }
+.al-hand-stack .al-hc-tot { margin-left: auto; font-family: var(--display); font-weight: 700; font-size: 15px; color: var(--ink); }
+.al-hand-stack .al-hc-cards { display: flex; gap: 3px; flex-wrap: wrap; }
+.al-hc-card {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  width: 18px; height: 22px; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--tile-ink); cursor: default;
+}
+.al-hc-card.sel { outline: 2px solid var(--accent); outline-offset: 1px; }
+.al-hc-card.payable { cursor: pointer; }
+
+/* ---- alhambra grid ---- */
+.al-grid-wrap { overflow: auto; }
+.al-grid { position: relative; }
+.al-cell {
+  position: absolute; width: 34px; height: 34px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 8px; text-transform: uppercase;
+  color: var(--tile-ink); box-shadow: inset 0 0 0 1px rgba(0,0,0,0.25);
+}
+.al-cell.fountain { background: radial-gradient(circle, #6fd6e0, #3a8fa0); color: #08222a; font-size: 9px; }
+
+/* ---- controls ---- */
+.al-controls { display: flex; flex-direction: column; gap: 8px; }
+.al-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.al-btn {
+  font-family: var(--sans); font-size: 12px; font-weight: 600;
+  border: 1px solid var(--accent-d); border-radius: 8px;
+  background: var(--accent); color: var(--accent-ink);
+  padding: 7px 12px; cursor: pointer;
+}
+.al-btn.ghost { background: var(--panel); color: var(--ink-2); border-color: var(--line-2); }
+.al-btn:disabled { opacity: 0.4; cursor: default; }
+.al-btn:not(:disabled):hover { filter: brightness(1.08); }
+.al-control-hint { font-size: 11px; color: var(--ink-3); line-height: 1.5; }
+
+/* ---- side panels ---- */
+.side { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.al-board {
+  border: 1.5px solid var(--line); border-radius: 12px; padding: 11px; background: var(--panel-2);
+}
+.al-board.on { border-color: var(--accent-d); box-shadow: 0 0 0 1px var(--accent-d); }
+.al-board-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.al-pawn { width: 12px; height: 12px; border-radius: 4px; }
+.al-pawn.you { background: var(--you); }
+.al-pawn.ai1 { background: var(--foe); }
+.al-pawn.ai2 { background: var(--trim); }
+.al-board-name { font-family: var(--display); font-weight: 600; font-size: 14px; color: var(--ink); }
+.al-board-score { margin-left: auto; font-family: var(--display); font-weight: 700; font-size: 16px; color: var(--accent-hi); }
+.al-board-score small { font-size: 9px; color: var(--ink-3); font-weight: 500; }
+
+.al-types { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 7px; }
+.al-type {
+  display: flex; align-items: center; gap: 4px;
+  font-family: var(--mono); font-size: 10px; color: var(--ink-2);
+}
+.al-type .al-tswatch { width: 9px; height: 9px; border-radius: 2px; }
+.al-type .al-tlead { color: var(--accent-hi); font-weight: 600; }
+.al-board-meta { display: flex; gap: 14px; font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.al-board-meta b { color: var(--ink); }
+
+.logbox { max-height: 150px; overflow: auto; display: flex; flex-direction: column; gap: 2px; }

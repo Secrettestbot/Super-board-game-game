@@ -1,0 +1,102 @@
+/* ==========================================================
+   BREAKTHROUGH — "Race the line."
+   Theme: cool steel-blue board, ivory vs onyx pawns, an electric-cyan trim
+   marking the forward direction and capture targets.
+   Display: Archivo · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #0d1119;
+  --bg-2:    #080b11;
+  --panel:   #161d2b;
+  --panel-2: #111726;
+  --ink:     #eaf0fb;
+  --ink-2:   #9fb0cc;
+  --ink-3:   #5f7193;
+  --line:    #232d42;
+  --line-2:  #344162;
+
+  /* token contract -> this theme (electric-cyan primary, dark text on it) */
+  --accent:  #57c9ff;  --accent-d:#2a8fcf;  --accent-hi:#9fe1ff;  --accent-ink:#05202e;
+  --trim:    #57c9ff;  --trim-hi:#9fe1ff;
+  --you:     #9fe1ff;  --foe:#cdb4ff;
+  --good:    #5fd6a0;  --warn:#ff8a6b;
+
+  /* game-specific */
+  --sq-light: #2c3a59;  --sq-light-2:#26334f;
+  --sq-dark:  #1b2540;  --sq-dark-2:#162038;
+  --pw-w:     #eef3fc;  --pw-w-d:#bcc6db;
+  --pw-b:     #20283c;  --pw-b-hi:#3a455f;
+  --cyan:     #57c9ff;  --cyan-hi:#9fe1ff;  --cap:#ff8a6b;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Archivo", system-ui, sans-serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(87,201,255,0.08) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 230px; gap: clamp(18px, 2.6vw, 38px); }
+
+.bt-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.bt-board {
+  --cell: clamp(34px, min(7.3vh, 4.9vw), 58px);
+  display: grid; grid-template-columns: repeat(8, var(--cell)); grid-template-rows: repeat(8, var(--cell));
+  padding: 10px; background: #0e1525;
+  border: 2px solid #2a3756; border-radius: 12px; box-shadow: 0 16px 44px rgba(0,0,0,0.6);
+}
+.bt-cell {
+  display: flex; align-items: center; justify-content: center; position: relative; cursor: default;
+}
+.bt-cell.light { background: linear-gradient(160deg, var(--sq-light), var(--sq-light-2)); }
+.bt-cell.dark  { background: linear-gradient(160deg, var(--sq-dark), var(--sq-dark-2)); }
+.bt-cell.sel { box-shadow: inset 0 0 0 2px var(--cyan-hi); }
+.bt-cell.move, .bt-cell.cap { cursor: pointer; }
+.bt-cell.last::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  box-shadow: inset 0 0 0 2px rgba(159,225,255,0.45);
+}
+
+.bt-pawn {
+  width: 72%; height: 72%; border-radius: 50% 50% 46% 46% / 60% 60% 40% 40%;
+  animation: drop 0.16s ease-out; position: relative; z-index: 1;
+}
+.bt-pawn.w { background: radial-gradient(circle at 40% 28%, #fff, var(--pw-w-d)); box-shadow: 0 3px 5px rgba(0,0,0,0.45), inset 0 -3px 4px rgba(0,0,0,0.18); }
+.bt-pawn.b { background: radial-gradient(circle at 40% 28%, var(--pw-b-hi), var(--pw-b)); box-shadow: 0 3px 5px rgba(0,0,0,0.55), inset 0 -3px 4px rgba(0,0,0,0.4); }
+.bt-pawn.w.live { cursor: pointer; }
+.bt-pawn.w.live:hover { box-shadow: 0 0 0 2px var(--cyan-hi), 0 3px 5px rgba(0,0,0,0.45); }
+@keyframes drop { from { transform: translateY(-22%) scale(0.85); } to { transform: none; } }
+
+.bt-dot { width: 30%; height: 30%; border-radius: 50%; background: rgba(87,201,255,0.55); box-shadow: 0 0 8px rgba(87,201,255,0.5); }
+.bt-ring { position: absolute; inset: 8%; border-radius: 50%; box-shadow: inset 0 0 0 3px var(--cap); pointer-events: none; z-index: 2; }
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+.scoreboard { display: flex; flex-direction: column; gap: 9px; }
+.sc { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; border: 1.5px solid var(--line); }
+.sc.on { border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan); }
+.sc-pawn { width: 16px; height: 18px; border-radius: 50% 50% 46% 46% / 60% 60% 40% 40%; flex: 0 0 auto; }
+.sc-pawn.w { background: radial-gradient(circle at 40% 28%, #fff, var(--pw-w-d)); }
+.sc-pawn.b { background: radial-gradient(circle at 40% 28%, var(--pw-b-hi), var(--pw-b)); border: 1px solid #000; }
+.sc-name { font-family: var(--display); font-weight: 600; font-size: 14px; flex: 1; }
+.sc-n { font-family: var(--display); font-weight: 700; font-size: 20px; }
+.sc.w .sc-n { color: var(--pw-w); } .sc.b .sc-n { color: var(--ink-2); }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 168px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--cyan-hi); } .log-line.ai { color: var(--foe); } .log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 22px; }
+.finalsc .you { color: var(--cyan-hi); } .finalsc .foe { color: var(--foe); }
+.modal-body i { color: var(--cyan-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } }

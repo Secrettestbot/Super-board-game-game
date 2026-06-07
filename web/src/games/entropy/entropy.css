@@ -1,0 +1,135 @@
+/* ==========================================================
+   ENTROPY (Hyle) — "Chaos vs Order."
+   Theme: cool deep-space slate, vivid spectral tiles, a thin luminous grid,
+   an entropy/symmetry motif. Display: Space Grotesk · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase. Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #0b0e16;
+  --bg-2:    #070910;
+  --panel:   #151a28;
+  --panel-2: #10141f;
+  --ink:     #eef1f8;
+  --ink-2:   #a3acc4;
+  --ink-3:   #5f6885;
+  --line:    #222a40;
+  --line-2:  #354060;
+
+  /* token contract -> this theme (cool violet primary, light text) */
+  --accent:  #7c6bff;  --accent-d:#4b3fc9;  --accent-hi:#a99bff;  --accent-ink:#0b0e16;
+  --trim:    #36d9d2;  --trim-hi:#6bf0ea;
+  --you:     #6bf0ea;  --foe:#c46bff;
+  --good:    #4fdca0;  --warn:#ff7a6b;
+
+  /* game-specific — five spectral tile colours */
+  --t-c: #36d9d2;  --t-c2: #18a8a2;
+  --t-m: #c46bff;  --t-m2: #8e34d4;
+  --t-y: #ffc24b;  --t-y2: #d99523;
+  --t-g: #9ad94a;  --t-g2: #6fae24;
+  --t-o: #ff8a5c;  --t-o2: #d95e2e;
+  --grid:   #0d1320;
+  --grid-l: #1c2640;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Space Grotesk", system-ui, sans-serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(124,107,255,0.10) 0%, transparent 54%),
+    radial-gradient(ellipse at 50% 120%, rgba(54,217,210,0.06) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0.45) 0%, transparent 60%);
+}
+
+.stage { grid-template-columns: auto 232px; gap: clamp(18px, 2.6vw, 38px); }
+
+/* board + drawn tile column */
+.en-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(10px, 1.6vh, 18px); min-height: 0; }
+
+.en-draw {
+  display: flex; align-items: center; gap: 12px;
+  padding: 7px 16px; border-radius: 11px;
+  background: var(--panel-2); border: 1.5px solid var(--line);
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+.en-draw.active { border-color: var(--trim); box-shadow: 0 0 0 1px var(--trim), 0 0 18px rgba(54,217,210,0.18); }
+.en-draw-l { font-family: var(--mono); font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-3); }
+
+.en-board {
+  --cell: clamp(40px, min(8.4vh, 5.6vw), 66px);
+  display: grid; grid-template-columns: repeat(5, var(--cell)); grid-template-rows: repeat(5, var(--cell));
+  gap: 3px; padding: 11px; background: var(--grid);
+  border: 1.5px solid var(--grid-l); border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(124,107,255,0.04);
+}
+.en-cell {
+  background: linear-gradient(180deg, #11182a, #0c1120);
+  border: 1px solid #131b2e; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  position: relative; cursor: default;
+}
+.en-cell.hint { cursor: pointer; }
+.en-cell.hint:hover { background: linear-gradient(180deg, #18223a, #111a30); border-color: var(--trim); }
+.en-cell.last::after {
+  content: ""; position: absolute; inset: 6%; border-radius: 9px;
+  box-shadow: inset 0 0 0 2px rgba(107,240,234,0.65); pointer-events: none;
+}
+
+/* tiles */
+.en-tile {
+  width: 78%; height: 78%; border-radius: 8px;
+  animation: pop 0.18s ease-out;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.45), inset 0 -2px 4px rgba(0,0,0,0.3), inset 0 2px 3px rgba(255,255,255,0.18);
+}
+.en-tile.c { background: radial-gradient(circle at 38% 30%, var(--t-c), var(--t-c2)); }
+.en-tile.m { background: radial-gradient(circle at 38% 30%, var(--t-m), var(--t-m2)); }
+.en-tile.y { background: radial-gradient(circle at 38% 30%, var(--t-y), var(--t-y2)); }
+.en-tile.g { background: radial-gradient(circle at 38% 30%, var(--t-g), var(--t-g2)); }
+.en-tile.o { background: radial-gradient(circle at 38% 30%, var(--t-o), var(--t-o2)); }
+.en-tile.draw { width: 28px; height: 28px; }
+.en-tile.draw.empty { background: #0d1320; border: 1px dashed var(--line-2); box-shadow: none; animation: none; }
+.en-tile.sm { width: 16px; height: 16px; border-radius: 5px; }
+@keyframes pop { from { transform: scale(0.5); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.en-dot { width: 22%; height: 22%; border-radius: 50%; background: rgba(107,240,234,0.45); box-shadow: 0 0 7px rgba(107,240,234,0.4); }
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+
+.en-score { display: flex; flex-direction: column; gap: 9px; }
+.en-score-row { display: flex; align-items: baseline; justify-content: space-between; }
+.en-score-l { font-family: var(--display); font-weight: 600; font-size: 14px; color: var(--ink); }
+.en-score-n { font-family: var(--display); font-weight: 700; font-size: 26px; color: var(--foe); line-height: 1; }
+.en-score-n.over { color: var(--warn); }
+.en-bar { height: 8px; border-radius: 5px; background: var(--bg-2); overflow: hidden; border: 1px solid var(--line); }
+.en-bar-fill { height: 100%; background: linear-gradient(90deg, var(--trim), var(--foe)); transition: width 0.3s ease; }
+.en-par { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+
+.en-bag .panel-l { margin-bottom: 9px; }
+.en-bag-grid { display: flex; justify-content: space-between; gap: 6px; }
+.en-bag-item { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.en-bag-n { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--ink-2); }
+
+.en-roles { display: flex; flex-direction: column; gap: 6px; }
+.en-role { font-size: 11.5px; line-height: 1.45; color: var(--ink-2); }
+.en-role b { font-family: var(--display); font-weight: 700; }
+.en-role.you b { color: var(--you); }
+.en-role.foe b { color: var(--foe); }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 132px; overflow-y: auto; }
+.logbox .log-line { font-size: 11px; line-height: 1.55; }
+
+/* overlays */
+.finalsc { display: flex; align-items: baseline; justify-content: center; gap: 26px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 24px; }
+.finalsc .you { color: var(--good); } .finalsc .foe { color: var(--warn); }
+.en-par2 { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--ink-3); }
+.modal-body i { color: var(--trim-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) {
+  .title-main { font-size: 23px; }
+  .en-board { --cell: clamp(36px, min(7.2vh, 5vw), 56px); }
+}

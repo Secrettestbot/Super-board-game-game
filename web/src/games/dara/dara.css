@@ -1,0 +1,121 @@
+/* ==========================================================
+   DARA — "Three to capture."
+   Theme: sahel sand board in earth tones, ivory & slate stones, capture-glow.
+   Display: Lora · Body: Inter · Mono: JetBrains Mono.
+
+   Built for this codebase (no prototype). Shared shell lives in ../../framework/tokens.css.
+   ========================================================== */
+
+:root {
+  --bg:      #1a140d;
+  --bg-2:    #110c07;
+  --panel:   #271d12;
+  --panel-2: #1f1610;
+  --ink:     #f3e9d6;
+  --ink-2:   #c2ad8c;
+  --ink-3:   #897459;
+  --line:    #3a2c1c;
+  --line-2:  #574025;
+
+  /* token contract -> this theme (warm sand-gold primary, dark text) */
+  --accent:  #d8a24e;  --accent-d:#a6741f;  --accent-hi:#f0c477;  --accent-ink:#2a1c06;
+  --trim:    #d8a24e;  --trim-hi:#f0c477;
+  --you:     #f0c477;  --foe:#c2ad8c;
+  --good:    #8fc06a;  --warn:#e08a4e;
+
+  /* game-specific */
+  --sand:    #c89a5b;  --sand-2:#b88846;  --sand-line:#9c7330;
+  --ivory:   #ece0c4;  --ivory-d:#c9b78e;
+  --slate:   #45423c;  --slate-hi:#5f5b52;  --slate-d:#26241f;
+
+  --sans:    "Inter", system-ui, sans-serif;
+  --display: "Lora", Georgia, serif;
+  --mono:    "JetBrains Mono", monospace;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(216,162,78,0.07) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 120%, rgba(0,0,0,0.55) 0%, transparent 55%);
+}
+
+.stage { grid-template-columns: auto 230px; gap: clamp(18px, 2.6vw, 38px); }
+
+.da-wrap { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.da-board {
+  --cell: clamp(40px, min(11vh, 7.4vw), 70px);
+  display: grid;
+  grid-template-columns: repeat(6, var(--cell));
+  grid-template-rows: repeat(5, var(--cell));
+  gap: 3px; padding: 12px;
+  background: linear-gradient(150deg, var(--sand), var(--sand-2));
+  border: 2px solid var(--sand-line);
+  border-radius: 14px;
+  box-shadow: 0 16px 44px rgba(0,0,0,0.55), inset 0 1px 2px rgba(255,255,255,0.18);
+}
+.da-cell {
+  background:
+    radial-gradient(circle at 50% 36%, rgba(255,255,255,0.10), transparent 60%),
+    linear-gradient(160deg, #bd8d4e, #a87a3c);
+  border-radius: 9px;
+  border: 1px solid rgba(120,86,38,0.5);
+  display: flex; align-items: center; justify-content: center;
+  position: relative; cursor: default;
+  box-shadow: inset 0 1px 2px rgba(255,255,255,0.15), inset 0 -2px 4px rgba(90,60,20,0.35);
+}
+.da-cell.hint { cursor: pointer; }
+.da-cell.hint:hover { filter: brightness(1.07); }
+.da-cell.last::after {
+  content: ""; position: absolute; inset: 9%; border-radius: 8px;
+  box-shadow: inset 0 0 0 2px rgba(240,196,119,0.7); pointer-events: none;
+}
+.da-cell.cap { cursor: pointer; }
+
+.da-stone {
+  width: 78%; height: 78%; border-radius: 50%;
+  animation: drop 0.16s ease-out;
+  box-shadow: 0 3px 5px rgba(0,0,0,0.45), inset 0 -2px 4px rgba(0,0,0,0.3);
+}
+.da-stone.s { background: radial-gradient(circle at 36% 28%, #fff, var(--ivory-d)); }
+.da-stone.a { background: radial-gradient(circle at 36% 28%, var(--slate-hi), var(--slate-d)); }
+.da-stone.sel { box-shadow: 0 0 0 3px var(--accent-hi), 0 3px 6px rgba(0,0,0,0.5); }
+.da-stone.cap { cursor: pointer; box-shadow: 0 0 0 3px var(--warn), 0 0 14px rgba(224,138,78,0.7); animation: pulse 1s ease-in-out infinite; }
+@keyframes drop { from { transform: scale(0.5); opacity: 0.4; } to { transform: none; opacity: 1; } }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 3px var(--warn), 0 0 10px rgba(224,138,78,0.5); } 50% { box-shadow: 0 0 0 3px var(--warn), 0 0 18px rgba(224,138,78,0.9); } }
+
+.da-cell.sel { box-shadow: inset 0 0 0 2px var(--accent-hi); }
+.da-dot { width: 30%; height: 30%; border-radius: 50%; background: rgba(42,28,6,0.45); box-shadow: inset 0 1px 2px rgba(0,0,0,0.4); }
+
+/* side */
+.side { display: flex; flex-direction: column; gap: 11px; align-self: center; }
+.panel { background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 13px; padding: 12px 13px; }
+
+.players { display: flex; flex-direction: column; gap: 9px; }
+.pl {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px 10px;
+  padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--line);
+}
+.pl.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.pl-chip { width: 18px; height: 18px; border-radius: 50%; flex: 0 0 auto; }
+.pl-chip.s { background: radial-gradient(circle at 36% 28%, #fff, var(--ivory-d)); border: 1px solid var(--ivory-d); }
+.pl-chip.a { background: radial-gradient(circle at 36% 28%, var(--slate-hi), var(--slate-d)); border: 1px solid #000; }
+.pl-name { font-family: var(--display); font-weight: 600; font-size: 14px; }
+.pl-stats { display: flex; flex-direction: column; align-items: flex-end; line-height: 1; }
+.pl-stats b { font-family: var(--display); font-weight: 700; font-size: 20px; }
+.pl-stats i { font-family: var(--mono); font-style: normal; font-size: 8px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); margin-top: 2px; }
+.pl-hand { grid-column: 1 / -1; font-family: var(--mono); font-size: 11px; color: var(--accent-hi); text-align: right; }
+.pl-hand small { color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; font-size: 9px; }
+
+.logbox { flex: 1 1 auto; min-height: 40px; max-height: 168px; overflow-y: auto; }
+.log-line { font-size: 11px; line-height: 1.55; color: var(--ink-2); }
+.log-line.you { color: var(--accent-hi); }
+.log-line.ai { color: var(--ink-2); }
+.log-line.sys { color: var(--ink-3); font-style: italic; }
+
+/* overlays */
+.finalsc { display: flex; justify-content: center; gap: 28px; margin: 12px 0; font-family: var(--display); font-weight: 700; font-size: 22px; }
+.finalsc .you { color: var(--accent-hi); } .finalsc .foe { color: var(--ink-2); }
+.modal-body i { color: var(--accent-hi); font-style: normal; font-weight: 600; }
+
+@media (max-height: 720px) { .title-main { font-size: 23px; } .da-board { --cell: clamp(38px, 9.6vh, 60px); } }
