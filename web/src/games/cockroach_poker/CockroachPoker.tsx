@@ -1,14 +1,21 @@
 /* COCKROACH POKER — UI (built for this codebase). A 3-player bluffing game on the framework shell:
-   you (player 0) vs two AI. Pass a card face-down with a vermin claim — bluff or truth. The receiver
-   calls TRUE/FALSE or peeks and passes it on. Whoever gains the revealed card keeps it face-up;
-   four of one kind (or an empty hand on your turn) loses. The AI passes, peeks, relays and calls
-   repeatedly across a turn, so its driver re-arms on s.step (the useAITurn tick). */
+   you vs two rivals (AI solo, remote humans online). Pass a card face-down with a vermin claim —
+   bluff or truth. The receiver calls TRUE/FALSE or peeks and passes it on. Whoever gains the
+   revealed card keeps it face-up; four of one kind (or an empty hand on your turn) loses.
+
+   Online play goes through useGameSession(cockroachPokerAdapter): the host authority runs the real
+   logic, unfilled seats are driven by the existing AI, and each seat sees only a redacted view
+   (rivals' hands + the face-down card are hidden unless that seat legitimately saw them). The UI is
+   seat-relative: "your" hand/pile come from mySeat, and gating uses isMyTurn. Solo play is the same
+   path with one local seat and AI rivals — unchanged from before. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { cockroachPokerAdapter } from './net'
 import * as CP from './logic'
 import type { CockroachState, Vermin } from './logic'
 
@@ -39,30 +46,34 @@ type Phase =
   | { k: 'relay-claim'; target: number }            // passing on: chose target, now the new claim
 
 export function CockroachPoker() {
-  const [s, setS] = useState<CockroachState>(() => CP.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(cockroachPokerAdapter)
   const [phase, setPhase] = useState<Phase>({ k: 'idle' })
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
+  // Seat-relative naming: your seat is "You"; rivals are "Opponent" online, "AI N" solo.
+  function name(p: number): string {
+    if (p === mySeat) return 'You'
+    return net.online ? `Player ${p + 1}` : CP.playerName(p)
+  }
+  // Hand size for a seat: redacted rival hands are zeroed, so fall back to the private totals.
+  function seatHandSize(p: number): number {
+    const sizes = (s as { _handSizes?: number[] })._handSizes
+    if (sizes && p !== mySeat) return sizes[p]
+    return CP.handSize(s.hands[p])
+  }
+
   function newGame() {
-    setS(CP.makeGame())
+    netNew()
     setPhase({ k: 'idle' })
     setShowRules(false)
   }
 
   const who = CP.decider(s)
-  const yourMove = s.loser == null && who === 0
-  const aiActive = s.loser == null && who != null && who !== 0
+  const yourMove = s.loser == null && isMyTurn
+  const opponents = s.hands.map((_, p) => p).filter(p => p !== mySeat)
 
-  // Drive the AI: it acts repeatedly (pass → maybe relay → call) so re-arm on s.step.
-  useAITurn(aiActive, () => setS(p => CP.aiStep(p)), { delayMs: 720, tick: s.step })
-
-  // When it becomes the human's turn to START a pass with an empty hand, they lose immediately.
-  useEffect(() => {
-    if (s.loser == null && s.pending == null && s.turn === 0 && CP.handSize(s.hands[0]) === 0) {
-      setS(p => CP.forcedLossCheck(p))
-    }
-  }, [s])
+  // The AI is driven by the session for unfilled seats; nothing to do here.
 
   // Set the human's interactive phase when it's our move.
   useEffect(() => {
@@ -100,46 +111,49 @@ export function CockroachPoker() {
   // ---- banner ----
   let banner: string, bk = ''
   if (s.loser != null) {
-    if (s.winner === 0) { bk = 'win'; banner = 'You win — the cleanest board at the table!' }
-    else if (s.loser === 0) { bk = 'lose'; banner = 'You lost — caught with four of a kind' }
-    else { bk = 'win'; banner = `${CP.playerName(s.loser)} loses — you survive` }
+    if (s.winner === mySeat) { bk = 'win'; banner = 'You win — the cleanest board at the table!' }
+    else if (s.loser === mySeat) { bk = 'lose'; banner = 'You lost — caught with four of a kind' }
+    else { bk = 'win'; banner = `${name(s.loser)} loses — you survive` }
   } else if (yourMove) {
     bk = 'you'
-    if (s.pending != null) banner = `${CP.playerName(s.pending.from)} claims it's a ${s.pending.claim} — call it or pass it on`
+    if (s.pending != null) banner = `${name(s.pending.from)} claims it's a ${s.pending.claim} — call it or pass it on`
     else banner = 'Your turn — pass a card and make a claim'
   } else {
     bk = 'foe'
     banner = s.pending != null
-      ? `${CP.playerName(who!)} is deciding…`
-      : `${CP.playerName(who!)} is choosing a card…`
+      ? `${name(who!)} is deciding…`
+      : `${name(who!)} is choosing a card…`
   }
 
   const pend = s.pending
-  // The human can see the true card only at game end or if they're a seer in the chain
-  // (they relayed it earlier and are now watching, OR they're mid-relay having just peeked).
-  const humanSeer = pend != null && pend.seenBy.includes(0)
-  const revealCard = pend != null && (s.loser != null || humanSeer || phase.k === 'relay-claim')
+  // Online guests get a redacted state where a card they may not see is masked. Detect a real,
+  // known identity so we never render the placeholder as if it were a vermin.
+  const cardKnown = pend != null && (CP.VERMIN as readonly string[]).includes(pend.card)
+  // You can see the true card only at game end or if you're a seer in the chain
+  // (you relayed it earlier and are now watching, OR you're mid-relay having just peeked).
+  const humanSeer = pend != null && pend.seenBy.includes(mySeat)
+  const revealCard = cardKnown && (s.loser != null || humanSeer || phase.k === 'relay-claim')
 
   const relayTargets = pend != null
-    ? CP.eligibleTargets(s, 0, pend.seenBy.includes(0) ? pend.seenBy : pend.seenBy.concat([0]))
+    ? CP.eligibleTargets(s, mySeat, pend.seenBy.includes(mySeat) ? pend.seenBy : pend.seenBy.concat([mySeat]))
     : []
   const canRelay = pend != null && relayTargets.length > 0
 
   function doPass(card: Vermin, claim: Vermin, target: number) {
-    setS(CP.pass(s, card, target, claim))
+    dispatch({ kind: 'pass', cardId: card, claim, target })
     setPhase({ k: 'idle' })
   }
   function doCall(guessTrue: boolean) {
-    setS(CP.respondCall(s, guessTrue))
+    dispatch({ kind: 'guess', truth: guessTrue })
     setPhase({ k: 'idle' })
   }
   function doRelay(target: number, claim: Vermin) {
-    setS(CP.respondPassOn(s, target, claim))
+    dispatch({ kind: 'passOn', claim, target })
     setPhase({ k: 'idle' })
   }
 
   function Seat({ p }: { p: number }) {
-    const isYou = p === 0
+    const isYou = p === mySeat
     const pile = s.piles[p]
     const active = who === p && s.loser == null
     const lost = s.loser === p
@@ -147,10 +161,10 @@ export function CockroachPoker() {
     return (
       <div className={'cp-seat ' + (isYou ? 'you' : 'foe') + (active ? ' on' : '') + (lost ? ' lost' : '')}>
         <div className="cp-seat-head">
-          <span className="cp-seat-name">{CP.playerName(p)}</span>
+          <span className="cp-seat-name">{name(p)}</span>
           {lost && <span className="cp-seat-tag lose">lost</span>}
           {won && <span className="cp-seat-tag win">winner</span>}
-          <span className="cp-seat-meta">{CP.handSize(s.hands[p])} in hand</span>
+          <span className="cp-seat-meta">{seatHandSize(p)} in hand</span>
         </div>
         <div className="cp-piles">
           {CP.VERMIN.map(v => {
@@ -182,7 +196,7 @@ export function CockroachPoker() {
         subtitle="pass the bug face-down and lie about it — collect four of one vermin and you lose. read your rivals, call the bluff."
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`You ${CP.handSize(s.hands[0])} · AI 1 ${CP.handSize(s.hands[1])} · AI 2 ${CP.handSize(s.hands[2])}`}
+        modeLeft={s.hands.map((_, p) => `${name(p)} ${seatHandSize(p)}`).join(' · ')}
         banner={banner}
         bannerClass={bk}
         modeRight={<>click · play &nbsp; Esc · back &nbsp; N · new</>}
@@ -190,8 +204,7 @@ export function CockroachPoker() {
         <div className="cp-main">
           {/* opponents */}
           <div className="cp-seats">
-            <Seat p={1} />
-            <Seat p={2} />
+            {opponents.map(p => <Seat key={p} p={p} />)}
           </div>
 
           {/* center table */}
@@ -203,7 +216,7 @@ export function CockroachPoker() {
             ) : (
               <>
                 <div className="cp-pass-from">
-                  from <b>{CP.playerName(pend.from)}</b> → <b>{CP.playerName(pend.target)}</b>
+                  from <b>{name(pend.from)}</b> → <b>{name(pend.target)}</b>
                 </div>
                 {revealCard ? (
                   <div className="cp-card face">
@@ -216,12 +229,12 @@ export function CockroachPoker() {
                 <div className="cp-claim">
                   <span className="glyph">{GLYPH[pend.claim]}</span>“it's a <span className="name">{pend.claim}</span>”
                 </div>
-                {(phase.k === 'relay-claim' || (humanSeer && pend.target !== 0)) && (
+                {(phase.k === 'relay-claim' || (humanSeer && pend.target !== mySeat)) && (
                   <div className="cp-peek">you peeked — it's truly a <b>{pend.card}</b></div>
                 )}
 
                 {/* human respond controls */}
-                {yourMove && pend.target === 0 && phase.k === 'respond' && (
+                {yourMove && pend.target === mySeat && phase.k === 'respond' && (
                   <div className="cp-controls">
                     <div className="cp-ctl-label">call the claim</div>
                     <div className="cp-btn-row">
@@ -234,7 +247,7 @@ export function CockroachPoker() {
                         <div className="cp-btn-row">
                           {relayTargets.map(t => (
                             <button key={t} className="cp-btn" onClick={() => setPhase({ k: 'relay-claim', target: t })}>
-                              Pass on to {CP.playerName(t)}
+                              Pass on to {name(t)}
                             </button>
                           ))}
                         </div>
@@ -246,7 +259,7 @@ export function CockroachPoker() {
                 {/* human relay claim picker (after peeking, we KNOW pend.card) */}
                 {yourMove && phase.k === 'relay-claim' && (
                   <div className="cp-controls">
-                    <div className="cp-ctl-label">claim it to {CP.playerName(phase.target)} as…</div>
+                    <div className="cp-ctl-label">claim it to {name(phase.target)} as…</div>
                     <div className="cp-claimgrid">
                       {CP.VERMIN.map(v => (
                         <div key={v} className={'cp-claimchip' + (v === pend.card ? ' truth' : '')}
@@ -282,9 +295,9 @@ export function CockroachPoker() {
                   pass <span style={{ fontSize: 18 }}>{GLYPH[phase.card]}</span> claimed “{phase.claim}” to…
                 </div>
                 <div className="cp-targetpick">
-                  {[1, 2].map(t => (
+                  {opponents.map(t => (
                     <button key={t} className="cp-targetbtn" onClick={() => doPass(phase.card, phase.claim, t)}>
-                      {CP.playerName(t)}
+                      {name(t)}
                     </button>
                   ))}
                 </div>
@@ -294,7 +307,7 @@ export function CockroachPoker() {
           </div>
 
           {/* your collected pile + hand */}
-          <Seat p={0} />
+          <Seat p={mySeat} />
           <div className="cp-hand-wrap">
             <div className="cp-hand-head">
               <span className="cp-hand-title">Your hand</span>
@@ -307,7 +320,7 @@ export function CockroachPoker() {
             </div>
             <div className="cp-hand">
               {CP.VERMIN.map(v => {
-                const n = s.hands[0][v]
+                const n = s.hands[mySeat][v]
                 const selectable = yourMove && pend == null && phase.k === 'pass-card' && n > 0
                 const selected = pend == null && (phase.k === 'pass-claim' || phase.k === 'pass-target') && phase.card === v
                 return (
@@ -328,6 +341,9 @@ export function CockroachPoker() {
         {/* side */}
         <div className="cp-side">
           <div className="panel">
+            <OnlineBar net={net} />
+          </div>
+          <div className="panel">
             <div className="panel-l" style={{ marginBottom: 8 }}>the eight vermin</div>
             <div className="cp-legend">
               {CP.VERMIN.map(v => (
@@ -341,27 +357,27 @@ export function CockroachPoker() {
         </div>
       </GameShell>
 
-      {s.loser != null && <ResultModal state={s} onNew={newGame} />}
+      {s.loser != null && <ResultModal state={s} mySeat={mySeat} name={name} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ state, onNew }: { state: CockroachState; onNew: () => void }) {
-  const youWon = state.winner === 0
-  const youLost = state.loser === 0
+function ResultModal({ state, mySeat, name, onNew }: { state: CockroachState; mySeat: number; name: (p: number) => string; onNew: () => void }) {
+  const youWon = state.winner === mySeat
+  const youLost = state.loser === mySeat
   return (
     <Modal
       eyebrow={youWon ? 'Cleanest board' : youLost ? 'Four of a kind' : 'A rival cracked'}
-      title={youWon ? 'You Win' : youLost ? 'You Lose' : `${CP.playerName(state.loser!)} Loses`}
+      title={youWon ? 'You Win' : youLost ? 'You Lose' : `${name(state.loser!)} Loses`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="modal-body">
         <p>
           {youLost
-            ? <>You collected four of one vermin. <b>{CP.playerName(state.winner!)}</b> takes it with the cleanest board.</>
-            : <><b>{CP.playerName(state.loser!)}</b> collected four of a kind and is out. {youWon ? <>You</> : <><b>{CP.playerName(state.winner!)}</b></>} survive with the cleanest board.</>}
+            ? <>You collected four of one vermin. <b>{name(state.winner!)}</b> takes it with the cleanest board.</>
+            : <><b>{name(state.loser!)}</b> collected four of a kind and is out. {youWon ? <>You</> : <><b>{name(state.winner!)}</b></>} survive with the cleanest board.</>}
         </p>
       </div>
     </Modal>

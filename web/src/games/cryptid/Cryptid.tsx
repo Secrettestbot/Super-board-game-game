@@ -7,10 +7,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { cryptidAdapter } from './net'
 import * as C from './logic'
-import type { CryptidState, Player, Terrain, StructColor } from './logic'
+import type { Player, Terrain, StructColor } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -36,58 +38,56 @@ function hexPoints(w: number, h: number): string {
 }
 
 export function Cryptid() {
-  const [s, setS] = useState<CryptidState>(() => C.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(cryptidAdapter)
+  const me = mySeat as Player
+  const opp = (1 - me) as Player
   const [showRules, setShowRules] = useState(false)
   const [mode, setMode] = useState<'ask' | 'search'>('ask')
-  const [aiTick, setAiTick] = useState(0)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(C.makeGame()); setShowRules(false); setMode('ask') }
-
-  // The AI asks/searches over turns; re-arm on aiTick (a monotonic counter bumped each AI action).
-  useAITurn(s.winner == null && s.turn === 1, () => {
-    setS((p) => C.aiTurn(p))
-    setAiTick((t) => t + 1)
-  }, { delayMs: 760, tick: aiTick })
+  function newGame() { netNew(); setShowRules(false); setMode('ask') }
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = 0 }, [s.log])
+
+  const yourTurn = s.winner == null && isMyTurn
 
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules((v) => !v),
     onEscape: () => setShowRules(false),
     extra: (e) => {
-      if (s.winner != null || s.turn !== 0) return false
+      if (!yourTurn) return false
       if (e.key === 'a' || e.key === 'A') { setMode('ask'); return true }
       if (e.key === 's' || e.key === 'S') { setMode('search'); return true }
       return false
     },
   })
 
-  const yourTurn = s.winner == null && s.turn === 0
-
   function onHex(h: number) {
     if (!yourTurn) return
     if (mode === 'ask') {
-      if (s.markers[1][h] != null) return // already answered
-      setS(C.ask(s, 0, 1, h))
+      if (s.markers[opp][h] != null) return // already answered
+      dispatch({ kind: 'question', target: opp, cell: h })
     } else {
-      setS(C.search(s, 0, h))
+      dispatch({ kind: 'search', cell: h })
     }
   }
 
-  // Deduction hints for player 0.
-  const myCand = C.candidateHexes(s, 0)
-  const oppClues = C.consistentOpponentClues(s, 0)
+  // Deduction hints from YOUR seat's perspective.
+  const myCand = C.candidateHexes(s, me)
+  const oppClues = C.consistentOpponentClues(s, me)
   const forced = myCand.filter((h) => oppClues.every((cl) => C.clueFits(cl, h, s.map)))
 
+  const oppLabel = net.online ? 'Opponent' : 'rival'
+  const myWin = s.winner === me
+
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You found the cryptid — you win!' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'The rival cornered the cryptid first' }
+  if (s.winner != null && myWin) { bk = 'win'; banner = 'You found the cryptid — you win!' }
+  else if (s.winner != null) { bk = 'lose'; banner = `The ${oppLabel} cornered the cryptid first` }
   else if (yourTurn) {
     bk = 'you'
-    banner = mode === 'ask' ? 'ASK: click a hex to question the rival' : 'SEARCH: click the hex you believe hides the cryptid'
-  } else { bk = 'foe'; banner = 'The rival is deducing…' }
+    banner = mode === 'ask' ? `ASK: click a hex to question the ${oppLabel}` : 'SEARCH: click the hex you believe hides the cryptid'
+  } else { bk = 'foe'; banner = `The ${oppLabel} is deducing…` }
 
   // Geometry constants for the SVG board.
   const HW = 62, HH = 64           // hex bounding box
@@ -112,7 +112,7 @@ export function Cryptid() {
         subtitle="two naturalists, one secret clue each — deduce the rival’s hint and corner the beast before they do"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`Candidates ${myCand.length} · rival clues left ${oppClues.length}`}
+        modeLeft={`Candidates ${myCand.length} · ${oppLabel} clues left ${oppClues.length}`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>a · ask &nbsp; s · search &nbsp; N · new</>}
@@ -123,12 +123,12 @@ export function Cryptid() {
               const r = C.rowOf(h), c = C.colOf(h)
               const [x, y] = hexXY(r, c)
               const hex = s.map[h]
-              const youM = s.markers[0][h]
-              const aiM = s.markers[1][h]
+              const youM = s.markers[me][h]
+              const aiM = s.markers[opp][h]
               const isWin = s.winner != null && h === s.cryptid
               const isCand = yourTurn && myCand.includes(h)
               const isForced = forced.length <= 3 && forced.includes(h)
-              const clickable = yourTurn && (mode === 'search' || s.markers[1][h] == null)
+              const clickable = yourTurn && (mode === 'search' || s.markers[opp][h] == null)
               return (
                 <g key={h} transform={`translate(${x},${y})`}
                   className={'cr-hexg' + (clickable ? ' clickable' : '')}
@@ -163,9 +163,13 @@ export function Cryptid() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
+
           <div className="panel cr-clue">
             <div className="panel-l">your secret clue</div>
-            <div className="cr-cluetext">{C.clueText(s.clues[0])}</div>
+            <div className="cr-cluetext">{C.clueText(s.clues[me])}</div>
           </div>
 
           <div className="panel cr-control">
@@ -178,7 +182,7 @@ export function Cryptid() {
             </div>
             <div className="cr-hint">
               {mode === 'ask'
-                ? 'Pick a hex to ask the rival. A disc means it fits their clue; a cube means it does not.'
+                ? `Pick a hex to ask the ${oppLabel}. A disc means it fits their clue; a cube means it does not.`
                 : 'Pick the hex you think hides the cryptid. Wrong guesses cost a cube and end your turn.'}
             </div>
             {forced.length === 1 && yourTurn && (
@@ -211,26 +215,26 @@ export function Cryptid() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal winner={s.winner} cryptid={C.coord(s.cryptid)} rivalClue={C.clueText(s.clues[1])} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={myWin} cryptid={C.coord(s.cryptid)} rivalLabel={oppLabel} rivalClue={C.clueText(s.clues[opp])} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ winner, cryptid, rivalClue, onNew }: { winner: Player; cryptid: string; rivalClue: string; onNew: () => void }) {
-  const won = winner === 0
+function ResultModal({ won, cryptid, rivalLabel, rivalClue, onNew }: { won: boolean; cryptid: string; rivalLabel: string; rivalClue: string; onNew: () => void }) {
+  const rivalCap = rivalLabel.charAt(0).toUpperCase() + rivalLabel.slice(1)
   return (
     <Modal
       eyebrow={won ? 'Beast cornered' : 'Outdeduced'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${rivalCap} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="modal-body">
         <div className="finalsc">
-          {won ? <span className="you">You found the cryptid at {cryptid}</span> : <span className="foe">The rival found it at {cryptid}</span>}
+          {won ? <span className="you">You found the cryptid at {cryptid}</span> : <span className="foe">The {rivalLabel} found it at {cryptid}</span>}
         </div>
-        <p>The rival's secret clue was: <b>{rivalClue}</b>.</p>
+        <p>The {rivalLabel}'s secret clue was: <b>{rivalClue}</b>.</p>
       </div>
     </Modal>
   )

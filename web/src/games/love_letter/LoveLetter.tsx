@@ -1,15 +1,22 @@
 /* LOVE LETTER — UI (2-player adaptation, built for this codebase). A romantic royal court:
    parchment cards with crests and a wax-seal motif, on the framework shell. You draw and play
    one of two cards; the rival's card is hidden unless a Priest reveals it. Side panel holds the
-   round-favor tokens, the discard pile, and a running log. First to 4 favors wins. */
+   round-favor tokens, the discard pile, and a running log. First to 4 favors wins.
+
+   ONLINE: seat-relative via useGameSession. "You" is always the local seat (mySeat); the other
+   seat is the opponent. Hands/tokens/discards are read from mySeat's perspective; hidden cards
+   are redacted by the adapter, so we simply render whatever the view shows (masked deck/hands
+   come through as the placeholder value 0). In solo play mySeat is 0 and the rival is the AI. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { loveLetterAdapter } from './net'
 import * as LL from './logic'
-import type { LoveLetterState, CardValue, Player } from './logic'
+import type { CardValue } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -23,37 +30,43 @@ const TITLE_MARK = (
 const GUESS_VALUES: CardValue[] = [2, 3, 4, 5, 6, 7, 8]   // Guard may name any non-Guard card
 
 export function LoveLetter() {
-  const [s, setS] = useState<LoveLetterState>(() => LL.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(loveLetterAdapter)
+  const me = mySeat as 0 | 1
+  const foe = (1 - me) as 0 | 1
   const [showRules, setShowRules] = useState(false)
   const [pending, setPending] = useState<CardValue | null>(null)   // a Guard awaiting its guess
 
-  function newGame() { setS(LL.makeGame()); setShowRules(false); setPending(null) }
+  function newGame() { netNew(); setShowRules(false); setPending(null) }
 
-  const yourTurn = s.winner === null && !s.roundOver && s.turn === 0
-  // AI plays its full turn in one step; re-arm on turn handoffs via `tick`.
-  useAITurn(s.winner === null && !s.roundOver && s.turn === 1, () => setS(p => LL.aiTurn(p)), { delayMs: 720, tick: s.discards.length })
+  const yourTurn = s.winner === null && !s.roundOver && isMyTurn
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => { setShowRules(false); setPending(null) } })
 
-  const legal = useMemo(() => yourTurn ? new Set(LL.legalPlays(s, 0)) : new Set<CardValue>(), [yourTurn, s])
+  const legal = useMemo(() => yourTurn ? new Set(LL.legalPlays(s, me)) : new Set<CardValue>(), [yourTurn, s, me])
 
   function playCard(v: CardValue) {
     if (!yourTurn || !legal.has(v)) return
-    if (v === 1 && !s.protected[1]) { setPending(1); return }     // Guard needs a guess
-    setS(LL.play(s, v))
+    if (v === 1 && !s.protected[foe]) { setPending(1); return }    // Guard needs a guess
+    dispatch({ kind: 'play', card: v })
   }
-  function guess(g: CardValue) { if (pending === 1) { setS(LL.play(s, 1, { guardGuess: g })); setPending(null) } }
-  function nextRound() { setS(LL.nextRound(s)); }
+  function guess(g: CardValue) { if (pending === 1) { dispatch({ kind: 'play', card: 1, guess: g }); setPending(null) } }
+  function nextRound() { dispatch({ kind: 'next' }) }
 
-  const youHand = s.hands[0], foeHand = s.hands[1]
-  const foeFaceUp = s.reveal && !s.roundOver ? (foeHand[0] as CardValue) : null
+  const youHand = s.hands[me], foeHand = s.hands[foe]
+  // A masked card comes through as the placeholder value 0; only render a real face for >0.
+  const foeFaceUp = !s.roundOver && (foeHand[0] as number) > 0 ? (foeHand[0] as CardValue) : null
+
+  const foeLabel = net.online ? 'Opponent' : 'Rival'
+  const youWonGame = s.winner === me
+  const foeWonGame = s.winner === foe
+  const youWonRound = s.roundWinner === me
 
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You win the court — the Princess is yours' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'The rival wins the court' }
-  else if (s.roundOver) { bk = s.roundWinner === 0 ? 'you' : 'foe'; banner = s.roundWinner === 0 ? 'You take the round' : 'The rival takes the round' }
-  else if (pending === 1) { bk = 'you'; banner = 'Name the card the rival holds' }
+  if (youWonGame) { bk = 'win'; banner = 'You win the court — the Princess is yours' }
+  else if (foeWonGame) { bk = 'lose'; banner = `${foeLabel} wins the court` }
+  else if (s.roundOver) { bk = youWonRound ? 'you' : 'foe'; banner = youWonRound ? 'You take the round' : `${foeLabel} takes the round` }
+  else if (pending === 1) { bk = 'you'; banner = `Name the card ${foeLabel.toLowerCase()} holds` }
   else if (yourTurn) { bk = 'you'; banner = 'Your turn — choose a card to play' }
-  else { bk = 'foe'; banner = 'The rival considers their move…' }
+  else { bk = 'foe'; banner = net.online ? `${foeLabel} considers their move…` : 'The rival considers their move…' }
 
   return (
     <>
@@ -64,18 +77,18 @@ export function LoveLetter() {
         subtitle="deliver your missive to the Princess — outwit, outlast, and never play her by mistake"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={<>First to {LL.TARGET_TOKENS} · favor {s.tokens[0]}–{s.tokens[1]}</>}
+        modeLeft={<>First to {LL.TARGET_TOKENS} · favor {s.tokens[me]}–{s.tokens[foe]}</>}
         banner={banner}
         bannerClass={bk}
         modeRight={<>N · new &nbsp; ? · rules</>}
       >
         <div className="ll-wrap">
-          {/* rival */}
+          {/* opponent */}
           <div className="ll-seat foe">
             <div className="ll-seat-label">
-              <span className="ll-seal foe" /> Rival
-              {s.out[1] && <span className="ll-out">out</span>}
-              {s.protected[1] && !s.out[1] && <span className="ll-prot">protected</span>}
+              <span className="ll-seal foe" /> {foeLabel}
+              {s.out[foe] && <span className="ll-out">out</span>}
+              {s.protected[foe] && !s.out[foe] && <span className="ll-prot">protected</span>}
             </div>
             <div className="ll-foe-cards">
               {foeHand.map((_, i) => (
@@ -112,22 +125,24 @@ export function LoveLetter() {
             </div>
             <div className="ll-seat-label">
               <span className="ll-seal you" /> You
-              {s.out[0] && <span className="ll-out">out</span>}
-              {s.protected[0] && !s.out[0] && <span className="ll-prot">protected</span>}
+              {s.out[me] && <span className="ll-out">out</span>}
+              {s.protected[me] && !s.out[me] && <span className="ll-prot">protected</span>}
             </div>
           </div>
         </div>
 
         <div className="side">
+          <div className="panel"><OnlineBar net={net} /></div>
+
           <div className="panel ll-tokens">
             <div className="panel-l">Favor</div>
             <div className="ll-tok-row">
               <span className="ll-tok-name you">You</span>
-              <span className="ll-pips">{pips(s.tokens[0])}</span>
+              <span className="ll-pips">{pips(s.tokens[me])}</span>
             </div>
             <div className="ll-tok-row">
-              <span className="ll-tok-name foe">Rival</span>
-              <span className="ll-pips">{pips(s.tokens[1])}</span>
+              <span className="ll-tok-name foe">{foeLabel}</span>
+              <span className="ll-pips">{pips(s.tokens[foe])}</span>
             </div>
           </div>
 
@@ -136,7 +151,7 @@ export function LoveLetter() {
             <div className="ll-disc-grid">
               {s.discards.length === 0 && <span className="ll-disc-empty">no cards yet</span>}
               {s.discards.slice(-12).map((d, i) => (
-                <span key={i} className={'ll-chip ' + (d.who === 0 ? 'you' : 'foe')} title={LL.cardName(d.v)}>
+                <span key={i} className={'ll-chip ' + (d.who === me ? 'you' : 'foe')} title={LL.cardName(d.v)}>
                   <b>{d.v}</b>{LL.cardName(d.v).slice(0, 4)}
                 </span>
               ))}
@@ -154,7 +169,7 @@ export function LoveLetter() {
           onClose={() => setPending(null)}
           actions={<button className="btn-modal" onClick={() => setPending(null)}>Cancel</button>}
         >
-          <div className="modal-body"><p>Guess the card the rival holds. Guess right and they are out — you may not name another Guard.</p></div>
+          <div className="modal-body"><p>Guess the card {foeLabel.toLowerCase()} holds. Guess right and they are out — you may not name another Guard.</p></div>
           <div className="ll-guess">
             {GUESS_VALUES.map(v => (
               <button key={v} className="ll-guess-btn" onClick={() => guess(v)}><b>{v}</b>{LL.cardName(v)}</button>
@@ -163,8 +178,12 @@ export function LoveLetter() {
         </Modal>
       )}
 
-      {s.winner !== null && <ResultModal s={s} onNew={newGame} />}
-      {s.winner === null && s.roundOver && <RoundModal s={s} onNext={nextRound} />}
+      {s.winner !== null && <ResultModal you={s.tokens[me]} foe={s.tokens[foe]} won={youWonGame} foeLabel={foeLabel} onNew={newGame} />}
+      {s.winner === null && s.roundOver && (
+        isMyTurn
+          ? <RoundModal you={s.tokens[me]} foe={s.tokens[foe]} won={youWonRound} foeLabel={foeLabel} onNext={nextRound} />
+          : <RoundWaitModal you={s.tokens[me]} foe={s.tokens[foe]} won={youWonRound} foeLabel={foeLabel} />
+      )}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -188,30 +207,42 @@ function CardFace({ v }: { v: CardValue }) {
   )
 }
 
-function ResultModal({ s, onNew }: { s: LoveLetterState; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ you, foe, won, foeLabel, onNew }: { you: number; foe: number; won: boolean; foeLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'The Princess reads your letter' : 'A rival prevails'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${foeLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Court again</button>}
     >
-      <div className="finalsc"><span className="you">You {s.tokens[0]}</span><span className="foe">Rival {s.tokens[1]}</span></div>
+      <div className="finalsc"><span className="you">You {you}</span><span className="foe">{foeLabel} {foe}</span></div>
     </Modal>
   )
 }
 
-function RoundModal({ s, onNext }: { s: LoveLetterState; onNext: () => void }) {
-  const won = s.roundWinner === 0
+function RoundModal({ you, foe, won, foeLabel, onNext }: { you: number; foe: number; won: boolean; foeLabel: string; onNext: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'A favor earned' : 'A favor lost'}
-      title={won ? 'You Take the Round' : 'The Rival Takes the Round'}
+      title={won ? 'You Take the Round' : `${foeLabel} Takes the Round`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNext}>Next round</button>}
     >
-      <div className="finalsc"><span className="you">You {s.tokens[0]}</span><span className="foe">Rival {s.tokens[1]}</span></div>
+      <div className="finalsc"><span className="you">You {you}</span><span className="foe">{foeLabel} {foe}</span></div>
+    </Modal>
+  )
+}
+
+function RoundWaitModal({ you, foe, won, foeLabel }: { you: number; foe: number; won: boolean; foeLabel: string }) {
+  return (
+    <Modal
+      eyebrow={won ? 'A favor earned' : 'A favor lost'}
+      title={won ? 'You Take the Round' : `${foeLabel} Takes the Round`}
+      closeOnOverlay={false}
+      actions={<></>}
+    >
+      <div className="finalsc"><span className="you">You {you}</span><span className="foe">{foeLabel} {foe}</span></div>
+      <div className="modal-body"><p>Waiting for the host to deal the next round…</p></div>
     </Modal>
   )
 }

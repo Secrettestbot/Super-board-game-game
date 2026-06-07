@@ -1,14 +1,17 @@
-/* COUP — UI (built for this codebase). Three seats around a felt table: the two AI rivals up top
-   (cards hidden, counts + coins shown), you below with your influence face-up. On your turn pick an
-   action (and a target where needed); when an AI acts you get modal prompts to challenge or block.
-   Two AI players act AND react many times in a row, so the AI driver re-arms on a monotonic action
-   counter (`s.log.length` changes on every AI step). The forced coup at 10 coins keeps games finite. */
+/* COUP — UI (built for this codebase). Three seats around a felt table. Your influence is shown
+   face-up at the bottom (derived from `mySeat`); the other two seats are rivals with hidden cards.
+   On your action turn you pick an action (and a target where needed); when another seat acts you
+   get modal prompts to challenge or block. Online play is host-authoritative via useGameSession:
+   the host runs logic.ts, guests send kinded intents and render a per-seat redacted view, and the
+   hook fills empty seats with the existing AI. Solo play is the same hook with no guests. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { coupAdapter } from './net'
 import * as C from './logic'
 import type { CoupState, Character, ActionType } from './logic'
 
@@ -32,55 +35,64 @@ const ACTION_INFO: Record<ActionType, { sub: string }> = {
   exchange: { sub: 'Ambassador' },
 }
 
+/** Seat-relative display name: your seat is "You"; others are the game name solo, or
+    "Opponent"/"Player N" online (we don't know remote players' real names). */
+function seatName(s: CoupState, id: number, mySeat: number, online: boolean, numOpp: number): string {
+  if (id === mySeat) return 'You'
+  if (!online) return s.players[id].name
+  return numOpp <= 1 ? 'Opponent' : `Player ${id + 1}`
+}
+
 export function Coup() {
-  const [s, setS] = useState<CoupState>(() => C.makeGame())
-  const [rng] = useState(() => C.makeRng((Date.now() & 0x7fffffff) || 1))
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(coupAdapter)
   const [showRules, setShowRules] = useState(false)
   const [pendingAction, setPendingAction] = useState<ActionType | null>(null)   // awaiting a target pick
-  const [aiStepN, setAiStepN] = useState(0)   // monotonic AI-action counter — re-arms the AI driver
 
-  function newGame() { setS(C.makeGame()); setShowRules(false); setPendingAction(null); setAiStepN(0) }
+  function newGame() { netNew(); setShowRules(false); setPendingAction(null) }
 
-  // The AI acts AND reacts MANY times in a row; re-arm on a counter that bumps every AI step
-  // (the log is capped, so it can't serve as the tick once it saturates).
-  useAITurn(C.aiToMove(s), () => { setS(p => C.aiStep(p, rng)); setAiStepN(n => n + 1) }, { delayMs: 720, tick: aiStepN })
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => { setShowRules(false); setPendingAction(null) } })
 
   const p = s.pending
-  const yourActionTurn = s.winner == null && p == null && s.turn === 0
-  const legal = useMemo(() => yourActionTurn ? new Set(C.legalActions(s, 0)) : new Set<ActionType>(), [yourActionTurn, s])
+  const numSeats = s.players.length
+  const numOpp = numSeats - 1
+  const me = s.players[mySeat]
+  // The two seats that are not me, in seat order (rivals shown up top).
+  const oppIds = s.players.map((_, i) => i).filter(i => i !== mySeat)
 
-  // ---- human reactive decision flags ----
-  const youChallenge = s.winner == null && p != null
-    && (p.kind === 'action_challenge' || p.kind === 'block_challenge') && p.decider === 0
-  const youBlock = s.winner == null && p != null && p.kind === 'block' && p.decider === 0
-  const youLose = s.winner == null && p != null && p.kind === 'lose' && p.loser === 0
-  const youExchange = s.winner == null && p != null && p.kind === 'exchange' && p.actor === 0
+  const yourActionTurn = s.winner == null && p == null && s.turn === mySeat && isMyTurn
+  const legal = useMemo(() => yourActionTurn ? new Set(C.legalActions(s, mySeat)) : new Set<ActionType>(), [yourActionTurn, s, mySeat])
+
+  // ---- human reactive decision flags (gated on isMyTurn so a guest only acts when it's theirs) ----
+  const youChallenge = s.winner == null && isMyTurn && p != null
+    && (p.kind === 'action_challenge' || p.kind === 'block_challenge') && p.decider === mySeat
+  const youBlock = s.winner == null && isMyTurn && p != null && p.kind === 'block' && p.decider === mySeat
+  const youLose = s.winner == null && isMyTurn && p != null && p.kind === 'lose' && p.loser === mySeat
+  const youExchange = s.winner == null && isMyTurn && p != null && p.kind === 'exchange' && p.actor === mySeat
 
   // ---- action / target handlers ----
   function chooseAction(a: ActionType) {
     if (!legal.has(a)) return
     if (C.actionNeedsTarget(a)) { setPendingAction(a); return }
-    setS(C.declareAction(s, 0, a, null)); setPendingAction(null)
+    dispatch({ kind: 'action', type: a, target: null }); setPendingAction(null)
   }
   function chooseTarget(t: number) {
     if (pendingAction == null) return
-    setS(C.declareAction(s, 0, pendingAction, t)); setPendingAction(null)
+    dispatch({ kind: 'action', type: pendingAction, target: t }); setPendingAction(null)
   }
 
   // ---- banner ----
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You hold the last influence — the court is yours' }
-  else if (s.winner != null) { bk = 'lose'; banner = `${s.players[s.winner].name} outlasts the table` }
-  else if (youChallenge) { bk = 'you'; banner = challengePromptText(s) }
+  if (s.winner === mySeat) { bk = 'win'; banner = 'You hold the last influence — the court is yours' }
+  else if (s.winner != null) { bk = 'lose'; banner = `${seatName(s, s.winner, mySeat, net.online, numOpp)} outlasts the table` }
+  else if (youChallenge) { bk = 'you'; banner = challengePromptText(s, mySeat, net.online, numOpp) }
   else if (youBlock) { bk = 'you'; banner = 'A move targets you — block it, or let it pass' }
   else if (youLose) { bk = 'you'; banner = 'You must surrender an influence — choose a card' }
   else if (youExchange) { bk = 'you'; banner = 'Ambassador — choose the influence to keep' }
   else if (pendingAction != null) { bk = 'you'; banner = `${C.ACTION_LABEL[pendingAction]} — pick a target` }
-  else if (yourActionTurn) { bk = 'you'; banner = s.players[0].coins >= C.FORCE_COUP_AT ? 'You hold 10+ coins — you must Coup' : 'Your turn — choose an action' }
+  else if (yourActionTurn) { bk = 'you'; banner = me.coins >= C.FORCE_COUP_AT ? 'You hold 10+ coins — you must Coup' : 'Your turn — choose an action' }
   else { bk = 'foe'; banner = 'The court deliberates…' }
 
-  const targetIds = pendingAction != null ? C.legalTargets(s, 0) : []
+  const targetIds = pendingAction != null ? C.legalTargets(s, mySeat) : []
 
   return (
     <>
@@ -91,7 +103,7 @@ export function Coup() {
         subtitle="bluff your character, challenge the liars, and be the last influence standing"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={<>Players {C.alivePlayers(s).length}/3 · deck {s.deck.length}</>}
+        modeLeft={<>Players {C.alivePlayers(s).length}/{numSeats} · deck {s.deck.length}</>}
         banner={banner}
         bannerClass={bk}
         modeRight={<>N · new &nbsp; ? · rules</>}
@@ -99,11 +111,15 @@ export function Coup() {
         <div className="coup-wrap">
           {/* rivals */}
           <div className="coup-opps">
-            {[1, 2].map(id => <OppSeat key={id} s={s} id={id} highlightTarget={targetIds.includes(id)} onTarget={() => chooseTarget(id)} />)}
+            {oppIds.map(id => (
+              <OppSeat key={id} s={s} id={id} name={seatName(s, id, mySeat, net.online, numOpp)}
+                active={seatIsActing(s, id)}
+                highlightTarget={targetIds.includes(id)} onTarget={() => chooseTarget(id)} />
+            ))}
           </div>
 
           {/* you */}
-          <YouSeat s={s} active={yourActionTurn || youLose || youExchange} />
+          <YouSeat s={s} mySeat={mySeat} active={yourActionTurn || youLose || youExchange} />
 
           {/* action bar */}
           {yourActionTurn && (
@@ -133,39 +149,50 @@ export function Coup() {
             <div className="panel-l">Influence</div>
             {s.players.map(pl => (
               <div key={pl.id} className={'score-row' + (C.isAlive(pl) ? '' : ' dead-row')}>
-                <span className={'dot ' + (pl.id === 0 ? 'you' : 'foe')} />
-                <span className="who">{pl.name}</span>
+                <span className={'dot ' + (pl.id === mySeat ? 'you' : 'foe')} />
+                <span className="who">{seatName(s, pl.id, mySeat, net.online, numOpp)}</span>
                 <span className="infl">{C.isAlive(pl) ? '●'.repeat(C.aliveInfluence(pl)) + '○'.repeat(2 - C.aliveInfluence(pl)) : 'out'} · {pl.coins}c</span>
               </div>
             ))}
           </div>
+          <OnlineBar net={net} />
           <div className="panel logbox">
             {s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}
           </div>
         </div>
       </GameShell>
 
-      {youChallenge && <ChallengeModal s={s} onChallenge={() => setS(C.challenge(s, 0))} onPass={() => setS(C.passChallenge(s, 0))} />}
-      {youBlock && <BlockModal s={s} onBlock={(ch) => setS(C.block(s, 0, ch))} onPass={() => setS(C.passBlock(s, 0))} />}
-      {youLose && <LoseModal s={s} onPick={(i) => setS(C.resolveLossOfInfluence(s, i))} />}
-      {youExchange && <ExchangeModal s={s} onKeep={(keep) => setS(C.resolveExchange(s, keep, rng))} />}
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {youChallenge && <ChallengeModal s={s} mySeat={mySeat} online={net.online} numOpp={numOpp} onChallenge={() => dispatch({ kind: 'challenge' })} onPass={() => dispatch({ kind: 'allow' })} />}
+      {youBlock && <BlockModal s={s} mySeat={mySeat} online={net.online} numOpp={numOpp} onBlock={(ch) => dispatch({ kind: 'block', as: ch })} onPass={() => dispatch({ kind: 'allow' })} />}
+      {youLose && <LoseModal s={s} mySeat={mySeat} onPick={(i) => dispatch({ kind: 'reveal', card: i })} />}
+      {youExchange && <ExchangeModal s={s} mySeat={mySeat} onKeep={(keep) => dispatch({ kind: 'exchange', keep })} />}
+      {s.winner != null && <ResultModal s={s} mySeat={mySeat} online={net.online} numOpp={numOpp} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
+/** Is seat `id` the one currently acting/reacting? (used to glow the active rival seat). */
+function seatIsActing(s: CoupState, id: number): boolean {
+  if (s.winner != null) return false
+  const p = s.pending
+  if (p == null) return s.turn === id
+  if (p.kind === 'action_challenge' || p.kind === 'block_challenge' || p.kind === 'block') return p.decider === id
+  if (p.kind === 'lose') return p.loser === id
+  if (p.kind === 'exchange') return p.actor === id
+  return false
+}
+
 // ===== Seats =====
-function OppSeat({ s, id, highlightTarget, onTarget }: { s: CoupState; id: number; highlightTarget: boolean; onTarget: () => void }) {
+function OppSeat({ s, id, name, active, highlightTarget, onTarget }: { s: CoupState; id: number; name: string; active: boolean; highlightTarget: boolean; onTarget: () => void }) {
   const pl = s.players[id]
   const alive = C.isAlive(pl)
-  const active = s.winner == null && ((s.pending == null && s.turn === id) || (s.pending != null && pendingDeciderIs(s, id)))
   return (
     <div className={'seat' + (active ? ' active' : '') + (alive ? '' : ' gone') + (highlightTarget ? ' choose-target' : '')}
       onClick={highlightTarget ? onTarget : undefined}
       style={highlightTarget ? { cursor: 'pointer', outline: '2px solid var(--accent)' } : undefined}>
       <div className="seat-head">
-        <span className="seat-name foe-name">{pl.name}</span>
+        <span className="seat-name foe-name">{name}</span>
         {active && alive && <span className="seat-tag turn">acting</span>}
         {!alive && <span className="seat-tag out">out</span>}
       </div>
@@ -179,8 +206,8 @@ function OppSeat({ s, id, highlightTarget, onTarget }: { s: CoupState; id: numbe
   )
 }
 
-function YouSeat({ s, active }: { s: CoupState; active: boolean }) {
-  const pl = s.players[0]
+function YouSeat({ s, mySeat, active }: { s: CoupState; mySeat: number; active: boolean }) {
+  const pl = s.players[mySeat]
   const alive = C.isAlive(pl)
   return (
     <div className={'seat you-seat' + (active ? ' active' : '') + (alive ? '' : ' gone')}>
@@ -209,25 +236,16 @@ function FaceCard({ ch, onClick, selected, className }: { ch: Character; onClick
   )
 }
 
-function pendingDeciderIs(s: CoupState, id: number): boolean {
-  const p = s.pending
-  if (!p) return false
-  if (p.kind === 'action_challenge' || p.kind === 'block_challenge' || p.kind === 'block') return p.decider === id
-  if (p.kind === 'lose') return p.loser === id
-  if (p.kind === 'exchange') return p.actor === id
-  return false
-}
-
 // ===== Modals =====
-function challengePromptText(s: CoupState): string {
+function challengePromptText(s: CoupState, mySeat: number, online: boolean, numOpp: number): string {
   const p = s.pending!
   const isBlock = p.kind === 'block_challenge'
   const claimant = isBlock ? p.blocker! : p.actor
   const ch = isBlock ? p.blockClaim! : p.claim!
-  return `${s.players[claimant].name} claims the ${ch} — challenge it?`
+  return `${seatName(s, claimant, mySeat, online, numOpp)} claims the ${ch} — challenge it?`
 }
 
-function ChallengeModal({ s, onChallenge, onPass }: { s: CoupState; onChallenge: () => void; onPass: () => void }) {
+function ChallengeModal({ s, mySeat, online, numOpp, onChallenge, onPass }: { s: CoupState; mySeat: number; online: boolean; numOpp: number; onChallenge: () => void; onPass: () => void }) {
   const p = s.pending!
   const isBlock = p.kind === 'block_challenge'
   const claimant = isBlock ? p.blocker! : p.actor
@@ -239,21 +257,21 @@ function ChallengeModal({ s, onChallenge, onPass }: { s: CoupState; onChallenge:
         <button className="choice-btn danger" onClick={onChallenge}>Challenge the {ch}</button>
       </>}>
       <div className="prompt-claim">
-        <div className="prompt-line"><b>{s.players[claimant].name}</b> {isBlock ? 'blocks by claiming' : 'claims'} the <b>{ch}</b>.</div>
+        <div className="prompt-line"><b>{seatName(s, claimant, mySeat, online, numOpp)}</b> {isBlock ? 'blocks by claiming' : 'claims'} the <b>{ch}</b>.</div>
         <div className="prompt-line">If they are bluffing they lose an influence — but if they hold it, <b>you</b> do.</div>
       </div>
     </Modal>
   )
 }
 
-function BlockModal({ s, onBlock, onPass }: { s: CoupState; onBlock: (ch: Character) => void; onPass: () => void }) {
+function BlockModal({ s, mySeat, online, numOpp, onBlock, onPass }: { s: CoupState; mySeat: number; online: boolean; numOpp: number; onBlock: (ch: Character) => void; onPass: () => void }) {
   const p = s.pending!
   const opts = C.blockers(p.action)
   return (
     <Modal eyebrow="You may block" title={`Block the ${C.ACTION_LABEL[p.action]}?`} closeOnOverlay={false}
       actions={<button className="choice-btn ghost" onClick={onPass}>Allow it</button>}>
       <div className="prompt-claim">
-        <div className="prompt-line"><b>{s.players[p.actor].name}</b> is acting against you. Claim a blocker (you may bluff — it can be challenged).</div>
+        <div className="prompt-line"><b>{seatName(s, p.actor, mySeat, online, numOpp)}</b> is acting against you. Claim a blocker (you may bluff — it can be challenged).</div>
       </div>
       <div className="choice-row">
         {opts.map(ch => <button key={ch} className="choice-btn" onClick={() => onBlock(ch)}>Block with {ch}</button>)}
@@ -262,9 +280,9 @@ function BlockModal({ s, onBlock, onPass }: { s: CoupState; onBlock: (ch: Charac
   )
 }
 
-function LoseModal({ s, onPick }: { s: CoupState; onPick: (i: number) => void }) {
+function LoseModal({ s, mySeat, onPick }: { s: CoupState; mySeat: number; onPick: (i: number) => void }) {
   const p = s.pending!
-  const pl = s.players[p.loser!]
+  const pl = s.players[mySeat]
   const live = pl.cards.map((c, i) => ({ c, i })).filter(o => !o.c.revealed)
   return (
     <Modal eyebrow="A blow lands" title="Lose an influence" closeOnOverlay={false}
@@ -277,9 +295,9 @@ function LoseModal({ s, onPick }: { s: CoupState; onPick: (i: number) => void })
   )
 }
 
-function ExchangeModal({ s, onKeep }: { s: CoupState; onKeep: (keep: Character[]) => void }) {
+function ExchangeModal({ s, mySeat, onKeep }: { s: CoupState; mySeat: number; onKeep: (keep: Character[]) => void }) {
   const p = s.pending!
-  const pl = s.players[p.actor]
+  const pl = s.players[mySeat]
   const liveChars = pl.cards.filter(c => !c.revealed).map(c => c.char)
   const need = liveChars.length
   // Option pool: each live hand card + each drawn card, as distinct selectable slots.
@@ -300,13 +318,13 @@ function ExchangeModal({ s, onKeep }: { s: CoupState; onKeep: (keep: Character[]
   )
 }
 
-function ResultModal({ s, onNew }: { s: CoupState; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ s, mySeat, online, numOpp, onNew }: { s: CoupState; mySeat: number; online: boolean; numOpp: number; onNew: () => void }) {
+  const won = s.winner === mySeat
   return (
-    <Modal eyebrow={won ? 'The court bows' : 'You are unmasked'} title={won ? 'You Win' : `${s.players[s.winner!].name} Wins`}
+    <Modal eyebrow={won ? 'The court bows' : 'You are unmasked'} title={won ? 'You Win' : `${seatName(s, s.winner!, mySeat, online, numOpp)} Wins`}
       closeOnOverlay={false} actions={<button className="choice-btn" onClick={onNew}>Play again</button>}>
       <div className="finalsc">
-        {s.players.map(p => <span key={p.id} className={p.id === 0 ? 'you' : 'foe'}>{p.name} {C.isAlive(p) ? 'survives' : 'out'}</span>)}
+        {s.players.map(p => <span key={p.id} className={p.id === mySeat ? 'you' : 'foe'}>{seatName(s, p.id, mySeat, online, numOpp)} {C.isAlive(p) ? 'survives' : 'out'}</span>)}
       </div>
     </Modal>
   )

@@ -1,13 +1,17 @@
 /* LIAR'S DICE / PERUDO — UI (built for this codebase). A smoky tavern felt with carved dice
-   cups on the framework shell, vs a probability-based AI that bids/challenges on a timer. */
+   cups on the framework shell, vs a probability-based AI — or, online, another human — that
+   bids/challenges on a timer. Seat-relative: your dice come from mySeat, the standing bid and
+   challenge are gated on isMyTurn, and the rival is "Opponent" when playing online. */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { liarsDiceAdapter } from './net'
 import * as LD from './logic'
-import type { LiarsState, Face, Bid } from './logic'
+import type { LiarsState, Face, Bid, Player } from './logic'
 
 const FACES: Face[] = [2, 3, 4, 5, 6]
 
@@ -47,40 +51,53 @@ function Die({ face, wild, ghost }: { face: Face; wild?: boolean; ghost?: boolea
 }
 
 export function LiarsDice() {
-  const [s, setS] = useState<LiarsState>(() => LD.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(liarsDiceAdapter)
+  // Seat 0 = 'you', seat 1 = 'foe'. Map your seat to the logic's player encoding so a
+  // guest sitting in seat 1 sees its own cup at the bottom.
+  const me: Player = mySeat === 0 ? 'you' : 'foe'
+  const opp: Player = me === 'you' ? 'foe' : 'you'
+  const myDice = me === 'you' ? s.youDice : s.foeDice
+  const oppDice = me === 'you' ? s.foeDice : s.youDice
+  const myCount = me === 'you' ? s.youCount : s.foeCount
+  const oppCount = me === 'you' ? s.foeCount : s.youCount
+
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+  const oppPanelName = net.online ? (mySeat === 0 ? 'Player 2' : 'Player 1') : 'Rival'
+
   const [showRules, setShowRules] = useState(false)
   // bid builder state
   const [qty, setQty] = useState(1)
   const [face, setFace] = useState<Face>(2)
 
+  // Keep the bid builder primed to the smallest legal raise as the standing bid changes.
+  useEffect(() => {
+    if (s.phase !== 'bidding') return
+    const m = LD.minRaise(s.bid)
+    setQty(m.qty); setFace(m.face)
+  }, [s.bid, s.phase])
+
   function newGame() {
-    const g = LD.makeGame()
-    setS(g); setShowRules(false)
-    const m = LD.minRaise(g.bid); setQty(m.qty); setFace(m.face)
+    netNew(); setShowRules(false)
+    setQty(1); setFace(2)
   }
 
-  // The AI takes its bid/challenge on a timer.
-  useAITurn(s.phase === 'bidding' && s.turn === 'foe', () => setS(p => LD.aiStep(p)), { delayMs: 720, tick: s.history.length })
-
-  function syncBuilder(next: LiarsState) {
-    const m = LD.minRaise(next.bid); setQty(m.qty); setFace(m.face)
-  }
+  const myTurn = s.phase === 'bidding' && isMyTurn
+  const candidate: Bid = { qty, face }
+  const legal = myTurn && LD.isRaise(s.bid, candidate)
+  const canChallenge = myTurn && !!s.bid
 
   function doBid() {
-    if (!yourBid) return
-    const bid: Bid = { qty, face }
-    if (!LD.isRaise(s.bid, bid)) return
-    const next = LD.makeBid(s, 'you', bid)
-    setS(next); syncBuilder(next)
+    if (!legal) return
+    dispatch({ kind: 'bid', quantity: qty, face })
   }
   function doChallenge() {
-    if (s.phase !== 'bidding' || s.turn !== 'you' || !s.bid) return
-    setS(LD.challenge(s, 'you'))
+    if (!canChallenge) return
+    dispatch({ kind: 'challenge' })
   }
   function doContinue() {
-    const next = LD.nextRound(s)
-    setS(next)
-    if (next.phase === 'bidding') syncBuilder(next)
+    // Only the host (seat 0) rolls the next round; a guest simply waits for the new view.
+    if (s.phase !== 'reveal' || mySeat !== 0) return
+    dispatch({ kind: 'continue' })
   }
 
   useGameKeys({
@@ -89,7 +106,7 @@ export function LiarsDice() {
     onEscape: () => setShowRules(false),
     extra: (e) => {
       if (s.phase === 'reveal' && (e.key === ' ' || e.key === 'Enter')) { doContinue(); return true }
-      if (s.phase === 'bidding' && s.turn === 'you') {
+      if (myTurn) {
         if (e.key === ' ' || e.key === 'Enter') { doBid(); return true }
         if (e.key === 'c' || e.key === 'C') { doChallenge(); return true }
       }
@@ -97,19 +114,26 @@ export function LiarsDice() {
     },
   })
 
-  const yourBid = s.phase === 'bidding' && s.turn === 'you'
-  const candidate: Bid = { qty, face }
-  const legal = yourBid && LD.isRaise(s.bid, candidate)
-  const canChallenge = yourBid && !!s.bid
+  // Result / banner relative to ME (you win iff your side is the last with dice).
+  const iWon = s.winner === me
+  const iLost = s.winner === opp
 
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = 'You win — the rival is out of dice' }
-  else if (s.winner === 'foe') { bk = 'lose'; banner = 'The rival wins — you are out of dice' }
-  else if (s.phase === 'reveal') { bk = s.reveal!.loser === 'foe' ? 'you' : 'foe'; banner = `Reveal — ${s.reveal!.count} ${s.reveal!.bid.face}'s found · ${s.reveal!.loser === 'you' ? 'you lose a die' : 'rival loses a die'}` }
-  else if (yourBid) { bk = 'you'; banner = s.bid ? `Raise above ${s.bid.qty} × ${s.bid.face}'s — or call "Liar!"` : 'Open the round — make a bid' }
-  else { bk = 'foe'; banner = 'The rival is weighing the cup…' }
+  if (iWon) { bk = 'win'; banner = `You win — ${oppLabel.toLowerCase()} is out of dice` }
+  else if (iLost) { bk = 'lose'; banner = `${oppLabel} wins — you are out of dice` }
+  else if (s.phase === 'reveal' && s.reveal) {
+    const iLostDie = s.reveal.loser === me
+    bk = iLostDie ? 'foe' : 'you'
+    banner = `Reveal — ${s.reveal.count} ${s.reveal.bid.face}'s found · ${iLostDie ? 'you lose a die' : `${oppLabel.toLowerCase()} loses a die`}`
+  } else if (myTurn) {
+    bk = 'you'; banner = s.bid ? `Raise above ${s.bid.qty} × ${s.bid.face}'s — or call "Liar!"` : 'Open the round — make a bid'
+  } else {
+    bk = 'foe'; banner = net.online ? `${oppLabel} is weighing the cup…` : 'The rival is weighing the cup…'
+  }
 
   const revealing = s.phase === 'reveal' || s.phase === 'over'
+  const oppTurnActive = s.phase === 'bidding' && !isMyTurn && s.winner == null
+  const continueDisabled = s.phase === 'over' || (s.phase === 'reveal' && mySeat !== 0)
 
   return (
     <>
@@ -126,13 +150,13 @@ export function LiarsDice() {
         modeRight={<>space · bid/continue &nbsp; C · challenge &nbsp; N · new</>}
       >
         <div className="ld-wrap">
-          {/* rival */}
+          {/* opponent */}
           <div className="seat foe">
-            <div className="seat-label"><span className="seat-name">Rival</span><span className="seat-cups">{s.foeCount} dice</span></div>
+            <div className="seat-label"><span className="seat-name">{oppPanelName}</span><span className="seat-cups">{oppCount} dice</span></div>
             <div className="cup-row">
-              {Array.from({ length: s.foeCount }, (_, i) =>
+              {Array.from({ length: oppCount }, (_, i) =>
                 revealing
-                  ? <Die key={i} face={s.foeDice[i] ?? 1} wild />
+                  ? <Die key={i} face={oppDice[i] ?? 1} wild />
                   : <div key={i} className="cup" aria-label="hidden die"><span /></div>
               )}
             </div>
@@ -144,7 +168,7 @@ export function LiarsDice() {
               <div className="reveal-card">
                 <div className="reveal-head">{s.reveal.held ? 'The bid held' : 'A bluff exposed'}</div>
                 <div className="reveal-line">{s.reveal.bid.qty} × <Die face={s.reveal.bid.face} /> claimed — <b>{s.reveal.count}</b> on the felt</div>
-                <div className={'reveal-loser ' + (s.reveal.loser === 'you' ? 'foe' : 'you')}>{s.reveal.loser === 'you' ? 'You lose a die' : 'The rival loses a die'}</div>
+                <div className={'reveal-loser ' + (s.reveal.loser === me ? 'foe' : 'you')}>{s.reveal.loser === me ? 'You lose a die' : `${oppLabel} loses a die`}</div>
               </div>
             ) : s.bid ? (
               <div className="bid-card on">
@@ -158,30 +182,30 @@ export function LiarsDice() {
 
           {/* you */}
           <div className="seat you">
-            <div className="seat-label"><span className="seat-name">You</span><span className="seat-cups">{s.youCount} dice</span></div>
+            <div className="seat-label"><span className="seat-name">You</span><span className="seat-cups">{myCount} dice</span></div>
             <div className="cup-row">
-              {s.youDice.map((f, i) => <Die key={i} face={f} wild ghost={f === 1} />)}
+              {myDice.map((f, i) => <Die key={i} face={f} wild ghost={f === 1} />)}
             </div>
           </div>
 
           {/* action bar */}
           <div className="action-bar">
             {revealing ? (
-              <button className="btn-act primary" disabled={s.phase === 'over'} onClick={doContinue}>
-                {s.phase === 'over' ? 'Game over' : 'Roll next round'}
+              <button className="btn-act primary" disabled={continueDisabled} onClick={doContinue}>
+                {s.phase === 'over' ? 'Game over' : mySeat !== 0 ? 'Waiting for host…' : 'Roll next round'}
               </button>
             ) : (
               <>
                 <div className="builder">
                   <div className="stepper">
-                    <button className="step" disabled={!yourBid || qty <= 1} onClick={() => setQty(q => Math.max(1, q - 1))}>–</button>
+                    <button className="step" disabled={!myTurn || qty <= 1} onClick={() => setQty(q => Math.max(1, q - 1))}>–</button>
                     <span className="step-val">{qty}</span>
-                    <button className="step" disabled={!yourBid || qty >= s.youCount + s.foeCount} onClick={() => setQty(q => Math.min(s.youCount + s.foeCount, q + 1))}>+</button>
+                    <button className="step" disabled={!myTurn || qty >= s.youCount + s.foeCount} onClick={() => setQty(q => Math.min(s.youCount + s.foeCount, q + 1))}>+</button>
                   </div>
                   <span className="builder-x">×</span>
                   <div className="face-pick">
                     {FACES.map(f => (
-                      <button key={f} className={'face-btn' + (face === f ? ' sel' : '')} disabled={!yourBid} onClick={() => setFace(f)}>
+                      <button key={f} className={'face-btn' + (face === f ? ' sel' : '')} disabled={!myTurn} onClick={() => setFace(f)}>
                         <Die face={f} />
                       </button>
                     ))}
@@ -197,9 +221,12 @@ export function LiarsDice() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel tally-box">
-            <div className={'tl you' + (s.turn === 'you' && s.phase === 'bidding' ? ' on' : '')}><span className="tl-name">You</span><span className="tl-dots">{'●'.repeat(s.youCount) || '—'}</span><span className="tl-n">{s.youCount}</span></div>
-            <div className={'tl foe' + (s.turn === 'foe' && s.phase === 'bidding' ? ' on' : '')}><span className="tl-name">Rival</span><span className="tl-dots">{'●'.repeat(s.foeCount) || '—'}</span><span className="tl-n">{s.foeCount}</span></div>
+            <div className={'tl you' + (myTurn ? ' on' : '')}><span className="tl-name">You</span><span className="tl-dots">{'●'.repeat(myCount) || '—'}</span><span className="tl-n">{myCount}</span></div>
+            <div className={'tl foe' + (oppTurnActive ? ' on' : '')}><span className="tl-name">{oppPanelName}</span><span className="tl-dots">{'●'.repeat(oppCount) || '—'}</span><span className="tl-n">{oppCount}</span></div>
           </div>
           <div className="panel hist-box">
             <div className="panel-h">This round</div>
@@ -212,22 +239,21 @@ export function LiarsDice() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {s.winner && <ResultModal won={iWon} myCount={myCount} oppCount={oppCount} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: LiarsState; onNew: () => void }) {
-  const won = s.winner === 'you'
+function ResultModal({ won, myCount, oppCount, oppLabel, onNew }: { won: boolean; myCount: number; oppCount: number; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Last cup standing' : 'Out of dice'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {s.youCount}</span><span className="foe">Rival {s.foeCount}</span></div>
+      <div className="finalsc"><span className="you">You {myCount}</span><span className="foe">{oppLabel} {oppCount}</span></div>
     </Modal>
   )
 }

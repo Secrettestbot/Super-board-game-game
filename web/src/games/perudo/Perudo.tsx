@@ -1,11 +1,15 @@
 /* PERUDO / DUDO — UI (built for this codebase). A sun-baked Andean cantina: four cups of bone dice
-   on a woven table, you vs three probabilistic AI players who bid and call Dudo on a timer. */
+   on a woven table. Solo: you vs three probabilistic AI players. Online: each seat is a remote
+   human (empty seats fall back to AI), and everything renders relative to YOUR seat — your dice come
+   from mySeat, your turn gates the bid/Dudo controls, and foes are shown anonymously. */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { perudoAdapter } from './net'
 import * as P from './logic'
 import type { PerudoState, Face } from './logic'
 
@@ -45,45 +49,52 @@ function Die({ face, ace }: { face: Face; ace?: boolean }) {
   )
 }
 
-const NAMES = ['You', 'Carmen', 'Diego', 'Rosa']
+const SOLO_NAMES = ['You', 'Carmen', 'Diego', 'Rosa']
 
 export function Perudo() {
-  const [s, setS] = useState<PerudoState>(() => P.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(perudoAdapter)
   const [showRules, setShowRules] = useState(false)
   const [qty, setQty] = useState(1)
   const [face, setFace] = useState<Face>(2)
 
-  function syncBuilder(next: PerudoState) {
-    const m = P.minRaise(next.bid, next.palifico)
+  // Name a seat relative to YOU. Solo keeps the flavorful cast; online stays anonymous.
+  const nameOf = (p: number): string => {
+    if (p === mySeat) return 'You'
+    if (net.online) return 'Player ' + (p + 1)
+    return SOLO_NAMES[p] ?? 'Player ' + (p + 1)
+  }
+
+  function syncBuilder(bid: PerudoState['bid'], palifico: boolean) {
+    const m = P.minRaise(bid, palifico)
     setQty(m.quantity); setFace(m.face)
   }
 
   function newGame() {
-    const g = P.makeGame()
-    setS(g); setShowRules(false)
-    syncBuilder(g)
+    netNew(); setShowRules(false)
+    syncBuilder(null, false)
   }
 
-  // Three AI players bid/call in sequence — re-arm the timer on EVERY action via actionSeq.
-  const aiActive = s.phase === 'bidding' && s.turn !== 0 && s.winner == null && s.alive[s.turn]
-  useAITurn(aiActive, () => setS(p => P.aiTurn(p)), { delayMs: 760, tick: s.actionSeq })
-
-  const yourTurn = s.phase === 'bidding' && s.turn === 0
+  const yourTurn = s.phase === 'bidding' && isMyTurn
+  // After every transition, keep the bid builder primed to the smallest legal raise.
+  useEffect(() => {
+    if (s.phase === 'bidding') syncBuilder(s.bid, s.palifico)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.actionSeq, s.phase])
 
   function doBid() {
     if (!yourTurn) return
     if (!P.isRaise(s.bid, { quantity: qty, face }, s.palifico)) return
-    const next = P.bid(s, 0, qty, face)
-    setS(next); syncBuilder(next)
+    dispatch({ kind: 'bid', quantity: qty, face })
   }
   function doDudo() {
     if (!yourTurn || !s.bid) return
-    setS(P.callDudo(s, 0))
+    dispatch({ kind: 'challenge' })
   }
+  // During a reveal, only the designated mover (the die-loser) may roll on.
+  const canContinue = s.phase === 'reveal' && isMyTurn
   function doContinue() {
-    const next = P.nextRound(s)
-    setS(next)
-    if (next.phase === 'bidding') syncBuilder(next)
+    if (!canContinue) return
+    dispatch({ kind: 'continue' })
   }
 
   useGameKeys({
@@ -91,7 +102,7 @@ export function Perudo() {
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => setShowRules(false),
     extra: (e) => {
-      if (s.phase === 'reveal' && (e.key === ' ' || e.key === 'Enter')) { doContinue(); return true }
+      if (canContinue && (e.key === ' ' || e.key === 'Enter')) { doContinue(); return true }
       if (yourTurn) {
         if (e.key === ' ' || e.key === 'Enter') { doBid(); return true }
         if (e.key === 'd' || e.key === 'D') { doDudo(); return true }
@@ -104,20 +115,26 @@ export function Perudo() {
   const legal = yourTurn && P.isRaise(s.bid, candidate, s.palifico)
   const canDudo = yourTurn && !!s.bid
   const total = P.totalDice(s)
+  const won = s.winner === mySeat
+
+  // Seats other than yours, in seating order starting just after you (stable layout per viewer).
+  const n = s.counts.length
+  const foeSeats: number[] = []
+  for (let i = 1; i < n; i++) foeSeats.push((mySeat + i) % n)
 
   let banner: string, bk = ''
   if (s.winner != null) {
-    if (s.winner === 0) { bk = 'win'; banner = 'You are the last cup standing — you win!' }
-    else { bk = 'lose'; banner = `${NAMES[s.winner]} wins — your cup ran dry` }
+    if (won) { bk = 'win'; banner = 'You are the last cup standing — you win!' }
+    else { bk = 'lose'; banner = `${nameOf(s.winner)} wins — your cup ran dry` }
   } else if (s.phase === 'reveal' && s.reveal) {
     const r = s.reveal
-    bk = r.loser === 0 ? 'lose' : 'you'
-    banner = `Reveal — ${r.count} ${P.faceLabel(r.bid.face)} found · ${NAMES[r.loser]} ${r.loser === 0 ? 'lose' : 'loses'} a die`
+    bk = r.loser === mySeat ? 'lose' : 'you'
+    banner = `Reveal — ${r.count} ${P.faceLabel(r.bid.face)} found · ${nameOf(r.loser)} ${r.loser === mySeat ? 'lose' : 'loses'} a die`
   } else if (yourTurn) {
     bk = 'you'
     banner = s.bid ? `Raise above ${s.bid.quantity} × ${P.faceLabel(s.bid.face)} — or call Dudo` : 'Open the round — make a bid'
   } else {
-    bk = 'foe'; banner = `${NAMES[s.turn]} is weighing the cup…`
+    bk = 'foe'; banner = `${nameOf(s.turn)} is weighing the cup…`
   }
 
   const revealing = s.phase === 'reveal' || s.phase === 'over'
@@ -139,10 +156,10 @@ export function Perudo() {
         <div className="pd-wrap">
           {/* foes row */}
           <div className="foes">
-            {[1, 2, 3].map(p => (
+            {foeSeats.map(p => (
               <div key={p} className={'seat foe' + (!s.alive[p] ? ' dead' : '') + (s.turn === p && s.phase === 'bidding' ? ' active' : '')}>
                 <div className="seat-label">
-                  <span className="seat-name">{NAMES[p]}</span>
+                  <span className="seat-name">{nameOf(p)}</span>
                   <span className="seat-cups">{s.alive[p] ? `${s.counts[p]} dice` : 'out'}</span>
                 </div>
                 <div className="cup-row">
@@ -165,13 +182,13 @@ export function Perudo() {
                 <div className="reveal-line">
                   {s.reveal.bid.quantity} × <Die face={s.reveal.bid.face} ace /> claimed — <b>{s.reveal.count}</b> on the table
                 </div>
-                <div className={'reveal-loser ' + (s.reveal.loser === 0 ? 'foe' : 'you')}>
-                  {NAMES[s.reveal.loser]} {s.reveal.loser === 0 ? 'lose' : 'loses'} a die
+                <div className={'reveal-loser ' + (s.reveal.loser === mySeat ? 'foe' : 'you')}>
+                  {nameOf(s.reveal.loser)} {s.reveal.loser === mySeat ? 'lose' : 'loses'} a die
                 </div>
               </div>
             ) : s.bid ? (
               <div className="bid-card on">
-                <div className="bid-eye">standing bid · {NAMES[s.bid.byPlayer]}</div>
+                <div className="bid-eye">standing bid · {nameOf(s.bid.byPlayer)}</div>
                 <div className="bid-main"><span className="bid-qty">{s.bid.quantity}</span><span className="bid-x">×</span><Die face={s.bid.face} ace /></div>
               </div>
             ) : (
@@ -180,21 +197,21 @@ export function Perudo() {
           </div>
 
           {/* you */}
-          <div className={'seat you' + (yourTurn ? ' active' : '') + (!s.alive[0] ? ' dead' : '')}>
+          <div className={'seat you' + (yourTurn ? ' active' : '') + (!s.alive[mySeat] ? ' dead' : '')}>
             <div className="seat-label">
               <span className="seat-name">You</span>
-              <span className="seat-cups">{s.alive[0] ? `${s.counts[0]} dice` : 'out'}</span>
+              <span className="seat-cups">{s.alive[mySeat] ? `${s.counts[mySeat]} dice` : 'out'}</span>
             </div>
             <div className="cup-row">
-              {s.dice[0].map((f, i) => <Die key={i} face={f} ace />)}
+              {s.dice[mySeat].map((f, i) => <Die key={i} face={f} ace />)}
             </div>
           </div>
 
           {/* action bar */}
           <div className="action-bar">
             {revealing ? (
-              <button className="btn-act primary" disabled={s.phase === 'over'} onClick={doContinue}>
-                {s.phase === 'over' ? 'Game over' : 'Roll next round'}
+              <button className="btn-act primary" disabled={s.phase === 'over' || !canContinue} onClick={doContinue}>
+                {s.phase === 'over' ? 'Game over' : canContinue ? 'Roll next round' : 'Waiting…'}
               </button>
             ) : (
               <>
@@ -223,10 +240,11 @@ export function Perudo() {
         </div>
 
         <div className="side">
+          <div className="panel"><OnlineBar net={net} /></div>
           <div className="panel tally-box">
-            {[0, 1, 2, 3].map(p => (
-              <div key={p} className={'tl ' + (p === 0 ? 'you' : 'foe') + (s.turn === p && s.phase === 'bidding' ? ' on' : '') + (!s.alive[p] ? ' dead' : '')}>
-                <span className="tl-name">{NAMES[p]}</span>
+            {[mySeat, ...foeSeats].map(p => (
+              <div key={p} className={'tl ' + (p === mySeat ? 'you' : 'foe') + (s.turn === p && s.phase === 'bidding' ? ' on' : '') + (!s.alive[p] ? ' dead' : '')}>
+                <span className="tl-name">{nameOf(p)}</span>
                 <span className="tl-dots">{s.alive[p] ? ('●'.repeat(s.counts[p]) || '—') : '—'}</span>
                 <span className="tl-n">{s.alive[p] ? s.counts[p] : '✕'}</span>
               </div>
@@ -236,31 +254,32 @@ export function Perudo() {
             <div className="panel-h">This round</div>
             {s.history.length === 0 && <div className="hist-empty">No bids yet.</div>}
             {s.history.slice().reverse().map((b, i) => (
-              <div key={i} className={'hist-line' + (i === 0 ? ' top' : '')}>{NAMES[b.byPlayer]}: {b.quantity} × {P.faceLabel(b.face)}</div>
+              <div key={i} className={'hist-line' + (i === 0 ? ' top' : '')}>{nameOf(b.byPlayer)}: {b.quantity} × {P.faceLabel(b.face)}</div>
             ))}
           </div>
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}</div>
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal s={s} mySeat={mySeat} nameOf={nameOf} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: PerudoState; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ s, mySeat, nameOf, onNew }: { s: PerudoState; mySeat: number; nameOf: (p: number) => string; onNew: () => void }) {
+  const won = s.winner === mySeat
+  const n = s.counts.length
   return (
     <Modal
       eyebrow={won ? 'Last cup standing' : 'Out of dice'}
-      title={won ? 'You Win' : `${NAMES[s.winner!]} Wins`}
+      title={won ? 'You Win' : `${nameOf(s.winner!)} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
-        {[0, 1, 2, 3].map(p => (
-          <span key={p} className={p === 0 ? 'you' : 'foe'}>{NAMES[p]} {s.alive[p] ? s.counts[p] : '✕'}</span>
+        {Array.from({ length: n }, (_, p) => (
+          <span key={p} className={p === mySeat ? 'you' : 'foe'}>{nameOf(p)} {s.alive[p] ? s.counts[p] : '✕'}</span>
         ))}
       </div>
     </Modal>

@@ -5,12 +5,14 @@
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
 import * as SK from './logic'
 import type { SkullState, Disc } from './logic'
+import { skullAdapter } from './net'
 
-const NAMES = ['You', 'Rook', 'Mab', 'Cull']
+const SOLO_NAMES = ['You', 'Rook', 'Mab', 'Cull']
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -56,33 +58,27 @@ function DiscFace({ disc }: { disc: Disc }) {
 }
 
 export function Skull() {
-  const [s, setS] = useState<SkullState>(() => SK.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(skullAdapter)
   const [showRules, setShowRules] = useState(false)
   const [bidInput, setBidInput] = useState(1)
 
+  // Seat-relative labels: your seat is always "You"; others are "Opponent" online (real
+  // people, names unknown) or the flavour AI names in solo play.
+  const NAMES = s.players.map((_, i) =>
+    i === mySeat ? 'You' : net.online ? `Player ${i + 1}` : SOLO_NAMES[i] ?? `P${i + 1}`,
+  )
+  const oppName = (i: number) => (i === mySeat ? 'You' : net.online ? 'Opponent' : SOLO_NAMES[i] ?? `P${i + 1}`)
+
   function newGame() {
-    setS(SK.makeGame())
+    netNew()
     setShowRules(false)
     setBidInput(1)
   }
 
-  const you = s.players[0]
-  const yourTurn = s.turn === 0 && s.winner == null
-  const waitingHuman =
-    yourTurn && (s.phase === 'place' || s.phase === 'bid' || s.phase === 'challenge' || s.phase === 'reveal')
+  const you = s.players[mySeat]
+  const yourTurn = isMyTurn && s.winner == null
 
-  // The AI acts MANY times across placement, bidding and challenge. `active` is true whenever the
-  // seat to move is an AI (1..3), there's no winner, and we're in an actionable phase. The `tick`
-  // changes on EVERY engine action via s.actions (a monotonic counter) so the timer re-arms and
-  // the AI keeps stepping instead of stalling after one move.
-  const aiActive =
-    s.winner == null &&
-    s.turn !== 0 &&
-    (s.phase === 'place' || s.phase === 'bid' || s.phase === 'challenge' || s.phase === 'reveal')
-  useAITurn(aiActive, () => setS(p => SK.aiAct(p, p.turn)), {
-    delayMs: 620,
-    tick: `${s.phase}-${s.round}-${s.bid ?? 'x'}-${s.turn}-${s.actions}`,
-  })
+  // The hook drives AI for empty seats (authority side only) — no local useAITurn here.
 
   // ---------- human actions ----------
   const placedTotal = SK.totalPlaced(s)
@@ -92,30 +88,30 @@ export function Skull() {
     if (s.phase !== 'place' || !yourTurn) return
     if (disc === 'rose' && you.hand.roses <= 0) return
     if (disc === 'skull' && you.hand.skulls <= 0) return
-    setS(SK.place(s, 0, disc))
+    dispatch({ kind: 'place', disc })
   }
   function doOpenBid() {
     if (s.phase !== 'place' || !yourTurn || !s.placedFirstPass || you.stack.length === 0) return
     const n = Math.min(maxBid, Math.max(1, bidInput))
-    setS(SK.openBid(s, 0, n))
+    dispatch({ kind: 'bid', n })
   }
   function doRaise() {
     if (s.phase !== 'bid' || !yourTurn || s.bid == null) return
     const n = Math.min(maxBid, Math.max(s.bid + 1, bidInput))
     if (n <= s.bid) return
-    setS(SK.bid(s, 0, n))
+    dispatch({ kind: 'bid', n })
   }
   function doPass() {
     if (s.phase !== 'bid' || !yourTurn) return
-    setS(SK.pass(s, 0))
+    dispatch({ kind: 'pass' })
   }
   function doFlip(target: number) {
     if (s.phase !== 'challenge' || !yourTurn) return
-    setS(SK.flip(s, target))
+    dispatch({ kind: 'flip', target })
   }
   function doContinue() {
     if (s.phase !== 'reveal') return
-    setS(SK.nextRound(s))
+    dispatch({ kind: 'flip', target: mySeat })
   }
 
   useGameKeys({
@@ -141,31 +137,33 @@ export function Skull() {
   const legalTargets = s.phase === 'challenge' ? SK.flipTargets(s) : []
   const flippedCount = (i: number) => s.flips.filter(f => f.player === i).length
 
-  // ---------- banner ----------
+  // ---------- banner ---------- (everything relative to mySeat)
   let banner = '', bk = ''
   if (s.winner != null) {
-    if (s.winner === 0) { bk = 'win'; banner = 'You win — two points claimed!' }
-    else { bk = 'lose'; banner = `${NAMES[s.winner]} wins the game.` }
+    if (s.winner === mySeat) { bk = 'win'; banner = 'You win — two points claimed!' }
+    else { bk = 'lose'; banner = `${oppName(s.winner)} wins the game.` }
   } else if (s.phase === 'reveal' && s.outcome) {
-    bk = s.outcome.success ? (s.outcome.player === 0 ? 'you' : 'foe') : 'lose'
-    const who = s.outcome.player === 0 ? 'You' : NAMES[s.outcome.player]
+    const mine = s.outcome.player === mySeat
+    bk = s.outcome.success ? (mine ? 'you' : 'foe') : 'lose'
+    const who = mine ? 'You' : oppName(s.outcome.player)
     banner = s.outcome.success
       ? `${who} flipped ${s.challengeTarget} rose${s.challengeTarget === 1 ? '' : 's'} — point scored.`
       : `${who} hit a skull — lost a disc. ${yourTurn ? 'Press space to continue.' : ''}`
   } else if (s.phase === 'challenge') {
     const c = s.bidder!
-    bk = c === 0 ? 'you' : 'foe'
-    banner = c === 0
+    const mine = c === mySeat
+    bk = mine ? 'you' : 'foe'
+    banner = mine
       ? `Flip ${s.challengeTarget} roses — your stack first, then a rival's top disc.`
-      : `${NAMES[c]} is flipping for ${s.challengeTarget}…`
+      : `${oppName(c)} is flipping for ${s.challengeTarget}…`
   } else if (s.phase === 'bid') {
     bk = yourTurn ? 'you' : 'foe'
-    banner = yourTurn ? `Raise above ${s.bid} or pass.` : `${NAMES[s.turn]} is weighing the bid…`
+    banner = yourTurn ? `Raise above ${s.bid} or pass.` : `${oppName(s.turn)} is weighing the bid…`
   } else { // place
     bk = yourTurn ? 'you' : 'foe'
     banner = yourTurn
       ? (s.placedFirstPass && you.stack.length > 0 ? 'Place another disc — or open the bid.' : 'Place a disc face-down.')
-      : `${NAMES[s.turn]} is placing…`
+      : `${oppName(s.turn)} is placing…`
   }
 
   const revealing = s.phase === 'reveal' || s.phase === 'done' || s.phase === 'challenge'
@@ -186,7 +184,7 @@ export function Skull() {
       >
         <div className="sk-wrap">
           {s.players.map((p, i) => {
-            const isYou = i === 0
+            const isYou = i === mySeat
             const active = s.turn === i && s.winner == null
             const isBidder = s.bidder === i && (s.phase === 'bid' || s.phase === 'challenge')
             const canFlip = s.phase === 'challenge' && yourTurn && legalTargets.includes(i)
@@ -284,7 +282,7 @@ export function Skull() {
 
             {s.winner == null && yourTurn && s.phase === 'challenge' && (
               <div className="controls">
-                <div className="hint">Click a highlighted disc to flip it. {legalTargets.includes(0) ? 'Your stack first.' : 'Pick a rival.'}</div>
+                <div className="hint">Click a highlighted disc to flip it. {legalTargets.includes(mySeat) ? 'Your stack first.' : 'Pick a rival.'}</div>
               </div>
             )}
 
@@ -295,9 +293,11 @@ export function Skull() {
             )}
 
             {!yourTurn && s.winner == null && (
-              <div className="controls"><div className="hint waiting">{NAMES[s.turn]} is thinking…</div></div>
+              <div className="controls"><div className="hint waiting">{oppName(s.turn)} is thinking…</div></div>
             )}
           </div>
+
+          <OnlineBar net={net} />
 
           <div className="panel logbox">
             {s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}
@@ -305,7 +305,7 @@ export function Skull() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal s={s} names={NAMES} mySeat={mySeat} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -322,19 +322,19 @@ function Stepper({ value, min, max, onChange }: { value: number; min: number; ma
   )
 }
 
-function ResultModal({ s, onNew }: { s: SkullState; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ s, names, mySeat, onNew }: { s: SkullState; names: string[]; mySeat: number; onNew: () => void }) {
+  const won = s.winner === mySeat
   return (
     <Modal
       eyebrow={won ? 'The table folds' : 'Out-bluffed'}
-      title={won ? 'You Win' : `${NAMES[s.winner!]} Wins`}
+      title={won ? 'You Win' : `${names[s.winner!]} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="modal-body">
         <div className="finalsc">
           {s.players.map((p, i) => (
-            <span key={i} className={i === s.winner ? 'win' : ''}>{NAMES[i]} {p.points}{p.eliminated ? ' (out)' : ''}</span>
+            <span key={i} className={i === s.winner ? 'win' : ''}>{names[i]} {p.points}{p.eliminated ? ' (out)' : ''}</span>
           ))}
         </div>
       </div>

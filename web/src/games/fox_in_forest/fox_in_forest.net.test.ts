@@ -57,12 +57,20 @@ describe('fox in the forest net adapter', () => {
 
   it('drives a completed trick through pending -> collect to the next leader', () => {
     let s = A.makeGame()
-    // play both cards of the first trick (lead then follow)
-    for (let n = 0; n < 2; n++) {
-      const { seat, cardId } = aLegalPlay(s)
-      s = A.applyIntent(s, seat, { kind: 'play', cardId })
+    // Drive the first trick to completion. A lead card may open a Swan decree decision
+    // before the follow card, so at each step resolve that (decline) if it's owed, else
+    // play a legal card — until a completed trick parks in pending.
+    let guard = 0
+    while (s.pending == null && !A.isOver(s) && guard++ < 30) {
+      const seat = A.seatToMove(s)!
+      const afterSwan = A.applyIntent(s, seat, { kind: 'keepDecree' })
+      if (afterSwan !== s) { s = afterSwan; continue } // a decree decision was owed -> resolved
+      const { cardId } = aLegalPlay(s)
+      const played = A.applyIntent(s, seat, { kind: 'play', cardId })
+      if (played === s) break // safety: nothing advanced
+      s = played
     }
-    // both cards down -> a completed trick parks in pending; seatToMove = the winner
+    // completed trick parks in pending; seatToMove = the winner
     expect(s.pending).not.toBeNull()
     const winnerSeat = seatOf(s.pending!.winner)
     expect(A.seatToMove(s)).toBe(winnerSeat)

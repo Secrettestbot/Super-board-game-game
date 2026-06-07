@@ -6,8 +6,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { bangDiceAdapter } from './net'
 import * as BD from './logic'
 import type { BangState, Face, Player } from './logic'
 
@@ -47,16 +49,16 @@ const SEAT_POS = [
   { className: 'seat-right' },
 ]
 
-function PlayerSeat({ p, on, you, target }: { p: Player; on: boolean; you: boolean; target: number }) {
+function PlayerSeat({ p, on, you, target, pos, name }: { p: Player; on: boolean; you: boolean; target: number; pos: string; name: string }) {
   const pct = Math.max(0, (p.life / MAX_LIFE) * 100)
   return (
     <div className={
-      'bd-seat ' + SEAT_POS[p.seat].className +
+      'bd-seat ' + pos +
       (you ? ' you-seat' : '') + (on ? ' on' : '') + (p.alive ? '' : ' dead') +
       (target === 1 ? ' tgt1' : target === 2 ? ' tgt2' : '')
     }>
       <div className="bd-seat-head">
-        <span className="bd-seat-name">{p.name}</span>
+        <span className="bd-seat-name">{name}</span>
         {target === 1 && <span className="bd-tgt-badge t1">●1</span>}
         {target === 2 && <span className="bd-tgt-badge t2">●2</span>}
       </div>
@@ -72,24 +74,35 @@ function PlayerSeat({ p, on, you, target }: { p: Player; on: boolean; you: boole
 }
 
 export function BangDice() {
-  const [s, setS] = useState<BangState>(() => BD.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(bangDiceAdapter)
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(BD.makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  const yourTurn = s.winner == null && s.turn === 0
+  // Everything is seat-relative: "you" is whatever seat this client controls (0 in solo,
+  // possibly 1..3 when joined online). The hook drives AI for any empty seats on the host.
+  const yourTurn = s.winner == null && isMyTurn
   const yourRoll = yourTurn && s.phase === 'roll'
 
-  function doRoll() { if (yourRoll && s.rerollsLeft > 0) setS(p => BD.rollDice(p)) }
-  function doResolve() { if (yourRoll && s.rolled) setS(p => BD.resolveDice(p)) }
-  function doEnd() { if (yourTurn && s.phase === 'resolved') setS(p => BD.endTurn(p)) }
-  function doToggle(i: number) { if (yourRoll && s.rolled) setS(p => BD.toggleKeep(p, i)) }
+  function doRoll() { if (yourRoll && s.rerollsLeft > 0) dispatch({ kind: 'roll' }) }
+  function doResolve() { if (yourRoll && s.rolled) dispatch({ kind: 'resolve' }) }
+  function doEnd() { if (yourTurn && s.phase === 'resolved') dispatch({ kind: 'end' }) }
+  function doToggle(i: number) { if (yourRoll && s.rolled) dispatch({ kind: 'hold', idx: i }) }
 
-  // AI is active when it's an AI seat's turn and there's no winner. Re-arm on every
-  // sub-step via the monotonic counter s.step (roll / keep+reroll / resolve / end).
-  const aiActive = s.winner == null && s.turn !== 0
-  useAITurn(aiActive, () => setS(p => BD.aiStep(p)), { delayMs: 560, tick: s.step })
+  // Display name for a seat: your own seat is "You"; others are "Opponent"/"Player N"
+  // online (the logic's flavour names like "Slab" are solo-only), or the flavour name solo.
+  function seatName(p: Player): string {
+    if (p.id === mySeat) return 'You'
+    if (!net.online) return p.name
+    return net.seats.filter(x => x.kind === 'guest').length > 1 ? `Player ${p.id + 1}` : 'Opponent'
+  }
+
+  // Rotate the fixed circle so the local player always sits at the bottom.
+  function seatPos(id: number): string {
+    const rel = ((id - mySeat) % s.players.length + s.players.length) % s.players.length
+    return SEAT_POS[rel].className
+  }
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
 
@@ -112,8 +125,8 @@ export function BangDice() {
   const live = BD.aliveCount(s.players)
 
   // targeting indicators (only meaningful while a roll is showing): who would [1]/[2] hit?
-  const t1 = (yourRoll && s.rolled) ? BD.targetAt(s.players, 0, 1) : null
-  const t2 = (yourRoll && s.rolled) ? BD.targetAt(s.players, 0, 2) : null
+  const t1 = (yourRoll && s.rolled) ? BD.targetAt(s.players, mySeat, 1) : null
+  const t2 = (yourRoll && s.rolled) ? BD.targetAt(s.players, mySeat, 2) : null
   function seatTarget(id: number): number {
     if (id === t1) return 1
     if (id === t2) return 2
@@ -122,15 +135,15 @@ export function BangDice() {
 
   let banner: string, bk = ''
   if (s.winner != null) {
-    if (s.winner === 0) { bk = 'win'; banner = 'You win — last gunslinger standing!' }
-    else { bk = 'lose'; banner = `${s.players[s.winner].name} wins the shootout.` }
+    if (s.winner === mySeat) { bk = 'win'; banner = 'You win — last gunslinger standing!' }
+    else { bk = 'lose'; banner = `${seatName(s.players[s.winner])} wins the shootout.` }
   } else if (yourTurn) {
     bk = 'you'
     if (!s.rolled) banner = 'Your turn — roll the dice'
     else if (s.phase === 'roll') banner = s.rerollsLeft > 0 ? 'Keep dice & reroll, or resolve' : 'Out of rerolls — resolve'
     else banner = 'Turn resolved — end turn'
   } else {
-    bk = 'foe'; banner = `${s.players[s.turn].name} is at the table…`
+    bk = 'foe'; banner = `${seatName(s.players[s.turn])} is at the table…`
   }
 
   const dyn = s.dice.filter(d => d === 'dynamite').length
@@ -161,7 +174,9 @@ export function BangDice() {
                 <PlayerSeat
                   key={p.id}
                   p={p}
-                  you={p.id === 0}
+                  pos={seatPos(p.id)}
+                  name={seatName(p)}
+                  you={p.id === mySeat}
                   on={s.turn === p.id && s.winner == null}
                   target={seatTarget(p.id)}
                 />
@@ -203,6 +218,9 @@ export function BangDice() {
 
           <div className="bd-side">
             <div className="panel">
+              <OnlineBar net={net} />
+            </div>
+            <div className="panel">
               <div className="panel-l">Dice faces</div>
               <div className="bd-legend">
                 <div className="bd-leg-row"><span className="bd-leg-ic">🔫</span> shoot the player <b>1 seat</b> away</div>
@@ -224,19 +242,18 @@ export function BangDice() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal s={s} mySeat={mySeat} champName={s.winner != null ? seatName(s.players[s.winner]) : ''} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: BangState; onNew: () => void }) {
-  const won = s.winner === 0
-  const champ = s.winner != null ? s.players[s.winner].name : ''
+function ResultModal({ s, mySeat, champName, onNew }: { s: BangState; mySeat: number; champName: string; onNew: () => void }) {
+  const won = s.winner === mySeat
   return (
     <Modal
       eyebrow={won ? 'Last one standing' : 'Outdrawn'}
-      title={won ? 'You Win' : `${champ} Wins`}
+      title={won ? 'You Win' : `${champName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
@@ -244,10 +261,10 @@ function ResultModal({ s, onNew }: { s: BangState; onNew: () => void }) {
         <p>
           {won
             ? 'The dust settles and you\'re the only gunslinger left on your feet.'
-            : `${champ} is the last one standing. Better luck on the next draw.`}
+            : `${champName} is the last one standing. Better luck on the next draw.`}
         </p>
         <p>
-          Final life — {s.players.map(p => `${p.name}: ${p.alive ? p.life : 'dead'}`).join(' · ')}
+          Final life — {s.players.map(p => `${p.id === mySeat ? 'You' : p.name}: ${p.alive ? p.life : 'dead'}`).join(' · ')}
         </p>
       </div>
     </Modal>
