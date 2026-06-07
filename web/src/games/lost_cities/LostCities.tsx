@@ -1,18 +1,29 @@
 /* LOST CITIES — UI (built for this codebase). An adventurer's-journal table on the framework
    shell: five jewel-toned expedition columns per side, parchment cards, shared discards and a
    deck, vs a greedy expected-value AI. Pick a hand card, then Play it to its expedition (only
-   legal ones light up) or Discard it; then Draw from the deck or a discard pile. */
+   legal ones light up) or Discard it; then Draw from the deck or a discard pile.
+
+   Online-capable via useGameSession(lostCitiesAdapter): the hook drives the AI for any empty
+   seat (no local useAITurn) and, when online, redacts the opponent's private hand and the
+   face-down deck so they never reach you. Everything below renders relative to mySeat — your
+   hand, expeditions, score and the result banner are always "yours", and the other seat is
+   the rival (called "Opponent" when playing online). */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { lostCitiesAdapter } from './net'
 import * as LC from './logic'
-import type { LostCitiesState, Colour, Card } from './logic'
+import type { Colour, Card, Player } from './logic'
 
 const { COLOURS } = LC
 const COLNAME: Record<Colour, string> = { Y: 'Yellow', B: 'Blue', W: 'White', G: 'Green', R: 'Red' }
+
+/** seat 0 = 'you', seat 1 = 'ai'. */
+const PLAYER_FOR_SEAT: Player[] = ['you', 'ai']
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -26,41 +37,48 @@ const TITLE_MARK = (
 function cardText(c: Card) { return LC.isWager(c) ? '✦' : String(c.value) }
 
 export function LostCities() {
-  const [s, setS] = useState<LostCitiesState>(() => LC.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(lostCitiesAdapter)
+  const myP = PLAYER_FOR_SEAT[mySeat] ?? 'you'
+  const oppP: Player = myP === 'you' ? 'ai' : 'you'
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number | null>(null)
 
-  function newGame() { setS(LC.makeGame()); setSel(null); setShowRules(false) }
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
 
-  useAITurn(!s.winner && s.turn === 'ai', () => setS(p => LC.aiTurn(p)), { delayMs: 620, tick: s.phase })
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => { setSel(null); setShowRules(false) } })
 
-  const yourTurn = !s.winner && s.turn === 'you'
+  const yourTurn = !s.winner && isMyTurn
   const yourPlay = yourTurn && s.phase === 'play'
   const yourDraw = yourTurn && s.phase === 'draw'
 
-  const selCard = sel != null ? s.hands.you.find(c => c.id === sel) ?? null : null
+  const myHand = s.hands[myP]
+  const myExp = s.expeditions[myP]
+  const oppExp = s.expeditions[oppP]
+
+  const selCard = sel != null ? myHand.find(c => c.id === sel) ?? null : null
   const canPlaySel = useMemo(() => {
     if (!yourPlay || !selCard) return false
-    return LC.canPlay(s.expeditions.you[selCard.colour], selCard)
-  }, [yourPlay, selCard, s.expeditions])
+    return LC.canPlay(myExp[selCard.colour], selCard)
+  }, [yourPlay, selCard, myExp])
 
-  const yScore = LC.score(s, 'you'), aScore = LC.score(s, 'ai')
-  const yCols = LC.colourScores(s, 'you'), aCols = LC.colourScores(s, 'ai')
+  const yScore = LC.score(s, myP), aScore = LC.score(s, oppP)
+  const yCols = LC.colourScores(s, myP), aCols = LC.colourScores(s, oppP)
 
   function pick(id: number) { if (yourPlay) setSel(prev => prev === id ? null : id) }
-  function doPlay() { if (selCard && canPlaySel) { setS(LC.playCard(s, 'you', selCard.id)); setSel(null) } }
-  function doDiscard() { if (selCard) { setS(LC.discardCard(s, 'you', selCard.id)); setSel(null) } }
-  function takeDeck() { if (yourDraw) setS(LC.drawDeck(s, 'you')) }
-  function takeDiscard(colour: Colour) { if (yourDraw && s.discards[colour].length) setS(LC.drawDiscard(s, 'you', colour)) }
+  function doPlay() { if (selCard && canPlaySel) { dispatch({ kind: 'play', cardId: selCard.id }); setSel(null) } }
+  function doDiscard() { if (selCard) { dispatch({ kind: 'discard', cardId: selCard.id }); setSel(null) } }
+  function takeDeck() { if (yourDraw) dispatch({ kind: 'draw', source: 'deck' }) }
+  function takeDiscard(colour: Colour) { if (yourDraw && s.discards[colour].length) dispatch({ kind: 'draw', source: { discard: colour } }) }
 
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = `You win — ${yScore} to ${aScore}` }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = `The rival wins — ${aScore} to ${yScore}` }
+  if (s.winner === myP) { bk = 'win'; banner = `You win — ${yScore} to ${aScore}` }
+  else if (s.winner === oppP) { bk = 'lose'; banner = `${oppLabel} wins — ${aScore} to ${yScore}` }
   else if (s.winner === 'draw') { bk = ''; banner = `A dead heat — ${yScore} all` }
   else if (yourPlay) { bk = 'you'; banner = sel != null ? 'Play to its expedition or discard it' : 'Your turn — choose a card from your hand' }
   else if (yourDraw) { bk = 'you'; banner = 'Now draw — the deck or a discard pile' }
-  else { bk = 'foe'; banner = 'The rival is plotting a route…' }
+  else { bk = 'foe'; banner = net.online ? `Waiting for the ${oppLabel.toLowerCase()}…` : 'The rival is plotting a route…' }
 
   return (
     <>
@@ -80,7 +98,7 @@ export function LostCities() {
           {/* Rival expeditions (top, descending toward the middle) */}
           <div className="lc-board lc-foe">
             {COLOURS.map(c => (
-              <Column key={c} colour={c} cards={s.expeditions.ai[c]} score={aCols[c]} foe />
+              <Column key={c} colour={c} cards={oppExp[c]} score={aCols[c]} foe />
             ))}
           </div>
 
@@ -120,7 +138,7 @@ export function LostCities() {
                 <Column
                   key={c}
                   colour={c}
-                  cards={s.expeditions.you[c]}
+                  cards={myExp[c]}
                   score={yCols[c]}
                   legal={legalTarget}
                   onClick={legalTarget ? doPlay : undefined}
@@ -131,11 +149,11 @@ export function LostCities() {
 
           {/* Your hand */}
           <div className="lc-hand">
-            {s.hands.you
+            {myHand
               .slice()
               .sort((a, b) => COLOURS.indexOf(a.colour) - COLOURS.indexOf(b.colour) || a.value - b.value)
               .map(card => {
-                const playable = yourPlay && LC.canPlay(s.expeditions.you[card.colour], card)
+                const playable = yourPlay && LC.canPlay(myExp[card.colour], card)
                 return (
                   <button
                     key={card.id}
@@ -161,16 +179,19 @@ export function LostCities() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel scoreboard">
-            <ScoreRow name="You" total={yScore} cols={yCols} on={s.turn === 'you' && !s.winner} you />
-            <ScoreRow name="Rival" total={aScore} cols={aCols} on={s.turn === 'ai' && !s.winner} />
+            <ScoreRow name="You" total={yScore} cols={yCols} on={yourTurn} you />
+            <ScoreRow name={oppLabel} total={aScore} cols={aCols} on={s.winner == null && s.turn === oppP} />
             <div className="lc-deckline"><span>Deck</span><span>{s.deck.length} cards</span></div>
           </div>
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}</div>
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} y={yScore} a={aScore} onNew={newGame} />}
+      {s.winner && <ResultModal won={s.winner === myP} draw={s.winner === 'draw'} y={yScore} a={aScore} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -213,16 +234,15 @@ function ScoreRow({ name, total, cols, on, you }:
   )
 }
 
-function ResultModal({ s, y, a, onNew }: { s: LostCitiesState; y: number; a: number; onNew: () => void }) {
-  const won = s.winner === 'you', draw = s.winner === 'draw'
+function ResultModal({ won, draw, y, a, oppLabel, onNew }: { won: boolean; draw: boolean; y: number; a: number; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={draw ? 'Evenly matched' : won ? 'Expeditions funded' : 'Out-explored'}
-      title={draw ? 'A Dead Heat' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'A Dead Heat' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {y}</span><span className="foe">Rival {a}</span></div>
+      <div className="finalsc"><span className="you">You {y}</span><span className="foe">{oppLabel} {a}</span></div>
     </Modal>
   )
 }

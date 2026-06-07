@@ -1,13 +1,21 @@
 /* PARADE — UI (built for this codebase). An Alice-in-Wonderland card-shedding game
-   for you + 2 AI. The parade line runs across the top; your clickable hand below;
-   each player's collected pile (sorted by colour) and live score on the side.
-   Hover a hand card to preview which cards it would capture. Lowest score wins. */
+   for you + 2 others (AI in solo, remote humans online). The parade line runs across
+   the top; your clickable hand below; each player's collected pile (sorted by colour)
+   and live score on the side. Hover a hand card to preview which cards it would capture.
+   Lowest score wins.
+
+   Online: host-authoritative via useGameSession(paradeAdapter). The view is seat-relative
+   off mySeat — your hand/collected come from mySeat, isMyTurn gates play, and empty seats
+   are driven by the existing AI (the hook handles that). Solo play is identical to before
+   (mySeat = 0, seats 1 & 2 are AI). */
 
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { paradeAdapter } from './net'
 import * as P from './logic'
 import type { State, Card } from './logic'
 
@@ -25,6 +33,14 @@ const COLOR_VAR: Record<string, string> = {
   purple: 'var(--c-purple)', orange: 'var(--c-orange)', teal: 'var(--c-teal)',
 }
 
+/** Seat-relative display name: "You" for your own seat; online uses generic player
+ *  labels (others are remote humans), solo keeps the Wonderland characters. */
+function seatName(seat: number, mySeat: number, online: boolean): string {
+  if (seat === mySeat) return 'You'
+  if (online) return `Player ${seat + 1}`
+  return seat === (mySeat + 1) % P.NUM_PLAYERS ? 'Alice' : 'Hatter'
+}
+
 function CardChip({ c, size, dim, ghost }: { c: Card; size?: 'big' | 'mini'; dim?: boolean; ghost?: boolean }) {
   return (
     <span
@@ -37,22 +53,16 @@ function CardChip({ c, size, dim, ghost }: { c: Card; size?: 'big' | 'mini'; dim
 }
 
 export function Parade() {
-  const [s, setS] = useState<State>(() => P.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(paradeAdapter)
   const [showRules, setShowRules] = useState(false)
   const [hover, setHover] = useState<number | null>(null)
-  const [turnCount, setTurnCount] = useState(0)
 
   function newGame() {
-    setS(P.makeGame()); setShowRules(false); setHover(null); setTurnCount(0)
+    netNew(); setShowRules(false); setHover(null)
   }
 
-  const yourTurn = s.phase !== 'over' && s.turn === s.you && s.winner == null
-  const aiActive = s.phase !== 'over' && s.turn != null && s.turn !== s.you && s.winner == null
-
-  useAITurn(aiActive, () => {
-    setS(prev => P.aiStep(prev))
-    setTurnCount(t => t + 1)
-  }, { delayMs: 720, tick: `${turnCount}-${s.turn}` })
+  const over = s.phase === 'over' && s.winner != null
+  const yourTurn = !over && isMyTurn
 
   useGameKeys({
     onNew: newGame,
@@ -62,34 +72,41 @@ export function Parade() {
 
   function play(handIndex: number) {
     if (!yourTurn) return
-    setS(prev => P.playCard(prev, prev.you, handIndex))
-    setTurnCount(t => t + 1)
+    const card = s.hands[mySeat]?.[handIndex]
+    if (card == null) return
+    dispatch({ kind: 'play', cardId: card.id })
     setHover(null)
   }
 
   const sc = P.scores(s)
   const doomedIds = new Set<number>(
-    yourTurn && hover != null ? P.previewCapture(s, s.you, hover).map(c => c.id) : []
+    yourTurn && hover != null ? P.previewCapture(s, mySeat, hover).map(c => c.id) : []
   )
 
-  // banner
+  const myHand = s.hands[mySeat] ?? []
+
+  // banner — relative to mySeat
   let banner = '', bk = ''
-  if (s.phase === 'over' && s.winner != null) {
-    if (s.winner === s.you) { bk = 'win'; banner = `You win with ${sc[s.you]} — the lowest!` }
-    else { bk = 'lose'; banner = `${P.name(s.winner, s.you)} wins with ${sc[s.winner]}.` }
+  if (over && s.winner != null) {
+    if (s.winner === mySeat) { bk = 'win'; banner = `You win with ${sc[mySeat]} — the lowest!` }
+    else { bk = 'lose'; banner = `${seatName(s.winner, mySeat, net.online)} wins with ${sc[s.winner]}.` }
   } else if (yourTurn) {
     bk = 'you'
     banner = s.phase === 'final' ? 'Final lap — play one last card (no draw).' : 'Your turn — play a card to the parade.'
-  } else if (aiActive && s.turn != null) {
+  } else if (s.turn != null) {
     bk = 'foe'
-    banner = `${P.name(s.turn, s.you)} is choosing…`
+    banner = net.online
+      ? `Waiting for ${seatName(s.turn, mySeat, true)}…`
+      : `${seatName(s.turn, mySeat, false)} is choosing…`
   }
 
-  const safeN = yourTurn && hover != null ? (s.hands[s.you][hover]?.value ?? 0) : -1
+  const safeN = yourTurn && hover != null ? (myHand[hover]?.value ?? 0) : -1
 
   const modeLeft = s.phase === 'final'
     ? 'Final lap — no drawing'
     : `${s.deck.length} in the deck`
+
+  const seatOrder = [mySeat, (mySeat + 1) % P.NUM_PLAYERS, (mySeat + 2) % P.NUM_PLAYERS]
 
   return (
     <>
@@ -121,7 +138,7 @@ export function Parade() {
           <div className="pd-handwrap">
             <div className="pd-handlabel">Your Hand {yourTurn && <span className="pd-hint">click a card to play</span>}</div>
             <div className="pd-hand">
-              {s.hands[s.you].map((c, i) => (
+              {myHand.map((c, i) => (
                 <button
                   key={c.id}
                   className={'pd-handcard' + (yourTurn ? ' live' : '') + (hover === i ? ' on' : '')}
@@ -136,7 +153,7 @@ export function Parade() {
                   <span className="pd-cc">{c.color}</span>
                 </button>
               ))}
-              {s.hands[s.you].length === 0 && <span className="pd-empty">— no cards —</span>}
+              {myHand.length === 0 && <span className="pd-empty">— no cards —</span>}
             </div>
             {yourTurn && hover != null && (
               <div className="pd-preview">
@@ -149,10 +166,11 @@ export function Parade() {
         </div>
 
         <div className="side">
-          {[s.you, (s.you + 1) % P.NUM_PLAYERS, (s.you + 2) % P.NUM_PLAYERS].map(seat => (
-            <PlayerPanel key={seat} s={s} seat={seat} score={sc[seat]}
+          <OnlineBar net={net} />
+          {seatOrder.map(seat => (
+            <PlayerPanel key={seat} s={s} seat={seat} mySeat={mySeat} online={net.online} score={sc[seat]}
               active={s.turn === seat && s.winner == null && s.phase !== 'over'}
-              best={s.phase === 'over' && s.winner === seat} />
+              best={over && s.winner === seat} />
           ))}
           <div className="panel logbox">
             {s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}
@@ -160,20 +178,20 @@ export function Parade() {
         </div>
       </GameShell>
 
-      {s.phase === 'over' && s.winner != null && <ResultModal s={s} sc={sc} onNew={newGame} />}
+      {over && s.winner != null && <ResultModal s={s} sc={sc} mySeat={mySeat} online={net.online} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function PlayerPanel({ s, seat, score, active, best }: { s: State; seat: number; score: number; active: boolean; best: boolean }) {
+function PlayerPanel({ s, seat, mySeat, online, score, active, best }: { s: State; seat: number; mySeat: number; online: boolean; score: number; active: boolean; best: boolean }) {
   const bd = P.colorBreakdown(s, seat)
-  const isYou = seat === s.you
+  const isYou = seat === mySeat
   const total = s.collected[seat].length
   return (
     <div className={'panel pp' + (isYou ? ' you' : ' ai') + (active ? ' on' : '') + (best ? ' best' : '')}>
       <div className="pp-head">
-        <span className="pp-name">{P.name(seat, s.you)}</span>
+        <span className="pp-name">{seatName(seat, mySeat, online)}</span>
         <span className="pp-count">{total} card{total === 1 ? '' : 's'}</span>
         <span className="pp-score">{score}</span>
       </div>
@@ -191,20 +209,20 @@ function PlayerPanel({ s, seat, score, active, best }: { s: State; seat: number;
   )
 }
 
-function ResultModal({ s, sc, onNew }: { s: State; sc: number[]; onNew: () => void }) {
-  const won = s.winner === s.you
+function ResultModal({ s, sc, mySeat, online, onNew }: { s: State; sc: number[]; mySeat: number; online: boolean; onNew: () => void }) {
+  const won = s.winner === mySeat
   const order = [0, 1, 2].slice().sort((a, b) => sc[a] - sc[b])
   return (
     <Modal
       eyebrow={won ? 'Cards shed cleverly' : 'Swept into the pile'}
-      title={won ? 'You Win' : `${P.name(s.winner ?? 0, s.you)} Wins`}
+      title={won ? 'You Win' : `${seatName(s.winner ?? 0, mySeat, online)} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
         {order.map(seat => (
-          <span key={seat} className={seat === s.you ? 'you' : 'foe'}>
-            {P.name(seat, s.you)} {sc[seat]}
+          <span key={seat} className={seat === mySeat ? 'you' : 'foe'}>
+            {seatName(seat, mySeat, online)} {sc[seat]}
           </span>
         ))}
       </div>

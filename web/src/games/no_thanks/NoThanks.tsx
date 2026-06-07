@@ -1,11 +1,15 @@
 /* NO THANKS! — UI (built for this codebase). A single face-up number card with a pile of
-   poker chips on it, two players' chip stacks and run-grouped collections, vs a heuristic AI. */
+   poker chips on it, two players' chip stacks and run-grouped collections. Plays solo vs a
+   heuristic AI, or online via useGameSession (host-authoritative; the other seat is a remote
+   human or, if unfilled, the AI). Seat-relative: "you" are always whichever seat you sit in. */
 
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { noThanksAdapter } from './net'
 import * as NT from './logic'
 import type { NoThanksState, Who } from './logic'
 
@@ -18,29 +22,45 @@ const TITLE_MARK = (
 )
 
 const fmt = (n: number) => (n > 0 ? `+${n}` : `${n}`)
+/** A chip count of -1 means the value was redacted (a rival's secret stack). */
+const HIDDEN = -1
 
 export function NoThanks() {
-  const [s, setS] = useState<NoThanksState>(() => NT.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(noThanksAdapter)
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(NT.makeGame()); setShowRules(false) }
+  // Seat-relative identities: seat 0 = 'you', seat 1 = 'ai'.
+  const me: Who = mySeat === 0 ? 'you' : 'ai'
+  const opp: Who = me === 'you' ? 'ai' : 'you'
 
-  useAITurn(!s.winner && s.turn === 'ai', () => setS(p => NT.aiStep(p)), { delayMs: 620, tick: s.card })
+  function newGame() { netNew(); setShowRules(false) }
+
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
 
-  const yourTurn = !s.winner && s.turn === 'you'
-  const sc = NT.scores(s)
+  const yourTurn = !s.winner && isMyTurn
+  // Score depends on chip count; a redacted rival stack means we can't (and shouldn't) score them.
+  const myScore = NT.scoreHand(s.taken[me], s.chips[me])
+  const oppKnown = s.chips[opp] !== HIDDEN
+  const oppScore = oppKnown ? NT.scoreHand(s.taken[opp], s.chips[opp]) : null
   const remaining = s.deck.length + (s.card !== null ? 1 : 0)
+  const canPass = yourTurn && s.chips[me] > 0
 
-  function doPass() { if (yourTurn && s.chips.you > 0) setS(NT.pass(s, 'you')) }
-  function doTake() { if (yourTurn) setS(NT.take(s, 'you')) }
+  const oppName = net.online ? 'Opponent' : 'Rival'
+  const myLabel = 'You'
+
+  function doPass() { if (canPass) dispatch({ kind: 'pass' }) }
+  function doTake() { if (yourTurn) dispatch({ kind: 'take' }) }
+
+  // Did I win? winner is encoded in the seat's Who ('you'/'ai') or 'tie'.
+  const iWon = s.winner === me
+  const oppWon = s.winner === opp
 
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = `You win — ${sc.you} to ${sc.ai}` }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = `The rival wins — ${sc.ai} to ${sc.you}` }
-  else if (s.winner === 'tie') { bk = ''; banner = `A dead tie — ${sc.you} each` }
+  if (iWon) { bk = 'win'; banner = oppScore != null ? `You win — ${myScore} to ${oppScore}` : 'You win' }
+  else if (oppWon) { bk = 'lose'; banner = oppScore != null ? `${oppName} wins — ${oppScore} to ${myScore}` : `${oppName} wins` }
+  else if (s.winner === 'tie') { bk = ''; banner = `A dead tie — ${myScore} each` }
   else if (yourTurn) { bk = 'you'; banner = 'Your call — no thanks, or take the card?' }
-  else { bk = 'foe'; banner = 'The rival is deciding…' }
+  else { bk = 'foe'; banner = net.online ? 'Waiting for your opponent…' : `${oppName} is deciding…` }
 
   return (
     <>
@@ -78,7 +98,7 @@ export function NoThanks() {
           </div>
 
           <div className="nt-actions">
-            <button className="nt-btn pass" disabled={!yourTurn || s.chips.you <= 0} onClick={doPass}>
+            <button className="nt-btn pass" disabled={!canPass} onClick={doPass}>
               No Thanks <small>−1 chip</small>
             </button>
             <button className="nt-btn take" disabled={!yourTurn} onClick={doTake}>
@@ -88,26 +108,29 @@ export function NoThanks() {
         </div>
 
         <div className="side">
-          <PlayerPanel who="you" label="You" s={s} score={sc.you} active={s.turn === 'you' && !s.winner} />
-          <PlayerPanel who="ai" label="Rival" s={s} score={sc.ai} active={s.turn === 'ai' && !s.winner} />
+          <div className="panel"><OnlineBar net={net} /></div>
+          <PlayerPanel who={me} label={myLabel} s={s} score={myScore} active={!s.winner && isMyTurn} />
+          <PlayerPanel who={opp} label={oppName} s={s} score={oppScore} active={!s.winner && !isMyTurn && s.turn != null} />
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={"log-line " + l.t}>{l.x}</div>)}</div>
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} sc={sc} onNew={newGame} />}
+      {s.winner && <ResultModal s={s} me={me} myScore={myScore} oppScore={oppScore} oppName={oppName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function PlayerPanel({ who, label, s, score, active }: { who: Who; label: string; s: NoThanksState; score: number; active: boolean }) {
+function PlayerPanel({ who, label, s, score, active }: { who: Who; label: string; s: NoThanksState; score: number | null; active: boolean }) {
   const grouped = NT.runs(s.taken[who])
+  const chips = s.chips[who]
+  const chipsHidden = chips === HIDDEN
   return (
     <div className={"panel pp " + who + (active ? " on" : "")}>
       <div className="pp-head">
         <span className="pp-name">{label}</span>
-        <span className="pp-chips"><span className="pp-chipdot" />{s.chips[who]}</span>
-        <span className={"pp-score" + (score <= 0 ? " good" : "")}>{fmt(score)}</span>
+        <span className="pp-chips"><span className="pp-chipdot" />{chipsHidden ? '?' : chips}</span>
+        {score != null && <span className={"pp-score" + (score <= 0 ? " good" : "")}>{fmt(score)}</span>}
       </div>
       <div className="pp-coll">
         {grouped.length === 0 && <span className="pp-empty">no cards yet</span>}
@@ -121,16 +144,19 @@ function PlayerPanel({ who, label, s, score, active }: { who: Who; label: string
   )
 }
 
-function ResultModal({ s, sc, onNew }: { s: NoThanksState; sc: Record<Who, number>; onNew: () => void }) {
-  const won = s.winner === 'you', tie = s.winner === 'tie'
+function ResultModal({ s, me, myScore, oppScore, oppName, onNew }: { s: NoThanksState; me: Who; myScore: number; oppScore: number | null; oppName: string; onNew: () => void }) {
+  const won = s.winner === me, tie = s.winner === 'tie'
   return (
     <Modal
       eyebrow={tie ? 'Level pegging' : won ? 'Lean and clever' : 'Out-folded'}
-      title={tie ? 'A Tie' : won ? 'You Win' : 'Rival Wins'}
+      title={tie ? 'A Tie' : won ? 'You Win' : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {fmt(sc.you)}</span><span className="foe">Rival {fmt(sc.ai)}</span></div>
+      <div className="finalsc">
+        <span className="you">You {fmt(myScore)}</span>
+        <span className="foe">{oppName} {oppScore != null ? fmt(oppScore) : '?'}</span>
+      </div>
       <p className="finalsub">Lowest score wins — runs count only their lowest card, and every chip is worth −1.</p>
     </Modal>
   )

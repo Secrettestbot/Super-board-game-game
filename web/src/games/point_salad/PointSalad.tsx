@@ -1,14 +1,20 @@
-/* POINT SALAD — UI. A fresh-market card-drafting set-collection game on the shared shell,
-   you (player 0) vs two greedy-heuristic AI players. On your turn take EITHER one point card
-   from the top of a pile, OR two veg cards from the market. The board shows the 3 piles with
-   their top criterion, the 6-card veg market, your collection (veg tally + point cards), a
-   live score estimate, and the two rivals' collections. */
+/* POINT SALAD — UI. A fresh-market card-drafting set-collection game on the shared shell.
+   On your turn take EITHER one point card from the top of a pile, OR two veg cards from the
+   market. The board shows the 3 piles with their top criterion, the 6-card veg market, your
+   collection (veg tally + point cards), a live score estimate, and the rivals' collections.
+
+   Online-capable via useGameSession: seat 0 is the original human, the other seats are remote
+   guests (or AI when unfilled). Everything is rendered relative to mySeat — your own
+   collection/score, your turn gates clicks, and opponents are labelled "Opponent"/"Player N"
+   when a net game is live. Solo play is unchanged (mySeat 0, the rest AI). */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { pointSaladAdapter } from './net'
 import * as PS from './logic'
 import type { PointSaladState, Veg } from './logic'
 
@@ -48,18 +54,13 @@ function CritLine({ id }: { id: string }) {
 }
 
 export function PointSalad() {
-  const [s, setS] = useState<PointSaladState>(() => PS.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(pointSaladAdapter)
   const [showRules, setShowRules] = useState(false)
   const [pick, setPick] = useState<number[]>([]) // selected market slots (veg take)
 
-  function newGame() { setS(PS.makeGame()); setShowRules(false); setPick([]) }
+  function newGame() { netNew(); setShowRules(false); setPick([]) }
 
-  const yourTurn = s.winner == null && s.turn === 0
-  const aiTurnActive = s.winner == null && s.turn != null && s.turn !== 0
-
-  // TWO AI players take many turns each — tick must change on every AI turn so it re-arms.
-  useAITurn(aiTurnActive, () => setS(p => PS.aiTurn(p)),
-    { delayMs: 560, tick: `${s.turn}:${PS.cardsLeft(s)}` })
+  const yourTurn = s.winner == null && isMyTurn
 
   useGameKeys({
     onNew: newGame,
@@ -70,10 +71,24 @@ export function PointSalad() {
   const scores = useMemo(() => PS.scoreAll(s), [s])
   const cardsLeft = PS.cardsLeft(s)
 
+  // Label a seat relative to YOU. Other seats are "Opponent"/"Player N" in a net game,
+  // and "Player N" (the AI rivals) when playing solo.
+  const seatName = (seat: number): string => {
+    if (seat === mySeat) return 'You'
+    if (net.online) return net.seats.length === 2 ? 'Opponent' : `Player ${seat + 1}`
+    return `Player ${seat + 1}`
+  }
+
+  // Render order: you first, then the other seats in index order.
+  const order = useMemo(() => {
+    const others = s.players.map((_, i) => i).filter(i => i !== mySeat)
+    return [mySeat, ...others]
+  }, [s.players, mySeat])
+
   function clickPile(p: number) {
     if (!yourTurn || !PS.canTakePoint(s, p)) return
     setPick([])
-    setS(prev => PS.takePointCard(prev, p))
+    dispatch({ kind: 'takePoint', id: p })
   }
 
   function clickMarket(slot: number) {
@@ -83,24 +98,26 @@ export function PointSalad() {
       if (prev.length >= 2) return [prev[1], slot]
       const next = [...prev, slot]
       if (next.length === 2 && PS.canTakeVeg(s, next)) {
-        // commit the pair
-        setS(p => PS.takeVeg(p, next))
+        dispatch({ kind: 'takeVeg', ids: next })
         return []
       }
       return next
     })
   }
 
+  const oppLabel = net.online ? 'Opponent' : 'A rival'
+
   let banner: string, bk = ''
   if (s.winner != null) {
-    if (s.winner === 0) { bk = 'win'; banner = `You win — ${scores[0]} points` }
-    else { bk = 'lose'; banner = `Player ${s.winner + 1} wins — ${scores[s.winner]} to your ${scores[0]}` }
+    if (s.winner === mySeat) { bk = 'win'; banner = `You win — ${scores[mySeat]} points` }
+    else { bk = 'lose'; banner = `${seatName(s.winner)} wins — ${scores[s.winner]} to your ${scores[mySeat]}` }
   } else if (yourTurn) {
     bk = 'you'
     banner = pick.length === 1 ? 'Pick a second veg — or a different action' : 'Your turn — take a point card or two veg'
   } else {
     bk = 'foe'
-    banner = `Player ${(s.turn ?? 0) + 1} is choosing…`
+    const mover = s.turn ?? 0
+    banner = net.online && net.seats.length === 2 ? `${oppLabel} is choosing…` : `${seatName(mover)} is choosing…`
   }
 
   return (
@@ -162,16 +179,25 @@ export function PointSalad() {
         </div>
 
         <div className="side">
-          <Collection s={s} p={0} name="You" score={scores[0]} active={yourTurn} you />
-          <Collection s={s} p={1} name="Player 2" score={scores[1]} active={s.turn === 1 && s.winner == null} />
-          <Collection s={s} p={2} name="Player 3" score={scores[2]} active={s.turn === 2 && s.winner == null} />
+          <OnlineBar net={net} />
+          {order.map(seat => (
+            <Collection
+              key={seat}
+              s={s}
+              p={seat}
+              name={seatName(seat)}
+              score={scores[seat]}
+              active={s.turn === seat && s.winner == null}
+              you={seat === mySeat}
+            />
+          ))}
           <div className="panel logbox">
             {s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}
           </div>
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} scores={scores} onNew={newGame} />}
+      {s.winner != null && <ResultModal s={s} scores={scores} mySeat={mySeat} seatName={seatName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -203,22 +229,24 @@ function Collection({ s, p, name, score, active, you }: {
   )
 }
 
-function ResultModal({ s, scores, onNew }: { s: PointSaladState; scores: number[]; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ s, scores, mySeat, seatName, onNew }: {
+  s: PointSaladState; scores: number[]; mySeat: number; seatName: (seat: number) => string; onNew: () => void
+}) {
+  const won = s.winner === mySeat
   const ranked = scores.map((sc, i) => ({ i, sc })).sort((a, b) => b.sc - a.sc)
   return (
     <Modal
       eyebrow={won ? 'Best salad' : 'Out-drafted'}
-      title={won ? 'You Win' : `Player ${(s.winner as number) + 1} Wins`}
+      title={won ? 'You Win' : `${seatName(s.winner as number)} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="modal-body">
         <div className="ps-final">
           {ranked.map(({ i, sc }, r) => (
-            <div key={i} className={'ps-final-row' + (i === 0 ? ' you' : '') + (i === s.winner ? ' win' : '')}>
+            <div key={i} className={'ps-final-row' + (i === mySeat ? ' you' : '') + (i === s.winner ? ' win' : '')}>
               <span className="ps-final-rank">#{r + 1}</span>
-              <span className="ps-final-name">{i === 0 ? 'You' : `Player ${i + 1}`}</span>
+              <span className="ps-final-name">{seatName(i)}</span>
               <span className="ps-final-score">{sc}</span>
             </div>
           ))}
@@ -236,7 +264,7 @@ function RulesModal({ onClose }: { onClose: () => void }) {
         <p>Cards are double-sided: one face is a <b>vegetable</b>, the other a <b>scoring criterion</b>. The table has 3 <b>point-card piles</b> (criterion side up) and, below each, a <b>market</b> of two face-up veg cards.</p>
         <p>On your turn do <b>one</b> of two things: take the <b>top point card</b> of a pile, <i>or</i> take <b>two veg cards</b> from the market. Emptied market slots refill from the top of their pile (flipped to the veg side).</p>
         <p>When all cards are gone the game ends. Each player <b>sums their point cards' criteria</b> over the veg they collected — per-veg multipliers, most/fewest of a type, complete sets, even/odd, and more. <b>Most total points wins.</b></p>
-        <p>You play against two greedy rivals. <b>Keys:</b> <kbd>N</kbd> new · <kbd>?</kbd> rules · <kbd>Esc</kbd> cancel.</p>
+        <p>Play solo against two greedy rivals, or host an online game for friends to take the other seats. <b>Keys:</b> <kbd>N</kbd> new · <kbd>?</kbd> rules · <kbd>Esc</kbd> cancel.</p>
       </div>
     </Modal>
   )

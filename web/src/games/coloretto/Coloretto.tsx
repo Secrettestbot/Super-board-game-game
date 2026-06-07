@@ -5,10 +5,12 @@
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { colorettoAdapter } from './net'
 import * as CL from './logic'
-import type { ColorettoState, Card, Color, Player, Tableau } from './logic'
+import type { Card, Color, Player, Tableau } from './logic'
 
 const { COLORS, ROWS } = CL
 
@@ -33,65 +35,66 @@ function CardChip({ card, big }: { card: Card; big?: boolean }) {
   return <div className={'cl-card' + (big ? ' big' : '')} style={{ background: SWATCH[card.color] }} />
 }
 
+const SEAT_PLAYER: Player[] = ['you', 'ai']
+
 export function Coloretto() {
-  const [s, setS] = useState<ColorettoState>(() => CL.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(colorettoAdapter)
+  const me: Player = SEAT_PLAYER[mySeat] ?? 'you'
+  const opp: Player = me === 'you' ? 'ai' : 'you'
   const [showRules, setShowRules] = useState(false)
-  const [mode, setMode] = useState<'idle' | 'placing' | 'taking'>('idle')
+  const [mode, setMode] = useState<'idle' | 'flipping' | 'taking'>('idle')
 
-  function newGame() { setS(CL.makeGame()); setShowRules(false); setMode('idle') }
+  function newGame() { netNew(); setShowRules(false); setMode('idle') }
 
-  // AI plays its whole turn in steps (draw -> place, or take). Re-arm on each sub-step.
-  useAITurn(!s.winner && s.turn === 'ai', () => setS(p => CL.aiStep(p)),
-    { delayMs: 520, tick: `${s.pending ? 'p' : 'n'}:${s.deck.length}:${s.done.ai}` })
+  const yourTurn = !s.winner && isMyTurn && !s.done[me]
+  const canFlip = CL.legalDraw(s, me)
+  const takeRows = useMemo(() => new Set(CL.legalTakeRows(s, me)), [s, me])
+
+  // "Flip" is atomic: you pick a row, the host draws the top card and places it there.
+  // Eligible rows are the open (not-full, not-taken) ones; legalDraw guarantees >=1 exists.
+  const flipTargets = useMemo(
+    () => new Set(canFlip ? s.rows.map((_, r) => r).filter(r => CL.rowOpen(s, r)) : []),
+    [s, canFlip],
+  )
+  const activeMode = mode
+
+  function clickRow(r: number) {
+    if (!yourTurn) return
+    if (activeMode === 'flipping' && flipTargets.has(r)) { dispatch({ kind: 'flip', column: r }); setMode('idle'); return }
+    if (activeMode === 'taking' && takeRows.has(r)) { dispatch({ kind: 'take', column: r }); setMode('idle'); return }
+  }
 
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => { setShowRules(false); setMode('idle') },
     extra: (e) => {
-      if (s.winner || s.turn !== 'you') return
-      if (e.key === 'd' || e.key === 'D') { startDraw(); return true }
-      if (e.key === 't' || e.key === 'T') { setMode('taking'); return true }
+      if (!yourTurn) return
+      if (e.key === 'd' || e.key === 'D' || e.key === 'f' || e.key === 'F') { if (canFlip) setMode(m => m === 'flipping' ? 'idle' : 'flipping'); return true }
+      if (e.key === 't' || e.key === 'T') { if (takeRows.size) setMode(m => m === 'taking' ? 'idle' : 'taking'); return true }
       return false
     },
   })
 
-  const yourTurn = !s.winner && s.turn === 'you'
-  const canDraw = CL.legalDraw(s, 'you')
-  const placeRows = useMemo(() => new Set(CL.placeRows(s, 'you')), [s])
-  const takeRows = useMemo(() => new Set(CL.legalTakeRows(s, 'you')), [s])
+  const yourScore = CL.scoreTableau(s.tableau[me])
+  const oppScore = CL.scoreTableau(s.tableau[opp])
+  const oppName = net.online ? 'Opponent' : 'Rival'
 
-  // when a draw produces a pending card, force "placing" mode
-  const placing = !!s.pending && yourTurn
-  const activeMode = placing ? 'placing' : mode
-
-  function startDraw() {
-    if (!canDraw) return
-    setMode('idle')
-    setS(p => CL.draw(p, 'you'))
-  }
-
-  function clickRow(r: number) {
-    if (!yourTurn) return
-    if (activeMode === 'placing' && placeRows.has(r)) { setS(p => CL.place(p, r, 'you')); setMode('idle'); return }
-    if (activeMode === 'taking' && takeRows.has(r)) { setS(p => CL.take(p, r, 'you')); setMode('idle'); return }
-  }
-
-  const yourScore = CL.scoreTableau(s.tableau.you)
-  const aiScore = CL.scoreTableau(s.tableau.ai)
+  const myWin = s.winner === me
+  const oppWin = s.winner === opp
 
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = `You win — ${yourScore} to ${aiScore}` }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = `The rival wins — ${aiScore} to ${yourScore}` }
-  else if (s.winner === 'draw') { bk = ''; banner = `A tie — ${yourScore}–${aiScore}` }
-  else if (s.done.you && yourTurn) { bk = 'foe'; banner = 'You sat out — waiting for the round to end…' }
-  else if (placing) { bk = 'you'; banner = 'Place your card — click a row' }
+  if (myWin) { bk = 'win'; banner = `You win — ${yourScore} to ${oppScore}` }
+  else if (oppWin) { bk = 'lose'; banner = `${oppName} wins — ${oppScore} to ${yourScore}` }
+  else if (s.winner === 'draw') { bk = ''; banner = `A tie — ${yourScore}–${oppScore}` }
+  else if (s.done[me] && isMyTurn) { bk = 'foe'; banner = 'You sat out — waiting for the round to end…' }
+  else if (activeMode === 'flipping') { bk = 'you'; banner = 'Flip onto a row — click an open row' }
   else if (activeMode === 'taking') { bk = 'you'; banner = 'Take a row — click a stack to collect it' }
-  else if (yourTurn) { bk = 'you'; banner = 'Your move — Draw a card or Take a row' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  else if (yourTurn) { bk = 'you'; banner = 'Your move — Flip a card or Take a row' }
+  else { bk = 'foe'; banner = `${oppName} is ${net.online ? 'deciding' : 'thinking'}…` }
 
-  const youSitting = s.done.you && !s.winner
-  const aiSitting = s.done.ai && !s.winner
+  const youSitting = s.done[me] && !s.winner
+  const oppSitting = s.done[opp] && !s.winner
 
   return (
     <>
@@ -105,23 +108,23 @@ export function Coloretto() {
         modeLeft={s.lastRound ? 'Final round' : `${s.deck.length} in deck`}
         banner={banner}
         bannerClass={bk}
-        modeRight={<>D · draw &nbsp; T · take &nbsp; N · new</>}
+        modeRight={<>F · flip &nbsp; T · take &nbsp; N · new</>}
       >
         <div className="cl-wrap">
           <div className="cl-pending">
-            {placing
-              ? <div className="cl-pendcard"><span className="cl-pendlabel">placing</span><CardChip card={s.pending as Card} big /></div>
-              : <div className="cl-actions">
-                  <button className="cl-btn draw" disabled={!canDraw} onClick={startDraw}>Draw a card</button>
-                  <button className={'cl-btn take' + (activeMode === 'taking' ? ' armed' : '')} disabled={takeRows.size === 0} onClick={() => setMode(m => m === 'taking' ? 'idle' : 'taking')}>
-                    {activeMode === 'taking' ? 'Pick a row…' : 'Take a row'}
-                  </button>
-                </div>}
+            <div className="cl-actions">
+              <button className={'cl-btn draw' + (activeMode === 'flipping' ? ' armed' : '')} disabled={!canFlip || !yourTurn} onClick={() => setMode(m => m === 'flipping' ? 'idle' : 'flipping')}>
+                {activeMode === 'flipping' ? 'Pick a row…' : 'Flip a card'}
+              </button>
+              <button className={'cl-btn take' + (activeMode === 'taking' ? ' armed' : '')} disabled={takeRows.size === 0 || !yourTurn} onClick={() => setMode(m => m === 'taking' ? 'idle' : 'taking')}>
+                {activeMode === 'taking' ? 'Pick a row…' : 'Take a row'}
+              </button>
+            </div>
           </div>
 
           <div className="cl-rows">
             {s.rows.map((row, r) => {
-              const hl = (activeMode === 'placing' && placeRows.has(r)) || (activeMode === 'taking' && takeRows.has(r))
+              const hl = (activeMode === 'flipping' && flipTargets.has(r)) || (activeMode === 'taking' && takeRows.has(r))
               const cls = 'cl-row' + (s.taken[r] ? ' taken' : '') + (hl ? ' hot' : '')
               return (
                 <div key={r} className={cls} onClick={() => clickRow(r)}>
@@ -139,8 +142,9 @@ export function Coloretto() {
         </div>
 
         <div className="side">
-          <TableauPanel name="You" who="you" t={s.tableau.you} score={yourScore} on={yourTurn} sitting={youSitting} />
-          <TableauPanel name="Rival" who="ai" t={s.tableau.ai} score={aiScore} on={!s.winner && s.turn === 'ai'} sitting={aiSitting} />
+          <div className="panel"><OnlineBar net={net} /></div>
+          <TableauPanel name="You" who="you" t={s.tableau[me]} score={yourScore} on={yourTurn} sitting={youSitting} />
+          <TableauPanel name={oppName} who="ai" t={s.tableau[opp]} score={oppScore} on={!s.winner && s.turn === opp} sitting={oppSitting} />
           <div className="panel deckbox">
             <span className="deck-l">Deck</span>
             <span className="deck-n">{s.deck.length}</span>
@@ -150,7 +154,7 @@ export function Coloretto() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} you={yourScore} ai={aiScore} onNew={newGame} />}
+      {s.winner && <ResultModal won={myWin} draw={s.winner === 'draw'} oppName={oppName} you={yourScore} opp={oppScore} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -182,16 +186,15 @@ function TableauPanel({ name, who, t, score, on, sitting }: { name: string; who:
   )
 }
 
-function ResultModal({ s, you, ai, onNew }: { s: ColorettoState; you: number; ai: number; onNew: () => void }) {
-  const won = s.winner === 'you', draw = s.winner === 'draw'
+function ResultModal({ won, draw, oppName, you, opp, onNew }: { won: boolean; draw: boolean; oppName: string; you: number; opp: number; onNew: () => void }) {
   return (
     <Modal
       eyebrow={draw ? 'Dead even' : won ? 'Best palette' : 'Out-coloured'}
-      title={draw ? 'A Tie' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'A Tie' : won ? 'You Win' : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {you}</span><span className="foe">Rival {ai}</span></div>
+      <div className="finalsc"><span className="you">You {you}</span><span className="foe">{oppName} {opp}</span></div>
     </Modal>
   )
 }
@@ -201,10 +204,10 @@ function RulesModal({ onClose }: { onClose: () => void }) {
     <Modal eyebrow="How to play" title="Coloretto" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Begin</button>}>
       <div className="modal-body">
-        <p>On your turn do <b>one</b> of two things: <b>Draw</b> the top card and place it onto any row that isn't full (rows hold up to three cards), or <b>Take</b> a row — collect all its cards into your tableau and <i>sit out</i> the rest of the round.</p>
+        <p>On your turn do <b>one</b> of two things: <b>Flip</b> — pick a row that isn't full (rows hold up to three cards) and the top card is turned face-up onto it, or <b>Take</b> a row — collect all its cards into your tableau and <i>sit out</i> the rest of the round.</p>
         <p>A round ends once both players have taken a row; fresh rows are dealt and play continues. When the <b>last-round</b> marker surfaces in the deck, the current round is the final one.</p>
         <p><b>Scoring:</b> your <b>three best colours score positively</b>, every other colour <b>counts against you</b>. For <i>n</i> cards of a colour the value is 1, 3, 6, 10, 15, then 21 (capped). Each <b>+2</b> card adds two flat. Highest total wins.</p>
-        <p><b>Keys:</b> <kbd>D</kbd> draw · <kbd>T</kbd> take · <kbd>N</kbd> new · <kbd>?</kbd> rules · <kbd>Esc</kbd> cancel.</p>
+        <p><b>Keys:</b> <kbd>F</kbd> flip · <kbd>T</kbd> take · <kbd>N</kbd> new · <kbd>?</kbd> rules · <kbd>Esc</kbd> cancel.</p>
       </div>
     </Modal>
   )

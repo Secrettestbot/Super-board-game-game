@@ -6,7 +6,10 @@ import { memoryPair } from '../../net/transport'
 
 // A full legal amazons turn for the side to move = glide an amazon, then burn a square.
 function legalTurn(s: AZ.AmazonsState, side: AZ.Side): AmazonsIntent {
-  const t = AZ.randomTurn(s.board, side)!
+  // Prefer a turn whose arrow does NOT land back on the origin (a legal but special case),
+  // so callers can assert the origin square ends up empty.
+  let t = AZ.randomTurn(s.board, side)!
+  for (let k = 0; k < 60 && t.shoot === t.from; k++) t = AZ.randomTurn(s.board, side)!
   return { from: t.from, to: t.to, arrow: t.shoot }
 }
 

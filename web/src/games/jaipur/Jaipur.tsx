@@ -1,21 +1,31 @@
 /* JAIPUR — UI (built for this codebase). A Rajasthan bazaar on the framework shell:
-   a 5-slot market, your goods hand + camel herd, the rival's tallies, the goods-token
-   stacks, and a short log. You TAKE goods/camels (or swap) or SELL a selected set vs a
-   greedy AI. Single round — most rupees wins. */
+   a 5-slot market, your goods hand + camel herd, the opponent's tallies, the goods-token
+   stacks, and a short log. You TAKE goods/camels (or swap) or SELL a selected set.
+
+   Online-capable via useGameSession(jaipurAdapter): the hook drives the AI for any empty
+   seat and serves guests a per-seat redacted view, so the opponent's private hand cards and
+   the face-down deck never reach you. Everything below is rendered relative to mySeat —
+   your caravan, herd and tokens are your own seat's; the other seat is the opponent. Single
+   round — most rupees wins. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { jaipurAdapter } from './net'
 import * as JP from './logic'
-import type { JaipurState, Good } from './logic'
+import type { Good, Side } from './logic'
 
 const { GOODS, GOOD_LABEL, EXPENSIVE, HAND_LIMIT } = JP
 
 const GOOD_GLYPH: Record<Good, string> = {
   diamond: '◆', gold: '⬤', silver: '⬤', cloth: '⬗', spice: '✦', leather: '❖',
 }
+
+/** Seat 0 <-> 'you', seat 1 <-> 'foe' (matches the adapter). */
+const SIDE: Side[] = ['you', 'foe']
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -28,40 +38,47 @@ const TITLE_MARK = (
 )
 
 export function Jaipur() {
-  const [s, setS] = useState<JaipurState>(() => JP.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(jaipurAdapter)
   const [showRules, setShowRules] = useState(false)
   const [pickGood, setPickGood] = useState<Good | null>(null)
 
-  function newGame() { setS(JP.makeGame()); setShowRules(false); setPickGood(null) }
+  const mine: Side = SIDE[mySeat] // your side in the logic's encoding
+  const opp: Side = mine === 'you' ? 'foe' : 'you'
 
-  useAITurn(!s.winner && s.turn === 'foe', () => setS(p => JP.aiTurn(p)), { delayMs: 620 })
+  function newGame() { netNew(); setShowRules(false); setPickGood(null) }
+
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => { setShowRules(false); setPickGood(null) } })
 
-  const yourTurn = !s.winner && s.turn === 'you'
-  const handFull = JP.handCount(s, 'you') >= HAND_LIMIT
+  const yourTurn = s.winner == null && isMyTurn
+  const handFull = JP.handCount(s, mine) >= HAND_LIMIT
 
   const handCounts = useMemo(() => {
     const m = {} as Record<Good, number>
-    for (const g of GOODS) m[g] = s.hand.you.filter(x => x === g).length
+    for (const g of GOODS) m[g] = s.hand[mine].filter(x => x === g).length
     return m
-  }, [s.hand.you])
+  }, [s.hand, mine])
 
-  function take(i: number) { if (yourTurn && !handFull) setS(JP.takeGood(s, 'you', i)) }
-  function camels() { if (yourTurn && JP.marketCamels(s) > 0 && !handFull) setS(JP.takeCamels(s, 'you')) }
+  function take(i: number) { if (yourTurn && !handFull) dispatch({ kind: 'take', i }) }
+  function camels() { if (yourTurn && JP.marketCamels(s) > 0 && !handFull) dispatch({ kind: 'takeCamels' }) }
   function doSell() {
-    if (yourTurn && pickGood && JP.canSell(s, 'you', pickGood)) { setS(JP.sell(s, 'you', pickGood)); setPickGood(null) }
+    if (yourTurn && pickGood && JP.canSell(s, mine, pickGood)) {
+      dispatch({ kind: 'sell', good: pickGood, n: handCounts[pickGood] }); setPickGood(null)
+    }
   }
 
-  const yourScore = JP.totalScore(s, 'you'), foeScore = JP.totalScore(s, 'foe')
+  const yourScore = JP.totalScore(s, mine), oppScore = JP.totalScore(s, opp)
   const camelsInMarket = JP.marketCamels(s)
-  const sellable = pickGood ? JP.canSell(s, 'you', pickGood) : false
+  const sellable = pickGood ? JP.canSell(s, mine, pickGood) : false
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+
+  const iWon = s.winner === mine, oppWon = s.winner === opp
 
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = `You win the round — ${yourScore} rupees` }
-  else if (s.winner === 'foe') { bk = 'lose'; banner = `The rival wins — ${foeScore} rupees` }
+  if (iWon) { bk = 'win'; banner = `You win the round — ${yourScore} rupees` }
+  else if (oppWon) { bk = 'lose'; banner = `${oppLabel} wins — ${oppScore} rupees` }
   else if (s.winner === 'tie') { bk = ''; banner = `An even purse — ${yourScore} each` }
   else if (yourTurn) { bk = 'you'; banner = handFull ? 'Hand full — sell a set' : 'Your move — take or sell' }
-  else { bk = 'foe'; banner = 'The rival is trading…' }
+  else { bk = 'foe'; banner = net.online ? `The ${oppLabel.toLowerCase()} is trading…` : 'The rival is trading…' }
 
   return (
     <>
@@ -78,12 +95,12 @@ export function Jaipur() {
         modeRight={<>N · new &nbsp; ? · rules</>}
       >
         <div className="jp-main">
-          {/* rival strip */}
+          {/* opponent strip */}
           <div className="jp-rival">
-            <span className="jp-rl">Rival</span>
-            <span className="jp-chip">{JP.handCount(s, 'foe')} goods</span>
-            <span className="jp-chip camel">🐪 {s.herd.foe}</span>
-            <span className="jp-chip rupee">{foeScore} rupees</span>
+            <span className="jp-rl">{oppLabel}</span>
+            <span className="jp-chip">{JP.handCount(s, opp)} goods</span>
+            <span className="jp-chip camel">🐪 {s.herd[opp]}</span>
+            <span className="jp-chip rupee">{oppScore} rupees</span>
           </div>
 
           {/* market */}
@@ -114,10 +131,10 @@ export function Jaipur() {
 
           {/* your hand + herd */}
           <div className="jp-block">
-            <div className="jp-label">Your Caravan &nbsp;<span className="jp-sub">hand {JP.handCount(s, 'you')}/{HAND_LIMIT} · herd 🐪 {s.herd.you}</span></div>
+            <div className="jp-label">Your Caravan &nbsp;<span className="jp-sub">hand {JP.handCount(s, mine)}/{HAND_LIMIT} · herd 🐪 {s.herd[mine]}</span></div>
             <div className="jp-hand">
               {GOODS.filter(g => handCounts[g] > 0).map(g => {
-                const can = JP.canSell(s, 'you', g)
+                const can = JP.canSell(s, mine, g)
                 return (
                   <button
                     key={g}
@@ -132,17 +149,19 @@ export function Jaipur() {
                   </button>
                 )
               })}
-              {s.hand.you.length === 0 && <div className="jp-empty">No goods yet — take a card from the market.</div>}
-              {s.herd.you > 0 && <div className="jp-good camel"><span className="jp-glyph">🐪</span><span className="jp-cname">Herd</span><span className="jp-qty">×{s.herd.you}</span></div>}
+              {s.hand[mine].length === 0 && <div className="jp-empty">No goods yet — take a card from the market.</div>}
+              {s.herd[mine] > 0 && <div className="jp-good camel"><span className="jp-glyph">🐪</span><span className="jp-cname">Herd</span><span className="jp-qty">×{s.herd[mine]}</span></div>}
             </div>
           </div>
         </div>
 
         <div className="side">
+          <OnlineBar net={net} />
+
           <div className="panel jp-scoreboard">
             <div className={'jp-sc' + (yourTurn ? ' on' : '')}><span className="jp-scn you">You</span><span className="jp-scv">{yourScore}</span></div>
-            <div className={'jp-sc' + (!yourTurn && !s.winner ? ' on' : '')}><span className="jp-scn foe">Rival</span><span className="jp-scv">{foeScore}</span></div>
-            <div className="jp-camelrow">Camels &nbsp; You {s.herd.you} · Rival {s.herd.foe} <span className="jp-camelbonus">(+5 to the bigger herd)</span></div>
+            <div className={'jp-sc' + (s.winner == null && !isMyTurn ? ' on' : '')}><span className="jp-scn foe">{oppLabel}</span><span className="jp-scv">{oppScore}</span></div>
+            <div className="jp-camelrow">Camels &nbsp; You {s.herd[mine]} · {oppLabel} {s.herd[opp]} <span className="jp-camelbonus">(+5 to the bigger herd)</span></div>
           </div>
 
           <div className="panel jp-tokens">
@@ -160,22 +179,21 @@ export function Jaipur() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} you={yourScore} foe={foeScore} onNew={newGame} />}
+      {s.winner && <ResultModal won={iWon} tie={s.winner === 'tie'} you={yourScore} opp={oppScore} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, you, foe, onNew }: { s: JaipurState; you: number; foe: number; onNew: () => void }) {
-  const won = s.winner === 'you', tie = s.winner === 'tie'
+function ResultModal({ won, tie, you, opp, oppLabel, onNew }: { won: boolean; tie: boolean; you: number; opp: number; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={tie ? 'Even purses' : won ? 'Master merchant' : 'Out-traded'}
-      title={tie ? 'A Tie' : won ? 'You Win' : 'Rival Wins'}
+      title={tie ? 'A Tie' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Trade again</button>}
     >
-      <div className="finalsc"><span className="you">You {you}</span><span className="foe">Rival {foe}</span></div>
+      <div className="finalsc"><span className="you">You {you}</span><span className="foe">{oppLabel} {opp}</span></div>
     </Modal>
   )
 }

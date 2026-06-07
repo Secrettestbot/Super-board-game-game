@@ -9,8 +9,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { sushiGoAdapter } from './net'
 import * as SG from './logic'
 import type { SushiState, Card, Kind } from './logic'
 
@@ -68,50 +70,63 @@ function groupCollection(cards: Card[]): { rep: Card; n: number }[] {
   return order.map(k => map.get(k)!)
 }
 
+/** Seat-relative display name: your seat reads "You"; others read "Opponent"/"Player N"
+ *  online, or their solo label (AI 1 / AI 2) when offline. */
+function displayName(seat: number, mySeat: number, online: boolean, numSeats: number): string {
+  if (seat === mySeat) return 'You'
+  if (!online) return SG.seatName(seat)
+  return numSeats <= 2 ? 'Opponent' : `Player ${seat + 1}`
+}
+
+/** Label for the winning seat (resolved from the logic's string label) relative to you. */
+function oppLabel(winnerLabel: string, mySeat: number, online: boolean): string {
+  if (!online) return winnerLabel
+  // winnerLabel is one of SEAT_NAMES; map back to a seat index for a relative label.
+  const seat = SG.SEAT_NAMES.indexOf(winnerLabel)
+  if (seat < 0 || seat === mySeat) return winnerLabel
+  return SG.NPLAYERS <= 2 ? 'Opponent' : `Player ${seat + 1}`
+}
+
 export function SushiGo() {
-  const [s, setS] = useState<SushiState>(() => SG.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(sushiGoAdapter)
   const [showRules, setShowRules] = useState(false)
-  // Chopsticks staging for seat 0: when armed, the first click selects card A,
+  // Chopsticks staging for your seat: when armed, the first click selects card A,
   // the second click selects card B and commits a double-pick.
   const [chopArmed, setChopArmed] = useState(false)
   const [firstPick, setFirstPick] = useState<number | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
 
   function newGame() {
-    setS(SG.makeGame()); setShowRules(false); setChopArmed(false); setFirstPick(null)
+    netNew(); setShowRules(false); setChopArmed(false); setFirstPick(null)
   }
 
-  // Seat 0 has picked iff pending[0] != null. While the round is drafting and seat 0
-  // HAS chosen but not everyone has, the AI need to fill in — and then reveal. We resolve
-  // the AI + reveal in one onStep; it re-arms on s.step.
-  const aiActive = s.phase === 'draft' && s.pending[0] != null && !SG.allPicked(s)
-  useAITurn(aiActive, () => {
-    setS(prev => {
-      let next = SG.aiPickAll(prev)
-      if (SG.allPicked(next)) next = SG.reveal(next)
-      return next
-    })
-    setChopArmed(false); setFirstPick(null)
-  }, { delayMs: 520, tick: s.step })
+  // The AI driver lives inside useGameSession (it fills any unowned seat). The reveal is
+  // folded into the move that completes the turn by the adapter, so nothing extra is needed.
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = 0 }, [s.log])
 
-  const yourTurn = s.phase === 'draft' && s.pending[0] == null
-  const myHand = s.hands[0]
+  // Seat-relative: "you" are mySeat. yourTurn gates your pick; you've picked iff your
+  // pending slot is filled.
+  const yourTurn = s.phase === 'draft' && isMyTurn && s.pending[mySeat] == null
+  const myHand = s.hands[mySeat]
+  const numSeats = s.hands.length
+  // Seats other than yours, rendered as the opponents' row.
+  const foeSeats = Array.from({ length: numSeats }, (_, i) => i).filter(i => i !== mySeat)
+  const nameOf = (seat: number) => displayName(seat, mySeat, net.online, numSeats)
 
   function commitSingle(cardId: number) {
     if (!yourTurn) return
-    setS(SG.setPick(s, 0, cardId))
+    dispatch({ kind: 'pick', cardId })
   }
   function commitDouble(aId: number, bId: number) {
     if (!yourTurn) return
-    setS(SG.setPick(s, 0, aId, bId))
+    dispatch({ kind: 'pick', cardId: aId, extraId: bId })
     setChopArmed(false); setFirstPick(null)
   }
 
   function onCardClick(cardId: number) {
     if (!yourTurn) return
-    if (chopArmed && SG.hasChopsticks(s, 0) && myHand.length >= 2) {
+    if (chopArmed && SG.hasChopsticks(s, mySeat) && myHand.length >= 2) {
       if (firstPick == null) { setFirstPick(cardId); return }
       if (firstPick === cardId) { setFirstPick(null); return } // toggle off
       commitDouble(firstPick, cardId); return
@@ -120,7 +135,7 @@ export function SushiGo() {
   }
 
   function toggleChop() {
-    if (!yourTurn || !SG.hasChopsticks(s, 0) || myHand.length < 2) return
+    if (!yourTurn || !SG.hasChopsticks(s, mySeat) || myHand.length < 2) return
     setChopArmed(a => !a); setFirstPick(null)
   }
 
@@ -130,7 +145,7 @@ export function SushiGo() {
     onEscape: () => { setShowRules(false); setChopArmed(false); setFirstPick(null) },
     extra: (e) => {
       if (s.phase !== 'draft' || !yourTurn) return false
-      if ((e.key === 'c' || e.key === 'C') && SG.hasChopsticks(s, 0) && myHand.length >= 2) { toggleChop(); return true }
+      if ((e.key === 'c' || e.key === 'C') && SG.hasChopsticks(s, mySeat) && myHand.length >= 2) { toggleChop(); return true }
       const n = Number(e.key)
       if (n >= 1 && n <= myHand.length) { onCardClick(myHand[n - 1].id); return true }
       return false
@@ -138,11 +153,13 @@ export function SushiGo() {
   })
 
   // ---- banner -----------------------------------------------------------------
+  // Seat-relative: you win iff the winning label is YOUR seat's label.
+  const iWon = s.winner === SG.seatName(mySeat)
   let banner: string, bk = ''
   if (s.phase === 'gameEnd') {
-    if (s.winner === 'You') { bk = 'win'; banner = `You win with ${s.scores[0]} points!` }
+    if (iWon) { bk = 'win'; banner = `You win with ${s.scores[mySeat]} points!` }
     else if (s.winner === 'Tie') { bk = ''; banner = 'The table ties!' }
-    else { bk = 'lose'; banner = `${s.winner} wins — you scored ${s.scores[0]}` }
+    else { bk = 'lose'; banner = `${oppLabel(s.winner, mySeat, net.online)} wins — you scored ${s.scores[mySeat]}` }
   } else if (yourTurn) {
     bk = 'you'
     banner = chopArmed
@@ -175,24 +192,24 @@ export function SushiGo() {
         <div className="sg-wrap">
           {/* opponents' plates */}
           <div className="sg-foes">
-            {[1, 2].map(seat => (
-              <Plate key={seat} s={s} seat={seat} on={!yourTurn} leader={leader} />
+            {foeSeats.map(seat => (
+              <Plate key={seat} s={s} seat={seat} on={!yourTurn} leader={leader} name={nameOf(seat)} />
             ))}
           </div>
 
           {/* your plate */}
-          <Plate s={s} seat={0} on={yourTurn} leader={leader} you />
+          <Plate s={s} seat={mySeat} on={yourTurn} leader={leader} name="You" you />
 
           {/* your hand */}
           <div className="sg-handzone">
             <div className="sg-handhead">
               <span className="sg-handlabel">Your hand</span>
-              {SG.hasChopsticks(s, 0) && yourTurn && myHand.length >= 2 && (
+              {SG.hasChopsticks(s, mySeat) && yourTurn && myHand.length >= 2 && (
                 <button className={'sg-chopbtn' + (chopArmed ? ' on' : '')} onClick={toggleChop}>
                   🥢 {chopArmed ? 'taking two…' : 'use chopsticks'}
                 </button>
               )}
-              {s.pending[0] != null && s.phase === 'draft' && <span className="sg-locked">locked in ✓</span>}
+              {s.pending[mySeat] != null && s.phase === 'draft' && <span className="sg-locked">locked in ✓</span>}
             </div>
             <div className="sg-hand">
               {myHand.length === 0
@@ -213,17 +230,18 @@ export function SushiGo() {
         </div>
 
         <div className="side">
+          <OnlineBar net={net} />
           <div className="panel sg-score">
-            {SG.SEAT_NAMES.map((nm, seat) => (
-              <div key={seat} className={'sg-srow' + (seat === leader && s.phase === 'gameEnd' ? ' lead' : '') + (s.phase !== 'gameEnd' && ((seat === 0) === yourTurn) ? ' on' : '')}>
-                <span className={'sg-pawn ' + (seat === 0 ? 'you' : 'foe')} />
-                <span className="sg-name">{nm}</span>
+            {Array.from({ length: numSeats }, (_, seat) => seat).map(seat => (
+              <div key={seat} className={'sg-srow' + (seat === leader && s.phase === 'gameEnd' ? ' lead' : '') + (s.phase !== 'gameEnd' && ((seat === mySeat) === yourTurn) ? ' on' : '')}>
+                <span className={'sg-pawn ' + (seat === mySeat ? 'you' : 'foe')} />
+                <span className="sg-name">{nameOf(seat)}</span>
                 <span className="sg-pud" title="puddings banked">🍮 {s.puddings[seat]}</span>
                 <span className="sg-pts">{s.scores[seat]}</span>
               </div>
             ))}
             {s.phase !== 'gameEnd' && (
-              <div className="sg-roundnote">last round: {SG.SEAT_NAMES.map((n, i) => `${n.split(' ')[0]} ${s.roundScores[i]}`).join(' · ')}</div>
+              <div className="sg-roundnote">last round: {Array.from({ length: numSeats }, (_, i) => `${nameOf(i).split(' ')[0]} ${s.roundScores[i]}`).join(' · ')}</div>
             )}
           </div>
 
@@ -233,13 +251,13 @@ export function SushiGo() {
         </div>
       </GameShell>
 
-      {s.phase === 'gameEnd' && <ResultModal s={s} onNew={newGame} />}
+      {s.phase === 'gameEnd' && <ResultModal s={s} onNew={newGame} mySeat={mySeat} online={net.online} nameOf={nameOf} iWon={iWon} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function Plate({ s, seat, on, leader, you }: { s: SushiState; seat: number; on: boolean; leader: number; you?: boolean }) {
+function Plate({ s, seat, on, leader, name, you }: { s: SushiState; seat: number; on: boolean; leader: number; name: string; you?: boolean }) {
   const piles = groupCollection(s.collected[seat])
   const picked = s.phase === 'draft' && s.pending[seat] != null
   const makiTotal = SG.makiIcons(s.collected[seat])
@@ -247,7 +265,7 @@ function Plate({ s, seat, on, leader, you }: { s: SushiState; seat: number; on: 
     <div className={'sg-plate' + (you ? ' you' : '') + (on ? ' active' : '') + (seat === leader && s.phase === 'gameEnd' ? ' winner' : '')}>
       <div className="sg-platehead">
         <span className={'sg-pawn ' + (you ? 'you' : 'foe')} />
-        <span className="sg-pname">{SG.seatName(seat)}</span>
+        <span className="sg-pname">{name}</span>
         <span className="sg-platemeta">
           {makiTotal > 0 && <span className="sg-makicount">🍙×{makiTotal}</span>}
           <span className="sg-platescore">{s.scores[seat]}</span>
@@ -268,27 +286,30 @@ function Plate({ s, seat, on, leader, you }: { s: SushiState; seat: number; on: 
   )
 }
 
-function ResultModal({ s, onNew }: { s: SushiState; onNew: () => void }) {
-  const won = s.winner === 'You'
+function ResultModal({ s, onNew, mySeat, online, nameOf, iWon }: {
+  s: SushiState; onNew: () => void; mySeat: number; online: boolean; nameOf: (seat: number) => string; iWon: boolean
+}) {
   const tie = s.winner === 'Tie'
+  const numSeats = s.hands.length
+  const title = iWon ? 'You Win!' : tie ? 'A Tie' : `${oppLabel(s.winner ?? '', mySeat, online)} Wins`
   return (
     <Modal
-      eyebrow={won ? 'Oishii!' : tie ? 'Dead heat' : 'Itadakimasu'}
-      title={won ? 'You Win!' : tie ? 'A Tie' : `${s.winner} Wins`}
+      eyebrow={iWon ? 'Oishii!' : tie ? 'Dead heat' : 'Itadakimasu'}
+      title={title}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="modal-body">
         <div className="sg-final">
-          {SG.SEAT_NAMES.map((nm, i) => (
-            <div key={i} className={'sg-finalrow' + (s.winner === nm ? ' win' : '')}>
-              <span className={i === 0 ? 'you' : 'foe'}>{nm}</span>
+          {Array.from({ length: numSeats }, (_, i) => i).map(i => (
+            <div key={i} className={'sg-finalrow' + (s.winner === SG.seatName(i) ? ' win' : '')}>
+              <span className={i === mySeat ? 'you' : 'foe'}>{nameOf(i)}</span>
               <span className="sg-finalpts">{s.scores[i]} pts</span>
               <span className="sg-finalpud">🍮 {s.puddings[i]}</span>
             </div>
           ))}
         </div>
-        <p className="sg-finalnote">Three rounds plated, puddings counted. {won ? 'A masterful drafting run.' : tie ? 'Right down to the last roll.' : 'Better luck on the next conveyor.'}</p>
+        <p className="sg-finalnote">Three rounds plated, puddings counted. {iWon ? 'A masterful drafting run.' : tie ? 'Right down to the last roll.' : 'Better luck on the next conveyor.'}</p>
       </div>
     </Modal>
   )

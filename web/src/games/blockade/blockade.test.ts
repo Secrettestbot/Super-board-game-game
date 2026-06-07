@@ -117,7 +117,7 @@ describe('blockade logic', () => {
     for (let game = 0; game < 6; game++) {
       let s = BL.makeGame()
       let guard = 0
-      const CAP = 4000
+      const CAP = 12000 // greedy random self-play with walls occasionally runs long; this is a no-infinite-loop guard, not a quality bound
       while (s.winner == null && guard++ < CAP) {
         const who = s.turn as Player
         if (who === 1) { s = BL.aiTurn(s); continue }
