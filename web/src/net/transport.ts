@@ -54,11 +54,16 @@ class ChannelTransport implements Transport {
   // The data channel may not exist yet: the host creates it up front, but the guest only
   // receives it (via pc.ondatachannel) once the connection establishes — which can't happen
   // until AFTER the guest has handed its answer code back. So the channel is bound lazily.
+  private dead = false
   constructor(private pc: RTCPeerConnection, dc?: RTCDataChannel) {
-    // a sudden teardown of the peer connection also means the channel is gone
+    // Surface a genuine failure (ICE gave up) as a close — whether or not the channel ever
+    // opened. 'disconnected' is transient (can recover), so we do NOT treat it as terminal;
+    // only 'failed'/'closed' are. No time-based giving up here — the manual offer/answer
+    // exchange can take as long as two humans need.
     pc.onconnectionstatechange = () => {
       const st = pc.connectionState
-      if ((st === 'failed' || st === 'disconnected' || st === 'closed') && this.open) {
+      if ((st === 'failed' || st === 'closed') && !this.dead) {
+        this.dead = true
         this.open = false
         this.closeCbs.forEach(c => c())
       }

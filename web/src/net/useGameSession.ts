@@ -116,13 +116,8 @@ export function useGameSession<S, I>(adapter: GameAdapter<S, I>): GameSession<S,
     }
     pendingHostRef.current = null
     setOfferCode(undefined) // consumed; host can mint a fresh offer for the next guest
-    // Watchdog: if the data channel never opens, tell the host instead of hanging forever.
-    window.setTimeout(() => {
-      if (hostRef.current && hostRef.current.guestCount() === 0) {
-        console.info('[net] host: no guest connected within 20s — likely a NAT/network block')
-        setStatus('error'); force()
-      }
-    }, 20000)
+    // No time-based watchdog: a real failure is surfaced by the transport's onClose (ICE
+    // 'failed'). The connection is given as long as the peers need.
   }, [])
 
   const joinFromOffer = useCallback(async (offer: string): Promise<string> => {
@@ -145,14 +140,8 @@ export function useGameSession<S, I>(adapter: GameAdapter<S, I>): GameSession<S,
     transport.onClose(() => { setStatus('error'); force() })
     setAnswerCode(ans)
     force()
-    // Watchdog: if we never connect after handing back the answer, surface an error.
-    window.setTimeout(() => {
-      if (!transport.open) {
-        console.info('[net] guest: not connected within 30s — host may not have pasted the code, or a NAT/network block')
-        setStatus(s => (s === 'guest' ? s : 'error'))
-        force()
-      }
-    }, 30000)
+    // No time-based watchdog: the answer code stays valid as long as needed; an error is
+    // shown only if the connection actually fails (transport.onClose).
     return ans
   }, [adapter])
 
