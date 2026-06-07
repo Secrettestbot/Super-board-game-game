@@ -184,3 +184,7 @@ body {
 .ob-seat.host { border-color: var(--accent-d); color: var(--accent); }
 .ob-seat.guest { border-color: var(--good); color: var(--good); }
 .ob-seat.ai { color: var(--ink-3); }
+
+/* Guest "connecting" overlay (covers the placeholder board until the P2P channel opens). */
+.ob-connect-overlay { z-index: 50; }
+.ob-connect-overlay .modal-body p { text-align: left; }

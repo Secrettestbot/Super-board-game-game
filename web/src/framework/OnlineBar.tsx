@@ -46,23 +46,40 @@ export function OnlineBar({ net }: { net: OnlineController }) {
   // ---- guest view -------------------------------------------------------------
   if (net.online && !net.amHost) {
     const connected = net.status === 'guest'
+    // Until the P2P channel actually opens, the guest hasn't been assigned a side yet and
+    // the board behind this is just a local placeholder — so cover it with an overlay to
+    // avoid the "I'm White too?" confusion. It clears automatically once connected.
     return (
       <div className="ob-wrap">
         <div className="ob-status">
           <span className={'ob-dot ' + (connected ? 'ok' : net.status === 'error' ? '' : 'wait')} />
-          {connected ? 'Connected to host'
-            : net.status === 'error' ? 'Connection failed — bad or expired invite link'
-            : net.answerCode ? 'Almost there — send your code back'
-            : 'Joining…'}
+          {connected ? 'Connected to host' : 'Joining…'}
         </div>
-        {!connected && net.answerCode && (
-          <div className="ob-panel">
-            <p className="ob-hint"><b>Send this code back to the host</b> to finish connecting (they paste it into their "answer code" box):</p>
-            <CopyField label="Your code" value={net.answerCode} />
-            <p className="ob-hint">Then wait here — the game starts automatically once they connect you.</p>
+        <SeatList net={net} />
+        {!connected && (
+          <div className="overlay ob-connect-overlay">
+            <div className="modal">
+              <div className="modal-eye">Online · joining</div>
+              <h2 className="modal-title">
+                {net.status === 'error' ? 'Connection failed'
+                  : net.answerCode ? 'Almost there' : 'Connecting…'}
+              </h2>
+              <div className="modal-body">
+                {net.status === 'error' ? (
+                  <p>The invite link was invalid or expired. Ask the host for a fresh "Host online" link and open it again.</p>
+                ) : net.answerCode ? (
+                  <>
+                    <p><b>Send this code back to the host</b> — they paste it into their “answer code” box to connect you:</p>
+                    <CopyField label="Your code" value={net.answerCode} />
+                    <p>Then keep this tab open — the game starts automatically once the host connects you.</p>
+                  </>
+                ) : (
+                  <p>Generating your connection code…</p>
+                )}
+              </div>
+            </div>
           </div>
         )}
-        <SeatList net={net} />
       </div>
     )
   }
