@@ -6,12 +6,16 @@ import { useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { tsuroAdapter } from './net'
 import * as TS from './logic'
-import type { TsuroState, Tile, Stone } from './logic'
+import type { TsuroState, Tile, Stone, Player } from './logic'
 
 const { N } = TS
+
+const SEAT_PLAYER: Player[] = ['you', 'foe']
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -51,16 +55,20 @@ function TilePaths({ tile, size, faint }: { tile: Tile; size: number; faint?: bo
 }
 
 export function Tsuro() {
-  const [s, setS] = useState<TsuroState>(() => TS.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(tsuroAdapter)
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState(0)        // selected hand index
   const [rot, setRot] = useState(0)        // chosen rotation (quarters)
 
-  function newGame() { setS(TS.makeGame()); setShowRules(false); setSel(0); setRot(0) }
+  const me: Player = SEAT_PLAYER[mySeat] ?? 'you'
+  const foePlayer: Player = me === 'you' ? 'foe' : 'you'
+  const myHand = s.hands[me]
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
 
-  const yourTurn = !s.winner && s.turn === 'you'
+  function newGame() { netNew(); setShowRules(false); setSel(0); setRot(0) }
 
-  useAITurn(!s.winner && s.turn === 'foe', () => setS(p => TS.aiMove(p)), { delayMs: 560 })
+  const yourTurn = !s.winner && isMyTurn
+
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
@@ -69,33 +77,36 @@ export function Tsuro() {
       if (!yourTurn) return false
       if (e.key === 'r' || e.key === 'R') { setRot(v => (v + 1) % 4); return true }
       if (e.key === 'Enter' || e.key === ' ') { commit(); return true }
-      if (e.key >= '1' && e.key <= '3') { const i = +e.key - 1; if (i < s.hands.you.length) { setSel(i); return true } }
+      if (e.key >= '1' && e.key <= '3') { const i = +e.key - 1; if (i < myHand.length) { setSel(i); return true } }
       return false
     },
   })
 
   function commit() {
     if (!yourTurn) return
-    if (sel >= s.hands.you.length) return
-    setS(TS.place(s, sel, rot)); setSel(0); setRot(0)
+    if (sel >= myHand.length) return
+    dispatch({ kind: 'place', tileId: sel, rotation: rot }); setSel(0); setRot(0)
   }
 
-  const yourStone = s.stones.find(x => x.who === 'you')!
-  const foeStone = s.stones.find(x => x.who === 'foe')!
+  const yourStone = s.stones.find(x => x.who === me)!
+  const foeStone = s.stones.find(x => x.who === foePlayer)!
   const target = yourTurn ? yourStone.cell : null
 
   // preview tile (rotated) over the forced cell
   const preview = useMemo<Tile | null>(() => {
-    if (!yourTurn || sel >= s.hands.you.length) return null
-    return TS.rotateTile(s.hands.you[sel], rot)
-  }, [yourTurn, sel, rot, s.hands.you])
+    if (!yourTurn || sel >= myHand.length) return null
+    return TS.rotateTile(myHand[sel], rot)
+  }, [yourTurn, sel, rot, myHand])
 
+  const iWon = s.winner === me
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = 'You win — last dragon on the board' }
-  else if (s.winner === 'foe') { bk = 'lose'; banner = 'The rival wins — your dragon fell' }
-  else if (s.winner === 'draw') { bk = ''; banner = 'A draw — both dragons fell together' }
+  if (s.winner === 'draw') { bk = ''; banner = 'A draw — both dragons fell together' }
+  else if (s.winner != null) {
+    if (iWon) { bk = 'win'; banner = 'You win — last dragon on the board' }
+    else { bk = 'lose'; banner = `${oppLabel} wins — your dragon fell` }
+  }
   else if (yourTurn) { bk = 'you'; banner = 'Your turn — place a path in front of your dragon' }
-  else { bk = 'foe'; banner = 'The rival is charting a path…' }
+  else { bk = 'foe'; banner = `${oppLabel} is charting a path…` }
 
   const survivors = s.stones.filter(x => x.alive).length
 
@@ -118,21 +129,25 @@ export function Tsuro() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
+
           <div className="panel ts-turn">
-            <div className={'ts-who you' + (s.turn === 'you' && !s.winner ? ' on' : '') + (yourStone.alive ? '' : ' dead')}>
+            <div className={'ts-who you' + (s.turn === me && !s.winner ? ' on' : '') + (yourStone.alive ? '' : ' dead')}>
               <span className="ts-dot you" /><span className="ts-name">Your dragon</span>
               <span className="ts-state">{yourStone.alive ? 'on the board' : 'fallen'}</span>
             </div>
-            <div className={'ts-who foe' + (s.turn === 'foe' && !s.winner ? ' on' : '') + (foeStone.alive ? '' : ' dead')}>
-              <span className="ts-dot foe" /><span className="ts-name">Rival dragon</span>
+            <div className={'ts-who foe' + (s.turn === foePlayer && !s.winner ? ' on' : '') + (foeStone.alive ? '' : ' dead')}>
+              <span className="ts-dot foe" /><span className="ts-name">{oppLabel} dragon</span>
               <span className="ts-state">{foeStone.alive ? 'on the board' : 'fallen'}</span>
             </div>
           </div>
 
           <div className="panel ts-hand">
-            <div className="panel-l">Your hand · {s.hands.you.length} tiles</div>
+            <div className="panel-l">Your hand · {myHand.length} tiles</div>
             <div className="ts-tiles">
-              {s.hands.you.map((t, i) => {
+              {myHand.map((t, i) => {
                 const shown = i === sel ? TS.rotateTile(t, rot) : t
                 return (
                   <button key={i} className={'ts-tile' + (i === sel ? ' sel' : '')} disabled={!yourTurn}
@@ -155,7 +170,7 @@ export function Tsuro() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {s.winner && <ResultModal s={s} won={iWon} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -200,12 +215,12 @@ function Board({ s, target, preview, yourStone, foeStone }: {
   )
 }
 
-function ResultModal({ s, onNew }: { s: TsuroState; onNew: () => void }) {
-  const won = s.winner === 'you', draw = s.winner === 'draw'
+function ResultModal({ s, won, oppLabel, onNew }: { s: TsuroState; won: boolean; oppLabel: string; onNew: () => void }) {
+  const draw = s.winner === 'draw'
   return (
     <Modal
       eyebrow={draw ? 'Both fell' : won ? 'Path mastered' : 'Driven off'}
-      title={draw ? 'A Draw' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'A Draw' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
@@ -213,8 +228,8 @@ function ResultModal({ s, onNew }: { s: TsuroState; onNew: () => void }) {
         <p>{draw
           ? 'Both dragons rode off the board on the same move — an even ending.'
           : won
-            ? 'The rival dragon was driven off the edge. Yours holds the board alone.'
-            : 'Your dragon rode off the edge. The rival holds the board.'}</p>
+            ? `The ${oppLabel.toLowerCase()} dragon was driven off the edge. Yours holds the board alone.`
+            : 'Your dragon rode off the edge. The other dragon holds the board.'}</p>
       </div>
     </Modal>
   )

@@ -1,13 +1,16 @@
-/* RUMMIKUB — UI. You vs a greedy AI on a felt table of melds. Your sorted rack
-   sits below; select tiles to FORM a new meld or EXTEND a table meld, then Play.
-   Or Draw. The AI takes its whole turn in one onStep (re-armed on s.step). End
-   state is shown by default via the result modal. */
+/* RUMMIKUB — UI. You vs a greedy AI (solo) or a remote human (online) on a felt table of
+   melds. Your sorted rack sits below; select tiles to FORM a new meld or EXTEND a table meld,
+   then Play. Or Draw. Online play is host-authoritative via useGameSession(rummikubAdapter):
+   the AI fills any empty seat, and the view is redacted per seat so you never see the other
+   rack or the bag. Seat-relative: "your" rack is racks[mySeat], the opponent is the other seat. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { rummikubAdapter } from './net'
 import * as R from './logic'
 import type { State, Tile, Meld } from './logic'
 
@@ -62,20 +65,23 @@ function sortRack(rack: Tile[]): Tile[] {
 }
 
 export function Rummikub() {
-  const [s, setS] = useState<State>(() => R.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(rummikubAdapter)
+  const oppSeat = mySeat === 0 ? 1 : 0
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<Set<number>>(new Set())       // selected rack tile ids
   const [target, setTarget] = useState<number | null>(null)    // table meld index to extend (null = new meld)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(R.makeGame()); setSel(new Set()); setTarget(null); setShowRules(false) }
-
-  const aiActive = s.winner == null && s.turn === 1
-  useAITurn(aiActive, () => setS((p) => stepAI(p)), { delayMs: 720, tick: s.step })
+  function newGame() { netNew(); setSel(new Set()); setTarget(null); setShowRules(false) }
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
 
-  const yourTurn = s.winner == null && s.turn === 0
+  const over = s.winner != null
+  const yourTurn = !over && isMyTurn
+
+  // Labels: a remote human is "Opponent"; the AI is "AI". You are "You" / "Player N" online.
+  const oppLabel = net.online ? 'Opponent' : 'AI'
+  const youLabel = net.online ? `Player ${mySeat + 1}` : 'You'
 
   useGameKeys({
     onNew: newGame,
@@ -98,7 +104,8 @@ export function Rummikub() {
     })
   }
 
-  const selTiles = (): Tile[] => s.racks[0].filter((t) => sel.has(t.id))
+  const myRack = s.racks[mySeat]
+  const selTiles = (): Tile[] => myRack.filter((t) => sel.has(t.id))
 
   // Build the candidate play for the current selection + target.
   function buildPlay(): { table: Meld[]; used: number[]; ok: boolean; reason: string } {
@@ -115,11 +122,11 @@ export function Rummikub() {
     }
     const used = chosen.map((t) => t.id)
     // validate via engine dry-run
-    const res = R.play(s, 0, newTable, used)
+    const res = R.play(s, mySeat as R.Player, newTable, used)
     if (!res) {
       let reason = 'That is not a legal play.'
       if (!R.isValidTable(newTable)) reason = 'Those tiles do not form valid melds.'
-      else if (!s.hasMelded[0]) reason = `Your first play must total ${R.INITIAL_MIN}+ from new tiles.`
+      else if (!s.hasMelded[mySeat]) reason = `Your first play must total ${R.INITIAL_MIN}+ from new tiles.`
       return { table: newTable, used, ok: false, reason }
     }
     return { table: newTable, used, ok: true, reason: '' }
@@ -129,13 +136,13 @@ export function Rummikub() {
     if (!yourTurn) return
     const p = buildPlay()
     if (!p.ok) return
-    const res = R.play(s, 0, p.table, p.used)
-    if (res) { setS(res); setSel(new Set()); setTarget(null) }
+    dispatch({ kind: 'play', table: p.table, used: p.used })
+    setSel(new Set()); setTarget(null)
   }
 
   function doDraw() {
     if (!yourTurn) return
-    setS(R.draw(s, 0))
+    dispatch({ kind: 'draw' })
     setSel(new Set())
     setTarget(null)
   }
@@ -143,14 +150,14 @@ export function Rummikub() {
   const preview = yourTurn ? buildPlay() : { ok: false, reason: '' }
   const selScore = R.tableScore(sel.size ? [selTiles()] : [])
 
-  // banner
+  // banner — relative to mySeat
   let banner = '', bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You emptied your rack — you win!' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'The AI emptied its rack first.' }
-  else if (yourTurn) { bk = 'you'; banner = s.hasMelded[0] ? 'Your turn — form melds, extend, or draw' : `Your turn — first play needs ${R.INITIAL_MIN}+ points` }
-  else { bk = 'foe'; banner = 'The AI is taking its turn…' }
+  if (s.winner === mySeat) { bk = 'win'; banner = 'You emptied your rack — you win!' }
+  else if (s.winner === oppSeat) { bk = 'lose'; banner = `${oppLabel} emptied their rack first.` }
+  else if (yourTurn) { bk = 'you'; banner = s.hasMelded[mySeat] ? 'Your turn — form melds, extend, or draw' : `Your turn — first play needs ${R.INITIAL_MIN}+ points` }
+  else { bk = 'foe'; banner = net.online ? `${oppLabel} is taking their turn…` : 'The AI is taking its turn…' }
 
-  const rack = sortRack(s.racks[0])
+  const rack = sortRack(myRack)
 
   return (
     <>
@@ -158,20 +165,20 @@ export function Rummikub() {
         mark={TITLE_MARK}
         eyebrow="Rummikub · tile rummy"
         title="Rummikub"
-        subtitle="lay your numbered tiles into groups and runs, race to empty your rack before the AI — but your first play must total thirty"
+        subtitle="lay your numbered tiles into groups and runs, race to empty your rack before your opponent — but your first play must total thirty"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={<>You <b className="rk-cnt">{s.racks[0].length}</b> · AI <b className="rk-cnt">{s.racks[1].length}</b> · Bag <b className="rk-cnt">{s.bag.length}</b></>}
+        modeLeft={<>{youLabel} <b className="rk-cnt">{myRack.length}</b> · {oppLabel} <b className="rk-cnt">{s.racks[oppSeat].length}</b> · Bag <b className="rk-cnt">{s.bag.length}</b></>}
         banner={banner}
         bannerClass={bk}
         modeRight={<>P · play &nbsp; D · draw &nbsp; N · new</>}
       >
         <div className="rk-table">
           <div className="rk-foe-bar">
-            <span className="rk-dot foe" /> AI
-            <span className="rk-meta">{s.racks[1].length} tiles{s.hasMelded[1] ? '' : ' · not melded'}</span>
+            <span className="rk-dot foe" /> {oppLabel}
+            <span className="rk-meta">{s.racks[oppSeat].length} tiles{s.hasMelded[oppSeat] ? '' : ' · not melded'}</span>
             <span className="rk-foe-tiles">
-              {s.racks[1].map((t) => <span key={t.id} className="rk-backtile" />)}
+              {s.racks[oppSeat].map((t) => <span key={t.id} className="rk-backtile" />)}
             </span>
           </div>
 
@@ -202,7 +209,7 @@ export function Rummikub() {
 
           <div className="rk-you-bar">
             <span className="rk-dot you" /> Your rack
-            <span className="rk-meta">{s.racks[0].length} tiles{s.hasMelded[0] ? '' : ' · not melded'}</span>
+            <span className="rk-meta">{myRack.length} tiles{s.hasMelded[mySeat] ? '' : ' · not melded'}</span>
           </div>
           <div className="rk-rack">
             {rack.map((t) => (
@@ -217,6 +224,8 @@ export function Rummikub() {
         </div>
 
         <div className="side">
+          <OnlineBar net={net} />
+
           <div className="panel rk-control">
             <div className="rk-mode">
               <div className={'rk-modeline' + (target == null ? ' on' : '')}>
@@ -239,7 +248,7 @@ export function Rummikub() {
                     : preview.ok
                       ? <span className="ok">Legal play — go!</span>
                       : <span className="warn">{preview.reason}</span>)
-                : 'Waiting for the AI…'}
+                : net.online ? `Waiting for ${oppLabel.toLowerCase()}…` : 'Waiting for the AI…'}
             </div>
 
             <div className="rk-btnrow">
@@ -257,24 +266,12 @@ export function Rummikub() {
         </div>
       </GameShell>
 
-      {s.winner != null && (
-        <ResultModal s={s} onNew={newGame} />
+      {over && (
+        <ResultModal s={s} mySeat={mySeat} oppLabel={oppLabel} onNew={newGame} />
       )}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
-}
-
-/** AI step wrapper: run aiTurn, and if it would stall (bag empty + can't play), resolve. */
-function stepAI(s: State): State {
-  if (s.winner != null || s.turn !== 1) return s
-  const next = R.aiTurn(s)
-  // detect bag-empty stalemate: AI passed (no rack change, no bag change) and neither can play
-  const passed = next.racks[1].length === s.racks[1].length && next.bag.length === s.bag.length && next.winner == null
-  if (passed && next.bag.length === 0 && !R.canPlay(next, 0) && !R.canPlay(next, 1)) {
-    return R.resolveStalemate(next)
-  }
-  return next
 }
 
 /** Merge selected rack tiles into a table meld and re-sort if it's a run. */
@@ -303,13 +300,17 @@ function meldKind(m: Meld): string {
   return 'run'
 }
 
-function ResultModal({ s, onNew }: { s: State; onNew: () => void }) {
-  const youWin = s.winner === 0
+function ResultModal({ s, mySeat, oppLabel, onNew }: { s: State; mySeat: number; oppLabel: string; onNew: () => void }) {
+  const youWin = s.winner === mySeat
   const r = s.result
+  const oppSeat = mySeat === 0 ? 1 : 0
+  // result.youCount/aiCount are seat-0/seat-1; map to mySeat perspective.
+  const myCount = r ? (mySeat === 0 ? r.youCount : r.aiCount) : s.racks[mySeat].length
+  const oppCount = r ? (oppSeat === 0 ? r.youCount : r.aiCount) : s.racks[oppSeat].length
   return (
     <Modal
       eyebrow={youWin ? 'Rack cleared' : 'Outpaced'}
-      title={youWin ? 'You Win!' : 'The AI Wins'}
+      title={youWin ? 'You Win!' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
@@ -317,12 +318,12 @@ function ResultModal({ s, onNew }: { s: State; onNew: () => void }) {
         <div className="rk-result-grid">
           <div className="rk-rcol">
             <div className="rk-rname you">You</div>
-            <div className="rk-rdead">{r ? r.youCount : s.racks[0].length} tiles left</div>
+            <div className="rk-rdead">{myCount} tiles left</div>
           </div>
           <div className="rk-rvs">{youWin ? '✓' : '✕'}</div>
           <div className="rk-rcol">
-            <div className="rk-rname foe">AI</div>
-            <div className="rk-rdead">{r ? r.aiCount : s.racks[1].length} tiles left</div>
+            <div className="rk-rname foe">{oppLabel}</div>
+            <div className="rk-rdead">{oppCount} tiles left</div>
           </div>
         </div>
         {r?.kind === 'bag-empty' && (
@@ -338,10 +339,11 @@ function RulesModal({ onClose }: { onClose: () => void }) {
     <Modal eyebrow="How to play" title="Rummikub" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Deal me in</button>}>
       <div className="modal-body">
-        <p>You and the AI each hold <b>14 tiles</b>. On your turn, lay tiles onto the table or <b>draw</b> one.</p>
+        <p>You and your opponent each hold <b>14 tiles</b>. On your turn, lay tiles onto the table or <b>draw</b> one.</p>
         <p>A valid <b>meld</b> is a <i>group</i> (3–4 tiles of the <b>same number</b>, all <b>different colors</b>) or a <i>run</i> (3+ <b>consecutive</b> numbers in one <b>color</b>). <b>Jokers</b> (★) substitute for any tile.</p>
         <p>Your <b>first play</b> must total at least <b>30 points</b> from tiles off your own rack (jokers count as the tile they stand for). After that you may form new melds or <b>extend</b> existing ones — click a table meld to target it.</p>
         <p>First to <b>empty their rack</b> wins. If the bag runs out and nobody can play, the smaller rack wins.</p>
+        <p><b>Online:</b> host a game and share the code, or paste a code to join — your opponent fills the second seat; any empty seat is played by the AI.</p>
         <p><b>Keys:</b> click tiles to select · click a meld to extend · <kbd>P</kbd> play · <kbd>D</kbd> draw · <kbd>N</kbd> new · <kbd>?</kbd> rules · <kbd>Esc</kbd> clear.</p>
       </div>
     </Modal>

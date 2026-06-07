@@ -1,14 +1,17 @@
 /* QWIRKLE — UI (built for this codebase). A felt table with a sparse tile grid, your six-tile
-   rack, a score panel and a swap control, vs a greedy AI. Select a rack tile, click a glowing
-   empty cell to stage it, then Place. Or select tiles and Swap. */
+   rack, a score panel and a swap control. Select a rack tile, click a glowing empty cell to stage
+   it, then Place. Or select tiles and Swap. Solo vs a greedy AI, or online host/guest via
+   useGameSession — your rack/score are seat-relative (mySeat) and the opponent's rack is hidden. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { qwirkleAdapter, hydrate } from './net'
 import * as Q from './logic'
-import type { QState, Tile, Placement } from './logic'
+import type { Tile, Placement } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -33,7 +36,11 @@ function TileFace({ tile, extra = '' }: { tile: Tile; extra?: string }) {
 type Staged = Placement
 
 export function Qwirkle() {
-  const [s, setS] = useState<QState>(() => Q.makeGame())
+  const { state: raw, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(qwirkleAdapter)
+  // The board is a Map that doesn't survive the wire; hydrate rebuilds it from the redacted view.
+  const s = useMemo(() => hydrate(raw), [raw])
+  const oppSeat = mySeat === 0 ? 1 : 0
+
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number | null>(null)      // selected rack tile id
   const [staged, setStaged] = useState<Staged[]>([])        // tiles tentatively placed this turn
@@ -43,14 +50,12 @@ export function Qwirkle() {
   function reset() {
     setSel(null); setStaged([]); setSwapSel(new Set()); setHint('')
   }
-  function newGame() { setS(Q.makeGame()); reset(); setShowRules(false) }
+  function newGame() { netNew(); reset(); setShowRules(false) }
 
-  // AI turn (tick changes each AI turn via a move counter so chained turns re-arm the timer).
-  const tick = s.log.length
-  useAITurn(s.winner == null && s.turn === 1, () => setS(p => Q.aiTurn(p)), { delayMs: 620, tick })
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => { setShowRules(false); reset() } })
 
-  const yourTurn = s.winner == null && s.turn === 0
+  const yourTurn = s.winner == null && isMyTurn
+  const myHand = s.hands[mySeat] ?? []
 
   // Board bounds (with a 1-cell margin) merged with staged tiles.
   const merged = useMemo(() => {
@@ -76,7 +81,7 @@ export function Qwirkle() {
   function canDropAt(r: number, c: number): boolean {
     if (sel == null) return false
     if (merged.has(Q.key(r, c))) return false
-    const tile = s.hands[0].find(t => t.id === sel)
+    const tile = myHand.find(t => t.id === sel)
     if (!tile) return false
     const cand: Placement[] = staged.concat([{ r, c, tile }])
     return Q.isLegalPlacement(s.board, cand).ok
@@ -101,7 +106,7 @@ export function Qwirkle() {
   function clickCell(r: number, c: number) {
     if (!yourTurn || sel == null) return
     if (!canDropAt(r, c)) { setHint('That tile cannot go there.'); return }
-    const tile = s.hands[0].find(t => t.id === sel)!
+    const tile = myHand.find(t => t.id === sel)!
     setStaged(prev => prev.concat([{ r, c, tile }]))
     setSel(null); setHint('')
   }
@@ -109,10 +114,10 @@ export function Qwirkle() {
   function recall() { setStaged([]); setSel(null); setHint('') }
 
   function commitPlace() {
-    if (staged.length === 0) return
+    if (!yourTurn || staged.length === 0) return
     const res = Q.isLegalPlacement(s.board, staged)
     if (!res.ok) { setHint(res.reason ?? 'Illegal placement.'); return }
-    setS(Q.applyPlacement(s, staged))
+    dispatch({ kind: 'place', placements: staged })
     reset()
   }
 
@@ -120,26 +125,29 @@ export function Qwirkle() {
     if (swapSel.size > 0) { setSwapSel(new Set()); return }
     // enter swap mode by marking nothing yet; recall any staged
     setStaged([]); setSel(null)
-    setSwapSel(new Set([s.hands[0][0]?.id].filter((x): x is number => x != null)))
+    setSwapSel(new Set([myHand[0]?.id].filter((x): x is number => x != null)))
     setHint('')
   }
 
   function commitSwap() {
+    if (!yourTurn) return
     const ids = [...swapSel]
     if (ids.length === 0) return
     if (s.bag.length < ids.length) { setHint('Not enough tiles in the bag to swap that many.'); return }
-    setS(Q.swap(s, ids))
+    dispatch({ kind: 'swap', tileIds: ids })
     reset()
   }
 
   const scoreNow = staged.length > 0 ? Q.scorePlacement(s.board, staged) : 0
+  const myWin = s.winner === mySeat
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
 
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You win!' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'The rival wins — you lose' }
+  if (myWin) { bk = 'win'; banner = 'You win!' }
+  else if (s.winner === oppSeat) { bk = 'lose'; banner = `${oppLabel} wins — you lose` }
   else if (s.winner === 'draw') { bk = ''; banner = 'A tie!' }
   else if (yourTurn) { bk = 'you'; banner = staged.length > 0 ? `Placing for ${scoreNow} point${scoreNow === 1 ? '' : 's'}…` : 'Your turn — build a line' }
-  else { bk = 'foe'; banner = 'The rival is thinking…' }
+  else { bk = 'foe'; banner = net.online ? `Waiting for ${oppLabel.toLowerCase()}…` : 'The rival is thinking…' }
 
   const rows: number[] = []
   for (let r = bounds.minR; r <= bounds.maxR; r++) rows.push(r)
@@ -148,6 +156,7 @@ export function Qwirkle() {
 
   const lastIds = useMemo(() => new Set(s.last.map(p => p.tile.id)), [s.last])
   const inSwap = swapSel.size > 0
+  const oppRackCount = (s.hands[oppSeat] ?? []).length
 
   return (
     <>
@@ -186,7 +195,7 @@ export function Qwirkle() {
 
           <div className="qw-rack">
             <span className="qw-rack-label">Your rack</span>
-            {s.hands[0].map(tile => {
+            {myHand.map(tile => {
               const isStaged = stagedIds.has(tile.id)
               const selected = sel === tile.id
               const sw = swapSel.has(tile.id)
@@ -211,7 +220,7 @@ export function Qwirkle() {
               </>
             ) : (
               <>
-                <button className="qw-btn go" onClick={commitSwap} disabled={swapSel.size === 0}>Confirm swap ({swapSel.size})</button>
+                <button className="qw-btn go" onClick={commitSwap} disabled={!yourTurn || swapSel.size === 0}>Confirm swap ({swapSel.size})</button>
                 <button className="qw-btn" onClick={() => setSwapSel(new Set())}>Cancel</button>
                 <span className="qw-rack-label">Tap rack tiles to choose</span>
               </>
@@ -221,39 +230,42 @@ export function Qwirkle() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel scoreboard">
-            <div className={`sc you ${s.turn === 0 && s.winner == null ? 'on' : ''}`}>
-              <span className="sc-dot" /><span className="sc-name">You</span><span className="sc-n">{s.scores[0]}</span>
+            <div className={`sc you ${s.turn === mySeat && s.winner == null ? 'on' : ''}`}>
+              <span className="sc-dot" /><span className="sc-name">You</span><span className="sc-n">{s.scores[mySeat]}</span>
             </div>
-            <div className={`sc foe ${s.turn === 1 && s.winner == null ? 'on' : ''}`}>
-              <span className="sc-dot" /><span className="sc-name">Rival</span><span className="sc-n">{s.scores[1]}</span>
+            <div className={`sc foe ${s.turn === oppSeat && s.winner == null ? 'on' : ''}`}>
+              <span className="sc-dot" /><span className="sc-name">{net.online ? 'Opponent' : 'Rival'}</span><span className="sc-n">{s.scores[oppSeat]}</span>
             </div>
           </div>
           <div className="panel">
             <div className="bagrow"><span>Tiles in bag</span><b>{s.bag.length}</b></div>
+            <div className="bagrow"><span>{net.online ? 'Opponent' : 'Rival'} tiles</span><b>{oppRackCount}</b></div>
           </div>
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}</div>
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={myWin} draw={s.winner === 'draw'} myScore={s.scores[mySeat]} oppScore={s.scores[oppSeat]} oppLabel={net.online ? 'Opponent' : 'Rival'} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: QState; onNew: () => void }) {
-  const won = s.winner === 0, draw = s.winner === 'draw'
+function ResultModal({ won, draw, myScore, oppScore, oppLabel, onNew }: { won: boolean; draw: boolean; myScore: number; oppScore: number; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={draw ? 'Stalemate' : won ? 'Lines complete' : 'Out-played'}
-      title={draw ? 'A Tie' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'A Tie' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
-        <span className="you"><span className="lbl">You</span>{s.scores[0]}</span>
-        <span className="foe"><span className="lbl">Rival</span>{s.scores[1]}</span>
+        <span className="you"><span className="lbl">You</span>{myScore}</span>
+        <span className="foe"><span className="lbl">{oppLabel}</span>{oppScore}</span>
       </div>
     </Modal>
   )

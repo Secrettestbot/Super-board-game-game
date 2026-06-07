@@ -1,15 +1,21 @@
 /* SEQUENCE — UI (built for this codebase). A 10x10 card board, your seven-card hand, and a
-   chip-placement duel against a heuristic AI. Click a hand card → its legal cells light up →
-   click a cell to drop (or, with a one-eyed jack, to remove an opponent chip). First to two
-   sequences wins. The AI takes a whole turn per step, re-armed on s.step (useAITurn tick). */
+   chip-placement duel. Click a hand card → its legal cells light up → click a cell to drop
+   (or, with a one-eyed jack, to remove an opponent chip). First to two sequences wins.
+
+   Online-capable: useGameSession runs the authoritative logic (host) or renders a redacted
+   per-seat view (guest) and drives the AI for any empty seat — so we DELETE useAITurn here.
+   Everything is seat-relative: your hand/side/scores come from `mySeat`, `isMyTurn` gates
+   play, and when net.online opponents read as "Opponent" / "Player N" instead of "Rival". */
 
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { sequenceAdapter } from './net'
 import * as S from './logic'
-import type { SeqState, Card, Player } from './logic'
+import type { Card, Player } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -43,14 +49,17 @@ function CardFace({ card, small }: { card: Card; small?: boolean }) {
 }
 
 export function Sequence() {
-  const [s, setS] = useState<SeqState>(() => S.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(sequenceAdapter)
   const [sel, setSel] = useState<number | null>(null) // selected hand index
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(S.makeGame()); setSel(null); setShowRules(false) }
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
 
+  const me = mySeat as Player
+  const foe: Player = me === 0 ? 1 : 0
   const gameOver = s.winner != null || s.draw
-  useAITurn(!gameOver && s.turn === 1, () => setS(p => S.aiTurn(p)), { delayMs: 620, tick: s.step })
+  const yourTurn = !gameOver && isMyTurn
+  const oppName = net.online ? `Player ${foe + 1}` : 'Rival'
 
   useGameKeys({
     onNew: newGame,
@@ -58,34 +67,28 @@ export function Sequence() {
     onEscape: () => { setSel(null); setShowRules(false) },
   })
 
-  const yourTurn = !gameOver && s.turn === 0
-  const hand = s.hands[0]
+  const hand = s.hands[me]
   const selCard = sel != null ? hand[sel] : null
-  const legal = yourTurn && selCard ? new Set(S.legalCellsForCard(s, selCard, 0)) : new Set<number>()
+  const legal = yourTurn && selCard ? new Set(S.legalCellsForCard(s, selCard, me)) : new Set<number>()
   const oneEyedSelected = selCard != null && S.isOneEyedJack(selCard)
 
   function clickHand(i: number) {
     if (!yourTurn) return
     const card = hand[i]
-    if (S.isDeadCard(s, card)) { // swap a dead normal card
-      setS(p => S.exchangeDead(p, 0, card))
-      setSel(null)
-      return
-    }
+    if (S.isDeadCard(s, card)) { setSel(null); return } // swap not exposed online; deselect
     setSel(prev => (prev === i ? null : i))
   }
 
   function clickCell(i: number) {
     if (!yourTurn || selCard == null) return
     if (!legal.has(i)) return
-    if (S.isOneEyedJack(selCard)) setS(p => S.removeChip(p, 0, selCard, i))
-    else setS(p => S.play(p, 0, selCard, i))
+    dispatch({ kind: 'play', cardId: S.cardKey(selCard), cell: i })
     setSel(null)
   }
 
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You win — two sequences complete!' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'The rival completed two sequences' }
+  if (s.winner === me) { bk = 'win'; banner = 'You win — two sequences complete!' }
+  else if (s.winner === foe) { bk = 'lose'; banner = `${oppName} completed two sequences` }
   else if (s.draw) { bk = ''; banner = 'A draw — the deck ran out with no winner' }
   else if (yourTurn) {
     bk = 'you'
@@ -93,7 +96,7 @@ export function Sequence() {
       : oneEyedSelected ? 'One-eyed jack — click a highlighted opponent chip to remove it'
       : S.isTwoEyedJack(selCard) ? 'Wild jack — click any highlighted empty cell'
       : 'Click a highlighted cell to drop your chip'
-  } else { bk = 'foe'; banner = 'The rival is thinking…' }
+  } else { bk = 'foe'; banner = net.online ? `${oppName} is to move…` : 'The rival is thinking…' }
 
   return (
     <>
@@ -104,7 +107,7 @@ export function Sequence() {
         subtitle="play a card, claim its cell, draw — line up five chips, complete two sequences, and beat the rival to the board"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`You ${s.sequences[0]}/2 · Rival ${s.sequences[1]}/2 · deck ${s.deck.length}`}
+        modeLeft={`You ${s.sequences[me]}/2 · ${oppName} ${s.sequences[foe]}/2 · deck ${s.deck.length}`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>click card · click cell &nbsp; N · new</>}
@@ -130,7 +133,7 @@ export function Sequence() {
                     ? <span className="freemark">✦</span>
                     : <CardFace card={cell.card} small />}
                   {owner != null && (
-                    <span className={'chip' + (owner === 0 ? ' you' : ' foe') + (locked ? ' locked' : '')} />
+                    <span className={'chip' + (owner === me ? ' you' : ' foe') + (locked ? ' locked' : '')} />
                   )}
                 </div>
               )
@@ -139,16 +142,18 @@ export function Sequence() {
         </div>
 
         <div className="side">
+          <OnlineBar net={net} />
+
           <div className="panel sq-score">
             <div className={'sq-row' + (yourTurn ? ' on' : '')}>
               <span className="sq-dot you" />
               <span className="sq-who">You</span>
-              <span className="sq-seq">{s.sequences[0]}<i>/2</i></span>
+              <span className="sq-seq">{s.sequences[me]}<i>/2</i></span>
             </div>
-            <div className={'sq-row' + (s.turn === 1 && s.winner == null ? ' on' : '')}>
+            <div className={'sq-row' + (s.turn === foe && s.winner == null && !s.draw ? ' on' : '')}>
               <span className="sq-dot foe" />
-              <span className="sq-who">Rival</span>
-              <span className="sq-seq">{s.sequences[1]}<i>/2</i></span>
+              <span className="sq-who">{oppName}</span>
+              <span className="sq-seq">{s.sequences[foe]}<i>/2</i></span>
             </div>
             <div className="sq-deck">draw deck: {s.deck.length} cards</div>
           </div>
@@ -164,10 +169,10 @@ export function Sequence() {
                     className={'sq-card' + (sel === i ? ' sel' : '') + (dead ? ' dead' : '')}
                     disabled={!yourTurn}
                     onClick={() => clickHand(i)}
-                    title={dead ? 'dead card — click to swap' : ''}
+                    title={dead ? 'dead card' : ''}
                   >
                     <CardFace card={card} />
-                    {dead && <span className="deadflag">swap</span>}
+                    {dead && <span className="deadflag">dead</span>}
                   </button>
                 )
               })}
@@ -187,19 +192,17 @@ export function Sequence() {
         </div>
       </GameShell>
 
-      {gameOver && <ResultModal winner={s.winner} onNew={newGame} />}
+      {gameOver && <ResultModal won={s.winner === me} draw={s.draw} oppName={oppName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ winner, onNew }: { winner: Player | null; onNew: () => void }) {
-  const draw = winner == null
-  const won = winner === 0
+function ResultModal({ won, draw, oppName, onNew }: { won: boolean; draw: boolean; oppName: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={draw ? 'Stalemate' : won ? 'Sequences locked' : 'Outplayed'}
-      title={draw ? 'Draw' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'Draw' : won ? 'You Win' : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
@@ -208,7 +211,7 @@ function ResultModal({ winner, onNew }: { winner: Player | null; onNew: () => vo
           ? <span>No more moves — neither side reached two sequences</span>
           : won
             ? <span className="you">Two sequences on the board</span>
-            : <span className="foe">The rival lined up two first</span>}
+            : <span className="foe">{oppName} lined up two first</span>}
       </div>
     </Modal>
   )
@@ -223,7 +226,6 @@ function RulesModal({ onClose }: { onClose: () => void }) {
         <p>On your turn: <b>click a card</b> in your hand to light up its matching empty cells, then <b>click a cell</b> to drop your chip. You draw a fresh card automatically.</p>
         <p><b>Jacks are special.</b> Two-eyed jacks (<i>clubs &amp; diamonds</i>) are <b>wild</b> — place your chip on any empty cell. One-eyed jacks (<i>hearts &amp; spades</i>) <b>remove</b> one opponent chip that isn't already part of a finished sequence.</p>
         <p>A <b>sequence</b> is <b>five chips in a row</b> — horizontal, vertical, or diagonal (corners count as your color). The first player to complete <b>two sequences wins</b>.</p>
-        <p>If a card's both cells are taken it's <b>dead</b>: click it to swap it for a fresh draw.</p>
         <p><b>Keys:</b> <kbd>N</kbd> new game · <kbd>?</kbd> rules · <kbd>Esc</kbd> deselect / close.</p>
       </div>
     </Modal>

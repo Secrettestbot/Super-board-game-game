@@ -6,10 +6,12 @@
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { blackjackAdapter } from './net'
 import * as BJ from './logic'
-import type { BlackjackState, Card } from './logic'
+import type { Card } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -40,18 +42,19 @@ function valueLabel(cards: Card[]): string {
 }
 
 export function Blackjack() {
-  const [s, setS] = useState<BlackjackState>(() => BJ.makeGame())
+  // Host-authoritative netplay: the host (seat 0) plays against the dealer; the dealer's
+  // auto-draws are driven by the session's AI timer (adapter.aiStep -> BJ.dealerStep).
+  // There is only one seat, so a would-be guest is rejected — solo play is unchanged.
+  const { state: s, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(blackjackAdapter)
   const [showRules, setShowRules] = useState(false)
   const [dismissed, setDismissed] = useState(false)
 
-  function newGame() { setS(BJ.makeGame()); setShowRules(false); setDismissed(false) }
-  function deal() { if (s.chips >= BJ.BET) { setS(p => BJ.deal(p)); setDismissed(false) } }
-  function hit() { if (s.phase === 'player') setS(p => BJ.hit(p)) }
-  function stand() { if (s.phase === 'player') setS(p => BJ.stand(p)) }
-  function double() { if (s.phase === 'player' && !s.acted && s.chips >= s.bet * 2) setS(p => BJ.double(p)) }
+  function newGame() { netNew(); setShowRules(false); setDismissed(false) }
+  function deal() { if (isMyTurn && s.chips >= BJ.BET) { dispatch({ kind: 'deal' }); setDismissed(false) } }
+  function hit() { if (isMyTurn && s.phase === 'player') dispatch({ kind: 'hit' }) }
+  function stand() { if (isMyTurn && s.phase === 'player') dispatch({ kind: 'stand' }) }
+  function double() { if (isMyTurn && s.phase === 'player' && !s.acted && s.chips >= s.bet * 2) dispatch({ kind: 'double' }) }
 
-  // Dealer draws one card per tick so the cards appear one at a time.
-  useAITurn(BJ.dealerActive(s), () => setS(p => BJ.dealerStep(p)), { delayMs: 620, tick: s.dealer.length + s.phase })
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
@@ -68,7 +71,7 @@ export function Blackjack() {
     },
   })
 
-  const playerTurn = s.phase === 'player'
+  const playerTurn = s.phase === 'player' && isMyTurn
   const canDouble = playerTurn && !s.acted && s.chips >= s.bet * 2
   const broke = s.phase === 'over' && s.chips < BJ.BET
   const showHole = s.hole && s.phase === 'player' && !s.result
@@ -132,7 +135,7 @@ export function Blackjack() {
           </div>
 
           <div className="panel actions">
-            {s.phase === 'player' ? (
+            {playerTurn ? (
               <>
                 <button className="act hit" onClick={hit}>Hit</button>
                 <button className="act stand" onClick={stand}>Stand</button>
@@ -146,6 +149,8 @@ export function Blackjack() {
           </div>
 
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}</div>
+
+          <OnlineBar net={net} />
         </div>
       </GameShell>
 
