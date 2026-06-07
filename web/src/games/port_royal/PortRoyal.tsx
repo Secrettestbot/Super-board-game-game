@@ -1,14 +1,17 @@
-/* PORT ROYAL — UI. Push-your-luck harbor cards vs two AI captains on the shared shell.
-   The AI takes MANY sub-steps per turn (flip, flip, …, stop, take) AND the two AI players
-   each take a card in the trade phase, so useAITurn re-arms on a tick that changes on every
-   AI-observable sub-step (PR.aiTick). active = an AI must act (discover or take) and no winner
-   and we're not waiting on the human. */
+/* PORT ROYAL — UI. Push-your-luck harbor cards on the shared shell, now online-capable.
+   The game is seat-relative: "you" is mySeat (0 in solo / host, 1+ as a guest). The hook
+   drives the AI for any unfilled seat, so there is no local useAITurn. Flip / stop / hire /
+   pass are gated on isMyTurn. Online, the other captains are labelled "Player N" (and the
+   active rival "Opponent") instead of "AI N". The deck order is hidden from guests via the
+   adapter's redactFor; the UI only ever needs the deck COUNT, which survives redaction. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { portRoyalAdapter } from './net'
 import * as PR from './logic'
 import type { PortState, Card } from './logic'
 
@@ -53,7 +56,13 @@ function CardView({
   )
 }
 
-function PlayerPanel({ s, pi }: { s: PortState; pi: number }) {
+/** Seat-relative captain name: "You" for mySeat, else "Player N" online / "AI N" solo. */
+function seatName(pi: number, mySeat: number, online: boolean): string {
+  if (pi === mySeat) return 'You'
+  return online ? `Player ${pi + 1}` : `AI ${pi}`
+}
+
+function PlayerPanel({ s, pi, mySeat, online }: { s: PortState; pi: number; mySeat: number; online: boolean }) {
   const p = s.players[pi]
   const isDisc = s.discoverer === pi
   const acting =
@@ -62,9 +71,9 @@ function PlayerPanel({ s, pi }: { s: PortState; pi: number }) {
   const syms = PR.symbolCounts(p)
   const symList = (Object.keys(syms) as PR.PersonSym[]).filter(k => syms[k] > 0)
   return (
-    <div className={'pr-pl ' + (pi === 0 ? 'you' : 'ai') + (acting && s.winner == null ? ' on' : '')}>
+    <div className={'pr-pl ' + (pi === mySeat ? 'you' : 'ai') + (acting && s.winner == null ? ' on' : '')}>
       <div className="pr-pl-head">
-        <span className="pr-pl-name">{pi === 0 ? 'You' : `AI ${pi}`}</span>
+        <span className="pr-pl-name">{seatName(pi, mySeat, online)}</span>
         <span className="pr-pl-inf">{p.influence}<small> ★</small></span>
       </div>
       <div className="pr-pl-row">
@@ -84,22 +93,22 @@ function PlayerPanel({ s, pi }: { s: PortState; pi: number }) {
 }
 
 export function PortRoyal() {
-  const [s, setS] = useState<PortState>(() => PR.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(portRoyalAdapter)
+  const online = net.online
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(PR.makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  const youDiscover = s.winner == null && s.phase === 'discover' && s.discoverer === 0
-  const youTrade = s.winner == null && s.phase === 'trade' && s.current === 0
+  const youDiscover = s.winner == null && s.phase === 'discover' && isMyTurn
+  const youTrade = s.winner == null && s.phase === 'trade' && isMyTurn
 
-  function doFlip() { if (youDiscover) setS(p => PR.flip(p)) }
-  function doStop() { if (youDiscover) setS(p => PR.stop(p)) }
-  function doTake(i: number) { if (youTrade && PR.canTake(s, 0, i)) setS(p => PR.takeCard(p, 0, i)) }
-  function doPass() { if (youTrade) setS(p => PR.passTake(p)) }
-
-  // The AI drives itself: an AI must act (discover OR take), no winner, not waiting on human.
-  useAITurn(PR.aiActive(s), () => setS(p => PR.aiStep(p)), { delayMs: 560, tick: PR.aiTick(s) })
+  function doFlip() { if (youDiscover) dispatch({ kind: 'flip' }) }
+  function doStop() { if (youDiscover) dispatch({ kind: 'stop' }) }
+  function doTake(i: number) {
+    if (youTrade && PR.canTake(s, mySeat, i)) dispatch({ kind: 'hire', cardId: s.harbor[i].id })
+  }
+  function doPass() { if (youTrade) dispatch({ kind: 'pass' }) }
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
 
@@ -121,18 +130,20 @@ export function PortRoyal() {
   const present = PR.harborColors(s.harbor)
   const risk = PR.bustRisk(s)
 
+  const rivalName = (pi: number) => (online ? 'Opponent' : `AI ${pi}`)
+
   let banner: string, bk = ''
   if (s.winner != null) {
-    if (s.winner === 0) { bk = 'win'; banner = `You win with ${s.players[0].influence}★!` }
-    else { bk = 'lose'; banner = `AI ${s.winner} wins with ${s.players[s.winner].influence}★.` }
+    if (s.winner === mySeat) { bk = 'win'; banner = `You win with ${s.players[mySeat].influence}★!` }
+    else { bk = 'lose'; banner = `${seatName(s.winner, mySeat, online)} wins with ${s.players[s.winner].influence}★.` }
   } else if (youDiscover) {
     bk = 'you'; banner = s.harbor.length ? 'Your turn — flip again or stop & take' : 'Your turn — flip a harbor card'
   } else if (youTrade) {
-    bk = 'you'; banner = s.discoverer === 0 ? 'Take a harbor card (or pass)' : 'You may take a harbor card — pay AI ' + s.discoverer + ' a coin (or pass)'
+    bk = 'you'; banner = s.discoverer === mySeat ? 'Take a harbor card (or pass)' : `You may take a harbor card — pay ${rivalName(s.discoverer)} a coin (or pass)`
   } else if (s.phase === 'discover') {
-    bk = 'foe'; banner = `AI ${s.discoverer} is discovering…`
+    bk = 'foe'; banner = `${rivalName(s.discoverer)} is discovering…`
   } else {
-    bk = 'foe'; banner = `AI ${s.current} is choosing a card…`
+    bk = 'foe'; banner = `${rivalName(s.current)} is choosing a card…`
   }
 
   const canFlip = youDiscover
@@ -168,7 +179,7 @@ export function PortRoyal() {
               ? <span>flip cards into the harbor — a 2nd ship of a color here busts you</span>
               : s.harbor.map((c, i) => {
                   const dup = c.kind === 'ship' && c.color != null && present[c.color] > 1
-                  const takeable = youTrade && PR.canTake(s, 0, i)
+                  const takeable = youTrade && PR.canTake(s, mySeat, i)
                   return <CardView key={c.id} card={c} dup={dup} takeable={takeable} onTake={() => doTake(i)} />
                 })}
           </div>
@@ -183,9 +194,13 @@ export function PortRoyal() {
 
         <div className="side">
           <div className="panel">
+            <OnlineBar net={net} />
+          </div>
+
+          <div className="panel">
             <div className="panel-l">Captains</div>
             <div className="pr-players">
-              {[0, 1, 2].map(pi => <PlayerPanel key={pi} s={s} pi={pi} />)}
+              {s.players.map((_, pi) => <PlayerPanel key={pi} s={s} pi={pi} mySeat={mySeat} online={online} />)}
             </div>
           </div>
 
@@ -211,26 +226,26 @@ export function PortRoyal() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal s={s} mySeat={mySeat} online={online} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: PortState; onNew: () => void }) {
-  const won = s.winner === 0
-  const order = [0, 1, 2].slice().sort((a, b) => s.players[b].influence - s.players[a].influence)
+function ResultModal({ s, mySeat, online, onNew }: { s: PortState; mySeat: number; online: boolean; onNew: () => void }) {
+  const won = s.winner === mySeat
+  const order = s.players.map((_, i) => i).sort((a, b) => s.players[b].influence - s.players[a].influence)
   return (
     <Modal
       eyebrow={won ? 'Harbor master' : 'Out-sailed'}
-      title={won ? 'You Win' : `AI ${s.winner} Wins`}
+      title={won ? 'You Win' : `${seatName(s.winner!, mySeat, online)} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="pr-final">
         {order.map(pi => (
           <div key={pi} className={'pr-final-row' + (pi === s.winner ? ' win' : '')}>
-            <span className={pi === 0 ? 'you' : 'foe'}>{pi === 0 ? 'You' : `AI ${pi}`}</span>
+            <span className={pi === mySeat ? 'you' : 'foe'}>{seatName(pi, mySeat, online)}</span>
             <span>{s.players[pi].influence}★ · {s.players[pi].coins}🪙</span>
           </div>
         ))}

@@ -1,15 +1,18 @@
-/* CAN'T STOP — UI (built for this codebase). Eleven numbered tracks on the framework shell,
-   vs a push-your-luck AI. Roll four dice, pick a pairing to climb up to three columns, then
-   press on or stop. Bust on a dead roll. Claim three columns to win. The AI rolls several
-   times per turn, so its driver re-arms on s.step (useAITurn tick). */
+/* CAN'T STOP — UI (built for this codebase). Eleven numbered tracks on the framework shell.
+   Roll four dice, pick a pairing to climb up to three columns, then press on or stop. Bust
+   on a dead roll. Claim three columns to win. Online-capable via useGameSession: the host
+   runs the real logic and AI fills any empty seat; the view is seat-relative so a guest can
+   play seat 1. Seats: 0 = 'you', 1 = 'ai'/opponent. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { cantStopAdapter } from './net'
 import * as CS from './logic'
-import type { CantStopState, Player } from './logic'
+import type { Player } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -40,46 +43,54 @@ function Die({ v }: { v: number }) {
 }
 
 export function CantStop() {
-  const [s, setS] = useState<CantStopState>(() => CS.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(cantStopAdapter)
+  // Seat 0 = 'you', seat 1 = 'ai'/opponent. Everything below is relative to mySeat.
+  const me: Player = mySeat === 0 ? 'you' : 'ai'
+  const foe: Player = me === 'you' ? 'ai' : 'you'
+
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(CS.makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  // The AI rolls/decides several times per turn, so re-arm on s.step (not just the turn flip).
-  useAITurn(!s.winner && s.turn === 'ai', () => setS(p => CS.aiStep(p)), { delayMs: 560, tick: s.step })
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = 0 }, [s.log])
+
+  const yourTurn = !s.winner && isMyTurn
+  const haveRunners = Object.keys(s.runners).length > 0
+
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => setShowRules(false),
     extra: (e) => {
-      if (s.winner || s.turn !== 'you') return false
-      if (e.key === ' ' && s.phase === 'preroll') { setS(CS.roll(s)); return true }
-      if ((e.key === 's' || e.key === 'S') && s.phase === 'preroll' && Object.keys(s.runners).length) { setS(CS.stop(s)); return true }
+      if (!yourTurn) return false
+      if (e.key === ' ' && s.phase === 'preroll') { dispatch({ kind: 'roll' }); return true }
+      if ((e.key === 's' || e.key === 'S') && s.phase === 'preroll' && haveRunners) { dispatch({ kind: 'stop' }); return true }
       return false
     },
   })
 
-  const yourTurn = !s.winner && s.turn === 'you'
-  const haveRunners = Object.keys(s.runners).length > 0
+  const meLabel = 'You'
+  const foeLabel = net.online ? 'Opponent' : 'Rival'
 
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = 'You win — three columns claimed!' }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = 'The rival claimed three columns' }
+  if (s.winner === me) { bk = 'win'; banner = 'You win — three columns claimed!' }
+  else if (s.winner === foe) { bk = 'lose'; banner = `${foeLabel} claimed three columns` }
   else if (yourTurn) {
     bk = 'you'
     banner = s.phase === 'choose' ? 'Pick a pairing to climb' : haveRunners ? 'Press on, or stop to bank' : 'Your turn — roll the dice'
-  } else { bk = 'foe'; banner = 'The rival is pressing their luck…' }
+  } else { bk = 'foe'; banner = `${foeLabel} is pressing their luck…` }
 
   function StepCell({ c, lvl }: { c: number; lvl: number }) {
-    const youRunner = yourTurn && s.runners[c] === lvl
-    const aiRunner = !yourTurn && s.turn === 'ai' && s.runners[c] === lvl
-    const youPerm = s.perm.you[c] === lvl && lvl > 0
-    const aiPerm = s.perm.ai[c] === lvl && lvl > 0
+    // A runner belongs to whoever's turn it is right now.
+    const runnerHere = s.runners[c] === lvl && !s.winner
+    const myRunner = runnerHere && s.turn === me
+    const foeRunner = runnerHere && s.turn === foe
+    const youPerm = s.perm[me][c] === lvl && lvl > 0
+    const aiPerm = s.perm[foe][c] === lvl && lvl > 0
     return (
       <div className={'cs-step' + (lvl === CS.HEIGHTS[c] ? ' top' : '')}>
-        {(youRunner || aiRunner) && <div className="cs-runner" />}
+        {(myRunner || foeRunner) && <div className="cs-runner" />}
         {youPerm && <div className="cs-mark you" />}
         {aiPerm && <div className="cs-mark ai" />}
       </div>
@@ -95,7 +106,7 @@ export function CantStop() {
         subtitle="climb the pyramid of odds — pair the dice, push your luck, and claim three columns before the rival"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`You ${CS.claimedCount(s, 'you')}/3 · Rival ${CS.claimedCount(s, 'ai')}/3`}
+        modeLeft={`You ${CS.claimedCount(s, me)}/3 · ${foeLabel} ${CS.claimedCount(s, foe)}/3`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>space · roll &nbsp; s · stop &nbsp; N · new</>}
@@ -104,12 +115,13 @@ export function CantStop() {
           <div className="cs-board">
             {CS.COLS.map(c => {
               const owner = s.claimed[c]
+              const claimCls = owner === me ? ' claimed-you' : owner === foe ? ' claimed-ai' : ''
               return (
-                <div key={c} className={'cs-col' + (owner === 'you' ? ' claimed-you' : owner === 'ai' ? ' claimed-ai' : '')}>
+                <div key={c} className={'cs-col' + claimCls}>
                   <div className="cs-track">
                     {Array.from({ length: CS.HEIGHTS[c] }, (_, k) => <StepCell key={k} c={c} lvl={k + 1} />)}
                   </div>
-                  <div className="cs-head">{c}{owner && <span className="cs-flag">{owner === 'you' ? '★' : '✦'}</span>}</div>
+                  <div className="cs-head">{c}{owner && <span className="cs-flag">{owner === me ? '★' : '✦'}</span>}</div>
                 </div>
               )
             })}
@@ -117,19 +129,21 @@ export function CantStop() {
         </div>
 
         <div className="side">
+          <OnlineBar net={net} />
+
           <div className="panel cs-score">
-            <div className={'cs-row' + (yourTurn ? ' on' : '')}>
+            <div className={'cs-row' + (s.turn === me && !s.winner ? ' on' : '')}>
               <span className="cs-pawn you" />
-              <span className="cs-who">You</span>
-              <span className="cs-claims">{CS.claimedCount(s, 'you')}/3</span>
+              <span className="cs-who">{meLabel}</span>
+              <span className="cs-claims">{CS.claimedCount(s, me)}/3</span>
             </div>
-            <div className="cs-owned">{CS.claimedCols(s, 'you').join(' · ') || '—'}</div>
-            <div className={'cs-row' + (s.turn === 'ai' && !s.winner ? ' on' : '')}>
+            <div className="cs-owned">{CS.claimedCols(s, me).join(' · ') || '—'}</div>
+            <div className={'cs-row' + (s.turn === foe && !s.winner ? ' on' : '')}>
               <span className="cs-pawn ai" />
-              <span className="cs-who">Rival</span>
-              <span className="cs-claims">{CS.claimedCount(s, 'ai')}/3</span>
+              <span className="cs-who">{foeLabel}</span>
+              <span className="cs-claims">{CS.claimedCount(s, foe)}/3</span>
             </div>
-            <div className="cs-owned">{CS.claimedCols(s, 'ai').join(' · ') || '—'}</div>
+            <div className="cs-owned">{CS.claimedCols(s, foe).join(' · ') || '—'}</div>
           </div>
 
           <div className="panel cs-control">
@@ -142,7 +156,7 @@ export function CantStop() {
                 <div className="cs-pl">choose a pairing</div>
                 {s.pairings.map((p, i) => (
                   <div key={i} className={'cs-pair' + (p.usable ? ' usable' : ' dead')}
-                    onClick={p.usable ? () => setS(CS.choose(s, i)) : undefined}>
+                    onClick={p.usable ? () => dispatch({ kind: 'pick', pairing: i }) : undefined}>
                     {p.sums[0]}<span className="amp">+</span>{p.sums[1]}
                   </div>
                 ))}
@@ -151,8 +165,8 @@ export function CantStop() {
 
             {yourTurn && s.phase === 'preroll' && (
               <div className="cs-btns">
-                <button className="cs-btn" onClick={() => setS(CS.roll(s))}>Roll</button>
-                <button className="cs-btn stop" disabled={!haveRunners} onClick={() => setS(CS.stop(s))}>Stop</button>
+                <button className="cs-btn" onClick={() => dispatch({ kind: 'roll' })}>Roll</button>
+                <button className="cs-btn stop" disabled={!haveRunners} onClick={() => dispatch({ kind: 'stop' })}>Stop</button>
               </div>
             )}
 
@@ -163,7 +177,7 @@ export function CantStop() {
                   : 'roll four dice to begin your climb'}
               </div>
             )}
-            {!yourTurn && !s.winner && <div className="cs-hint">watching the rival climb…</div>}
+            {!yourTurn && !s.winner && <div className="cs-hint">watching {foeLabel.toLowerCase()} climb…</div>}
           </div>
 
           <div className="panel logbox" ref={logRef}>
@@ -172,22 +186,21 @@ export function CantStop() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal winner={s.winner} onNew={newGame} />}
+      {s.winner && <ResultModal won={s.winner === me} foeLabel={foeLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ winner, onNew }: { winner: Player; onNew: () => void }) {
-  const won = winner === 'you'
+function ResultModal({ won, foeLabel, onNew }: { won: boolean; foeLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Nerve held' : 'Pushed too far'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${foeLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc">{won ? <span className="you">Three columns claimed</span> : <span className="foe">The rival reached three first</span>}</div>
+      <div className="finalsc">{won ? <span className="you">Three columns claimed</span> : <span className="foe">{foeLabel} reached three first</span>}</div>
     </Modal>
   )
 }

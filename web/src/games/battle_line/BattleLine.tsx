@@ -1,16 +1,23 @@
 /* BATTLE LINE — UI (built for this codebase). Nine flagpoles march down the centre of the
-   campaign map; you (lower) and the enemy AI (upper) build three-card formations on each side.
-   Pick a troop from your hand, then click a flag to deploy it — then the deck draws for you.
-   When your side of a flag is complete (or provably decided), CLAIM it. Three adjacent flags or
-   five total breaks the line. */
+   campaign map; you (lower) and the enemy (upper) build three-card formations on each side.
+   Pick a troop from your hand, then click a flag to deploy it — then draw from the deck.
+   When your side of a flag is complete (or provably decided), CLAIM it. Three adjacent flags
+   or five total breaks the line.
+
+   Online-capable: useGameSession drives solo (you = seat 0 vs AI) and online (host = seat 0,
+   guest = seat 1) through one path. Everything below is rendered RELATIVE to `mySeat` — your
+   hand is s.hands[mySeat], your formations are the flag side for mySeat, the opponent's are
+   the other side — so a guest sitting in seat 1 sees their own army at the bottom. */
 
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { battleLineAdapter } from './net'
 import * as BL from './logic'
-import type { BattleLineState, Card, Seat, Flag } from './logic'
+import type { Card, Seat, Flag } from './logic'
 
 const COLNAME = BL.COLNAME
 
@@ -30,50 +37,53 @@ function rankLabel(cards: Card[]): string {
 }
 
 export function BattleLine() {
-  const [s, setS] = useState<BattleLineState>(() => BL.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(battleLineAdapter)
+  const me = mySeat as Seat
+  const foe: Seat = me === 0 ? 1 : 0
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number | null>(null)
 
-  function newGame() { setS(BL.makeGame()); setSel(null); setShowRules(false) }
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
 
-  // AI drives across many actions (play→draw, claims). tick changes on every AI action, so the
-  // timer re-arms each step rather than stalling. active = AI's turn AND no winner.
-  useAITurn(s.winner == null && s.turn === 1, () => setS(p => BL.aiTurn(p)), { delayMs: 560, tick: s.tick })
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => { setSel(null); setShowRules(false) } })
 
-  const yourTurn = s.winner == null && s.turn === 0
+  const yourTurn = s.winner == null && isMyTurn
   const yourPlay = yourTurn && s.phase === 'play'
   const yourDraw = yourTurn && s.phase === 'draw'
 
-  const selCard = sel != null ? s.hands[0].find(c => c.id === sel) ?? null : null
-  const legalFlags = yourPlay ? BL.legalPlays(s, 0) : []
+  const myHand = s.hands[me]
+  const selCard = sel != null ? myHand.find(c => c.id === sel) ?? null : null
+  const legalFlags = yourPlay ? BL.legalPlays(s, me) : []
   const canPlaceSel = yourPlay && selCard != null
 
   function pick(id: number) { if (yourPlay) setSel(prev => (prev === id ? null : id)) }
   function deploy(flagIndex: number) {
     if (yourPlay && selCard != null && legalFlags.includes(flagIndex)) {
-      setS(BL.playCard(s, 0, selCard, flagIndex))
+      dispatch({ kind: 'play', cardId: selCard.id, flag: flagIndex })
       setSel(null)
     }
   }
-  function doDraw() { if (yourDraw) setS(BL.drawCard(s, 0)) }
+  function doDraw() { if (yourDraw || noLegalPlay) dispatch({ kind: 'draw', deck: 'troop' }) }
   function doClaim(flagIndex: number) {
-    if (s.winner == null && BL.canClaim(s, flagIndex, 0)) setS(BL.claimFlag(s, flagIndex, 0))
+    if (s.winner == null && yourTurn && BL.canClaim(s, flagIndex, me)) dispatch({ kind: 'claim', flag: flagIndex })
   }
 
   // If you have no legal play on your play phase (every open flag-side is full), allow a forced draw.
   const noLegalPlay = yourPlay && legalFlags.length === 0
 
-  const youFlags = BL.flagCount(s, 0)
-  const foeFlags = BL.flagCount(s, 1)
-  const claimableByYou = s.flags.map((_, i) => s.winner == null && BL.canClaim(s, i, 0))
+  const myFlags = BL.flagCount(s, me)
+  const foeFlags = BL.flagCount(s, foe)
+  const claimableByYou = s.flags.map((_, i) => s.winner == null && yourTurn && BL.canClaim(s, i, me))
+
+  const oppLabel = net.online ? 'Opponent' : 'enemy'
+  const oppLabelCap = net.online ? 'Opponent' : 'The enemy'
 
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You broke the line — victory!' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'The enemy broke through — you lose' }
+  if (s.winner === me) { bk = 'win'; banner = 'You broke the line — victory!' }
+  else if (s.winner === foe) { bk = 'lose'; banner = `${oppLabelCap} broke through — you lose` }
   else if (yourPlay) { bk = 'you'; banner = sel != null ? 'Click a flag to deploy this troop' : 'Your turn — choose a troop from your hand' }
   else if (yourDraw) { bk = 'you'; banner = noLegalPlay ? 'No deployment possible — draw to pass' : 'Now draw a card to end your turn' }
-  else { bk = 'foe'; banner = 'The enemy is manoeuvring…' }
+  else { bk = 'foe'; banner = net.online ? 'Waiting for the opponent…' : 'The enemy is manoeuvring…' }
 
   return (
     <>
@@ -96,6 +106,8 @@ export function BattleLine() {
                 key={i}
                 index={i}
                 flag={flag}
+                me={me}
+                foe={foe}
                 live={canPlaceSel && legalFlags.includes(i)}
                 claimableYou={claimableByYou[i]}
                 onDeploy={() => deploy(i)}
@@ -106,7 +118,7 @@ export function BattleLine() {
 
           {/* Your hand */}
           <div className="bl-hand">
-            {s.hands[0]
+            {myHand
               .slice()
               .sort((a, b) => BL.COLOURS.indexOf(a.colour) - BL.COLOURS.indexOf(b.colour) || a.value - b.value)
               .map(c => (
@@ -135,17 +147,21 @@ export function BattleLine() {
             </button>
             <span className="bl-hint">
               {yourPlay
-                ? (sel == null ? 'Select a troop, then click a flag to deploy it.' : 'Click a highlighted flag to deploy — or claim a decided flag.')
+                ? (sel == null ? 'Select a troop, then click a flag to deploy it — or claim a decided flag.' : 'Click a highlighted flag to deploy it.')
                 : yourDraw ? 'Draw a card to finish your turn.'
+                : net.online ? 'The opponent is taking their turn.'
                 : 'The enemy is taking its turn.'}
             </span>
           </div>
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel bl-scoreboard">
-            <ScoreRow name="You" flags={youFlags} on={s.turn === 0 && s.winner == null} you />
-            <ScoreRow name="Enemy" flags={foeFlags} on={s.turn === 1 && s.winner == null} />
+            <ScoreRow name="You" flags={myFlags} on={yourTurn} you />
+            <ScoreRow name={net.online ? 'Opponent' : 'Enemy'} flags={foeFlags} on={s.turn === foe && s.winner == null} />
             <div className="bl-deckline"><span>Deck</span><span>{s.deck.length} cards</span></div>
           </div>
           <div className="panel logbox">
@@ -154,7 +170,7 @@ export function BattleLine() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} you={youFlags} foe={foeFlags} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={s.winner === me} you={myFlags} foe={foeFlags} online={net.online} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -182,25 +198,31 @@ function Side({ cards, foe }: { cards: Card[]; foe?: boolean }) {
   )
 }
 
-function FlagColumn({ index, flag, live, claimableYou, onDeploy, onClaim }:
-  { index: number; flag: Flag; live: boolean; claimableYou: boolean; onDeploy: () => void; onClaim: () => void }) {
+function FlagColumn({ index, flag, me, foe, live, claimableYou, onDeploy, onClaim }:
+  { index: number; flag: Flag; me: Seat; foe: Seat; live: boolean; claimableYou: boolean; onDeploy: () => void; onClaim: () => void }) {
+  // Seat-relative: your formation is the side belonging to `me`; the opponent's is `foe`.
+  const mySide = me === 0 ? flag.you : flag.foe
+  const foeSide = foe === 0 ? flag.you : flag.foe
   const claimed = flag.claimedBy
+  const claimedByMe = claimed === me
+  const claimedByFoe = claimed === foe
+
   let cls = 'bl-flag'
   if (live) cls += ' live'
-  if (claimed === 0) cls += ' claim-you'
-  else if (claimed === 1) cls += ' claim-foe'
+  if (claimedByMe) cls += ' claim-you'
+  else if (claimedByFoe) cls += ' claim-foe'
 
   let bannerCls = 'bl-banner'
   let bannerText = String(index + 1)
-  if (claimed === 0) { bannerCls += ' you'; bannerText = '★' }
-  else if (claimed === 1) { bannerCls += ' foe'; bannerText = '★' }
+  if (claimedByMe) { bannerCls += ' you'; bannerText = '★' }
+  else if (claimedByFoe) { bannerCls += ' foe'; bannerText = '★' }
   else if (claimableYou) { bannerCls += ' you claimable' }
 
   return (
     <div className={cls} onClick={live ? onDeploy : undefined}>
-      {/* enemy side on top */}
-      <Side cards={flag.foe} foe />
-      <div className="bl-rank">{claimed === 1 ? '' : rankLabel(flag.foe)}</div>
+      {/* opponent side on top */}
+      <Side cards={foeSide} foe />
+      <div className="bl-rank">{claimedByFoe ? '' : rankLabel(foeSide)}</div>
 
       <div className="bl-pole">
         <button
@@ -213,9 +235,9 @@ function FlagColumn({ index, flag, live, claimableYou, onDeploy, onClaim }:
         </button>
       </div>
 
-      <div className="bl-rank">{claimed === 0 ? '' : rankLabel(flag.you)}</div>
+      <div className="bl-rank">{claimedByMe ? '' : rankLabel(mySide)}</div>
       {/* your side on bottom */}
-      <Side cards={flag.you} />
+      <Side cards={mySide} />
     </div>
   )
 }
@@ -232,16 +254,16 @@ function ScoreRow({ name, flags, on, you }: { name: string; flags: number; on: b
   )
 }
 
-function ResultModal({ s, you, foe, onNew }: { s: BattleLineState; you: number; foe: number; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ won, you, foe, online, onNew }: { won: boolean; you: number; foe: number; online: boolean; onNew: () => void }) {
+  const oppName = online ? 'Opponent' : 'Enemy'
   return (
     <Modal
       eyebrow={won ? 'The line is broken' : 'The line has held against you'}
-      title={won ? 'You Win' : 'Enemy Wins'}
+      title={won ? 'You Win' : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="bl-final"><span className="you">You {you}</span><span className="foe">Enemy {foe}</span></div>
+      <div className="bl-final"><span className="you">You {you}</span><span className="foe">{oppName} {foe}</span></div>
     </Modal>
   )
 }
@@ -253,7 +275,7 @@ function RulesModal({ onClose }: { onClose: () => void }) {
       <div className="modal-body">
         <p>Nine flags stand between the two armies. Each turn, <b>deploy</b> one troop card to your side of any flag whose side isn't full (three cards per side — a <b>formation</b>), then <b>draw</b> a card.</p>
         <p>Formations rank, high to low: <b>Wedge</b> (three consecutive, same colour) · <b>Phalanx</b> (three of a value) · <b>Battalion</b> (three of a colour) · <b>Skirmish</b> (three consecutive) · <b>Host</b> (anything else — compare sums). Ties break by sum, then by who completed first.</p>
-        <p><b>Claim</b> a flag once your side is complete and either both sides are full or the enemy provably can't beat you with the cards still unseen.</p>
+        <p>A flag is <b>claimed</b> automatically once your side is complete and either both sides are full or the foe provably can't beat you with the cards still unseen.</p>
         <p>Take <b>three adjacent flags</b> — a breakthrough — or <b>five flags total</b> to win.</p>
         <p><b>Keys:</b> <kbd>N</kbd> new game · <kbd>?</kbd> rules · <kbd>Esc</kbd> deselect / close.</p>
       </div>

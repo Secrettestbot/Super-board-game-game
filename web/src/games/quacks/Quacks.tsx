@@ -1,14 +1,17 @@
 /* THE QUACKS OF QUEDLINBURG — UI (built for this codebase).
-   Push-your-luck bag-building vs one AI. The AI takes MANY sub-steps per round (draw, draw,
-   …, stop, then buy chips) — so useAITurn re-arms on a tick that changes every AI sub-step
-   (s.step, the monotonic action counter on the state). active = it's the AI's turn to act
-   (AI not done drawing, OR shop phase) AND no winner. */
+   Push-your-luck bag-building. Online-capable via useGameSession: the host runs the real
+   logic.ts, guests send draw/stop/buy intents and render their per-seat view (which hides
+   the contents/order of other players' bags — see net.ts redactFor). The AI fills any seat
+   without a human. Everything is rendered RELATIVE to mySeat: "your" pot/bag/score come
+   from mySeat, and isMyTurn gates draw/stop/buy. Solo play is unchanged (mySeat === 0). */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { quacksAdapter } from './net'
 import * as Q from './logic'
 import type { QuacksState, PlayerState, Chip, Color } from './logic'
 
@@ -31,34 +34,29 @@ function OnChip({ c }: { c: Chip }) {
 }
 
 export function Quacks() {
-  const [s, setS] = useState<QuacksState>(() => Q.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(quacksAdapter)
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
   function newGame() {
-    setS(Q.makeGame())
+    netNew()
     setShowRules(false)
   }
 
   const over = s.phase === 'over'
-  const you = s.players[0]
-  const ai = s.players[1]
-  const yourDraw = s.phase === 'draw' && !you.done
-  const yourShop = s.phase === 'shop'
+  const you = s.players[mySeat]
+  const oppSeat = mySeat === 0 ? 1 : 0
+  const opp = s.players[oppSeat]
+  const oppName = net.online ? 'Opponent' : opp.name
 
-  function doDraw() { if (yourDraw) setS(Q.drawChip(s, 0)) }
-  function doStop() { if (yourDraw) setS(Q.stop(s, 0)) }
-  function doBuy(id: string) { if (yourShop) setS(Q.buyChip(s, 0, id)) }
-  function doEndShop() { if (yourShop) setS(Q.endShop(s)) }
+  // isMyTurn already encodes "it is this seat's turn to act and game not over".
+  const yourDraw = isMyTurn && s.phase === 'draw' && !you.done
+  const yourShop = isMyTurn && s.phase === 'shop'
 
-  // After you stop in draw phase, if both are done the AI driver resolves; if only you are
-  // done, the AI driver continues drawing for the AI. AI active whenever it has something
-  // to do: (draw phase & AI not done) OR (draw phase, both done -> resolve) OR shop phase.
-  const aiActive = !over && (
-    (s.phase === 'draw' && (!ai.done || you.done)) ||
-    (s.phase === 'shop')
-  )
-  useAITurn(aiActive, () => setS(prev => Q.aiTurn(prev)), { delayMs: 480, tick: s.step })
+  function doDraw() { if (yourDraw) dispatch({ kind: 'draw' }) }
+  function doStop() { if (yourDraw) dispatch({ kind: 'stop' }) }
+  function doBuy(id: string) { if (yourShop) dispatch({ kind: 'buy', card: id }) }
+  function doEndShop() { if (yourShop) dispatch({ kind: 'endShop' }) }
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
 
@@ -76,14 +74,14 @@ export function Quacks() {
     },
   })
 
-  // banner
+  // banner — relative to mySeat
   let banner: string, bk = ''
   if (over) {
-    const won = s.winner === 0
+    const won = s.winner === mySeat
     bk = won ? 'win' : 'lose'
     banner = won
       ? `You win the brewing contest — ${you.vp} VP!`
-      : `${ai.name} wins — ${ai.vp} VP to your ${you.vp}.`
+      : `${oppName} wins — ${opp.vp} VP to your ${you.vp}.`
   } else if (yourDraw) {
     bk = 'you'
     const risk = Q.nextDrawBustProb(you)
@@ -92,17 +90,19 @@ export function Quacks() {
       : `Your brew · draw a chip or stop (bust risk ${(risk * 100).toFixed(0)}%)`
   } else if (s.phase === 'draw') {
     bk = 'foe'
-    banner = `${ai.name} is brewing…`
+    banner = `${oppName} is brewing…`
   } else if (yourShop) {
     bk = 'you'
     banner = `Shop · spend coins on ingredients, then brew the next round (you have ${you.coins} coins)`
+  } else if (s.phase === 'shop') {
+    bk = 'foe'
+    banner = `${oppName} is shopping…`
   } else {
     bk = 'foe'
-    banner = `${ai.name} is shopping…`
+    banner = `${oppName} is brewing…`
   }
 
   const risk = Q.nextDrawBustProb(you)
-  const pct = Math.min(you.whiteTotal / Q.EXPLODE_LIMIT, 1.35) * 100
   const limitPct = (Q.EXPLODE_LIMIT / (Q.EXPLODE_LIMIT * 1.35)) * 100
   const fillPct = (you.whiteTotal / (Q.EXPLODE_LIMIT * 1.35)) * 100
 
@@ -203,9 +203,11 @@ export function Quacks() {
         </div>
 
         <div className="side">
+          <OnlineBar net={net} />
+
           <div className="panel qk-scores">
-            <PlayerCard p={you} active={!over && yourDraw} />
-            <PlayerCard p={ai} active={!over && s.phase === 'draw' && !ai.done} />
+            <PlayerCard p={you} name="You" active={!over && yourDraw} />
+            <PlayerCard p={opp} name={oppName} active={!over && s.phase === 'draw' && !opp.done} />
             <div className="qk-goal">9 rounds · most victory points wins</div>
           </div>
 
@@ -215,25 +217,31 @@ export function Quacks() {
         </div>
       </GameShell>
 
-      {over && <ResultModal s={s} onNew={newGame} />}
+      {over && <ResultModal s={s} mySeat={mySeat} oppName={oppName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function bagCounts(bag: Chip[]): { color: Color; n: number }[] {
+function bagCounts(bag: Chip[]): { color: Color; n: number; hidden: number }[] {
   const order: Color[] = ['white', 'orange', 'green', 'blue', 'red', 'purple']
-  return order
-    .map(color => ({ color, n: bag.filter(c => c.color === color).length }))
+  // Redacted chips (from net.ts) have id -1 / value 0; count them as "hidden" so an
+  // opponent's bag shows a single opaque count instead of leaking its composition.
+  const hidden = bag.filter(c => c.id === -1).length
+  const real = order
+    .map(color => ({ color, n: bag.filter(c => c.id !== -1 && c.color === color).length, hidden: 0 }))
     .filter(o => o.n > 0)
+  return real
+    .concat(hidden > 0 ? [{ color: 'white', n: 0, hidden }] : [])
 }
 
-function PlayerCard({ p, active }: { p: PlayerState; active: boolean }) {
+function PlayerCard({ p, name, active }: { p: PlayerState; name: string; active: boolean }) {
+  const counts = bagCounts(p.bag)
   return (
     <div className={'qk-pc' + (p.seat === 0 ? ' you' : ' ai') + (active ? ' on' : '')}>
       <div className="qk-pc-head">
         <span className="qk-pc-ic">{p.seat === 0 ? '🧪' : '🧙'}</span>
-        <span className="qk-pc-name">{p.name}</span>
+        <span className="qk-pc-name">{name}</span>
         <span className="qk-pc-vp">{p.vp} VP</span>
       </div>
       <div className="qk-pc-row">
@@ -242,27 +250,32 @@ function PlayerCard({ p, active }: { p: PlayerState; active: boolean }) {
         {p.exploded && <span className="qk-x">💥 exploded</span>}
       </div>
       <div className="qk-pc-bag">
-        {bagCounts(p.bag).map(({ color, n }) => (
-          <span key={color} className={'qk-bagchip qk-chip ' + color} title={`${n} ${color}`}>{n}</span>
-        ))}
+        {counts.map(({ color, n, hidden }, i) =>
+          hidden > 0
+            ? <span key={'h' + i} className="qk-bagchip qk-chip" title={`${hidden} chips (hidden)`}>{hidden}?</span>
+            : <span key={color} className={'qk-bagchip qk-chip ' + color} title={`${n} ${color}`}>{n}</span>,
+        )}
       </div>
     </div>
   )
 }
 
-function ResultModal({ s, onNew }: { s: QuacksState; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ s, mySeat, oppName, onNew }: { s: QuacksState; mySeat: number; oppName: string; onNew: () => void }) {
+  const won = s.winner === mySeat
+  const you = s.players[mySeat]
+  const oppSeat = mySeat === 0 ? 1 : 0
+  const opp = s.players[oppSeat]
   return (
     <Modal
       eyebrow={won ? 'Brew master' : 'Out-brewed'}
-      title={won ? 'You Win' : `${s.players[1].name} Wins`}
+      title={won ? 'You Win' : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Brew again</button>}
     >
       <div className="qk-final">
-        {s.players.map(p => (
+        {[you, opp].map((p, i) => (
           <span key={p.seat} className={'qk-final-row' + (p.seat === s.winner ? ' win' : '')}>
-            <b>{p.name}</b> {p.vp} VP · {p.coins}¢ · {p.bag.length} chips
+            <b>{i === 0 ? 'You' : oppName}</b> {p.vp} VP · {p.coins}¢ · {p.bag.length} chips
           </span>
         ))}
       </div>

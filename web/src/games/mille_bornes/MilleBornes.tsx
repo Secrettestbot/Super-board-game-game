@@ -1,15 +1,18 @@
-/* MILLE BORNES — UI. A retro road-trip race to 1000 km. Two battle areas (rival on top,
-   you below) show each car's signal light, active hazards, speed limit and the safeties
-   parked in front, plus an odometer bar. Draw a card, then play one or discard. The AI
-   rival keeps its Go light lit, lays down distance, and lobs hazards your way. */
+/* MILLE BORNES — UI. A retro road-trip race to 1000 km. Two battle areas (opponent on
+   top, you below) show each car's signal light, active hazards, speed limit and the
+   safeties parked in front, plus an odometer bar. Draw a card, then play one or discard.
+   Solo: the AI rival drives for seat 1. Online (useGameSession): a remote guest can take
+   any non-host seat, the view is rendered relative to mySeat, and hidden hands stay hidden. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { milleBornesAdapter } from './net'
 import * as MB from './logic'
-import type { State, Card, Player, HazardKind, PlayerState } from './logic'
+import type { Card, Player, HazardKind, PlayerState } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -22,47 +25,49 @@ const TITLE_MARK = (
 )
 
 export function MilleBornes() {
-  const [s, setS] = useState<State>(() => MB.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(milleBornesAdapter)
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number | null>(null)
 
-  function newGame() { setS(MB.makeGame()); setSel(null); setShowRules(false) }
+  const me = mySeat as Player
+  const foeSeat = (me === 0 ? 1 : 0) as Player
 
-  const yourTurn = s.winner === null && s.turn === 0
-  const needDraw = yourTurn && !s.drewThisTurn
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
 
-  // AI takes its full turn in one step; chain turns by ticking on log growth.
-  useAITurn(s.winner === null && s.turn === 1, () => setS(p => MB.aiTurn(p)), { delayMs: 650, tick: s.log.length })
+  const yourTurn = s.winner === null && isMyTurn
+
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => { setShowRules(false); setSel(null) } })
 
+  // The mandatory draw is folded into each play/discard intent (the adapter draws, then
+  // applies the action atomically — matching the AI's one-step turn), so the hand is shown
+  // as "playable" as soon as it is your turn. Legality is computed on the pre-draw hand;
+  // since the draw only ADDS a card it never invalidates an already-legal play.
   const legal = useMemo(
-    () => (yourTurn && s.drewThisTurn) ? new Set(MB.legalPlays(s, 0)) : new Set<number>(),
-    [yourTurn, s],
+    () => yourTurn ? new Set(MB.legalPlays(s, me)) : new Set<number>(),
+    [yourTurn, s, me],
   )
 
-  function draw() { if (needDraw) setS(MB.drawCard(s, 0)) }
   function clickCard(c: Card) {
-    if (!yourTurn || !s.drewThisTurn) return
-    if (!legal.has(c.id)) { setSel(null); return }
+    if (!yourTurn) return
     setSel(prev => (prev === c.id ? null : c.id))
   }
   function playSelected() {
     if (sel === null || !legal.has(sel)) return
-    setS(MB.play(s, 0, sel)); setSel(null)
+    dispatch({ kind: 'play', cardId: sel }); setSel(null)
   }
   function discardSelected() {
-    if (sel === null) return
-    setS(MB.discard(s, 0, sel)); setSel(null)
+    if (sel === null || !yourTurn) return
+    dispatch({ kind: 'discard', cardId: sel }); setSel(null)
   }
 
-  const you = s.players[0], foe = s.players[1]
+  const you = s.players[me], foe = s.players[foeSeat]
+  const foeName = net.online ? 'Opponent' : 'Rival'
 
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'Checkered flag — you reach 1000 km first!' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'The rival crosses 1000 km first.' }
-  else if (needDraw) { bk = 'you'; banner = 'Your turn — draw a card to begin' }
-  else if (yourTurn) { bk = 'you'; banner = 'Play a card or discard' }
-  else { bk = 'foe'; banner = 'The rival is driving…' }
+  if (s.winner === me) { bk = 'win'; banner = 'Checkered flag — you reach 1000 km first!' }
+  else if (s.winner === foeSeat) { bk = 'lose'; banner = `${foeName} crosses 1000 km first.` }
+  else if (yourTurn) { bk = 'you'; banner = 'Your turn — play a card or discard' }
+  else { bk = 'foe'; banner = `${foeName} is driving…` }
 
   return (
     <>
@@ -80,13 +85,13 @@ export function MilleBornes() {
       >
         <div className="mb-wrap">
           <div className="mb-board">
-            <Seat ps={foe} who="foe" active={s.turn === 1 && s.winner === null} name="Rival" />
-            <Seat ps={you} who="you" active={s.turn === 0 && s.winner === null} name="You" />
+            <Seat ps={foe} who="foe" active={s.turn === foeSeat && s.winner === null} name={foeName} />
+            <Seat ps={you} who="you" active={s.turn === me && s.winner === null} name="You" />
 
             <div className="mb-hand-wrap">
               <div className="mb-hand-head">
                 <span className="mb-hand-title">Your hand</span>
-                <span className="mb-hand-hint">{needDraw ? 'draw first' : 'tap a card · then play / discard'}</span>
+                <span className="mb-hand-hint">{yourTurn ? 'tap a card · then play / discard (draw is automatic)' : 'waiting…'}</span>
               </div>
               <div className="mb-hand">
                 {you.hand.length === 0 && <div className="mb-card-empty" />}
@@ -94,7 +99,7 @@ export function MilleBornes() {
                   const playable = legal.has(c.id)
                   const cls = ['mb-card', c.kind]
                   if (playable) cls.push('playable')
-                  else if (s.drewThisTurn && yourTurn) cls.push('dim')
+                  else if (yourTurn) cls.push('dim')
                   if (sel === c.id) cls.push('selected')
                   return (
                     <button key={c.id} className={cls.join(' ')} onClick={() => clickCard(c)}>
@@ -104,15 +109,15 @@ export function MilleBornes() {
                 })}
               </div>
               <div className="mb-actions">
-                <button className="mb-btn" onClick={draw} disabled={!needDraw}>Draw</button>
-                <button className="mb-btn ghost" onClick={playSelected} disabled={sel === null || !legal.has(sel)}>Play</button>
-                <button className="mb-btn ghost" onClick={discardSelected} disabled={sel === null || needDraw}>Discard</button>
+                <button className="mb-btn" onClick={playSelected} disabled={sel === null || !legal.has(sel)}>Play</button>
+                <button className="mb-btn ghost" onClick={discardSelected} disabled={sel === null || !yourTurn}>Discard</button>
                 <span className="mb-deckcount">deck {s.deck.length}</span>
               </div>
             </div>
           </div>
 
           <div className="mb-side">
+            <OnlineBar net={net} />
             <div className="panel logbox">
               <div className="panel-l">Road log</div>
               {s.log.slice().reverse().map((l, i) => (
@@ -123,7 +128,7 @@ export function MilleBornes() {
         </div>
       </GameShell>
 
-      {s.winner !== null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner !== null && <ResultModal won={s.winner === me} you={you.distance} foe={foe.distance} foeName={foeName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -196,17 +201,16 @@ function cardBlurb(c: Card): string {
   return ''
 }
 
-function ResultModal({ s, onNew }: { s: State; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ won, you, foe, foeName, onNew }: { won: boolean; you: number; foe: number; foeName: string; onNew: () => void }) {
   return (
     <Modal
-      eyebrow={won ? 'You take the trophy' : 'The rival wins'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      eyebrow={won ? 'You take the trophy' : `${foeName} wins`}
+      title={won ? 'You Win' : `${foeName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Race again</button>}
     >
       <div className="modal-body">
-        <p>Final odometer — <b>You {s.players[0].distance} km</b> · <b>Rival {s.players[1].distance} km</b>.</p>
+        <p>Final odometer — <b>You {you} km</b> · <b>{foeName} {foe} km</b>.</p>
       </div>
     </Modal>
   )
