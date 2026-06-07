@@ -1,14 +1,16 @@
 /* CATAN DICE — UI (built for this codebase). A warm island roll-and-write: six resource dice
    with keep toggles + rolls-left, build buttons along your fixed track, a side knight track,
-   and an opponent summary. You are player 0; the AI is player 1. The rival's whole turn
-   (roll → keep/reroll → build → end) is walked one sub-step at a time by useAITurn, re-armed
-   by a tick that bumps on every transition (s.step + phase + dice signature). */
+   and an opponent summary. Seat-relative for online play: your sheet comes from mySeat, the
+   AI/opponent fills the other seat, and isMyTurn gates interaction. The AI for empty seats is
+   driven by useGameSession; locally you are seat 0 and the rival is an AI exactly as before. */
 
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { catanDiceAdapter } from './net'
 import * as C from './logic'
 import type { CatanState, Resource, Structure } from './logic'
 
@@ -46,20 +48,17 @@ function Die({ res, kept, onClick, disabled }: { res: Resource; kept: boolean; o
 }
 
 export function CatanDice() {
-  const [s, setS] = useState<CatanState>(() => C.makeGame(0))
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(catanDiceAdapter)
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(C.makeGame(0)); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  const yourTurn = s.winner == null && s.turn === s.you
-  const aiActive = s.winner == null && s.turn !== s.you
+  // Seat-relative: your sheet is mySeat, the opponent is the other seat.
+  const you = mySeat as C.Player
+  const foe = (mySeat === 0 ? 1 : 0) as C.Player
+  const foeName = net.online ? 'Opponent' : 'Rival'
 
-  // Walk the AI's turn one observable sub-step at a time. The tick must change on EVERY
-  // sub-step or the driver stalls — include the monotonic step plus phase + dice signature.
-  useAITurn(aiActive, () => setS(p => C.aiStep(p)), {
-    delayMs: 480,
-    tick: `${s.step}-${s.phase}-${s.rollsLeft}-${s.dice.join('')}`,
-  })
+  const yourTurn = s.winner == null && isMyTurn
 
   useGameKeys({
     onNew: newGame,
@@ -67,31 +66,30 @@ export function CatanDice() {
     onEscape: () => setShowRules(false),
     extra: (e) => {
       if ((e.key === ' ' || e.key === 'Enter') && yourTurn && s.phase === 'roll' && s.rollsLeft > 0) {
-        setS(C.rollDice(s)); return true
+        dispatch({ kind: 'roll' }); return true
       }
       return false
     },
   })
 
-  function roll() { if (yourTurn && s.phase === 'roll' && s.rollsLeft > 0) setS(C.rollDice(s)) }
-  function keep(i: number) { if (yourTurn && s.phase === 'roll') setS(C.toggleKeep(s, i)) }
-  function stopRolling() { if (yourTurn && s.phase === 'roll' && s.dice.length > 0) setS(C.stopRolling(s)) }
-  function doBuild(t: Structure) { if (yourTurn && s.phase === 'build') setS(C.build(s, s.you, t)) }
-  function endTurn() { if (yourTurn && s.phase === 'build') setS(C.endTurn(s)) }
+  function roll() { if (yourTurn && s.phase === 'roll' && s.rollsLeft > 0) dispatch({ kind: 'roll' }) }
+  function keep(i: number) { if (yourTurn && s.phase === 'roll') dispatch({ kind: 'hold', i }) }
+  function stopRolling() { if (yourTurn && s.phase === 'roll' && s.dice.length > 0) dispatch({ kind: 'stop' }) }
+  function doBuild(t: Structure) { if (yourTurn && s.phase === 'build') dispatch({ kind: 'build', type: t }) }
+  function endTurn() { if (yourTurn && s.phase === 'build') dispatch({ kind: 'end' }) }
 
-  const you = s.you, foe = (s.you === 0 ? 1 : 0) as C.Player
   const youScore = C.totalScore(s, you), foeScore = C.totalScore(s, foe)
   const p = C.pool(s.dice)
 
-  // banner
+  // banner — relative to mySeat
   let banner: string, bk = ''
   if (s.winner === 'tie') { bk = ''; banner = `A tie — ${youScore}-${foeScore}` }
   else if (s.winner === you) { bk = 'win'; banner = `You win — ${youScore} to ${foeScore}` }
-  else if (s.winner === foe) { bk = 'lose'; banner = `The rival wins — ${foeScore} to ${youScore}` }
+  else if (s.winner === foe) { bk = 'lose'; banner = `${foeName} wins — ${foeScore} to ${youScore}` }
   else if (yourTurn && s.phase === 'roll' && s.dice.length === 0) { bk = 'you'; banner = 'Your turn — press Space or Roll' }
   else if (yourTurn && s.phase === 'roll') { bk = 'you'; banner = `Keep dice, then re-roll (${s.rollsLeft} left) or build` }
   else if (yourTurn && s.phase === 'build') { bk = 'you'; banner = 'Spend resources to build — then end turn' }
-  else { bk = 'foe'; banner = 'The rival is taking their turn…' }
+  else { bk = 'foe'; banner = `${foeName} is taking their turn…` }
 
   return (
     <>
@@ -162,15 +160,16 @@ export function CatanDice() {
             )}
           </div>
 
-          {/* Both sheets */}
+          {/* Both sheets — yours first */}
           <div className="cd-sheets">
             {[you, foe].map((pl) => (
-              <SheetView key={pl} s={s} player={pl} mine={pl === you} score={pl === you ? youScore : foeScore} />
+              <SheetView key={pl} s={s} player={pl} mine={pl === you} foeName={foeName} score={pl === you ? youScore : foeScore} />
             ))}
           </div>
         </div>
 
         <div className="side">
+          <OnlineBar net={net} />
           <div className="panel cd-scorebox">
             <div className="panel-l">Score</div>
             <div className={`cd-srow you${s.turn === you && s.winner == null ? ' on' : ''}`}>
@@ -178,7 +177,7 @@ export function CatanDice() {
               <span className="cd-srow-n">{youScore}</span>
             </div>
             <div className={`cd-srow foe${s.turn === foe && s.winner == null ? ' on' : ''}`}>
-              <span className="cd-srow-name">Rival</span>
+              <span className="cd-srow-name">{foeName}</span>
               <span className="cd-srow-n">{foeScore}</span>
             </div>
             <div className="cd-round">Round {Math.min(s.round, C.ROUNDS)} of {C.ROUNDS}</div>
@@ -193,13 +192,13 @@ export function CatanDice() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} youScore={youScore} foeScore={foeScore} onNew={newGame} />}
+      {s.winner != null && <ResultModal s={s} you={you} youScore={youScore} foeScore={foeScore} foeName={foeName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function SheetView({ s, player, mine, score }: { s: CatanState; player: C.Player; mine: boolean; score: number }) {
+function SheetView({ s, player, mine, foeName, score }: { s: CatanState; player: C.Player; mine: boolean; foeName: string; score: number }) {
   const sheet = s.sheets[player]
   const bd = C.scoreSheet(s, player)
   const active = s.turn === player && s.winner == null
@@ -208,7 +207,7 @@ function SheetView({ s, player, mine, score }: { s: CatanState; player: C.Player
   return (
     <div className={`cd-sheet ${mine ? 'you' : 'foe'}${active ? ' active' : ''}`}>
       <div className="cd-sheet-head">
-        <span className="cd-sheet-name">{mine ? 'You' : 'Rival'}</span>
+        <span className="cd-sheet-name">{mine ? 'You' : foeName}</span>
         {active && <span className="cd-sheet-turn">turn</span>}
         <span className="cd-sheet-score">{score}</span>
       </div>
@@ -249,17 +248,17 @@ function SheetView({ s, player, mine, score }: { s: CatanState; player: C.Player
   )
 }
 
-function ResultModal({ s, youScore, foeScore, onNew }: { s: CatanState; youScore: number; foeScore: number; onNew: () => void }) {
-  const won = s.winner === s.you
+function ResultModal({ s, you, youScore, foeScore, foeName, onNew }: { s: CatanState; you: C.Player; youScore: number; foeScore: number; foeName: string; onNew: () => void }) {
+  const won = s.winner === you
   const tie = s.winner === 'tie'
   return (
     <Modal
       eyebrow={tie ? 'Dead even' : won ? 'Master settler' : 'Out-settled'}
-      title={tie ? 'A Tie' : won ? 'You Win' : 'Rival Wins'}
+      title={tie ? 'A Tie' : won ? 'You Win' : `${foeName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {youScore}</span><span className="foe">Rival {foeScore}</span></div>
+      <div className="finalsc"><span className="you">You {youScore}</span><span className="foe">{foeName} {foeScore}</span></div>
     </Modal>
   )
 }

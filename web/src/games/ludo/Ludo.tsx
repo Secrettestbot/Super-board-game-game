@@ -1,15 +1,20 @@
 /* LUDO — UI (built for this codebase). The classic cross board on the framework shell:
-   four colored yards, a 52-square shared loop, four home columns into the centre. You are
-   yellow; three heuristic AIs play the others. Roll, then click a glowing token to move.
-   A 6 releases a token and grants an extra roll; land on a lone enemy to send it home. */
+   four colored yards, a 52-square shared loop, four home columns into the centre. Solo: you
+   (seat 0) play three heuristic AIs. Online: useGameSession runs the real logic on the host,
+   the AI fills empty seats, and your turn is two intents — { kind: 'roll' } then
+   { kind: 'move', token }. The view is seat-relative: "you" is the local mySeat, and the
+   banner, scores and result are all from that seat's perspective. Roll, then click a glowing
+   token to move. A 6 releases a token and grants an extra roll; land on a lone enemy to send
+   it home. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { ludoAdapter } from './net'
 import * as L from './logic'
-import type { LudoState } from './logic'
 
 /* ---- Board geometry: a 15×15 grid. ----
    ABS[a] = [row,col] for shared-loop absolute square a (0..51), starting at player 0's start.
@@ -74,6 +79,14 @@ const TITLE_MARK = (
 const PLAYER_CLASS = ['p0', 'p1', 'p2', 'p3']
 const PLAYER_NAME = ['You', 'Red', 'Blue', 'Green']
 
+/** Seat-relative display name: "You" for your seat; otherwise the themed name, or a generic
+ * "Opponent" / "Player N" when playing online (the real name of a remote human is unknown). */
+function nameFor(p: number, mySeat: number, online: boolean, numSeats: number): string {
+  if (p === mySeat) return 'You'
+  if (!online) return PLAYER_NAME[p] ?? `Player ${p + 1}`
+  return numSeats === 2 ? 'Opponent' : `Player ${p + 1}`
+}
+
 // Standard die-face pip layout (3×3 grid indices that are filled).
 const PIPS: Record<number, number[]> = {
   1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8],
@@ -88,38 +101,39 @@ function Die({ v }: { v: number | null }) {
 }
 
 export function Ludo() {
-  const [s, setS] = useState<LudoState>(() => L.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(ludoAdapter)
   const [showRules, setShowRules] = useState(false)
+  const numSeats = s.tokens.length
 
-  function newGame() { setS(L.makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  // 3 AIs each take several sub-turns (a 6 grants extra rolls), so re-arm on s.step every action.
-  const aiActive = s.winner == null && s.turn !== 0
-  useAITurn(aiActive, () => setS(p => L.aiStep(p)), { delayMs: 520, tick: s.step })
-
-  const yourTurn = s.winner == null && s.turn === 0
+  const yourTurn = s.winner == null && isMyTurn
   const canRoll = yourTurn && s.phase === 'roll' && !s.rolled
+  const youWon = s.winner === mySeat
 
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => setShowRules(false),
     extra: (e) => {
-      if ((e.key === ' ' || e.key === 'Enter') && canRoll) { setS(p => L.roll(p)); return true }
+      if ((e.key === ' ' || e.key === 'Enter') && canRoll) { dispatch({ kind: 'roll' }); return true }
       return false
     },
   })
 
+  // Your own movable tokens (from mySeat, not a hardcoded side).
   const movable = useMemo(
     () => (yourTurn && s.phase === 'move' && s.rolled && s.die != null
-      ? new Set(L.legalMoves(s, 0, s.die)) : new Set<number>()),
-    [yourTurn, s.phase, s.rolled, s.die, s],
+      ? new Set(L.legalMoves(s, mySeat, s.die)) : new Set<number>()),
+    [yourTurn, s.phase, s.rolled, s.die, s, mySeat],
   )
 
   function clickToken(player: number, i: number) {
-    if (player === 0 && yourTurn && s.phase === 'move' && movable.has(i)) setS(L.moveToken(s, 0, i))
+    if (player === mySeat && yourTurn && s.phase === 'move' && movable.has(i)) {
+      dispatch({ kind: 'move', token: i })
+    }
   }
-  function rollNow() { if (canRoll) setS(L.roll(s)) }
+  function rollNow() { if (canRoll) dispatch({ kind: 'roll' }) }
 
   // Build per-cell content: occupant tokens (loop + columns) keyed by grid cell.
   const cellTokens = useMemo(() => {
@@ -135,14 +149,14 @@ export function Ludo() {
           counts.set(cell, stack + 1)
           // keep the top occupant for click target, prefer a movable 'you' token
           const prev = m.get(cell)
-          const mv = p === 0 && movable.has(i)
+          const mv = p === mySeat && movable.has(i)
           if (!prev || (mv && !prev.mv)) m.set(cell, { player: p, i, mv, stack: stack + 1 })
           else m.set(cell, Object.assign({}, prev, { stack: stack + 1 }))
         }
       })
     }
     return m
-  }, [s.tokens, movable])
+  }, [s.tokens, movable, mySeat])
 
   // Yard tokens: each player's tokens still in the yard fill the 2×2 pad slots in order.
   const yardTokens = useMemo(() => {
@@ -153,12 +167,12 @@ export function Ludo() {
         if (prog === L.YARD) {
           const [r, c] = YARDS[p][slot]
           slot++
-          m.set(cellKey(r, c), { player: p, i, mv: p === 0 && movable.has(i) })
+          m.set(cellKey(r, c), { player: p, i, mv: p === mySeat && movable.has(i) })
         }
       })
     }
     return m
-  }, [s.tokens, movable])
+  }, [s.tokens, movable, mySeat])
 
   const lastCell = useMemo(() => {
     if (!s.last) return -1
@@ -185,14 +199,16 @@ export function Ludo() {
     return m
   }, [])
 
+  const turnName = nameFor(s.turn, mySeat, net.online, numSeats)
+
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You win — all four tokens home!' }
-  else if (s.winner != null) { bk = 'lose'; banner = `${PLAYER_NAME[s.winner]} wins the race` }
+  if (youWon) { bk = 'win'; banner = 'You win — all four tokens home!' }
+  else if (s.winner != null) { bk = 'lose'; banner = `${nameFor(s.winner, mySeat, net.online, numSeats)} wins the race` }
   else if (canRoll) { bk = 'you'; banner = s.rolledSix ? 'You rolled a 6 — roll again!' : 'Your turn — roll the die' }
   else if (yourTurn && s.phase === 'move') {
     bk = 'you'
     banner = movable.size ? `You rolled a ${s.die} — move a glowing token` : `No move with a ${s.die}…`
-  } else { bk = 'foe'; banner = `${PLAYER_NAME[s.turn]} is playing…` }
+  } else { bk = 'foe'; banner = `${turnName} is playing…` }
 
   return (
     <>
@@ -203,7 +219,7 @@ export function Ludo() {
         subtitle="roll a six to break out, race four tokens around the cross and home — capture rivals on the way"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`Home — You ${L.finishedCount(s, 0)}/4 · R ${L.finishedCount(s, 1)} · B ${L.finishedCount(s, 2)} · G ${L.finishedCount(s, 3)}`}
+        modeLeft={`Home — ${[0, 1, 2, 3].map(p => `${nameFor(p, mySeat, net.online, numSeats).slice(0, p === mySeat ? 3 : 1) || 'P'} ${L.finishedCount(s, p)}`).join(' · ')}`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>space · roll &nbsp; N · new &nbsp; ? · rules</>}
@@ -259,11 +275,15 @@ export function Ludo() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
+
           <div className="panel ludo-score">
             {[0, 1, 2, 3].map(p => (
               <div key={p} className={'ludo-pr ' + PLAYER_CLASS[p] + (s.turn === p && s.winner == null ? ' on' : '')}>
                 <span className={'ludo-dot ' + PLAYER_CLASS[p]} />
-                <span className="ludo-pname">{p === 0 ? 'You · Yellow' : PLAYER_NAME[p]}</span>
+                <span className="ludo-pname">{nameFor(p, mySeat, net.online, numSeats)}</span>
                 <span className="ludo-home">{L.finishedCount(s, p)}/4</span>
               </div>
             ))}
@@ -280,7 +300,7 @@ export function Ludo() {
             <div className="ludo-hint">
               {canRoll ? 'roll a 6 to release a token, or to roll again'
                 : yourTurn && s.phase === 'move' ? 'click a glowing token to move it'
-                : s.winner == null ? `${PLAYER_NAME[s.turn]} is thinking…` : 'game over'}
+                : s.winner == null ? `${turnName} is thinking…` : 'game over'}
             </div>
           </div>
 
@@ -290,23 +310,29 @@ export function Ludo() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal winner={s.winner} onNew={newGame} />}
+      {s.winner != null && (
+        <ResultModal winner={s.winner} mySeat={mySeat} online={net.online} numSeats={numSeats} onNew={newGame} />
+      )}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ winner, onNew }: { winner: number; onNew: () => void }) {
-  const won = winner === 0
+function ResultModal(
+  { winner, mySeat, online, numSeats, onNew }:
+  { winner: number; mySeat: number; online: boolean; numSeats: number; onNew: () => void },
+) {
+  const won = winner === mySeat
+  const name = nameFor(winner, mySeat, online, numSeats)
   return (
     <Modal
       eyebrow={won ? 'All tokens home' : 'Out-raced'}
-      title={won ? 'You Win' : `${PLAYER_NAME[winner]} Wins`}
+      title={won ? 'You Win' : `${name} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}>
       <div className="finalsc">
         {won ? <span className="you">You brought all four tokens home</span>
-          : <span className="foe">{PLAYER_NAME[winner]} finished first</span>}
+          : <span className="foe">{name} finished first</span>}
       </div>
     </Modal>
   )

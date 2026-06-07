@@ -1,16 +1,24 @@
 /* PARCHEESI — UI (built for this codebase). Cross-and-circle board on the framework shell:
    four colored START circles, a shared 68-square loop, four home paths into the CENTER.
-   You are violet; three heuristic AIs play the others. Roll TWO dice, then click a glowing
-   pawn and a die to move. A 5 releases a pawn; capture a lone rival for a +20 bonus; reach
-   the center for a +10 bonus; two pawns on a square form a blockade; doubles roll again. */
+   Solo: you (seat 0) play three heuristic AIs. Online: useGameSession runs the authoritative
+   logic on the host, fills empty seats with AI, and hands each guest a per-seat view. The view
+   is seat-relative: "you" is the local mySeat, and the banner, panels, movable pawns and result
+   are all from that seat's perspective. Roll TWO dice, then click a glowing pawn and a die to
+   move. A 5 releases a pawn; capture a lone rival for a +20 bonus; reach the center for a +10
+   bonus; two pawns on a square form a blockade; doubles roll again.
+
+   Rivals are named ("Coral"/"Teal"/"Amber") in solo play; online they become "Player N"
+   (the real name of a remote human is unknown). */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
 import * as P from './logic'
 import type { ParState } from './logic'
+import { parcheesiAdapter, type ParcheesiIntent } from './net'
 
 /* ---- Board geometry: a 17×17 grid. ----
    ABS[a] = [row,col] for shared-loop absolute square a (0..67), walked clockwise starting at
@@ -81,6 +89,14 @@ const cellKey = (r: number, c: number) => r * N + c
 const PLAYER_CLASS = ['p0', 'p1', 'p2', 'p3']
 const PLAYER_NAME = ['You', 'Coral', 'Teal', 'Amber']
 
+// Seat-relative display name: the local seat is "You"; rivals keep their named persona in
+// solo play, but online become "Player N" (a remote human's real name is unknown).
+function nameFor(p: number, mySeat: number, online: boolean): string {
+  if (p === mySeat) return 'You'
+  if (!online) return PLAYER_NAME[p] ?? `Player ${p + 1}`
+  return `Player ${p + 1}`
+}
+
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
     <rect x="3" y="3" width="42" height="42" rx="9" fill="#1b1d2c" stroke="#3a3a58" strokeWidth="1.5" />
@@ -108,17 +124,14 @@ function Die({ v, used, live, onClick }: { v: number | null; used?: boolean; liv
 }
 
 export function Parcheesi() {
-  const [s, setS] = useState<ParState>(() => P.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(parcheesiAdapter)
   const [showRules, setShowRules] = useState(false)
   const [selDie, setSelDie] = useState<number | null>(null) // 0 or 1, the die you chose to move with
 
-  function newGame() { setS(P.makeGame()); setShowRules(false); setSelDie(null) }
+  function newGame() { netNew(); setShowRules(false); setSelDie(null) }
 
-  // 3 AIs each take several sub-turns (two dice, doubles, bonuses), so re-arm on s.step.
-  const aiActive = s.winner == null && s.turn !== 0
-  useAITurn(aiActive, () => setS(p => P.aiStep(p)), { delayMs: 460, tick: s.step })
-
-  const yourTurn = s.winner == null && s.turn === 0
+  const online = net.online
+  const yourTurn = s.winner == null && isMyTurn
   const canRoll = yourTurn && s.phase === 'roll' && !s.rolled
 
   // The die value you are currently moving with (bonus pool, or a chosen unused die).
@@ -139,21 +152,23 @@ export function Parcheesi() {
     [yourTurn, s.phase, s.rolled, s.bonus, s.dice, s.usedDice],
   )
 
-  // Movable pawn indices for the human, given the active die (+ any sum-release pawns).
+  // Movable pawn indices for the local seat, given the active die (+ any sum-release pawns).
   const movable = useMemo(() => {
     const set = new Set<number>()
     if (!yourTurn || s.phase !== 'move' || !s.rolled) return set
-    if (activeDie != null) for (const i of P.legalMoves(s, 0, activeDie)) set.add(i)
-    if (sumRelease) for (let i = 0; i < P.PAWNS; i++) if (P.canReleaseWithSum(s, 0, i)) set.add(i)
+    if (activeDie != null) for (const i of P.legalMoves(s, mySeat, activeDie)) set.add(i)
+    if (sumRelease) for (let i = 0; i < P.PAWNS; i++) if (P.canReleaseWithSum(s, mySeat, i)) set.add(i)
     return set
-  }, [yourTurn, s.phase, s.rolled, s, activeDie, sumRelease])
+  }, [yourTurn, s.phase, s.rolled, s, activeDie, sumRelease, mySeat])
+
+  function rollNow() { if (canRoll) { dispatch({ kind: 'roll' }); setSelDie(null) } }
 
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => { setShowRules(false); setSelDie(null) },
     extra: (e) => {
-      if ((e.key === ' ' || e.key === 'Enter') && canRoll) { setS(p => P.roll(p)); setSelDie(null); return true }
+      if ((e.key === ' ' || e.key === 'Enter') && canRoll) { rollNow(); return true }
       if ((e.key === '1' || e.key === '2') && yourTurn && s.phase === 'move' && s.bonus === 0) {
         const slot = e.key === '1' ? 0 : 1
         if (s.dice && !s.usedDice[slot]) { setSelDie(slot); return true }
@@ -163,16 +178,14 @@ export function Parcheesi() {
   })
 
   function clickPawn(player: number, i: number) {
-    if (player !== 0 || !yourTurn || s.phase !== 'move' || !movable.has(i)) return
-    if (s.bonus > 0) { setS(P.movePawn(s, 0, i, s.bonus)); return }
+    if (player !== mySeat || !yourTurn || s.phase !== 'move' || !movable.has(i)) return
+    if (s.bonus > 0) { dispatch({ kind: 'move', token: i, die: s.bonus }); return }
     // prefer a plain die move; fall back to sum-release if only that is legal for this pawn
-    if (activeDie != null && P.destOf(s, 0, i, activeDie) != null) {
-      setS(P.movePawn(s, 0, i, activeDie)); setSelDie(null); return
+    if (activeDie != null && P.destOf(s, mySeat, i, activeDie) != null) {
+      dispatch({ kind: 'move', token: i, die: activeDie }); setSelDie(null); return
     }
-    if (sumRelease && P.canReleaseWithSum(s, 0, i)) { setS(P.releaseWithSum(s, 0, i)); setSelDie(null) }
+    if (sumRelease && P.canReleaseWithSum(s, mySeat, i)) { dispatch({ kind: 'move', token: i, die: 5 }); setSelDie(null) }
   }
-  function rollNow() { if (canRoll) { setS(P.roll(s)); setSelDie(null) } }
-  function passMove() { if (yourTurn && s.phase === 'move' && s.rolled) { setS(P.finishMovePhase(s)); setSelDie(null) } }
 
   // occupants on loop + home-path cells
   const cellTokens = useMemo(() => {
@@ -187,14 +200,14 @@ export function Parcheesi() {
           const stack = (counts.get(cell) || 0) + 1
           counts.set(cell, stack)
           const prev = m.get(cell)
-          const mv = p === 0 && movable.has(i)
+          const mv = p === mySeat && movable.has(i)
           if (!prev || (mv && !prev.mv)) m.set(cell, { player: p, i, mv, stack })
           else m.set(cell, Object.assign({}, prev, { stack }))
         }
       })
     }
     return m
-  }, [s.pawns, movable])
+  }, [s.pawns, movable, mySeat])
 
   // START-circle pawns: each player's pawns still in start fill the pad slots in order.
   const startTokens = useMemo(() => {
@@ -204,12 +217,12 @@ export function Parcheesi() {
       s.pawns[p].forEach((prog, i) => {
         if (prog === P.START) {
           const [r, c] = STARTS[p][slot]; slot++
-          m.set(cellKey(r, c), { player: p, i, mv: p === 0 && movable.has(i) })
+          m.set(cellKey(r, c), { player: p, i, mv: p === mySeat && movable.has(i) })
         }
       })
     }
     return m
-  }, [s.pawns, movable])
+  }, [s.pawns, movable, mySeat])
 
   // HOME pawns count per player (shown in center)
   const homeCounts = [0, 1, 2, 3].map(p => P.homeCount(s, p))
@@ -244,15 +257,15 @@ export function Parcheesi() {
   }, [])
 
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You win — all four pawns home!' }
-  else if (s.winner != null) { bk = 'lose'; banner = `${PLAYER_NAME[s.winner]} wins the race` }
+  if (s.winner === mySeat) { bk = 'win'; banner = 'You win — all four pawns home!' }
+  else if (s.winner != null) { bk = 'lose'; banner = `${nameFor(s.winner, mySeat, online)} wins the race` }
   else if (canRoll) { bk = 'you'; banner = s.doublesCount > 0 ? 'Doubles — roll again!' : 'Your turn — roll the dice' }
   else if (yourTurn && s.phase === 'move') {
     bk = 'you'
     if (s.bonus > 0) banner = `Bonus +${s.bonus} — move a glowing pawn`
     else if (movable.size) banner = sumRelease && activeDie == null ? 'Release a pawn (dice sum 5)' : `Move with ${activeDie} — click a glowing pawn`
     else banner = 'No move — pass'
-  } else { bk = 'foe'; banner = `${PLAYER_NAME[s.turn]} is playing…` }
+  } else { bk = 'foe'; banner = `${nameFor(s.turn, mySeat, online)} is playing…` }
 
   const moveMode = yourTurn && s.phase === 'move' && s.rolled
 
@@ -265,7 +278,7 @@ export function Parcheesi() {
         subtitle="roll a five to break out, race four pawns around the cross to the center — capture rivals for a bonus, wall them off with blockades"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`Home — You ${homeCounts[0]}/4 · C ${homeCounts[1]} · T ${homeCounts[2]} · A ${homeCounts[3]}`}
+        modeLeft={`Home — You ${homeCounts[mySeat]}/4 · ${[0, 1, 2, 3].filter(p => p !== mySeat).map(p => `${nameFor(p, mySeat, online)[0]} ${homeCounts[p]}`).join(' · ')}`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>space · roll &nbsp; 1/2 · pick die &nbsp; N · new &nbsp; ? · rules</>}
@@ -327,7 +340,7 @@ export function Parcheesi() {
             {[0, 1, 2, 3].map(p => (
               <div key={p} className={'par-pr ' + PLAYER_CLASS[p] + (s.turn === p && s.winner == null ? ' on' : '')}>
                 <span className={'par-dot ' + PLAYER_CLASS[p]} />
-                <span className="par-pname">{p === 0 ? 'You · Violet' : PLAYER_NAME[p]}</span>
+                <span className="par-pname">{p === mySeat ? 'You · Violet' : nameFor(p, mySeat, online)}</span>
                 <span className="par-home">{homeCounts[p]}/4</span>
               </div>
             ))}
@@ -346,16 +359,15 @@ export function Parcheesi() {
             <button className={'par-rollbtn' + (canRoll ? ' live' : '')} disabled={!canRoll} onClick={rollNow}>
               {canRoll ? 'Roll dice' : moveMode ? 'Move' : 'Wait'}
             </button>
-            {moveMode && movable.size === 0 && (
-              <button className="par-rollbtn live" onClick={passMove}>Pass</button>
-            )}
             <div className="par-hint">
               {canRoll ? 'roll a 5 to release a pawn; doubles roll again'
                 : moveMode ? (s.bonus > 0 ? 'spend the bonus move on a glowing pawn'
                   : 'pick a die (1/2 or click it), then a glowing pawn')
-                : s.winner == null ? `${PLAYER_NAME[s.turn]} is thinking…` : 'game over'}
+                : s.winner == null ? `${nameFor(s.turn, mySeat, online)} is thinking…` : 'game over'}
             </div>
           </div>
+
+          <div className="panel"><OnlineBar net={net} /></div>
 
           <div className="panel logbox">
             {s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}
@@ -363,23 +375,23 @@ export function Parcheesi() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal winner={s.winner} onNew={newGame} />}
+      {s.winner != null && <ResultModal winner={s.winner} mySeat={mySeat} online={online} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ winner, onNew }: { winner: number; onNew: () => void }) {
-  const won = winner === 0
+function ResultModal({ winner, mySeat, online, onNew }: { winner: number; mySeat: number; online: boolean; onNew: () => void }) {
+  const won = winner === mySeat
   return (
     <Modal
       eyebrow={won ? 'All pawns home' : 'Out-raced'}
-      title={won ? 'You Win' : `${PLAYER_NAME[winner]} Wins`}
+      title={won ? 'You Win' : `${nameFor(winner, mySeat, online)} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}>
       <div className="finalsc">
         {won ? <span className="you">You brought all four pawns to the center</span>
-          : <span className="foe">{PLAYER_NAME[winner]} finished first</span>}
+          : <span className="foe">{nameFor(winner, mySeat, online)} finished first</span>}
       </div>
     </Modal>
   )
@@ -390,7 +402,7 @@ function RulesModal({ onClose }: { onClose: () => void }) {
     <Modal eyebrow="How to play" title="Parcheesi" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Roll out</button>}>
       <div className="modal-body">
-        <p>You are <b>violet</b>; three rivals (coral, teal, amber) race you. Each side has <b>four pawns</b> waiting in its corner start circle and runs them around the shared <b>68-square loop</b>, then up its own <b>home path</b> to the centre.</p>
+        <p>You are <b>violet</b>; three rivals race you. Each side has <b>four pawns</b> waiting in its corner start circle and runs them around the shared <b>68-square loop</b>, then up its own <b>home path</b> to the centre.</p>
         <p>On your turn, <b>roll two dice</b> and use each die <b>separately</b> — move one pawn by each, or one pawn by both. You need a <b>5</b> (one die, or both dice summing to 5) to release a pawn from start onto your entry square.</p>
         <p>Land on a square holding a single rival to <b>capture</b> it (back to start) and earn a <b>+20 bonus</b> move. Reaching the centre with the exact count earns a <b>+10 bonus</b>. Two of your pawns on one square form a <b>blockade</b> rivals can't pass or land on. <b>Safe</b> star squares can't be captured on. <b>Doubles</b> grant an extra turn — but three doubles in a row sends your furthest pawn home.</p>
         <p>The first player to get <b>all four pawns to the centre</b> wins.</p>

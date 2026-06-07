@@ -1,15 +1,17 @@
 /* SHUT THE BOX — UI (built for this codebase). A warm wooden box of nine number tiles and
    two pipped dice on the framework shell. You roll, then click up-tiles summing to the total
-   and press Shut; the AI plays its whole round automatically (greedy "shut the big tiles").
-   Because the AI rolls and shuts several times in one turn, useAITurn re-arms on a tick. */
+   and press Shut. Seat-relative via useGameSession(shutTheBoxAdapter): solo fills the rival
+   seat with the AI, online lets a guest play seat 1. The session drives the AI for empty
+   seats (it rolls and shuts several times per turn, re-arming on the adapter's tickKey). */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
 import * as SB from './logic'
-import type { ShutBoxState } from './logic'
+import { shutTheBoxAdapter } from './net'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -44,30 +46,23 @@ function Die({ v }: { v: number }) {
 }
 
 export function ShutTheBox() {
-  const [s, setS] = useState<ShutBoxState>(() => SB.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(shutTheBoxAdapter)
   const [sel, setSel] = useState<number[]>([])
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(SB.makeGame()); setSel([]); setShowRules(false) }
+  function newGame() { netNew(); setSel([]); setShowRules(false) }
 
-  const yourTurn = !s.winner && s.turn === 'you'
+  const yourTurn = !s.winner && isMyTurn
   const total = s.dice[0] + s.dice[1]
 
-  // The AI plays its whole round here: it rolls, then shuts, repeatedly. `active` stays true
-  // across all those sub-steps, so re-arm the timer on every change in the AI's table state.
-  useAITurn(
-    !s.winner && s.turn === 'ai' && !s.stuck,
-    () => setS(p => SB.aiStep(p)),
-    { delayMs: 620, tick: `${s.rolled}-${s.dice[0]}-${s.dice[1]}-${SB.upSum(s.tiles)}` },
-  )
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => { if (showRules) setShowRules(false); else setSel([]) },
     extra: (e) => {
-      if (e.key === ' ' && yourTurn && !s.rolled) { setS(p => SB.roll(p)); return true }
+      if (e.key === ' ' && yourTurn && !s.rolled) { dispatch({ kind: 'roll' }); return true }
       return false
     },
   })
@@ -83,28 +78,38 @@ export function ShutTheBox() {
   }
   function doRoll(useOne = false) {
     if (!yourTurn || s.rolled) return
-    setSel([]); setS(p => SB.roll(p, useOne))
+    setSel([]); dispatch({ kind: 'roll', useOne })
   }
   function doShut() {
     if (!selValid) return
-    setS(p => SB.shut(p, sel)); setSel([])
+    dispatch({ kind: 'shut', tiles: sel }); setSel([])
   }
 
   // hint: with a roll on the table, can the player even move?
   const noMove = yourTurn && s.rolled && !SB.hasSubset(up, total)
 
+  // Seat-relative identity. Seat 0 = the 'you' side, seat 1 = the 'ai' side. When online we
+  // address the opposite seat as "Opponent" rather than "Rival".
+  const mySide: 'you' | 'ai' = mySeat === 0 ? 'you' : 'ai'
+  const iWon = s.winner === mySide
+  const foeLabel = net.online ? 'Opponent' : 'Rival'
+  const myLabel = net.online ? `You (Player ${mySeat + 1})` : 'You'
+
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = 'You win the box' }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = 'The rival wins' }
-  else if (s.winner === 'draw') { bk = ''; banner = 'A dead-even draw' }
+  if (s.winner === 'draw') { bk = ''; banner = 'A dead-even draw' }
+  else if (s.winner) { bk = iWon ? 'win' : 'lose'; banner = iWon ? 'You win the box' : `The ${foeLabel.toLowerCase()} wins` }
   else if (yourTurn) {
     bk = 'you'
     if (!s.rolled) banner = 'Your turn — roll the dice'
     else if (selValid) banner = `Shut these for ${total} ✓`
     else banner = `Make ${total} — flip tiles summing to it`
-  } else { bk = 'foe'; banner = 'The rival is playing…' }
+  } else { bk = 'foe'; banner = `The ${foeLabel.toLowerCase()} is playing…` }
 
-  const ys = s.scores.you, as = s.scores.ai
+  // Scores keyed to my/opponent perspective.
+  const myScore = mySeat === 0 ? s.scores.you : s.scores.ai
+  const foeScore = mySeat === 0 ? s.scores.ai : s.scores.you
+  const myActive = !s.winner && s.turn === mySide
+  const foeActive = !s.winner && s.turn !== mySide
 
   return (
     <>
@@ -115,7 +120,7 @@ export function ShutTheBox() {
         subtitle="roll, then flip down tiles summing to the dice — get stuck and your leftovers are your score"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={s.turn === 'you' && !s.winner ? 'Your round' : as == null && ys != null && !s.winner ? "Rival's round" : 'Two rounds · lower wins'}
+        modeLeft={myActive ? 'Your round' : foeActive ? `${foeLabel}'s round` : 'Two rounds · lower wins'}
         banner={banner}
         bannerClass={bk}
         modeRight={<>space · roll &nbsp; N · new &nbsp; ? · rules</>}
@@ -170,14 +175,15 @@ export function ShutTheBox() {
         </div>
 
         <div className="side">
+          <OnlineBar net={net} />
           <div className="panel scoreboard">
-            <div className={'sc you' + (s.turn === 'you' && !s.winner ? ' on' : '')}>
-              <span className="sc-name">You</span>
-              <span className="sc-n">{ys == null ? (s.turn === 'you' ? SB.upSum(s.tiles) : '—') : ys}</span>
+            <div className={'sc you' + (myActive ? ' on' : '')}>
+              <span className="sc-name">{myLabel}</span>
+              <span className="sc-n">{myScore == null ? (myActive ? SB.upSum(s.tiles) : '—') : myScore}</span>
             </div>
-            <div className={'sc ai' + (s.turn === 'ai' && !s.winner ? ' on' : '')}>
-              <span className="sc-name">Rival</span>
-              <span className="sc-n">{as == null ? (s.turn === 'ai' ? SB.upSum(s.tiles) : '—') : as}</span>
+            <div className={'sc ai' + (foeActive ? ' on' : '')}>
+              <span className="sc-name">{foeLabel}</span>
+              <span className="sc-n">{foeScore == null ? (foeActive ? SB.upSum(s.tiles) : '—') : foeScore}</span>
             </div>
             <div className="sc-note">leftover sum · lower wins</div>
           </div>
@@ -187,23 +193,34 @@ export function ShutTheBox() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {s.winner && (
+        <ResultModal
+          draw={s.winner === 'draw'}
+          won={iWon}
+          myScore={myScore ?? 0}
+          foeScore={foeScore ?? 0}
+          myLabel={myLabel}
+          foeLabel={foeLabel}
+          onNew={newGame}
+        />
+      )}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: ShutBoxState; onNew: () => void }) {
-  const won = s.winner === 'you', draw = s.winner === 'draw'
-  const ys = s.scores.you ?? 0, as = s.scores.ai ?? 0
+function ResultModal({ draw, won, myScore, foeScore, myLabel, foeLabel, onNew }: {
+  draw: boolean; won: boolean; myScore: number; foeScore: number
+  myLabel: string; foeLabel: string; onNew: () => void
+}) {
   return (
     <Modal
       eyebrow={draw ? 'Stalemate' : won ? 'Box well shut' : 'Out-rolled'}
-      title={draw ? 'A Draw' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'A Draw' : won ? 'You Win' : `${foeLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {ys}</span><span className="foe">Rival {as}</span></div>
+      <div className="finalsc"><span className="you">{myLabel} {myScore}</span><span className="foe">{foeLabel} {foeScore}</span></div>
     </Modal>
   )
 }

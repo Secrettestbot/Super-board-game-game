@@ -9,10 +9,12 @@
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { ingeniousAdapter } from './net'
 import * as ING from './logic'
-import type { IngState, Color } from './logic'
+import type { Color } from './logic'
 
 const { SIDE, NCOLORS, MAXTRACK, COLOR_NAMES, COORDS } = ING
 
@@ -59,20 +61,18 @@ interface Sel {
 }
 
 export function Ingenious() {
-  const [s, setS] = useState<IngState>(() => ING.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(ingeniousAdapter)
+  const oppSeat = mySeat === 0 ? 1 : 0
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<Sel | null>(null)
   const [firstCell, setFirstCell] = useState<number | null>(null)
 
   function newGame() {
-    setS(ING.makeGame())
+    netNew()
     setShowRules(false)
     setSel(null)
     setFirstCell(null)
   }
-
-  // AI may take consecutive (extra) turns; tick on s.moves so each AI action re-arms the timer.
-  useAITurn(s.winner == null && s.turn === 1, () => setS((p) => ING.aiTurn(p)), { delayMs: 650, tick: s.moves })
 
   useGameKeys({
     onNew: newGame,
@@ -90,7 +90,7 @@ export function Ingenious() {
     },
   })
 
-  const yourTurn = s.winner == null && s.turn === 0
+  const yourTurn = s.winner == null && isMyTurn
 
   function clickTile(i: number) {
     if (!yourTurn) return
@@ -115,37 +115,35 @@ export function Ingenious() {
       setFirstCell(i) // restart selection at the new cell
       return
     }
-    const tile = s.racks[0][sel.tileIndex]
+    const tile = s.racks[mySeat][sel.tileIndex]
     // flip decides which end lands on firstCell
     const cellForA = sel.flip ? i : firstCell
     const cellForB = sel.flip ? firstCell : i
     void tile
-    const ns = ING.placeTile(s, 0, sel.tileIndex, cellForA, cellForB)
-    if (ns !== s) {
-      setS(ns)
-      setSel(null)
-      setFirstCell(null)
-    }
+    dispatch({ tileIndex: sel.tileIndex, cellA: cellForA, cellB: cellForB })
+    setSel(null)
+    setFirstCell(null)
   }
 
   const lastSet = new Set(s.last)
-  const youLow = ING.lowestTrack(s.tracks[0])
-  const foeLow = ING.lowestTrack(s.tracks[1])
+  const youLow = ING.lowestTrack(s.tracks[mySeat])
+  const foeLow = ING.lowestTrack(s.tracks[oppSeat])
+  const oppLabel = net.online ? 'Opponent' : 'The rival'
 
   let banner: string
   let bk = ''
-  if (s.winner === 0) {
+  if (s.winner === mySeat) {
     bk = 'win'
     banner = `You win — your lowest track is ${youLow} vs ${foeLow}`
-  } else if (s.winner === 1) {
+  } else if (s.winner === oppSeat) {
     bk = 'lose'
-    banner = `The rival wins — its lowest track is ${foeLow} vs ${youLow}`
+    banner = `${oppLabel} wins — its lowest track is ${foeLow} vs ${youLow}`
   } else if (yourTurn) {
     bk = 'you'
     banner = sel == null ? 'Your turn — pick a tile from your rack' : firstCell == null ? 'Click a cell for the first end' : 'Click an adjacent cell (R flips)'
   } else {
     bk = 'foe'
-    banner = 'The rival is thinking…'
+    banner = net.online ? 'Waiting for opponent…' : 'The rival is thinking…'
   }
 
   // preview of where ends would land
@@ -205,15 +203,18 @@ export function Ingenious() {
 
         <div className="ig-side">
           <div className="ig-panel">
+            <OnlineBar net={net} />
+          </div>
+          <div className="ig-panel">
             <div className="ig-ptitle">Score tracks</div>
-            <TrackBlock label="You" cls="you" tracks={s.tracks[0]} active={yourTurn} low={youLow} />
-            <TrackBlock label="Rival" cls="foe" tracks={s.tracks[1]} active={s.turn === 1 && s.winner == null} low={foeLow} />
+            <TrackBlock label="You" cls="you" tracks={s.tracks[mySeat]} active={yourTurn} low={youLow} />
+            <TrackBlock label={net.online ? 'Opponent' : 'Rival'} cls="foe" tracks={s.tracks[oppSeat]} active={s.turn === oppSeat && s.winner == null} low={foeLow} />
           </div>
 
           <div className="ig-panel ig-rack">
             <div className="ig-ptitle">Your rack</div>
             <div className="ig-tiles">
-              {s.racks[0].map((t, i) => (
+              {s.racks[mySeat].map((t, i) => (
                 <button
                   key={i}
                   className={'ig-tile' + (sel?.tileIndex === i ? ' on' : '')}
@@ -225,7 +226,7 @@ export function Ingenious() {
                   <span className="ig-end" style={{ background: FILL[sel?.tileIndex === i && sel.flip ? t.a : t.b] }} />
                 </button>
               ))}
-              {s.racks[0].length === 0 && <div className="ig-empty-rack">— empty —</div>}
+              {s.racks[mySeat].length === 0 && <div className="ig-empty-rack">— empty —</div>}
             </div>
           </div>
 
@@ -237,7 +238,7 @@ export function Ingenious() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} youLow={youLow} foeLow={foeLow} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={s.winner === mySeat} youLow={youLow} foeLow={foeLow} oppLabel={net.online ? 'Opponent' : 'Rival'} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -279,12 +280,11 @@ function TrackBlock({
   )
 }
 
-function ResultModal({ s, youLow, foeLow, onNew }: { s: IngState; youLow: number; foeLow: number; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ won, youLow, foeLow, oppLabel, onNew }: { won: boolean; youLow: number; foeLow: number; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Colours balanced' : 'Out-balanced'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
@@ -296,7 +296,7 @@ function ResultModal({ s, youLow, foeLow, onNew }: { s: IngState; youLow: number
         </div>
         <div className="ig-fvs">vs</div>
         <div className={'ig-fcol ' + (!won ? 'foe' : '')}>
-          <span className="ig-fname">Rival</span>
+          <span className="ig-fname">{oppLabel}</span>
           <span className="ig-fscore">{foeLow}</span>
           <span className="ig-fsub">lowest track</span>
         </div>

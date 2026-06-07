@@ -1,21 +1,24 @@
 /* THE ROYAL GAME OF UR — UI (built for this codebase). A lapis-and-shell inlay board on the
-   framework shell, vs a heuristic AI. Roll the four dice, then the movable pieces light up —
-   click one to move. Rosettes grant another roll; capture on the shared path. */
+   framework shell, vs a heuristic AI or a remote opponent. Roll the four dice, then the movable
+   pieces light up — click one to move. Rosettes grant another roll; capture on the shared path.
+   Seat-relative: your pieces are always the ones for `mySeat` (seat 0 = light, seat 1 = dark). */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { urAdapter } from './net'
 import * as UR from './logic'
 import type { Player, UrState } from './logic'
 
 /* ---- Physical board geometry ----
-   3 rows × 8 cols. Row 0 = your side, row 1 = the shared bridge, row 2 = the rival's side.
+   3 rows × 8 cols. Row 0 = the light side, row 1 = the shared bridge, row 2 = the dark side.
    The two cells row0/row2 at cols 3,4 are absent (the classic Ur gap). Each player's TRACK
    (0..13) maps to physical [row,col] cells; the shared row is row 1 for both. */
 const COLS = 8, ROWS = 3
-// your track 0..13 → [row,col]
+// the light ('you') track 0..13 → [row,col]
 const TRACK_YOU: [number, number][] = [
   [0, 3], [0, 2], [0, 1], [0, 0],                       // 0..3 entry column (3 = rosette)
   [1, 0], [1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [1, 6], [1, 7], // 4..11 shared (7 = centre rosette)
@@ -49,37 +52,41 @@ const TITLE_MARK = (
   </svg>
 )
 
+// seat → the logic Player it controls (seat 0 = light 'you', seat 1 = dark 'foe')
+const SEAT_PLAYER: Player[] = ['you', 'foe']
+
 export function Ur() {
-  const [s, setS] = useState<UrState>(() => UR.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(urAdapter)
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(UR.makeGame()); setShowRules(false) }
+  // "my" player and "their" player relative to this seat
+  const me = SEAT_PLAYER[mySeat] ?? 'you'
+  const them: Player = me === 'you' ? 'foe' : 'you'
 
-  // The AI both rolls and moves as sub-steps; landing on a rosette keeps the turn 'foe', so
-  // re-arm the timer on every sub-move via a tick that changes each step (rolled flag + roll value).
-  const aiActive = !s.winner && s.turn === 'foe'
-  useAITurn(aiActive, () => setS(p => UR.aiStep(p)), { delayMs: 560, tick: `${s.rolled}-${s.roll}-${s.turn}-${UR.home(s, 'foe')}-${UR.onBoard(s, 'foe')}` })
+  function newGame() { netNew(); setShowRules(false) }
+
+  const over = s.winner != null
+  const yourTurn = !over && isMyTurn
+  const canRoll = yourTurn && !s.rolled
+  const movable = useMemo(
+    () => (yourTurn && s.rolled && s.roll ? new Set(UR.legalMoves(s, me, s.roll)) : new Set<number>()),
+    [yourTurn, s.rolled, s.roll, s, me],
+  )
+
+  function clickPiece(p: Player, idx: number) {
+    if (p === me && yourTurn && s.rolled && movable.has(idx)) dispatch({ kind: 'move', piece: idx })
+  }
+  function rollNow() { if (canRoll) dispatch({ kind: 'roll' }) }
+
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => setShowRules(false),
     extra: (e) => {
-      if ((e.key === ' ' || e.key === 'Enter') && !s.winner && s.turn === 'you' && !s.rolled) { setS(p => UR.doRoll(p)); return true }
+      if ((e.key === ' ' || e.key === 'Enter') && canRoll) { rollNow(); return true }
       return false
     },
   })
-
-  const yourTurn = !s.winner && s.turn === 'you'
-  const canRoll = yourTurn && !s.rolled
-  const movable = useMemo(
-    () => (yourTurn && s.rolled && s.roll ? new Set(UR.legalMoves(s, 'you', s.roll)) : new Set<number>()),
-    [yourTurn, s.rolled, s.roll, s],
-  )
-
-  function clickPiece(p: Player, idx: number) {
-    if (p === 'you' && yourTurn && s.rolled && movable.has(idx)) setS(UR.move(s, 'you', idx))
-  }
-  function rollNow() { if (canRoll) setS(UR.doRoll(s)) }
 
   // map physical cell → occupant {player, idx, movable}
   const occupant = useMemo(() => {
@@ -88,21 +95,25 @@ export function Ur() {
       s.pieces[pl].forEach((t, idx) => {
         if (t >= 0 && t < UR.HOME) {
           const [r, c] = trackCell(pl, t)
-          m.set(key(r, c), { p: pl, idx, mv: pl === 'you' && movable.has(idx) })
+          m.set(key(r, c), { p: pl, idx, mv: pl === me && movable.has(idx) })
         }
       })
     }
     return m
-  }, [s.pieces, movable])
+  }, [s.pieces, movable, me])
 
   const lastCell = s.last && s.last.to >= 0 && s.last.to < UR.HOME ? key(...trackCell(s.last.player, s.last.to)) : -1
 
+  const oppLabel = net.online ? 'Opponent' : 'The rival'
+  const iWon = s.winner === me
+  const justRosette = s.last?.player === me && s.rolled === false && s.last.to < UR.HOME && UR.ROSETTES.has(s.last.to)
+
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = 'You win — all seven stones home' }
-  else if (s.winner === 'foe') { bk = 'lose'; banner = 'The rival wins the race' }
-  else if (yourTurn && canRoll) { bk = 'you'; banner = s.last?.player === 'you' && s.rolled === false && UR.ROSETTES.has(s.last.to) ? 'Rosette — roll again!' : 'Your turn — roll the dice' }
+  if (over && iWon) { bk = 'win'; banner = 'You win — all seven stones home' }
+  else if (over) { bk = 'lose'; banner = `${oppLabel} wins the race` }
+  else if (yourTurn && canRoll) { bk = 'you'; banner = justRosette ? 'Rosette — roll again!' : 'Your turn — roll the dice' }
   else if (yourTurn && s.rolled) { bk = 'you'; banner = `You rolled a ${s.roll} — move a glowing piece` }
-  else { bk = 'foe'; banner = 'The rival is playing…' }
+  else { bk = 'foe'; banner = net.online ? `${oppLabel} is playing…` : 'The rival is playing…' }
 
   return (
     <>
@@ -113,7 +124,7 @@ export function Ur() {
         subtitle="the oldest race-game on earth — roll the four dice, run all seven stones home"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`Home ${UR.home(s, 'you')}/7 · ${UR.home(s, 'foe')}/7`}
+        modeLeft={`Home ${UR.home(s, me)}/7 · ${UR.home(s, them)}/7`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>space · roll &nbsp; N · new &nbsp; ? · rules</>}
@@ -121,7 +132,7 @@ export function Ur() {
         <div className="ur-wrap">
           <div className="ur-board">
             {Array.from({ length: ROWS * COLS }, (_, cell) => {
-              const r = Math.floor(cell / COLS), c = cell % COLS
+              const r = Math.floor(cell / COLS)
               if (!EXISTS.has(cell)) return <div key={cell} className="ur-gap" />
               const occ = occupant.get(cell)
               const ros = ROSETTE_CELLS.has(cell)
@@ -153,15 +164,18 @@ export function Ur() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel scoreboard">
-            <PlayerRow s={s} p="you" name="You · Light" on={s.turn === 'you' && !s.winner} />
-            <PlayerRow s={s} p="foe" name="Rival · Dark" on={s.turn === 'foe' && !s.winner} />
+            <PlayerRow s={s} p={me} name="You · Light" on={!over && s.turn === me} />
+            <PlayerRow s={s} p={them} name={`${oppLabel} · Dark`} on={!over && s.turn === them} />
           </div>
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}</div>
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {over && <ResultModal s={s} me={me} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -187,16 +201,17 @@ function PlayerRow({ s, p, name, on }: { s: UrState; p: Player; name: string; on
   )
 }
 
-function ResultModal({ s, onNew }: { s: UrState; onNew: () => void }) {
-  const won = s.winner === 'you'
+function ResultModal({ s, me, oppLabel, onNew }: { s: UrState; me: Player; oppLabel: string; onNew: () => void }) {
+  const won = s.winner === me
+  const them: Player = me === 'you' ? 'foe' : 'you'
   return (
     <Modal
       eyebrow={won ? 'Stones all home' : 'Out-raced'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {UR.home(s, 'you')}/7</span><span className="foe">Rival {UR.home(s, 'foe')}/7</span></div>
+      <div className="finalsc"><span className="you">You {UR.home(s, me)}/7</span><span className="foe">{oppLabel} {UR.home(s, them)}/7</span></div>
     </Modal>
   )
 }

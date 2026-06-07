@@ -1,13 +1,17 @@
 /* QWIXX — UI (built for this codebase). A bright roll-and-write scorepad: four coloured
-   rows per player, six pipped dice, vs a greedy heuristic AI. Only legal cells are clickable;
-   the active roller gets the white-sum AND a white+colour combo, the passive player gets the
-   white-sum only. The AI's whole turn (roll + crosses + end) is driven by useAITurn's tick. */
+   rows per player, six pipped dice. Solo vs a greedy heuristic AI, or online host/guest via
+   useGameSession. Seat-relative: your own sheet comes from `mySeat`, marking is gated by
+   `isMyTurn`, and banners/score/result are all stated from your seat's point of view. Only
+   legal cells are clickable; the active roller gets the white-sum AND a white+colour combo,
+   the passive player gets the white-sum only. The hook drives any AI / empty seat. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { qwixxAdapter } from './net'
 import * as QX from './logic'
 import type { QwixxState, Color, Option } from './logic'
 
@@ -49,65 +53,67 @@ function Die({ value, color }: { value: number; color: string }) {
 }
 
 export function Qwixx() {
-  const [s, setS] = useState<QwixxState>(() => QX.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(qwixxAdapter)
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(QX.makeGame()); setShowRules(false) }
+  const me = mySeat as 0 | 1
+  const foe = (me === 0 ? 1 : 0) as 0 | 1
+  const over = s.winner != null
 
-  // The AI runs its WHOLE turn step-by-step while it's active; the tick re-arms the timer
-  // after each step (roll -> white -> colour -> end). It also reacts as the passive player
-  // when YOU are active, by taking a sensible white-sum once.
-  const aiActive = !s.winner && (
-    (s.active !== s.you) ||                                  // AI's own turn
-    (s.active === s.you && s.phase === 'act' && needsPassiveAI(s)) // AI's white reaction to your roll
-  )
-  useAITurn(aiActive, () => setS(p => aiTick(p)), {
-    delayMs: 520,
-    tick: `${s.turnNo}-${s.active}-${s.phase}-${s.whiteTakenBy.join('')}-${s.acted.white}-${s.acted.color}`,
-  })
+  // What to call the other player on this screen.
+  const oppName = net.online ? `Player ${foe + 1}` : 'Rival'
+
+  function newGame() { netNew(); setShowRules(false) }
+
+  function roll() { if (isMyTurn && s.phase === 'roll' && s.active === me) dispatch({ kind: 'roll' }) }
+  function endTurn() { if (isMyTurn && s.phase === 'act' && s.active === me) dispatch({ kind: 'pass' }) }
+  function passWindow() { if (isMyTurn && s.phase === 'act') dispatch({ kind: 'pass' }) }
 
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => setShowRules(false),
     extra: (e) => {
-      if ((e.key === ' ' || e.key === 'Enter') && yourTurn && s.phase === 'roll') { setS(QX.rollDice(s)); return true }
+      if ((e.key === ' ' || e.key === 'Enter') && isMyTurn && s.phase === 'roll' && s.active === me) { roll(); return true }
       return false
     },
   })
 
-  const yourTurn = !s.winner && s.active === s.you
-  const youArePassive = !s.winner && s.active !== s.you && s.phase === 'act'
+  // My role this turn, from MY seat (active roller vs passive reactor).
+  const iAmActive = !over && s.active === me
+  const iAmPassive = !over && s.active !== me && s.phase === 'act'
 
-  // Legal options for the human player right now (active or passive).
+  // Legal options for ME right now (active or passive), only when it's my turn to act.
   const myOpts = useMemo<Option[]>(() => {
-    if (s.winner || s.phase !== 'act') return []
-    return QX.options(s, s.you)
-  }, [s])
+    if (over || s.phase !== 'act' || !isMyTurn) return []
+    return QX.options(s, me)
+  }, [s, me, isMyTurn, over])
   const optAt = (color: Color, index: number) => myOpts.find(o => o.color === color && o.index === index)
 
   function clickCell(color: Color, index: number) {
+    if (!isMyTurn) return
     const o = optAt(color, index)
     if (!o) return
-    setS(QX.cross(s, s.you, color, index, o.kind))
+    dispatch({ kind: 'mark', color, index })
   }
-  function endTurn() { if (yourTurn && s.phase === 'act') setS(QX.endTurn(s)) }
-  function passPenalty() { if (yourTurn && s.phase === 'act') setS(QX.passPenalty(s)) }
-  function roll() { if (yourTurn && s.phase === 'roll') setS(QX.rollDice(s)) }
 
-  const t0 = QX.scoreTotal(s.players[0]), t1 = QX.scoreTotal(s.players[1])
+  const myTotal = QX.scoreTotal(s.players[me]), foeTotal = QX.scoreTotal(s.players[foe])
 
-  // banner
+  // banner — stated from MY seat
   let banner: string, bk = ''
-  if (s.winner === s.you) { bk = 'win'; banner = `You win — ${Math.max(t0, t1)} to ${Math.min(t0, t1)}` }
-  else if (s.winner === (s.you === 0 ? 1 : 0)) { bk = 'lose'; banner = `The rival wins — ${Math.max(t0, t1)} to ${Math.min(t0, t1)}` }
-  else if (s.winner === 'draw') { bk = ''; banner = `A tie — ${t0}–${t1}` }
-  else if (yourTurn && s.phase === 'roll') { bk = 'you'; banner = 'Your roll — press Space or Roll' }
-  else if (yourTurn && s.phase === 'act') { bk = 'you'; banner = myOpts.length ? 'Cross a number, or pass / take penalty' : 'No legal cross — pass / take penalty' }
-  else if (youArePassive) { bk = 'foe'; banner = myOpts.length ? 'Rival rolled — you may take the white sum' : 'Rival rolled — the white sum is no use to you' }
-  else { bk = 'foe'; banner = 'The rival is rolling…' }
+  if (s.winner === me) { bk = 'win'; banner = `You win — ${Math.max(myTotal, foeTotal)} to ${Math.min(myTotal, foeTotal)}` }
+  else if (s.winner === foe) { bk = 'lose'; banner = `${oppName} wins — ${Math.max(myTotal, foeTotal)} to ${Math.min(myTotal, foeTotal)}` }
+  else if (s.winner === 'draw') { bk = ''; banner = `A tie — ${myTotal}–${foeTotal}` }
+  else if (iAmActive && s.phase === 'roll') { bk = 'you'; banner = 'Your roll — press Space or Roll' }
+  else if (iAmActive && s.phase === 'act' && isMyTurn) { bk = 'you'; banner = myOpts.length ? 'Cross a number, or pass / take penalty' : 'No legal cross — pass / take penalty' }
+  else if (iAmActive && s.phase === 'act') { bk = 'you'; banner = `Waiting for ${oppName} to react…` }
+  else if (iAmPassive && isMyTurn) { bk = 'foe'; banner = myOpts.length ? `${oppName} rolled — you may take the white sum` : `${oppName} rolled — the white sum is no use to you` }
+  else { bk = 'foe'; banner = `${oppName} is taking their turn…` }
 
   const white = s.dice ? s.dice[0] + s.dice[1] : null
+
+  // Render order: my sheet first (left/top), opponent second.
+  const sheetOrder: (0 | 1)[] = me === 0 ? [0, 1] : [1, 0]
 
   return (
     <>
@@ -125,42 +131,46 @@ export function Qwixx() {
       >
         <div className="qx-main">
           <div className="qx-sheets">
-            {s.players.map((pl, pi) => (
-              <div key={pi} className={'qx-sheet' + (s.active === pi && !s.winner ? ' active' : '')}>
-                <div className="qx-sheet-head">
-                  <span className="qx-sheet-name">{pi === s.you ? 'You' : 'Rival'}</span>
-                  {s.active === pi && !s.winner && <span className="qx-roller">rolling</span>}
-                  <span className="qx-sheet-score">{QX.scoreTotal(pl)}</span>
+            {sheetOrder.map(pi => {
+              const pl = s.players[pi]
+              const mine = pi === me
+              return (
+                <div key={pi} className={'qx-sheet' + (s.active === pi && !over ? ' active' : '')}>
+                  <div className="qx-sheet-head">
+                    <span className="qx-sheet-name">{mine ? 'You' : oppName}</span>
+                    {s.active === pi && !over && <span className="qx-roller">rolling</span>}
+                    <span className="qx-sheet-score">{QX.scoreTotal(pl)}</span>
+                  </div>
+                  {COLORS.map(c => {
+                    const row = pl.rows[c]
+                    return (
+                      <div key={c} className={'qx-row ' + c + (row.locked ? ' locked' : '')}>
+                        {ROW_VALUES[c].map((v, i) => {
+                          const crossed = row.marks[i]
+                          const o = mine ? optAt(c, i) : undefined
+                          const end = i === NCOLS - 1
+                          return (
+                            <button
+                              key={i}
+                              className={'qx-cell' + (crossed ? ' x' : '') + (o ? ' opt ' + o.kind : '') + (end ? ' end' : '')}
+                              disabled={!o}
+                              onClick={() => clickCell(c, i)}
+                            >
+                              {end ? <Lock /> : v}
+                            </button>
+                          )
+                        })}
+                        {row.locked && <span className="qx-lockflag">locked</span>}
+                      </div>
+                    )
+                  })}
+                  <div className="qx-pens">
+                    <span className="qx-pens-l">penalties</span>
+                    {[0, 1, 2, 3].map(k => <span key={k} className={'qx-pen' + (k < pl.penalties ? ' on' : '')}>✕</span>)}
+                  </div>
                 </div>
-                {COLORS.map(c => {
-                  const row = pl.rows[c]
-                  return (
-                    <div key={c} className={'qx-row ' + c + (row.locked ? ' locked' : '')}>
-                      {ROW_VALUES[c].map((v, i) => {
-                        const crossed = row.marks[i]
-                        const o = pi === s.you ? optAt(c, i) : undefined
-                        const end = i === NCOLS - 1
-                        return (
-                          <button
-                            key={i}
-                            className={'qx-cell' + (crossed ? ' x' : '') + (o ? ' opt ' + o.kind : '') + (end ? ' end' : '')}
-                            disabled={!o}
-                            onClick={() => clickCell(c, i)}
-                          >
-                            {end ? <Lock /> : v}
-                          </button>
-                        )
-                      })}
-                      {row.locked && <span className="qx-lockflag">locked</span>}
-                    </div>
-                  )
-                })}
-                <div className="qx-pens">
-                  <span className="qx-pens-l">penalties</span>
-                  {[0, 1, 2, 3].map(k => <span key={k} className={'qx-pen' + (k < pl.penalties ? ' on' : '')}>✕</span>)}
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           <div className="qx-tray">
@@ -184,24 +194,26 @@ export function Qwixx() {
                 : <span>roll the dice to begin the turn</span>}
             </div>
             <div className="qx-actions">
-              {yourTurn && s.phase === 'roll' && <button className="qx-btn primary" onClick={roll}>Roll dice</button>}
-              {yourTurn && s.phase === 'act' && <button className="qx-btn" onClick={endTurn}>End turn</button>}
-              {yourTurn && s.phase === 'act' && <button className="qx-btn warn" onClick={passPenalty}>Pass / take penalty</button>}
+              {iAmActive && s.phase === 'roll' && isMyTurn && <button className="qx-btn primary" onClick={roll}>Roll dice</button>}
+              {iAmActive && s.phase === 'act' && isMyTurn && <button className="qx-btn" onClick={endTurn}>End turn</button>}
+              {iAmActive && s.phase === 'act' && isMyTurn && <button className="qx-btn warn" onClick={endTurn}>Pass / take penalty</button>}
+              {iAmPassive && isMyTurn && <button className="qx-btn" onClick={passWindow}>Skip white sum</button>}
             </div>
           </div>
         </div>
 
         <div className="side">
+          <OnlineBar net={net} />
           <div className="panel qx-scorebox">
-            <div className={'qx-score' + (s.active === s.you && !s.winner ? ' on' : '')}>
+            <div className={'qx-score' + (s.active === me && !over ? ' on' : '')}>
               <span className="qx-score-name">You</span>
-              <span className="qx-score-pen">{s.players[s.you].penalties} pen</span>
-              <span className="qx-score-n">{t0}</span>
+              <span className="qx-score-pen">{s.players[me].penalties} pen</span>
+              <span className="qx-score-n">{myTotal}</span>
             </div>
-            <div className={'qx-score' + (s.active !== s.you && !s.winner ? ' on' : '')}>
-              <span className="qx-score-name">Rival</span>
-              <span className="qx-score-pen">{s.players[s.you === 0 ? 1 : 0].penalties} pen</span>
-              <span className="qx-score-n">{t1}</span>
+            <div className={'qx-score' + (s.active === foe && !over ? ' on' : '')}>
+              <span className="qx-score-name">{oppName}</span>
+              <span className="qx-score-pen">{s.players[foe].penalties} pen</span>
+              <span className="qx-score-n">{foeTotal}</span>
             </div>
             <div className="qx-locks">
               {COLORS.map(c => {
@@ -215,7 +227,7 @@ export function Qwixx() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} t0={t0} t1={t1} onNew={newGame} />}
+      {over && <ResultModal s={s} me={me} oppName={oppName} myTotal={myTotal} foeTotal={foeTotal} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -230,32 +242,18 @@ function Lock() {
   )
 }
 
-// Does the passive AI still owe a white-sum decision while YOU are active?
-function needsPassiveAI(s: QwixxState): boolean {
-  const ai = (s.you === 0 ? 1 : 0) as 0 | 1
-  return !s.whiteTakenBy[ai] && QX.options(s, ai).some(o => o.kind === 'white')
-}
-
-// One scheduled AI action. If it's the AI's turn, advance its turn (logic.aiStep). If YOU
-// are active, let the AI take its passive white-sum reaction. Idempotent / safe to re-run.
-function aiTick(s: QwixxState): QwixxState {
-  if (s.winner) return s
-  if (s.active !== s.you) return QX.aiStep(s)
-  // you are active -> AI reacts passively
-  const ai = (s.you === 0 ? 1 : 0) as 0 | 1
-  return QX.passiveWhite(s, ai)
-}
-
-function ResultModal({ s, t0, t1, onNew }: { s: QwixxState; t0: number; t1: number; onNew: () => void }) {
-  const won = s.winner === s.you, draw = s.winner === 'draw'
+function ResultModal({ s, me, oppName, myTotal, foeTotal, onNew }: {
+  s: QwixxState; me: 0 | 1; oppName: string; myTotal: number; foeTotal: number; onNew: () => void
+}) {
+  const won = s.winner === me, draw = s.winner === 'draw'
   return (
     <Modal
       eyebrow={draw ? 'Dead even' : won ? 'Sharpest pencil' : 'Out-scored'}
-      title={draw ? 'A Tie' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'A Tie' : won ? 'You Win' : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {t0}</span><span className="foe">Rival {t1}</span></div>
+      <div className="finalsc"><span className="you">You {myTotal}</span><span className="foe">{oppName} {foeTotal}</span></div>
     </Modal>
   )
 }
