@@ -1,14 +1,18 @@
 /* PIG — UI (built for this codebase). A push-your-luck dice race to 100 on the framework
-   shell, vs a "hold at 20" AI. The AI rolls several times per turn, so useAITurn re-arms on
-   a tick that changes each roll (turnTotal-rollCount-turn) and the dice land one at a time. */
+   shell. Solo: you (seat 0) vs a "hold at 20" AI (seat 1). Online: host is seat 0, a remote
+   guest takes seat 1. The view is seat-relative — "you" is always whoever is at mySeat — and
+   useGameSession drives the AI for any unfilled seat. The AI rolls several times per turn, so
+   the hook re-arms on a tick that changes each roll (rollCount) and the dice land one at a time. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { pigAdapter } from './net'
 import * as PG from './logic'
-import type { PigState } from './logic'
+import type { PigState, Player } from './logic'
 
 const { GOAL } = PG
 
@@ -44,28 +48,32 @@ function Die({ value, bust, rollKey }: { value: number; bust: boolean; rollKey: 
 }
 
 export function Pig() {
-  const [s, setS] = useState<PigState>(() => PG.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(pigAdapter)
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(PG.makeGame()); setShowRules(false) }
+  // Seat-relative: "me" is whoever sits at mySeat (seat 0 -> 'you', seat 1 -> 'ai' encoding).
+  const me: Player = mySeat === 0 ? 'you' : 'ai'
+  const opp: Player = me === 'you' ? 'ai' : 'you'
+  const myScore = s.scores[me]
+  const oppScore = s.scores[opp]
+  const oppName = net.online ? 'Opponent' : 'Rival'
 
-  const yourTurn = !s.winner && s.turn === 'you'
-  const aiTurn = !s.winner && s.turn === 'ai'
+  function newGame() { netNew(); setShowRules(false) }
 
-  function rollYou() { if (yourTurn) setS(p => PG.roll(p, 'you')) }
-  function holdYou() { if (yourTurn && s.turnTotal > 0) setS(p => PG.hold(p, 'you')) }
+  const yourTurn = !s.winner && isMyTurn
+  const oppTurn = !s.winner && !isMyTurn
 
-  // The AI rolls multiple times per turn — re-arm the timer on each roll so dice animate one
-  // at a time, and keep stepping until its policy holds and the turn passes.
-  useAITurn(aiTurn, () => setS(p => PG.aiStep(p)), { delayMs: 620, tick: `${s.turnTotal}-${s.rollCount}-${s.turn}` })
+  function rollYou() { if (yourTurn) dispatch({ kind: 'roll' }) }
+  function holdYou() { if (yourTurn && s.turnTotal > 0) dispatch({ kind: 'hold' }) }
+
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => setShowRules(false),
     extra: (e) => {
-      if (s.winner || s.turn !== 'you') return false
+      if (!yourTurn) return false
       if (e.key === ' ') { rollYou(); return true }
       if (e.key === 'h' || e.key === 'H') { holdYou(); return true }
       return false
@@ -73,12 +81,12 @@ export function Pig() {
   })
 
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = `You reached ${GOAL} — you win!` }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = `The rival reached ${GOAL} — you lose` }
-  else if (s.busted && yourTurn) { bk = 'lose'; banner = 'The rival busted on a 1!' }
-  else if (s.busted && aiTurn) { bk = 'you'; banner = 'You busted on a 1 — turn lost' }
+  if (s.winner === me) { bk = 'win'; banner = `You reached ${GOAL} — you win!` }
+  else if (s.winner === opp) { bk = 'lose'; banner = `${oppName} reached ${GOAL} — you lose` }
+  else if (s.busted && yourTurn) { bk = 'lose'; banner = `${oppName} busted on a 1!` } // opp just busted, now your turn
+  else if (s.busted && oppTurn) { bk = 'you'; banner = 'You busted on a 1 — turn lost' } // you just busted, now opp's turn
   else if (yourTurn) { bk = 'you'; banner = 'Your roll — push your luck or hold' }
-  else { bk = 'foe'; banner = 'The rival is rolling…' }
+  else { bk = 'foe'; banner = `${oppName} is rolling…` }
 
   return (
     <>
@@ -96,7 +104,7 @@ export function Pig() {
       >
         <div className="pig-wrap">
           <div className="pig-table">
-            <div className="pig-turnlabel">{s.winner ? 'game over' : yourTurn ? 'your turn' : "rival's turn"}</div>
+            <div className="pig-turnlabel">{s.winner ? 'game over' : yourTurn ? 'your turn' : `${oppName.toLowerCase()}'s turn`}</div>
             {s.die == null
               ? <div className="die-empty">{s.winner ? 'done' : 'ready to roll'}</div>
               : <Die value={s.die} bust={s.busted} rollKey={s.rollCount} />}
@@ -112,16 +120,19 @@ export function Pig() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel scoreboard">
-            <div className={'sc' + (s.turn === 'you' && !s.winner ? ' on' : '')}>
+            <div className={'sc' + (yourTurn ? ' on' : '')}>
               <span className="sc-token you" />
               <span className="sc-name">You</span>
-              <span className="sc-n">{s.scores.you}</span>
+              <span className="sc-n">{myScore}</span>
             </div>
-            <div className={'sc' + (s.turn === 'ai' && !s.winner ? ' on' : '')}>
+            <div className={'sc' + (oppTurn ? ' on' : '')}>
               <span className="sc-token ai" />
-              <span className="sc-name">Rival</span>
-              <span className="sc-n">{s.scores.ai}</span>
+              <span className="sc-name">{oppName}</span>
+              <span className="sc-n">{oppScore}</span>
             </div>
             <div className="sc-goal">banked points · first to {GOAL} wins</div>
           </div>
@@ -131,22 +142,21 @@ export function Pig() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {s.winner && <ResultModal won={s.winner === me} myScore={myScore} oppScore={oppScore} oppName={oppName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: PigState; onNew: () => void }) {
-  const won = s.winner === 'you'
+function ResultModal({ won, myScore, oppScore, oppName, onNew }: { won: boolean; myScore: number; oppScore: number; oppName: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Nerves of steel' : 'Out-rolled'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {s.scores.you}</span><span className="foe">Rival {s.scores.ai}</span></div>
+      <div className="finalsc"><span className="you">You {myScore}</span><span className="foe">{oppName} {oppScore}</span></div>
     </Modal>
   )
 }

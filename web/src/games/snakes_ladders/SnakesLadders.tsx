@@ -1,20 +1,31 @@
 /* SNAKES & LADDERS — UI (built for this codebase). A 4-player dice race on the framework
-   shell vs three "just roll" AIs. The 10x10 boustrophedon board is drawn with an SVG overlay
-   for the snakes + ladders, and four tokens sit on their squares. Because each AI takes a
-   couple of sub-steps per turn (roll, then end-turn, plus extra turns on a 6), useAITurn
-   re-arms on a tick that changes every action (step-turn-die) so the AI never stalls. */
+   shell. Solo: you (seat 0) play three "just roll" AIs. Online: useGameSession runs the
+   real logic on the host, the AI fills empty seats, and your turn is a single ROLL intent
+   ({ kind: 'roll' }) — the host rolls, moves, resolves snakes/ladders + win, and passes the
+   turn (a 6 keeps it). The view is seat-relative: "you" is the local mySeat, and the banner,
+   scores and result are all from that seat's perspective. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { snakesLaddersAdapter } from './net'
 import * as SL from './logic'
 import type { SLState } from './logic'
 
-const { SIZE, GOAL, NAMES, PLAYERS } = SL
+const { SIZE, GOAL, NAMES } = SL
 
 const PLAYER_VARS = ['p0', 'p1', 'p2', 'p3'] // → --player-N colors
+
+/** Seat-relative display name: "You" for your seat; otherwise the themed name, or a generic
+ * "Opponent" / "Player N" when playing online (the real name of a remote human is unknown). */
+function nameFor(p: number, mySeat: number, online: boolean, numSeats: number): string {
+  if (p === mySeat) return 'You'
+  if (!online) return NAMES[p] ?? `Player ${p + 1}`
+  return numSeats === 2 ? 'Opponent' : `Player ${p + 1}`
+}
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -61,31 +72,22 @@ function squareCenter(n: number): { x: number; y: number } {
 }
 
 export function SnakesLadders() {
-  const [s, setS] = useState<SLState>(() => SL.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(snakesLaddersAdapter)
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
+  const numSeats = s.positions.length
 
-  function newGame() { setS(SL.makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  const yourTurn = s.winner == null && s.turn === 0
-  const aiTurn = s.winner == null && s.turn !== 0
+  const yourTurn = s.winner == null && isMyTurn
+  const youWon = s.winner === mySeat
 
-  // Your action: if you haven't rolled yet, roll; if you already rolled (and didn't earn an
-  // extra turn or win), pressing again ends the turn. Extra turns auto-re-arm via endTurn.
+  // Your turn is a single action: roll (the host rolls, moves, resolves jumps + win, and
+  // passes the turn — a 6 keeps it for you). The AI fills empty seats via the hook.
   function act() {
     if (!yourTurn) return
-    setS(p => {
-      if (p.die == null) return SL.roll(p)
-      return SL.endTurn(p)
-    })
+    dispatch({ kind: 'roll' })
   }
-
-  // The AI takes several sub-steps per turn (roll, end-turn, plus extra rolls on a 6), so
-  // re-arm the timer on a tick that changes every action — otherwise it stalls.
-  useAITurn(aiTurn, () => setS(p => SL.aiStep(p)), {
-    delayMs: 650,
-    tick: `${s.step}-${s.turn}-${s.die}`,
-  })
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
 
@@ -94,22 +96,20 @@ export function SnakesLadders() {
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => setShowRules(false),
     extra: (e) => {
-      if (s.winner != null || s.turn !== 0) return false
+      if (!yourTurn) return false
       if (e.key === ' ' || e.key === 'Enter') { act(); return true }
       return false
     },
   })
 
-  // Banner
-  let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You reached 100 — you win!' }
-  else if (s.winner != null) { bk = 'lose'; banner = `${NAMES[s.winner]} reached 100 — you lose` }
-  else if (yourTurn && s.die == null) { bk = 'you'; banner = 'Your turn — roll the die' }
-  else if (yourTurn && s.die != null && s.extraTurn) { bk = 'you'; banner = 'You rolled a 6 — roll again!' }
-  else if (yourTurn && s.die != null) { bk = 'you'; banner = `You rolled ${s.die} — end your turn` }
-  else { bk = 'foe'; banner = `${NAMES[s.turn]} is rolling…` }
+  const turnName = nameFor(s.turn, mySeat, net.online, numSeats)
 
-  const actLabel = s.die == null ? 'Roll' : s.extraTurn ? 'Roll again' : 'End turn'
+  // Banner (relative to your seat).
+  let banner: string, bk = ''
+  if (youWon) { bk = 'win'; banner = 'You reached 100 — you win!' }
+  else if (s.winner != null) { bk = 'lose'; banner = `${nameFor(s.winner, mySeat, net.online, numSeats)} reached 100 — you lose` }
+  else if (yourTurn) { bk = 'you'; banner = 'Your turn — roll the die' }
+  else { bk = 'foe'; banner = `${turnName} is rolling…` }
 
   // Board squares bottom-to-top so row 9 renders at the top. We render rows top→bottom for DOM.
   const rows: number[][] = []
@@ -217,9 +217,9 @@ export function SnakesLadders() {
                   key={p}
                   className={'sl-token ' + PLAYER_VARS[p] + (isWin ? ' win' : '') + (s.last?.player === p ? ' moved' : '')}
                   style={{ left: `calc(${c.x * 100}% + ${ox}%)`, top: `calc(${c.y * 100}% + ${oy}%)` }}
-                  title={`${NAMES[p]} on ${pos}`}
+                  title={`${nameFor(p, mySeat, net.online, numSeats)} on ${pos}`}
                 >
-                  <span className="sl-token-dot">{p === 0 ? '★' : NAMES[p][0]}</span>
+                  <span className="sl-token-dot">{p === mySeat ? '★' : NAMES[p][0]}</span>
                 </div>
               )
             })}
@@ -227,22 +227,26 @@ export function SnakesLadders() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
+
           <div className="panel sl-roller">
             <div className="sl-turnlabel">
-              {s.winner != null ? 'game over' : yourTurn ? 'your turn' : `${NAMES[s.turn].toLowerCase()}'s turn`}
+              {s.winner != null ? 'game over' : yourTurn ? 'your turn' : `${turnName.toLowerCase()}'s turn`}
             </div>
             {s.die == null
               ? <div className="sl-die-empty">{s.winner != null ? 'done' : 'ready'}</div>
               : <Die value={s.die} rollKey={s.step} six={s.rolledSix} />}
-            <button className="big-btn roll" onClick={act} disabled={!yourTurn}>{actLabel}</button>
+            <button className="big-btn roll" onClick={act} disabled={!yourTurn}>Roll</button>
           </div>
 
           <div className="panel sl-scores">
-            {Array.from({ length: PLAYERS }, (_, p) => (
+            {s.positions.map((pos, p) => (
               <div key={p} className={'sl-sc' + (s.turn === p && s.winner == null ? ' on' : '') + (s.winner === p ? ' won' : '')}>
                 <span className={'sl-sc-token ' + PLAYER_VARS[p]} />
-                <span className="sl-sc-name">{NAMES[p]}{p === 0 ? ' (you)' : ''}</span>
-                <span className="sl-sc-n">{s.positions[p]}</span>
+                <span className="sl-sc-name">{nameFor(p, mySeat, net.online, numSeats)}</span>
+                <span className="sl-sc-n">{pos}</span>
               </div>
             ))}
           </div>
@@ -253,25 +257,30 @@ export function SnakesLadders() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && (
+        <ResultModal s={s} mySeat={mySeat} online={net.online} numSeats={numSeats} onNew={newGame} />
+      )}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: SLState; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal(
+  { s, mySeat, online, numSeats, onNew }:
+  { s: SLState; mySeat: number; online: boolean; numSeats: number; onNew: () => void },
+) {
+  const won = s.winner === mySeat
   return (
     <Modal
       eyebrow={won ? 'Home first' : 'Out-rolled'}
-      title={won ? 'You Win' : `${NAMES[s.winner!]} Wins`}
+      title={won ? 'You Win' : `${nameFor(s.winner!, mySeat, online, numSeats)} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="sl-final">
         {s.positions.map((pos, p) => (
           <span key={p} className={'sl-final-row ' + PLAYER_VARS[p]}>
-            <b>{NAMES[p]}</b> {pos}
+            <b>{nameFor(p, mySeat, online, numSeats)}</b> {pos}
           </span>
         ))}
       </div>
@@ -287,7 +296,7 @@ function RulesModal({ onClose }: { onClose: () => void }) {
         <p>You and three rivals race a single token each up a board numbered <b>1 to 100</b>. On your turn, <b>roll one die</b> and advance that many squares.</p>
         <p>Land on the foot of a <b>ladder</b> and you climb to its top. Land on the head of a <b>snake</b> and you slide down to its tail.</p>
         <p>Roll a <b>6</b> and you get to <b>roll again</b>. The first token to reach (or pass) square <b>100</b> wins — it's nearly all luck.</p>
-        <p><b>Keys:</b> <kbd>Space</kbd> roll / end turn · <kbd>N</kbd> new game · <kbd>?</kbd> rules · <kbd>Esc</kbd> close.</p>
+        <p><b>Keys:</b> <kbd>Space</kbd> roll · <kbd>N</kbd> new game · <kbd>?</kbd> rules · <kbd>Esc</kbd> close.</p>
       </div>
     </Modal>
   )

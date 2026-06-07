@@ -1,12 +1,18 @@
-/* SENET — UI (built for this codebase). A papyrus-and-lapis reed board on the framework shell,
-   vs a heuristic AI. Cast the four sticks, then your movable pawns light up — click one to move.
-   A throw of 1/4/5 grants another cast; the House of Water sweeps a pawn back; bear off square 30. */
+/* SENET — UI (built for this codebase). A papyrus-and-lapis reed board on the framework shell.
+   Cast the four sticks, then your movable pawns light up — click one to move. A throw of 1/4/5
+   grants another cast; the House of Water sweeps a pawn back; bear off square 30.
+
+   Online-capable: useGameSession drives the host/guest seat model. In solo play you are seat 0
+   and the rival is an AI; online, the opponent is a remote human. Everything renders relative to
+   `mySeat`, so a guest sitting in seat 1 still sees "their" pawns highlight and wins for them. */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { senetAdapter } from './net'
 import * as SN from './logic'
 import type { Player, SenetState } from './logic'
 
@@ -31,20 +37,14 @@ const GLYPH: Record<number, string> = {
 }
 
 export function Senet() {
-  const [s, setS] = useState<SenetState>(() => SN.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(senetAdapter)
+  const me = mySeat as Player        // seat 0 = obsidian, seat 1 = alabaster
+  const foe: Player = me === 0 ? 1 : 0
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(SN.makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  // The AI casts then moves as sub-steps; a 1/4/5 keeps the turn (extra throw), so re-arm the
-  // timer on every sub-move via a tick that changes each step (phase + roll + off count).
-  const aiActive = s.winner == null && s.turn === 1
-  useAITurn(aiActive, () => setS(p => SN.aiStep(p)), {
-    delayMs: 560,
-    tick: `${s.phase}-${s.roll}-${s.turn}-${s.off[1]}-${s.board.filter(b => b === 1).length}`,
-  })
-
-  const yourTurn = s.winner == null && s.turn === 0
+  const yourTurn = s.winner == null && isMyTurn
   const canThrow = yourTurn && s.phase === 'throw'
 
   useGameKeys({
@@ -52,27 +52,29 @@ export function Senet() {
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => setShowRules(false),
     extra: (e) => {
-      if ((e.key === ' ' || e.key === 'Enter') && canThrow) { setS(p => SN.throwSticks(p)); return true }
+      if ((e.key === ' ' || e.key === 'Enter') && canThrow) { dispatch({ kind: 'throw' }); return true }
       return false
     },
   })
 
   const movable = useMemo(
-    () => (yourTurn && s.phase === 'move' && s.roll != null ? new Set(SN.legalMoves(s, 0, s.roll)) : new Set<number>()),
-    [yourTurn, s],
+    () => (yourTurn && s.phase === 'move' && s.roll != null ? new Set(SN.legalMoves(s, me, s.roll)) : new Set<number>()),
+    [yourTurn, s, me],
   )
 
   function clickPawn(idx: number) {
-    if (yourTurn && s.phase === 'move' && movable.has(idx)) setS(SN.movePawn(s, 0, idx))
+    if (yourTurn && s.phase === 'move' && movable.has(idx)) dispatch({ kind: 'move', pawn: idx })
   }
-  function throwNow() { if (canThrow) setS(SN.throwSticks(s)) }
+  function throwNow() { if (canThrow) dispatch({ kind: 'throw' }) }
+
+  const oppLabel = net.online ? 'The opponent' : 'The rival'
 
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You win — all five pawns borne off' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'The rival races all pawns off' }
+  if (s.winner === me) { bk = 'win'; banner = 'You win — all five pawns borne off' }
+  else if (s.winner === foe) { bk = 'lose'; banner = `${oppLabel} races all pawns off` }
   else if (canThrow) { bk = 'you'; banner = 'Your turn — cast the sticks' }
   else if (yourTurn && s.phase === 'move') { bk = 'you'; banner = `You cast a ${s.roll} — move a glowing pawn` }
-  else { bk = 'foe'; banner = 'The rival is casting…' }
+  else { bk = 'foe'; banner = `${oppLabel} is casting…` }
 
   // physical render: build a [row][col] grid of path indices
   const grid: number[][] = []
@@ -91,7 +93,7 @@ export function Senet() {
         subtitle="the 5,000-year-old passing-of-the-soul race — cast the sticks, bear all five pawns off"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`Off ${s.off[0]}/${SN.PAWNS} · ${s.off[1]}/${SN.PAWNS}`}
+        modeLeft={`Off ${s.off[me]}/${SN.PAWNS} · ${s.off[foe]}/${SN.PAWNS}`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>space · cast &nbsp; N · new &nbsp; ? · rules</>}
@@ -101,7 +103,7 @@ export function Senet() {
             {grid.flatMap((row) =>
               row.map((idx) => {
                 const owner = s.board[idx]
-                const mv = owner === 0 && movable.has(idx)
+                const mv = owner === me && movable.has(idx)
                 const cls =
                   'sn-cell' +
                   (idx === SN.BEAUTY ? ' beauty' : '') +
@@ -109,7 +111,7 @@ export function Senet() {
                   (idx === SN.HORUS ? ' bear' : '') +
                   (idx === 27 || idx === 28 ? ' exact' : '')
                 return (
-                  <div key={idx} className={cls} onClick={() => owner === 0 && clickPawn(idx)}>
+                  <div key={idx} className={cls} onClick={() => owner === me && clickPawn(idx)}>
                     <span className="sn-num">{idx + 1}</span>
                     {GLYPH[idx] && <span className="sn-glyph" aria-hidden="true">{GLYPH[idx]}</span>}
                     {owner != null && (
@@ -137,9 +139,10 @@ export function Senet() {
         </div>
 
         <div className="side">
+          <OnlineBar net={net} />
           <div className="panel scoreboard">
-            <PlayerRow s={s} p={0} name="You · Obsidian" on={s.turn === 0 && s.winner == null} />
-            <PlayerRow s={s} p={1} name="Rival · Alabaster" on={s.turn === 1 && s.winner == null} />
+            <PlayerRow s={s} p={me} name="You · Obsidian" on={s.turn === me && s.winner == null} />
+            <PlayerRow s={s} p={foe} name={`${net.online ? 'Opponent' : 'Rival'} · Alabaster`} on={s.turn === foe && s.winner == null} />
           </div>
           <div className="panel logbox">
             {s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}
@@ -147,7 +150,7 @@ export function Senet() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal s={s} me={me} online={net.online} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -173,18 +176,20 @@ function PlayerRow({ s, p, name, on }: { s: SenetState; p: Player; name: string;
   )
 }
 
-function ResultModal({ s, onNew }: { s: SenetState; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ s, me, online, onNew }: { s: SenetState; me: Player; online: boolean; onNew: () => void }) {
+  const won = s.winner === me
+  const foe: Player = me === 0 ? 1 : 0
+  const oppName = online ? 'Opponent' : 'Rival'
   return (
     <Modal
       eyebrow={won ? 'All pawns home' : 'Out-raced'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
-        <span className="you">You {s.off[0]}/{SN.PAWNS}</span>
-        <span className="foe">Rival {s.off[1]}/{SN.PAWNS}</span>
+        <span className="you">You {s.off[me]}/{SN.PAWNS}</span>
+        <span className="foe">{oppName} {s.off[foe]}/{SN.PAWNS}</span>
       </div>
     </Modal>
   )

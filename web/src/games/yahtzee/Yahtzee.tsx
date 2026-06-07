@@ -1,15 +1,19 @@
 /* YAHTZEE — UI.
-   Ported from design/examples/dice_yahtzee/yahtzee.jsx. The single App component now
-   renders through the shared GameShell + Modal and drives the AI / keyboard via the
-   framework hooks; logic comes from ./logic instead of window.YahtLogic. */
+   Ported from design/examples/dice_yahtzee/yahtzee.jsx, now seat-relative and online-
+   capable: state/turn-driving comes from useGameSession(yahtzeeAdapter) instead of local
+   useState + useAITurn, so a guest can play the rival seat. Solo play is unchanged (seat 0
+   is you, seat 1 is the AI). */
 
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { yahtzeeAdapter } from './net'
+import type { YahtzeeIntent } from './net'
 import * as YA from './logic'
-import type { YahtzeeState, Totals } from './logic'
+import type { YahtzeeState, Totals, Player } from './logic'
 
 const PIPS: Record<number, number[]> = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] }
 
@@ -32,19 +36,22 @@ const TITLE_MARK = (
 
 interface Anim { roll: boolean[]; faces: number[] }
 
+const SEAT_PLAYER: Player[] = ['you', 'ai']
+
 export function Yahtzee() {
-  const [s, setS] = useState<YahtzeeState>(() => YA.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession<YahtzeeState, YahtzeeIntent>(yahtzeeAdapter)
   const [showRules, setShowRules] = useState(false)
   const [anim, setAnim] = useState<Anim | null>(null)   // { roll:[bool], faces:[v] }
   const aRef = useRef<number | null>(null)
 
-  function newGame() { setS(YA.makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false); setAnim(null) }
 
-  const yourTurn = !s.winner && s.turn === "you"
-  const yt = YA.totals(s.cards.you), at = YA.totals(s.cards.ai)
-
-  // AI plays its whole turn after a short "thinking" pause
-  useAITurn(!s.winner && s.turn === "ai", () => setS(p => YA.aiTurn(p)), { delayMs: 900 })
+  // Seat-relative identities: my card vs the opponent's.
+  const me: Player = SEAT_PLAYER[mySeat] ?? 'you'
+  const foe: Player = me === 'you' ? 'ai' : 'you'
+  const foeLabel = net.online ? 'Opponent' : 'Rival'
+  const yourTurn = !s.winner && isMyTurn
+  const yt = YA.totals(s.cards[me]), at = YA.totals(s.cards[foe])
 
   function animateRoll(rolling: boolean[]) {
     if (aRef.current) clearInterval(aRef.current)
@@ -60,10 +67,10 @@ export function Yahtzee() {
     if (!(yourTurn && s.rollsLeft > 0)) return
     const rolling = s.dice.map((_, i) => !(s.rolled && s.held[i]))
     animateRoll(rolling)
-    setS(YA.roll(s, "you"))
+    dispatch({ kind: 'roll' })
   }
-  function hold(i: number) { if (yourTurn && s.rolled) setS(YA.toggleHold(s, i)) }
-  function pickCat(k: string) { if (yourTurn && s.rolled && s.cards.you[k] == null) setS(YA.pick(s, "you", k)) }
+  function hold(i: number) { if (yourTurn && s.rolled) dispatch({ kind: 'hold', i }) }
+  function pickCat(k: string) { if (yourTurn && s.rolled && s.cards[me][k] == null) dispatch({ kind: 'score', cat: k }) }
 
   useGameKeys({
     onNew: newGame,
@@ -78,11 +85,12 @@ export function Yahtzee() {
   useEffect(() => () => { if (aRef.current) clearInterval(aRef.current) }, [])
 
   let banner: string, bk = ""
-  if (s.winner === "you") { bk = "win"; banner = `You win — ${yt.grand} to ${at.grand}` }
-  else if (s.winner === "ai") { bk = "lose"; banner = `Rival wins — ${at.grand} to ${yt.grand}` }
+  const iWon = s.winner === me, foeWon = s.winner === foe
+  if (iWon) { bk = "win"; banner = `You win — ${yt.grand} to ${at.grand}` }
+  else if (foeWon) { bk = "lose"; banner = `${foeLabel} wins — ${at.grand} to ${yt.grand}` }
   else if (s.winner === "tie") { banner = "A tie" }
   else if (yourTurn) { bk = "you"; banner = !s.rolled ? "Your turn — roll the dice" : s.rollsLeft > 0 ? "Hold dice and re-roll, or score" : "Choose a category to score" }
-  else { bk = "foe"; banner = "The rival is rolling…" }
+  else { bk = "foe"; banner = `${foeLabel} is rolling…` }
 
   return (
     <>
@@ -110,10 +118,10 @@ export function Yahtzee() {
 
         <div className="cardwrap">
           <table className="scorecard">
-            <thead><tr><th></th><th className="cyou">You</th><th className="cai">Rival</th></tr></thead>
+            <thead><tr><th></th><th className="cyou">You</th><th className="cai">{foeLabel}</th></tr></thead>
             <tbody>
               {YA.CATS.map((cat, i) => {
-                const yv = s.cards.you[cat.k], av = s.cards.ai[cat.k]
+                const yv = s.cards[me][cat.k], av = s.cards[foe][cat.k]
                 const open = yourTurn && s.rolled && yv == null
                 const preview = open ? YA.score(cat.k, s.dice) : null
                 return (
@@ -134,25 +142,26 @@ export function Yahtzee() {
             </tfoot>
           </table>
         </div>
+
+        <OnlineBar net={net} />
       </GameShell>
 
-      {s.winner && <WinModal s={s} yt={yt} at={at} onNew={newGame} />}
+      {s.winner && <WinModal won={iWon} tie={s.winner === "tie"} foeLabel={foeLabel} yt={yt} at={at} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-interface WinModalProps { s: YahtzeeState; yt: Totals; at: Totals; onNew: () => void }
-function WinModal({ s, yt, at, onNew }: WinModalProps) {
-  const won = s.winner === "you", tie = s.winner === "tie"
+interface WinModalProps { won: boolean; tie: boolean; foeLabel: string; yt: Totals; at: Totals; onNew: () => void }
+function WinModal({ won, tie, foeLabel, yt, at, onNew }: WinModalProps) {
   return (
     <Modal
       eyebrow={tie ? "Dead heat" : won ? "Hot dice" : "Cold dice"}
-      title={tie ? "A Tie" : won ? "You Win" : "Rival Wins"}
+      title={tie ? "A Tie" : won ? "You Win" : `${foeLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {yt.grand}</span><span className="foe">Rival {at.grand}</span></div>
+      <div className="finalsc"><span className="you">You {yt.grand}</span><span className="foe">{foeLabel} {at.grand}</span></div>
     </Modal>
   )
 }
