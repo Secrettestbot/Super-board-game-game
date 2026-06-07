@@ -108,9 +108,21 @@ export function useGameSession<S, I>(adapter: GameAdapter<S, I>): GameSession<S,
   const acceptAnswer = useCallback(async (code: string) => {
     const h = pendingHostRef.current
     if (!h) return
-    await h.acceptAnswer(code)
+    try {
+      await h.acceptAnswer(code)
+    } catch (e) {
+      console.info('[net] host failed to accept answer:', String(e))
+      throw e // surfaced by OnlineBar so the host sees the paste was bad
+    }
     pendingHostRef.current = null
     setOfferCode(undefined) // consumed; host can mint a fresh offer for the next guest
+    // Watchdog: if the data channel never opens, tell the host instead of hanging forever.
+    window.setTimeout(() => {
+      if (hostRef.current && hostRef.current.guestCount() === 0) {
+        console.info('[net] host: no guest connected within 20s — likely a NAT/network block')
+        setStatus('error'); force()
+      }
+    }, 20000)
   }, [])
 
   const joinFromOffer = useCallback(async (offer: string): Promise<string> => {
@@ -133,6 +145,14 @@ export function useGameSession<S, I>(adapter: GameAdapter<S, I>): GameSession<S,
     transport.onClose(() => { setStatus('error'); force() })
     setAnswerCode(ans)
     force()
+    // Watchdog: if we never connect after handing back the answer, surface an error.
+    window.setTimeout(() => {
+      if (!transport.open) {
+        console.info('[net] guest: not connected within 30s — host may not have pasted the code, or a NAT/network block')
+        setStatus(s => (s === 'guest' ? s : 'error'))
+        force()
+      }
+    }, 30000)
     return ans
   }, [adapter])
 

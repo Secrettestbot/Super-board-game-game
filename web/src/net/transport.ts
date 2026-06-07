@@ -52,8 +52,8 @@ class ChannelTransport implements Transport {
 
   bind(dc: RTCDataChannel) {
     this.dc = dc
-    dc.onopen = () => { this.open = true; this.openCbs.forEach(c => c()) }
-    dc.onclose = () => { this.open = false; this.closeCbs.forEach(c => c()) }
+    dc.onopen = () => { console.info('[net] data channel OPEN'); this.open = true; this.openCbs.forEach(c => c()) }
+    dc.onclose = () => { console.info('[net] data channel closed'); this.open = false; this.closeCbs.forEach(c => c()) }
     dc.onmessage = e => {
       let parsed: unknown
       try { parsed = JSON.parse(e.data as string) } catch { return }
@@ -97,8 +97,18 @@ function iceComplete(pc: RTCPeerConnection, capMs = 2500): Promise<void> {
   })
 }
 
-function newPC(): RTCPeerConnection {
-  return new RTCPeerConnection({ iceServers: ICE_SERVERS })
+/** Count ICE candidates embedded in an SDP (0 = the peer can never connect). */
+function candCount(sdp: string | null | undefined): number {
+  return sdp ? (sdp.match(/a=candidate/g) || []).length : 0
+}
+
+function newPC(tag: string): RTCPeerConnection {
+  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+  // Connection diagnostics — filter the console by "[net]" to see where a handshake stalls.
+  pc.addEventListener('icegatheringstatechange', () => console.info(`[net] ${tag} gathering:`, pc.iceGatheringState))
+  pc.addEventListener('iceconnectionstatechange', () => console.info(`[net] ${tag} ice:`, pc.iceConnectionState))
+  pc.addEventListener('connectionstatechange', () => console.info(`[net] ${tag} conn:`, pc.connectionState))
+  return pc
 }
 
 /** Result of starting a host-side connection: a code to share + the transport + a way to finish. */
@@ -111,17 +121,20 @@ export interface HostHandle {
 
 /** Host side: create the data channel + an offer code to hand to one guest. */
 export async function createHostConnection(): Promise<HostHandle> {
-  const pc = newPC()
+  const pc = newPC('host')
   const dc = pc.createDataChannel('game', { ordered: true })
   const transport = new ChannelTransport(pc, dc)
   const offer = await pc.createOffer()
   await pc.setLocalDescription(offer)
   await iceComplete(pc)
+  console.info('[net] host offer ready, candidates:', candCount(pc.localDescription?.sdp))
   return {
     offerCode: encodeDesc(pc.localDescription!),
     transport,
     async acceptAnswer(answerCode: string) {
-      await pc.setRemoteDescription(decodeDesc(answerCode.trim()))
+      const desc = decodeDesc(answerCode.trim())
+      console.info('[net] host accepting answer, candidates:', candCount(desc.sdp))
+      await pc.setRemoteDescription(desc)
     },
   }
 }
@@ -136,13 +149,16 @@ export interface GuestHandle {
  * channel (which only arrives after the host accepts this very answer). The transport binds
  * the channel lazily when pc.ondatachannel fires post-handshake. */
 export async function joinConnection(offerCode: string): Promise<GuestHandle> {
-  const pc = newPC()
+  const pc = newPC('guest')
   const transport = new ChannelTransport(pc) // channel bound later, on ondatachannel
-  pc.ondatachannel = e => transport.bind(e.channel)
-  await pc.setRemoteDescription(decodeDesc(offerCode.trim()))
+  pc.ondatachannel = e => { console.info('[net] guest received data channel'); transport.bind(e.channel) }
+  const offer = decodeDesc(offerCode.trim())
+  console.info('[net] guest got offer, candidates:', candCount(offer.sdp))
+  await pc.setRemoteDescription(offer)
   const answer = await pc.createAnswer()
   await pc.setLocalDescription(answer)
   await iceComplete(pc)
+  console.info('[net] guest answer ready, candidates:', candCount(pc.localDescription?.sdp))
   return { answerCode: encodeDesc(pc.localDescription!), transport }
 }
 

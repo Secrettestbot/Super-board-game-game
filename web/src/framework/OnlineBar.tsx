@@ -35,12 +35,15 @@ export function OnlineBar({ net }: { net: OnlineController }) {
   const [openPanel, setOpenPanel] = useState(false)
   const [answerInput, setAnswerInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [acceptErr, setAcceptErr] = useState(false)
 
   const startHost = async () => { setBusy(true); try { await net.host() } finally { setBusy(false); setOpenPanel(true) } }
   const connectGuest = async () => {
     if (!answerInput.trim()) return
-    setBusy(true)
-    try { await net.acceptAnswer(answerInput.trim()); setAnswerInput('') } finally { setBusy(false) }
+    setBusy(true); setAcceptErr(false)
+    try { await net.acceptAnswer(answerInput.trim()); setAnswerInput('') }
+    catch { setAcceptErr(true) }
+    finally { setBusy(false) }
   }
 
   // ---- guest view -------------------------------------------------------------
@@ -111,6 +114,7 @@ export function OnlineBar({ net }: { net: OnlineController }) {
                   onChange={e => setAnswerInput(e.target.value)} />
                 <button className="ob-btn primary" disabled={busy || !answerInput.trim()} onClick={connectGuest}>Connect</button>
               </div>
+              {acceptErr && <p className="ob-hint" style={{ color: 'var(--warn)' }}>That answer code didn't parse — make sure you copied the whole thing from your friend.</p>}
             </>
           ) : (
             <button className="ob-btn primary" disabled={busy} onClick={startHost}>Invite another player</button>
