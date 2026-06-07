@@ -12,12 +12,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { stoneAgeAdapter } from './net'
 import * as SA from './logic'
 import type { State, Player, SpaceId, ResourceId, Building } from './logic'
 
-const { makeGame, RESOURCE_SPACES, RESOURCES, BUILDING_SLOTS, SLOTS } = SA
+const { RESOURCE_SPACES, RESOURCES, BUILDING_SLOTS, SLOTS } = SA
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -40,42 +42,34 @@ function ResPip({ r, n }: { r: ResourceId; n: number }) {
 }
 
 export function StoneAge() {
-  const [s, setS] = useState<State>(() => makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(stoneAgeAdapter)
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  const you = s.players[0]
-  const ai = s.players[1]
-  const yourPlace = s.winner == null && s.phase === 'place' && s.turn === 0
-  const yourResolve = s.winner == null && s.phase === 'resolve' && s.turn === 0
-  const yourFeed = s.winner == null && s.phase === 'feed' && s.turn === 0
+  // Seat-relative: "you" is your own seat, the opponent is the other seat.
+  const oppSeat = mySeat === 0 ? 1 : 0
+  const you = s.players[mySeat]
+  const ai = s.players[oppSeat]
+  const oppLabel = net.online ? 'Opponent' : ai.name
+  const yourPlace = s.winner == null && s.phase === 'place' && isMyTurn
+  const yourResolve = s.winner == null && s.phase === 'resolve' && isMyTurn
+  const yourFeed = s.winner == null && s.phase === 'feed' && isMyTurn
 
   function clickSpace(space: SpaceId) {
-    setS(p => {
-      if (p.phase !== 'place' || p.turn !== 0 || p.winner != null) return p
-      // count for this space: hut needs 2; field/toolmaker/building need 1; gather spaces
-      // place as many as you have left (capped to free slots), min 1.
-      let count = 1
-      if (space === 'hut') count = 2
-      else if (space === SA.FIELD || space === SA.TOOLMAKER || BUILDING_SLOTS.includes(space)) count = 1
-      else count = Math.min(p.toPlace[0], SA.freeSlots(p, space))
-      if (count < 1) return p
-      return SA.canPlace(p, 0, space, count) ? SA.placeWorker(p, 0, space, count) : p
-    })
+    if (s.phase !== 'place' || !isMyTurn || s.winner != null) return
+    // count for this space: hut needs 2; field/toolmaker/building need 1; gather spaces
+    // place as many as you have left (capped to free slots), min 1.
+    let count = 1
+    if (space === 'hut') count = 2
+    else if (space === SA.FIELD || space === SA.TOOLMAKER || BUILDING_SLOTS.includes(space)) count = 1
+    else count = Math.min(s.toPlace[mySeat], SA.freeSlots(s, space))
+    if (count < 1) return
+    if (SA.canPlace(s, mySeat, space, count)) dispatch({ kind: 'place', space, count })
   }
-  function doResolve() { setS(p => (p.phase === 'resolve' && p.turn === 0 ? SA.resolvePlacements(p) : p)) }
-  function doFeed() { setS(p => (p.phase === 'feed' && p.turn === 0 ? SA.feedPhase(p, 0) : p)) }
-
-  // AI driver — one sub-step per call; tick changes every AI mutation so it never stalls.
-  const aiActive =
-    s.winner == null &&
-    ((s.phase === 'place' && s.turn === 1) ||
-      (s.phase === 'resolve' && s.turn === 1) ||
-      (s.phase === 'feed' && s.turn === 1))
-  const tick = `${s.round}-${s.phase}-${s.turn}-${s.toPlace.join('.')}-${s.resolveIdx}-${s.log.length}`
-  useAITurn(aiActive, () => setS(p => (p.turn === 1 && p.winner == null ? SA.aiTurn(p) : p)), { delayMs: 560, tick })
+  function doResolve() { if (yourResolve) dispatch({ kind: 'resolve' }) }
+  function doFeed() { if (yourFeed) dispatch({ kind: 'feed' }) }
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
 
@@ -92,13 +86,14 @@ export function StoneAge() {
     },
   })
 
+  const youWin = s.winner === mySeat
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = `Your clan thrives — you win ${you.points} to ${ai.points}!` }
-  else if (s.winner === 1) { bk = 'lose'; banner = `${ai.name} prospered — you lose ${you.points} to ${ai.points}.` }
-  else if (yourPlace) { bk = 'you'; banner = `Your turn — place a worker (${s.toPlace[0]} left)` }
+  if (s.winner != null && youWin) { bk = 'win'; banner = `Your clan thrives — you win ${you.points} to ${ai.points}!` }
+  else if (s.winner != null) { bk = 'lose'; banner = `${oppLabel} prospered — you lose ${you.points} to ${ai.points}.` }
+  else if (yourPlace) { bk = 'you'; banner = `Your turn — place a worker (${s.toPlace[mySeat]} left)` }
   else if (yourResolve) { bk = 'you'; banner = 'Resolve your workers — roll for spoils' }
   else if (yourFeed) { bk = 'you'; banner = 'Feed your tribe — 1 food each' }
-  else { bk = 'foe'; banner = `${ai.name} is taking their turn…` }
+  else { bk = 'foe'; banner = `${oppLabel} is taking their turn…` }
 
   const phaseLabel = s.phase === 'place' ? 'Placement' : s.phase === 'resolve' ? 'Resolve' : s.phase === 'feed' ? 'Feeding' : 'Game Over'
 
@@ -125,7 +120,7 @@ export function StoneAge() {
             </div>
             <div className="sa-ctl-info">
               {s.phase === 'place'
-                ? <>Workers to place — You <b>{s.toPlace[0]}</b> · {ai.name} <b>{s.toPlace[1]}</b></>
+                ? <>Workers to place — You <b>{s.toPlace[mySeat]}</b> · {oppLabel} <b>{s.toPlace[oppSeat]}</b></>
                 : s.lastSpace
                   ? <>last roll at <b>{spaceTitle(s.lastSpace, s)}</b></>
                   : <>&nbsp;</>}
@@ -138,31 +133,34 @@ export function StoneAge() {
           </div>
 
           {yourPlace && <div className="sa-selhint">Click an action space to send {' '}
-            {s.toPlace[0] >= 2 ? 'workers' : 'a worker'} there. Hut takes 2; field/toolmaker/buildings take 1.</div>}
+            {s.toPlace[mySeat] >= 2 ? 'workers' : 'a worker'} there. Hut takes 2; field/toolmaker/buildings take 1.</div>}
 
           <div className="sa-board">
-            <Space s={s} id="hunting" glyph="🦴" name="Hunting Ground" meta="food · ÷2" wide
+            <Space s={s} seat={mySeat} id="hunting" glyph="🦴" name="Hunting Ground" meta="food · ÷2" wide
               onClick={clickSpace} can={yourPlace} />
             {RESOURCE_SPACES.map(def => (
-              <Space key={def.id} s={s} id={def.id} glyph={RES_GLYPH[def.resource]}
+              <Space key={def.id} s={s} seat={mySeat} id={def.id} glyph={RES_GLYPH[def.resource]}
                 name={def.name} meta={`${def.resource} · ÷${def.divisor}`} onClick={clickSpace} can={yourPlace} />
             ))}
-            <Space s={s} id="field" glyph="🌾" name="Field" meta="+1 farm" onClick={clickSpace} can={yourPlace} />
-            <Space s={s} id="hut" glyph="🛖" name="Love Shack" meta="+1 worker · needs 2" onClick={clickSpace} can={yourPlace} />
-            <Space s={s} id="toolmaker" glyph="🔨" name="Toolmaker" meta="+1 tool" onClick={clickSpace} can={yourPlace} />
+            <Space s={s} seat={mySeat} id="field" glyph="🌾" name="Field" meta="+1 farm" onClick={clickSpace} can={yourPlace} />
+            <Space s={s} seat={mySeat} id="hut" glyph="🛖" name="Love Shack" meta="+1 worker · needs 2" onClick={clickSpace} can={yourPlace} />
+            <Space s={s} seat={mySeat} id="toolmaker" glyph="🔨" name="Toolmaker" meta="+1 tool" onClick={clickSpace} can={yourPlace} />
 
             {BUILDING_SLOTS.map((slot) => {
               const idx = BUILDING_SLOTS.indexOf(slot)
               const b = s.market[idx]
-              return <BuildingSpace key={slot} s={s} id={slot} b={b} onClick={clickSpace} can={yourPlace} you={you} />
+              return <BuildingSpace key={slot} s={s} seat={mySeat} id={slot} b={b} onClick={clickSpace} can={yourPlace} you={you} />
             })}
           </div>
         </div>
 
         <div className="side">
+          <div className="ch-panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="sa-players">
-            <PlayerCard p={you} you active={s.turn === 0 && s.winner == null} />
-            <PlayerCard p={ai} you={false} active={s.turn === 1 && s.winner == null} />
+            <PlayerCard p={you} you active={s.turn === mySeat && s.winner == null} label="You" />
+            <PlayerCard p={ai} you={false} active={s.turn === oppSeat && s.winner == null} label={oppLabel} />
           </div>
 
           <div className="panel logbox" ref={logRef}>
@@ -171,7 +169,7 @@ export function StoneAge() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={youWin} you={you} opp={ai} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -189,10 +187,10 @@ function spaceTitle(id: SpaceId, s: State): string {
   return RESOURCE_SPACES.find(d => d.id === id)?.name ?? id
 }
 
-function Cubes({ s, id }: { s: State; id: SpaceId }) {
+function Cubes({ s, id, seat }: { s: State; id: SpaceId; seat: number }) {
   return (
     <div className="sa-cubes">
-      {s.occ[id].map((pl, i) => <span key={i} className={'sa-cube ' + (pl === 0 ? 'you' : 'foe')} />)}
+      {s.occ[id].map((pl, i) => <span key={i} className={'sa-cube ' + (pl === seat ? 'you' : 'foe')} />)}
     </div>
   )
 }
@@ -211,13 +209,13 @@ function Slots({ s, id }: { s: State; id: SpaceId }) {
 }
 
 function Space({
-  s, id, glyph, name, meta, wide, onClick, can,
+  s, seat, id, glyph, name, meta, wide, onClick, can,
 }: {
-  s: State; id: SpaceId; glyph: string; name: string; meta: string
+  s: State; seat: number; id: SpaceId; glyph: string; name: string; meta: string
   wide?: boolean; onClick: (id: SpaceId) => void; can: boolean
 }) {
   const full = id !== 'hunting' && SA.freeSlots(s, id) <= 0
-  const selectable = can && SA.canPlaceAny(s, 0, id)
+  const selectable = can && SA.canPlaceAny(s, seat, id)
   return (
     <div
       className={`sa-space${wide ? ' wide' : ''}${full ? ' full' : ''}${selectable ? ' selectable' : ''}`}
@@ -230,16 +228,16 @@ function Space({
         <span className="sa-sp-slots">{id === 'hunting' ? '∞' : `${s.occ[id].length}/${SLOTS[id]}`}</span>
       </div>
       <div className="sa-sp-meta">{meta}</div>
-      <Cubes s={s} id={id} />
+      <Cubes s={s} id={id} seat={seat} />
       <Slots s={s} id={id} />
     </div>
   )
 }
 
 function BuildingSpace({
-  s, id, b, onClick, can, you,
+  s, seat, id, b, onClick, can, you,
 }: {
-  s: State; id: SpaceId; b: Building | null; onClick: (id: SpaceId) => void; can: boolean; you: Player
+  s: State; seat: number; id: SpaceId; b: Building | null; onClick: (id: SpaceId) => void; can: boolean; you: Player
 }) {
   if (!b) {
     return (
@@ -250,7 +248,7 @@ function BuildingSpace({
     )
   }
   const afford = RESOURCES.every(r => you.res[r] >= (b.cost[r] ?? 0))
-  const selectable = can && SA.canPlaceAny(s, 0, id)
+  const selectable = can && SA.canPlaceAny(s, seat, id)
   return (
     <div
       className={`sa-space${selectable ? ' selectable' : ''}`}
@@ -266,17 +264,17 @@ function BuildingSpace({
       <div className="sa-bcost">
         {RESOURCES.filter(r => (b.cost[r] ?? 0) > 0).map(r => <ResPip key={r} r={r} n={b.cost[r] ?? 0} />)}
       </div>
-      <Cubes s={s} id={id} />
+      <Cubes s={s} id={id} seat={seat} />
       <div className="sa-sp-meta">{afford ? 'affordable' : 'need more'}</div>
     </div>
   )
 }
 
-function PlayerCard({ p, you, active }: { p: Player; you: boolean; active: boolean }) {
+function PlayerCard({ p, you, active, label }: { p: Player; you: boolean; active: boolean; label: string }) {
   return (
     <div className={`sa-player ${you ? 'you-p' : ''} ${active ? 'active' : ''}`}>
       <div className="sa-p-head">
-        <span className={'sa-p-name ' + (you ? 'you' : 'foe')}>{p.name}</span>
+        <span className={'sa-p-name ' + (you ? 'you' : 'foe')}>{label}</span>
         <span className="sa-p-pts">{p.points}<small>points</small></span>
       </div>
       <div className="sa-stock">
@@ -311,12 +309,11 @@ function Stat({ cls, k, v }: { cls: string; k: string; v: number }) {
   )
 }
 
-function ResultModal({ s, onNew }: { s: State; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ won, you, opp, oppLabel, onNew }: { won: boolean; you: Player; opp: Player; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Age of Plenty' : 'Out-built'}
-      title={won ? 'You Win' : `${s.players[1].name} Wins`}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
@@ -326,8 +323,8 @@ function ResultModal({ s, onNew }: { s: State; onNew: () => void }) {
           : 'The rival clan stacked more monuments. Gather faster and keep your people fed next time.'}</p>
       </div>
       <div className="finalsc">
-        <span className="you">You {s.players[0].points}</span>
-        <span className="foe">{s.players[1].name} {s.players[1].points}</span>
+        <span className="you">You {you.points}</span>
+        <span className="foe">{oppLabel} {opp.points}</span>
       </div>
     </Modal>
   )

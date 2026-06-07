@@ -1,18 +1,20 @@
 /* SPLENDOR — UI (built for this codebase).
-   Gem engine-building vs a greedy AI on the framework shell. Take tokens, buy
-   development cards (owned bonuses discount future costs, gold is wild), attract
-   nobles, and race to 15 prestige. The AI takes exactly one action per turn; the
-   useAITurn driver re-arms on s.step so chained AI turns fire. UI shows the end
-   state by default.
+   Gem engine-building on the framework shell. Take tokens, buy development cards (owned
+   bonuses discount future costs, gold is wild), attract nobles, and race to 15 prestige.
+   Solo, the empty seat is a greedy AI; online (useGameSession) a remote guest fills it.
+   Everything is seat-relative: "you" is mySeat, the other seat is the opponent. The hook
+   drives the AI for empty seats and re-arms on tickKey.
 */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { splendorAdapter } from './net'
 import * as SP from './logic'
-import type { SplendorState, Card, Noble, Gem, Tok, PlayerState } from './logic'
+import type { Card, Noble, Gem, Tok, PlayerState } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -35,18 +37,17 @@ const GEM_INIT: Record<Tok, string> = {
 const gemClass = (t: Tok) => 'gem-' + t
 
 export function Splendor() {
-  const [s, setS] = useState<SplendorState>(() => SP.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(splendorAdapter)
   const [showRules, setShowRules] = useState(false)
-  // Currently selected gem colors for a "take" action (player 0 only).
+  // Currently selected gem colors for a "take" action (your seat only).
   const [picks, setPicks] = useState<Gem[]>([])
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(SP.makeGame()); setPicks([]); setShowRules(false) }
+  function newGame() { netNew(); setPicks([]); setShowRules(false) }
 
-  const yourTurn = s.winner == null && s.turn === 0
+  const yourTurn = s.winner == null && isMyTurn
 
-  // AI takes one action per turn; turns chain, so re-arm on s.step.
-  useAITurn(s.winner == null && s.turn === 1, () => setS((p) => SP.aiTurn(p)), { delayMs: 620, tick: s.step })
+  // The hook drives the AI for any empty seat and re-arms on tickKey — no useAITurn here.
   useEffect(() => { if (!yourTurn) setPicks([]) }, [yourTurn, s.step])
 
   useGameKeys({
@@ -55,8 +56,10 @@ export function Splendor() {
     onEscape: () => { setShowRules(false); setPicks([]) },
   })
 
-  const me = s.players[0]
-  const ai = s.players[1]
+  const oppSeat = mySeat === 0 ? 1 : 0
+  const me = s.players[mySeat]
+  const opp = s.players[oppSeat]
+  const oppLabel = net.online ? 'Opponent' : 'AI'
 
   // ---- pick logic for taking tokens ----
   function togglePick(g: Gem) {
@@ -69,50 +72,44 @@ export function Splendor() {
     })
   }
 
-  // Auto-trim discard preference: drop the player's most-held gem colors first, gold last.
-  function discardPrefer(): Tok[] {
-    const order = (SP.GEMS.slice().sort((a, b) => me.tokens[b] - me.tokens[a]) as Tok[])
-    return order.concat('gold')
-  }
-
   function doTake3() {
     if (!yourTurn || picks.length < 1) return
     if (!SP.canTake3(s, picks)) return
-    setS(SP.take3(s, picks, discardPrefer()))
+    dispatch({ kind: 'take', gems: picks })
     setPicks([])
   }
   function doTake2() {
     if (!yourTurn || picks.length !== 1) return
     const g = picks[0]
     if (!SP.canTake2(s, g)) return
-    setS(SP.take2(s, g, discardPrefer()))
+    dispatch({ kind: 'take', gems: [g, g] })
     setPicks([])
   }
   function doBuy(id: string) {
     if (!yourTurn) return
-    setS(SP.buy(s, id))
+    dispatch({ kind: 'buy', cardId: id })
     setPicks([])
   }
   function doReserveVisible(id: string) {
     if (!yourTurn) return
-    setS(SP.reserve(s, { id }, discardPrefer()))
+    dispatch({ kind: 'reserve', cardId: id })
     setPicks([])
   }
   function doReserveDeck(tier: 1 | 2 | 3) {
     if (!yourTurn) return
-    setS(SP.reserve(s, { tier }, discardPrefer()))
+    dispatch({ kind: 'reserve', deckLevel: tier })
     setPicks([])
   }
 
-  // ---- banner ----
+  // ---- banner (relative to your seat) ----
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = `You win — ${me.prestige} prestige!` }
-  else if (s.winner === 1) { bk = 'lose'; banner = `The AI wins with ${ai.prestige} prestige` }
+  if (s.winner === mySeat) { bk = 'win'; banner = `You win — ${me.prestige} prestige!` }
+  else if (s.winner === oppSeat) { bk = 'lose'; banner = `${oppLabel} wins with ${opp.prestige} prestige` }
   else if (yourTurn) {
     bk = 'you'
     if (picks.length) banner = `Take selected — ${picks.length} chosen`
     else banner = s.finalRound ? 'Final round — your move' : 'Your turn — gather or buy'
-  } else { bk = 'foe'; banner = 'The AI is plotting…' }
+  } else { bk = 'foe'; banner = net.online ? 'Waiting for opponent…' : 'The AI is plotting…' }
 
   const can2 = picks.length === 1 && SP.canTake2(s, picks[0])
   const can3 = picks.length >= 1 && SP.canTake3(s, picks)
@@ -127,7 +124,7 @@ export function Splendor() {
         subtitle="acquire gems, develop your trade, and attract nobles — first merchant to 15 prestige wins"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`You ${me.prestige} · AI ${ai.prestige} — to ${SP.WIN_PRESTIGE}`}
+        modeLeft={`You ${me.prestige} · ${oppLabel} ${opp.prestige} — to ${SP.WIN_PRESTIGE}`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>click gems · buy / reserve cards &nbsp; N · new</>}
@@ -219,20 +216,21 @@ export function Splendor() {
               <div className="sp-control-hint">
                 {yourTurn
                   ? 'Pick up to 3 different gems, OR one gem (with ≥4 in bank) to take 2. Buy or reserve a card from the rows above. Reserving grants a gold.'
-                  : 'Waiting for the AI…'}
+                  : net.online ? 'Waiting for the opponent…' : 'Waiting for the AI…'}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Side: tableaus + log */}
+        {/* Side: online lobby + tableaus + log */}
         <div className="side">
+          <div className="panel"><OnlineBar net={net} /></div>
           <Tableau
             label="You" who="you" p={me} active={yourTurn}
             yourTurn={yourTurn} onBuyReserved={doBuy}
           />
           <Tableau
-            label="AI" who="ai" p={ai} active={s.turn === 1 && s.winner == null}
+            label={oppLabel} who="ai" p={opp} active={s.winner == null && s.turn === oppSeat}
             yourTurn={false} onBuyReserved={() => {}}
           />
           <div className="panel logbox" ref={logRef}>
@@ -243,7 +241,7 @@ export function Splendor() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal winner={s.winner} you={me} ai={ai} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={s.winner === mySeat} you={me} opp={opp} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -373,12 +371,11 @@ function Tableau({
   )
 }
 
-function ResultModal({ winner, you, ai, onNew }: { winner: 0 | 1; you: PlayerState; ai: PlayerState; onNew: () => void }) {
-  const won = winner === 0
+function ResultModal({ won, you, opp, oppLabel, onNew }: { won: boolean; you: PlayerState; opp: PlayerState; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Merchant prince' : 'Outmaneuvered'}
-      title={won ? 'You Win' : 'AI Wins'}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
@@ -386,12 +383,12 @@ function ResultModal({ winner, you, ai, onNew }: { winner: 0 | 1; you: PlayerSta
         <p style={{ textAlign: 'center', fontSize: 15 }}>
           <span className="sp-tab-prestige" style={{ color: won ? 'var(--you)' : 'var(--ink-2)' }}>You {you.prestige}</span>
           {'   ·   '}
-          <span className="sp-tab-prestige" style={{ color: won ? 'var(--ink-2)' : 'var(--foe)' }}>AI {ai.prestige}</span>
+          <span className="sp-tab-prestige" style={{ color: won ? 'var(--ink-2)' : 'var(--foe)' }}>{oppLabel} {opp.prestige}</span>
         </p>
         <p style={{ textAlign: 'center' }}>
-          {you.prestige === ai.prestige
+          {you.prestige === opp.prestige
             ? 'Prestige tied — won on fewer cards.'
-            : won ? 'You reached the most prestige.' : 'The AI built the stronger engine.'}
+            : won ? 'You reached the most prestige.' : `${oppLabel} built the stronger engine.`}
         </p>
       </div>
     </Modal>

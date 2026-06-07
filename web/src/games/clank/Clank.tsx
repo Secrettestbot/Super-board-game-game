@@ -1,14 +1,18 @@
-/* CLANK! — UI. A simplified 2-player deckbuilding dungeon crawl. You (player 0) play your
-   whole hand to pool SKILL / SWORDS / BOOTS, buy cards from the Dungeon Row market, move your
-   pawn down the room track (fighting past blocked passages with swords), grab an artifact, and
-   climb back to the Surface to escape — all before the dragon's clank-driven attacks kill you.
-   The AI takes its FULL turn greedily in one call; its driver re-arms on s.actions (the tick). */
+/* CLANK! — UI. A simplified 2-player deckbuilding dungeon crawl. You play your whole hand
+   to pool SKILL / SWORDS / BOOTS, buy cards from the Dungeon Row market, move your pawn
+   down the room track (fighting past blocked passages with swords), grab an artifact, and
+   climb back to the Surface to escape — all before the dragon's clank-driven attacks kill
+   you. Online-capable via useGameSession: seat 0 hosts and moves first, seat 1 is the rival
+   (a remote human when online, the greedy AI when solo). All views are relative to mySeat,
+   isMyTurn gates every action, and other seats' hands / draw decks arrive face-down. */
 
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { clankAdapter } from './net'
 import * as CK from './logic'
 import type { ClankState, CardDef, Player } from './logic'
 
@@ -25,33 +29,35 @@ const TITLE_MARK = (
 )
 
 export function Clank() {
-  const [s, setS] = useState<ClankState>(() => CK.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(clankAdapter)
+  const me = mySeat as Player
+  const opp = (me === 0 ? 1 : 0) as Player
   const [showRules, setShowRules] = useState(false)
-  const apply = (fn: (st: ClankState) => void) =>
-    setS(prev => { const n = structuredClone(prev); fn(n); return n })
 
-  function newGame() { setS(CK.makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  const yourTurn = s.winner == null && s.turn === 0
-  const aiActive = s.winner == null && s.turn === 1
-  // The AI runs its WHOLE turn in one call; re-arm via the monotonic action counter.
-  useAITurn(aiActive, () => apply(st => CK.aiTurn(st)), { delayMs: 650, tick: s.actions })
+  const yourTurn = s.winner == null && isMyTurn
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
 
-  const you = s.players[0], foe = s.players[1]
+  const you = s.players[me], foe = s.players[opp]
+  const foeLabel = net.online ? 'Opponent' : 'AI'
+  const meWon = s.winner === me
 
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You escaped richer — victory!' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'The AI out-plundered you — defeat' }
+  if (meWon) { bk = 'win'; banner = 'You escaped richer — victory!' }
+  else if (s.winner === opp) { bk = 'lose'; banner = `${foeLabel} out-plundered you — defeat` }
   else if (yourTurn) { bk = 'you'; banner = 'Your turn — play, buy, move, grab, escape' }
-  else { bk = 'foe'; banner = 'The AI delves into the dark…' }
+  else { bk = 'foe'; banner = net.online ? 'Opponent delves into the dark…' : 'The AI delves into the dark…' }
 
-  function play(id: number) { if (yourTurn) apply(st => CK.playCard(st, id)) }
-  function playAll() { if (yourTurn) apply(st => CK.playHand(st)) }
-  function buy(i: number) { if (yourTurn) apply(st => CK.buyCard(st, 0, i)) }
-  function move(room: number) { if (yourTurn) apply(st => CK.move(st, 0, room)) }
-  function grab() { if (yourTurn) apply(st => CK.grabArtifact(st, 0)) }
-  function endTurn() { if (yourTurn) apply(st => CK.endTurn(st)) }
+  function play(id: number) { if (yourTurn) dispatch({ kind: 'play', cardId: id }) }
+  function playAll() {
+    if (!yourTurn) return
+    for (const c of you.hand) dispatch({ kind: 'play', cardId: c.id })
+  }
+  function buy(i: number) { if (yourTurn) dispatch({ kind: 'buy', marketIndex: i }) }
+  function move(room: number) { if (yourTurn) dispatch({ kind: 'move', room }) }
+  function grab() { if (yourTurn) dispatch({ kind: 'grab' }) }
+  function endTurn() { if (yourTurn) dispatch({ kind: 'end' }) }
 
   const onArtifact = s.rooms[you.room].artifact != null && you.artifact == null
   const dragonClock = s.turnCount % CK.DRAGON_INTERVAL
@@ -73,7 +79,7 @@ export function Clank() {
         <div className="ck-wrap">
           {/* ---- foe vitals ---- */}
           <div className="ck-foeline">
-            <div className="ck-pname foe"><span className="lab">AI</span></div>
+            <div className="ck-pname foe"><span className="lab">{foeLabel}</span></div>
             <span className="ck-sect-h" style={{ margin: 0 }}>{s.rooms[foe.room].name}</span>
             <div className="ck-vitals">
               <span className={'ck-vital hp' + (foe.health <= 4 ? ' hurt' : '')}><span className="vk">HP</span>{foe.health}</span>
@@ -87,7 +93,7 @@ export function Clank() {
           <div className="ck-sect-h">Dungeon — move with boots (fight blocked passages with swords)</div>
           <div className="ck-map">
             {s.rooms.map(r => {
-              const movable = CK.canMove(s, 0, r.id)
+              const movable = yourTurn && CK.canMove(s, me, r.id)
               const youHere = you.room === r.id
               const foeHere = foe.room === r.id
               return (
@@ -125,9 +131,9 @@ export function Clank() {
             <div className="ck-pname you"><span className="lab">You</span></div>
             <span className="ck-sect-h" style={{ margin: 0 }}>{s.rooms[you.room].name}</span>
             <div className="ck-pools">
-              <span className="ck-pool skill"><span className="pk">Skill</span>{s.skill}</span>
-              <span className="ck-pool swords"><span className="pk">Swords</span>{s.swords}</span>
-              <span className="ck-pool boots"><span className="pk">Boots</span>{s.boots}</span>
+              <span className="ck-pool skill"><span className="pk">Skill</span>{yourTurn ? s.skill : 0}</span>
+              <span className="ck-pool swords"><span className="pk">Swords</span>{yourTurn ? s.swords : 0}</span>
+              <span className="ck-pool boots"><span className="pk">Boots</span>{yourTurn ? s.boots : 0}</span>
             </div>
           </div>
           <div className="ck-youline" style={{ paddingTop: 6, paddingBottom: 6 }}>
@@ -164,9 +170,10 @@ export function Clank() {
 
         {/* ---- side panel ---- */}
         <div className="side">
+          <OnlineBar net={net} />
           <div className="panel ck-bigstat">
-            <div className="col you"><div className="nm">Your score</div><div className="v">{CK.scorePlayer(s, 0)}</div><div className="sub">{you.escaped ? 'escaped' : 'in dungeon'}</div></div>
-            <div className="col foe"><div className="nm">AI score</div><div className="v">{CK.scorePlayer(s, 1)}</div><div className="sub">{foe.escaped ? 'escaped' : 'in dungeon'}</div></div>
+            <div className="col you"><div className="nm">Your score</div><div className="v">{CK.scorePlayer(s, me)}</div><div className="sub">{you.escaped ? 'escaped' : 'in dungeon'}</div></div>
+            <div className="col foe"><div className="nm">{foeLabel} score</div><div className="v">{CK.scorePlayer(s, opp)}</div><div className="sub">{foe.escaped ? 'escaped' : 'in dungeon'}</div></div>
           </div>
           <div className="panel">
             <div className="panel-l">Dragon</div>
@@ -195,7 +202,7 @@ export function Clank() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal s={s} me={me} opp={opp} foeLabel={foeLabel} won={meWon} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -224,18 +231,19 @@ function Card({ d, cost, className = '', variant, onClick }: {
   )
 }
 
-function ResultModal({ s, onNew }: { s: ClankState; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ s, me, opp, foeLabel, won, onNew }: {
+  s: ClankState; me: Player; opp: Player; foeLabel: string; won: boolean; onNew: () => void
+}) {
   return (
     <Modal
       eyebrow={won ? 'The surface light is yours' : 'The dark keeps you'}
-      title={won ? 'You Win' : 'AI Wins'}
+      title={won ? 'You Win' : `${foeLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>New delve</button>}
     >
       <div className="finalsc">
-        <span className="you">You {CK.scorePlayer(s, 0)}</span>
-        <span className="foe">AI {CK.scorePlayer(s, 1)}</span>
+        <span className="you">You {CK.scorePlayer(s, me)}</span>
+        <span className="foe">{foeLabel} {CK.scorePlayer(s, opp)}</span>
       </div>
     </Modal>
   )
@@ -247,7 +255,7 @@ function RulesModal({ onClose }: { onClose: () => void }) {
       onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Delve</button>}>
       <div className="modal-body">
-        <p>You and the AI each own a 10-card deck. Each turn, <b>play your hand</b> to pool three
+        <p>You and your rival each own a 10-card deck. Each turn, <b>play your hand</b> to pool three
           resources: <span style={{ color: 'var(--skill)' }}>Skill</span> (buy cards),
           <span style={{ color: 'var(--swords)' }}> Swords</span> (fight past blocked passages), and
           <span style={{ color: 'var(--boots)' }}> Boots</span> (move your pawn).</p>
@@ -259,6 +267,7 @@ function RulesModal({ onClose }: { onClose: () => void }) {
         <p>Some cards add <b style={{ color: 'var(--clank)' }}>Clank</b> (noise). Every {CK.DRAGON_INTERVAL} turns
           the <b>dragon attacks</b>: you lose health equal to your clank. The game ends when someone escapes
           or the dragon kills everyone — highest score (artifact + gold + card VP) wins.</p>
+        <p><b>Online:</b> use the lobby bar to host or join — your opponent's hand and draw deck stay hidden.</p>
         <p><b>Keys:</b> <kbd>N</kbd> new · <kbd>?</kbd> rules · <kbd>Esc</kbd> close.</p>
       </div>
     </Modal>

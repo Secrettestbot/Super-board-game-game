@@ -1,17 +1,19 @@
 /* THE ISLE OF CATS — UI. Each player fills their OWN 6x6 boat (baskets + printed color rooms)
-   with polyomino CAT tiles drafted from a shared 4-tile market. You are player 0; the AI is
-   player 1. Drafting is free: pick a cat, rotate/flip, then click your boat to place it.
-   The AI drafts+places greedily on its own turn; the driver re-arms on a tick that changes on
-   every AI action (market length + boat fill + log length). */
+   with polyomino CAT tiles drafted from a shared 4-tile market. Solo: you are player 0, the AI
+   is player 1. Online: you sit at your assigned seat (mySeat) and a remote human (or AI for an
+   empty seat) plays the other boat. Drafting is free: pick a cat, rotate/flip, then click your
+   boat to place it. The session hook drives the AI for empty seats and syncs online state. */
 
 import { useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { isleOfCatsAdapter } from './net'
 import * as G from './logic'
-import type { State, CatTile, Boat, ScoreBreakdown } from './logic'
+import type { CatTile, Boat, ScoreBreakdown } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -51,22 +53,23 @@ function ShapeMini({ shape, color, cell = 13 }: { shape: G.Shape; color: number;
 }
 
 export function IsleOfCats() {
-  const [s, setS] = useState<State>(() => G.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(isleOfCatsAdapter)
+  const oppSeat = 1 - mySeat // 2-player game
   const [showRules, setShowRules] = useState(false)
   const [selTile, setSelTile] = useState<number | null>(null)
   const [orient, setOrient] = useState(0)
   const [hover, setHover] = useState<{ r: number; c: number } | null>(null)
 
   function newGame() {
-    setS(G.makeGame())
+    netNew()
     setShowRules(false); setSelTile(null); setOrient(0); setHover(null)
   }
 
-  const yourTurn = s.winner === null && s.turn === 0
-  const aiActive = s.winner === null && s.turn === 1
-  // tick changes on EVERY AI action so consecutive AI turns re-arm the driver
-  const aiTick = `${s.market.length}-${s.boats[1].filter(c => c.cat !== -1).length}-${s.log.length}-${s.turn}`
-  useAITurn(aiActive, () => setS(prev => G.aiTurn(prev)), { delayMs: 520, tick: aiTick })
+  const myBoat = s.boats[mySeat]
+  const oppBoat = s.boats[oppSeat]
+  const yourTurn = s.winner === null && isMyTurn
+  const oppActive = s.winner === null && !isMyTurn
+  const oppLabel = net.online ? 'Opponent' : 'AI'
 
   const selectedTile: CatTile | null = selTile !== null ? (s.market.find(t => t.id === selTile) ?? null) : null
   const selOrients = useMemo(() => selectedTile ? G.orientations(selectedTile.shape) : [], [selectedTile])
@@ -92,40 +95,51 @@ export function IsleOfCats() {
   // preview cells for the hovered anchor (only when a valid placement)
   const previewCells = useMemo(() => {
     if (!yourTurn || !selectedTile || !selShape || !hover) return null
-    if (G.canPlace(s.boats[0], selShape, hover.r, hover.c)) {
+    if (G.canPlace(myBoat, selShape, hover.r, hover.c)) {
       return new Set(G.cellsFor(selShape, hover.r, hover.c) ?? [])
     }
     return null
-  }, [yourTurn, selectedTile, selShape, hover, s])
+  }, [yourTurn, selectedTile, selShape, hover, myBoat])
 
   function selectTile(t: CatTile) {
     if (!yourTurn) return
-    if (!G.fitsSomewhere(s.boats[0], t.shape)) return
+    if (!G.fitsSomewhere(myBoat, t.shape)) return
     setSelTile(t.id); setOrient(0); setHover(null)
   }
 
   function clickBoatCell(r: number, c: number) {
     if (!yourTurn || !selectedTile || !selShape) return
-    if (!G.canPlace(s.boats[0], selShape, r, c)) return
+    if (!G.canPlace(myBoat, selShape, r, c)) return
     const cells = G.cellsFor(selShape, r, c)
     if (cells === null) return
     const id = selectedTile.id
     setSelTile(null); setHover(null)
-    setS(prev => G.placeCat(prev, 0, id, cells))
+    dispatch({ tileId: id, cells })
   }
+
+  const youSc = useMemo(() => G.scoreBoat(myBoat), [myBoat])
+  const oppSc = useMemo(() => G.scoreBoat(oppBoat), [oppBoat])
+
+  // winner is in absolute player terms; translate to "did MY seat win?"
+  const iWon = s.winner === mySeat
+  const isDraw = s.winner === -1
+  const myFinal = s.scores ? s.scores[mySeat] : null
+  const oppFinal = s.scores ? s.scores[oppSeat] : null
 
   // banner
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = `You win — ${s.scores?.[0]} to ${s.scores?.[1]}!` }
-  else if (s.winner === 1) { bk = 'lose'; banner = `The AI wins — ${s.scores?.[1]} to ${s.scores?.[0]}.` }
-  else if (s.winner === -1) { bk = ''; banner = `A draw — ${s.scores?.[0]} apiece.` }
-  else if (yourTurn) {
+  if (s.winner !== null && !isDraw) {
+    bk = iWon ? 'win' : 'lose'
+    banner = iWon ? `You win — ${myFinal} to ${oppFinal}!` : `${oppLabel} wins — ${oppFinal} to ${myFinal}.`
+  } else if (isDraw) {
+    bk = ''; banner = `A draw — ${myFinal} apiece.`
+  } else if (yourTurn) {
     bk = 'you'
     banner = selectedTile ? 'Rotate (R) then click your boat to place the cat' : 'Your turn — draft a cat from the market'
-  } else { bk = 'foe'; banner = 'The AI is loading its boat…' }
-
-  const youSc = useMemo(() => G.scoreBoat(s.boats[0]), [s.boats])
-  const aiSc = useMemo(() => G.scoreBoat(s.boats[1]), [s.boats])
+  } else {
+    bk = 'foe'
+    banner = net.online ? 'Waiting for your opponent…' : 'The AI is loading its boat…'
+  }
 
   return (
     <>
@@ -136,7 +150,7 @@ export function IsleOfCats() {
         subtitle="draft polyomino cats into your 6×6 boat — biggest color families & matched rooms win, but every empty square costs you"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`You ${youSc.total} · AI ${aiSc.total}`}
+        modeLeft={`You ${youSc.total} · ${oppLabel} ${oppSc.total}`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>R · rotate &nbsp; F · flip &nbsp; N · new</>}
@@ -151,7 +165,7 @@ export function IsleOfCats() {
                 <span className="ic-stat">{youSc.holes} holes</span>
               </div>
               <BoatGrid
-                boat={s.boats[0]}
+                boat={myBoat}
                 preview={previewCells}
                 previewColor={selectedTile?.color ?? 0}
                 interactive={yourTurn && selectedTile !== null}
@@ -167,7 +181,7 @@ export function IsleOfCats() {
               <div className="ic-mhead">Cat Market — draft one</div>
               <div className="ic-tiles">
                 {s.market.map((t) => {
-                  const fits = yourTurn && G.fitsSomewhere(s.boats[0], t.shape)
+                  const fits = yourTurn && G.fitsSomewhere(myBoat, t.shape)
                   const sel = selTile === t.id
                   return (
                     <div key={t.id}
@@ -192,28 +206,30 @@ export function IsleOfCats() {
                 </div>
               )}
               {yourTurn && !selectedTile && <div className="ic-hint">click a cat above to start placing</div>}
-              {!yourTurn && s.winner === null && <div className="ic-hint">watching the AI…</div>}
+              {oppActive && <div className="ic-hint">{net.online ? 'waiting for your opponent…' : 'watching the AI…'}</div>}
 
               <div className="panel ic-log">
                 {s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}
               </div>
+
+              <OnlineBar net={net} />
             </div>
 
-            {/* AI BOAT */}
-            <div className={'ic-boatbox' + (aiActive ? ' active' : '')}>
+            {/* OPPONENT BOAT */}
+            <div className={'ic-boatbox' + (oppActive ? ' active' : '')}>
               <div className="ic-bhead">
-                <span className="ic-pawn ai" /> AI Boat
-                <span className="ic-stat score">{aiSc.total} pts</span>
-                <span className="ic-stat">{aiSc.holes} holes</span>
+                <span className="ic-pawn ai" /> {oppLabel} Boat
+                <span className="ic-stat score">{oppSc.total} pts</span>
+                <span className="ic-stat">{oppSc.holes} holes</span>
               </div>
-              <BoatGrid boat={s.boats[1]} preview={null} previewColor={0} interactive={false} />
-              <ScorePanel sc={aiSc} />
+              <BoatGrid boat={oppBoat} preview={null} previewColor={0} interactive={false} />
+              <ScorePanel sc={oppSc} />
             </div>
           </div>
         </div>
       </GameShell>
 
-      {s.winner !== null && <ResultModal winner={s.winner} scores={s.scores} onNew={newGame} />}
+      {s.winner !== null && <ResultModal iWon={iWon} isDraw={isDraw} myFinal={myFinal} oppFinal={oppFinal} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -286,20 +302,20 @@ function ScorePanel({ sc }: { sc: ScoreBreakdown }) {
   )
 }
 
-function ResultModal({ winner, scores, onNew }: { winner: G.Player | -1; scores: [number, number] | null; onNew: () => void }) {
-  const won = winner === 0
-  const draw = winner === -1
+function ResultModal({ iWon, isDraw, myFinal, oppFinal, oppLabel, onNew }: {
+  iWon: boolean; isDraw: boolean; myFinal: number | null; oppFinal: number | null; oppLabel: string; onNew: () => void
+}) {
   return (
     <Modal
-      eyebrow={draw ? 'Even keel' : won ? 'Full boat' : 'Out-purred'}
-      title={draw ? 'Draw' : won ? 'You Win' : 'AI Wins'}
+      eyebrow={isDraw ? 'Even keel' : iWon ? 'Full boat' : 'Out-purred'}
+      title={isDraw ? 'Draw' : iWon ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Sail again</button>}
     >
       <div className="ic-finalsc">
-        <span className="you">You {scores?.[0]}</span>
+        <span className="you">You {myFinal}</span>
         <span className="sep">vs</span>
-        <span className="foe">AI {scores?.[1]}</span>
+        <span className="foe">{oppLabel} {oppFinal}</span>
       </div>
     </Modal>
   )
@@ -310,8 +326,8 @@ function RulesModal({ onClose }: { onClose: () => void }) {
     <Modal eyebrow="How to play" title="The Isle of Cats" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Set sail</button>}>
       <div className="modal-body">
-        <p>You and the AI each fill your own <b>6×6 boat</b>. Some squares are pre-printed <b>baskets</b> (🧺) that must stay <i>uncovered</i>, and some are printed colored <b>rooms</b> that want a matching-color cat.</p>
-        <p>On your turn, <b>draft one cat</b> from the shared market and <b>place</b> it on empty, non-basket squares of your boat (any rotation/flip, no overlap). The market refills from the bag until it runs out.</p>
+        <p>You and your opponent each fill your own <b>6×6 boat</b>. Some squares are pre-printed <b>baskets</b> (🧺) that must stay <i>uncovered</i>, and some are printed colored <b>rooms</b> that want a matching-color cat.</p>
+        <p>On your turn, <b>draft one cat</b> from the shared market and <b>place</b> it on empty, non-basket squares of your boat (any rotation/flip, no overlap). The market refills from the face-down bag until it runs out.</p>
         <p><b>Scoring</b> when no one can place: your <b>largest connected group of each color</b> scores by size (1→1, 2→3, 3→6, 4→10, 5→15…); each <b>room square covered by its color</b> is <b>+3</b>; and every uncovered non-basket square is a <b>hole</b> worth <b>−1</b>. Highest total wins.</p>
         <p><b>Keys:</b> <kbd>R</kbd> rotate · <kbd>F</kbd> flip · <kbd>N</kbd> new · <kbd>?</kbd> rules · <kbd>Esc</kbd> cancel/close.</p>
       </div>

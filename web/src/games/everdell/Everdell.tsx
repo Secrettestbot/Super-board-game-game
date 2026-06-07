@@ -1,4 +1,4 @@
-/* EVERDELL — UI. You (player 0) vs one greedy AI (player 1).
+/* EVERDELL — UI. Worker-placement + tableau building on the framework shell.
 
    On your turn do ONE: place a worker on a forest location (gain resources/cards),
    play a card from your hand or the meadow into your city (pay cost — or FREE if its
@@ -6,19 +6,23 @@
    workers + gain more, advancing Winter -> Spring -> Summer -> Autumn). When both
    players finish Autumn the game ends; most city points wins.
 
-   The AI takes one action per call across many turns; useAITurn re-arms on a `tick`
-   that CHANGES every AI mutation (turn · log length · both players' city/worker/season
-   state) so it never stalls. */
+   Online-capable via useGameSession(everdellAdapter): the hook drives the AI for any empty
+   seat (no local useAITurn) and, when online, redacts every other seat's private hand and
+   the face-down deck so they never reach you. Everything below is rendered relative to
+   mySeat — your hand, workers, tableau, resources and the result banner are always "yours",
+   and the other seat is the opponent. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { everdellAdapter } from './net'
 import * as EV from './logic'
-import type { State, Player, LocationId, ResourceId, CardDef } from './logic'
+import type { Player, LocationId, ResourceId, CardDef } from './logic'
 
-const { makeGame, LOCATIONS, RESOURCES, SEASON_ORDER, CARD_BY_ID, CITY_CAP } = EV
+const { LOCATIONS, RESOURCES, SEASON_ORDER, CARD_BY_ID, CITY_CAP } = EV
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -43,34 +47,30 @@ function costString(card: CardDef): { r: ResourceId; n: number }[] {
 }
 
 export function Everdell() {
-  const [s, setS] = useState<State>(() => makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(everdellAdapter)
+  const oppSeat = 1 - mySeat // 2-player game: the other city
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  const you = s.players[0]
-  const ai = s.players[1]
-  const yourTurn = s.winner == null && s.turn === 0 && !you.done
+  const you = s.players[mySeat]
+  const opp = s.players[oppSeat]
+  const oppLabel = net.online ? 'Opponent' : opp.name
+  const yourTurn = s.winner == null && isMyTurn && !you.done
 
   function clickLocation(loc: LocationId) {
-    setS(p => (p.turn === 0 && p.winner == null && EV.canPlaceWorker(p, 0, loc) ? EV.placeWorker(p, 0, loc) : p))
+    if (!yourTurn || !EV.canPlaceWorker(s, mySeat, loc)) return
+    dispatch({ kind: 'place', loc })
   }
   function clickPlay(cardId: string, fromMeadow: boolean) {
-    setS(p => (p.turn === 0 && p.winner == null && EV.canPlayCard(p, 0, cardId, fromMeadow)
-      ? EV.playCard(p, 0, cardId, fromMeadow) : p))
+    if (!yourTurn || !EV.canPlayCard(s, mySeat, cardId, fromMeadow)) return
+    dispatch({ kind: 'play', cardId, fromMeadow })
   }
   function doPrepare() {
-    setS(p => (p.turn === 0 && p.winner == null && !p.players[0].done ? EV.prepareSeason(p, 0) : p))
+    if (!yourTurn) return
+    dispatch({ kind: 'prepare' })
   }
-
-  // AI driver — one action per call. tick changes on every AI mutation so it never stalls.
-  const aiActive = s.winner == null && s.turn === 1 && !ai.done
-  const tick =
-    `${s.turn}-${s.log.length}-${ai.city.length}-${ai.workersUsed}-${ai.season}-${ai.done}` +
-    `-${you.city.length}-${you.done}`
-  useAITurn(aiActive, () => setS(p => (p.turn === 1 && p.winner == null && !p.players[1].done ? EV.aiTurn(p) : p)),
-    { delayMs: 560, tick })
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
 
@@ -85,13 +85,13 @@ export function Everdell() {
   })
 
   const youScore = EV.scoreCity(you)
-  const aiScore = EV.scoreCity(ai)
+  const oppScore = EV.scoreCity(opp)
 
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = `Your city shines — you win ${youScore} to ${aiScore}!` }
-  else if (s.winner === 1) { bk = 'lose'; banner = `${ai.name} out-built you — you lose ${youScore} to ${aiScore}.` }
+  if (s.winner === mySeat) { bk = 'win'; banner = `Your city shines — you win ${youScore} to ${oppScore}!` }
+  else if (s.winner === oppSeat) { bk = 'lose'; banner = `${oppLabel} out-built you — you lose ${youScore} to ${oppScore}.` }
   else if (yourTurn) { bk = 'you'; banner = `Your turn — place a worker, play a card, or prepare (${EV.workersAvailable(you)} workers left)` }
-  else { bk = 'foe'; banner = `${ai.name} is pondering the forest…` }
+  else { bk = 'foe'; banner = net.online ? `Waiting for ${oppLabel}…` : `${oppLabel} is pondering the forest…` }
 
   return (
     <>
@@ -99,10 +99,10 @@ export function Everdell() {
         mark={TITLE_MARK}
         eyebrow="Everdell · worker placement"
         title="Everdell"
-        subtitle="gather from the forest, build a woodland city of critters & constructions, and out-score the Owl Sage across four seasons"
+        subtitle="gather from the forest, build a woodland city of critters & constructions, and out-score your rival across four seasons"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={<>You · {cap(you.season)} &nbsp;·&nbsp; {ai.name} · {cap(ai.season)}</>}
+        modeLeft={<>You · {cap(you.season)} &nbsp;·&nbsp; {oppLabel} · {cap(opp.season)}</>}
         banner={banner}
         bannerClass={bk}
         modeRight={<>click · place/play &nbsp; space · prepare &nbsp; N · new</>}
@@ -114,13 +114,13 @@ export function Everdell() {
             <div className="ev-forest">
               {LOCATIONS.map(l => {
                 const filled = s.occ[l.id]
-                const sel = yourTurn && EV.canPlaceWorker(s, 0, l.id)
+                const sel = yourTurn && EV.canPlaceWorker(s, mySeat, l.id)
                 const full = EV.freeSlots(s, l.id) <= 0
                 return (
                   <div key={l.id}
                     className={`ev-loc${sel ? ' selectable' : ''}${full ? ' full' : ''}`}
                     role={sel ? 'button' : undefined}
-                    onClick={() => sel && clickLocation(l.id)}>
+                    onClick={() => clickLocation(l.id)}>
                     <div className="ev-loc-head">
                       <span className="ev-loc-glyph">{l.short}</span>
                       <span className="ev-loc-name">{l.name}</span>
@@ -128,7 +128,7 @@ export function Everdell() {
                     </div>
                     <div className="ev-loc-gain">{gainText(l)}</div>
                     <div className="ev-cubes">
-                      {filled.map((pl, i) => <span key={i} className={'ev-cube ' + (pl === 0 ? 'you' : 'foe')} />)}
+                      {filled.map((pl, i) => <span key={i} className={'ev-cube ' + (pl === mySeat ? 'you' : 'foe')} />)}
                     </div>
                   </div>
                 )
@@ -143,9 +143,9 @@ export function Everdell() {
               {s.meadow.map((id, i) => {
                 const card = CARD_BY_ID[id]
                 const free = EV.isHousedFree(you, card)
-                const sel = yourTurn && EV.canPlayCard(s, 0, id, true)
+                const sel = yourTurn && EV.canPlayCard(s, mySeat, id, true)
                 return <CardTile key={i} card={card} free={free} selectable={sel}
-                  onClick={() => sel && clickPlay(id, true)} />
+                  onClick={() => clickPlay(id, true)} />
               })}
             </div>
           </section>
@@ -158,9 +158,9 @@ export function Everdell() {
               {you.hand.map((id, i) => {
                 const card = CARD_BY_ID[id]
                 const free = EV.isHousedFree(you, card)
-                const sel = yourTurn && EV.canPlayCard(s, 0, id, false)
+                const sel = yourTurn && EV.canPlayCard(s, mySeat, id, false)
                 return <CardTile key={i} card={card} free={free} selectable={sel}
-                  onClick={() => sel && clickPlay(id, false)} />
+                  onClick={() => clickPlay(id, false)} />
               })}
             </div>
             <div className="ev-actions">
@@ -172,15 +172,18 @@ export function Everdell() {
         </div>
 
         <div className="side">
-          <PlayerPanel p={you} you score={youScore} active={s.turn === 0 && s.winner == null} />
-          <PlayerPanel p={ai} you={false} score={aiScore} active={s.turn === 1 && s.winner == null} />
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
+          <PlayerPanel p={you} you label="You" score={youScore} active={s.turn === mySeat && s.winner == null} />
+          <PlayerPanel p={opp} you={false} label={oppLabel} score={oppScore} active={s.turn === oppSeat && s.winner == null} />
           <div className="panel logbox" ref={logRef}>
             {s.log.map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}
           </div>
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} youScore={youScore} aiScore={aiScore} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={s.winner === mySeat} youScore={youScore} oppScore={oppScore} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -219,13 +222,13 @@ function CardTile({ card, free, selectable, onClick }: {
   )
 }
 
-function PlayerPanel({ p, you, score, active }: { p: Player; you: boolean; score: number; active: boolean }) {
+function PlayerPanel({ p, you, label, score, active }: { p: Player; you: boolean; label: string; score: number; active: boolean }) {
   const constructions = p.city.filter(id => CARD_BY_ID[id]?.kind === 'construction')
   const critters = p.city.filter(id => CARD_BY_ID[id]?.kind === 'critter')
   return (
     <div className={`ev-player ${you ? 'you-p' : ''} ${active ? 'active' : ''}`}>
       <div className="ev-p-head">
-        <span className={'ev-p-name ' + (you ? 'you' : 'foe')}>{p.name}</span>
+        <span className={'ev-p-name ' + (you ? 'you' : 'foe')}>{label}</span>
         <span className="ev-p-score">{score}<small>pts</small></span>
       </div>
       <div className="ev-p-meta">
@@ -252,24 +255,23 @@ function PlayerPanel({ p, you, score, active }: { p: Player; you: boolean; score
   )
 }
 
-function ResultModal({ s, youScore, aiScore, onNew }: {
-  s: State; youScore: number; aiScore: number; onNew: () => void
+function ResultModal({ won, youScore, oppScore, oppLabel, onNew }: {
+  won: boolean; youScore: number; oppScore: number; oppLabel: string; onNew: () => void
 }) {
-  const won = s.winner === 0
   return (
     <Modal
       eyebrow={won ? 'A flourishing city' : 'Out-built'}
-      title={won ? 'You Win' : `${s.players[1].name} Wins`}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}>
       <div className="modal-body">
         <p>{won
           ? 'Your woodland city grew tall with critters and constructions across all four seasons — the pride of Everdell.'
-          : 'The Owl Sage raised a grander city this time. House more critters for free and play higher-value cards next round.'}</p>
+          : `${oppLabel} raised a grander city this time. House more critters for free and play higher-value cards next round.`}</p>
       </div>
       <div className="finalsc">
         <span className="you">You {youScore}</span>
-        <span className="foe">{s.players[1].name} {aiScore}</span>
+        <span className="foe">{oppLabel} {oppScore}</span>
       </div>
     </Modal>
   )

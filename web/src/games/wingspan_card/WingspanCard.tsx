@@ -1,17 +1,24 @@
-/* WINGSPAN (card engine) — UI. You (player 0) vs a greedy AI (1). Build an aviary
-   across three habitat rows by taking ONE action per cube: play a bird, gain food,
-   lay eggs, or draw cards — each scaling with the birds already in its row. The AI
-   takes ONE action per turn; useAITurn re-arms on a tick that changes every AI move. */
+/* WINGSPAN (card engine) — UI. Build an aviary across three habitat rows by taking ONE
+   action per cube: play a bird, gain food, lay eggs, or draw cards — each scaling with the
+   birds already in its row.
+
+   Online-capable via useGameSession(wingspanCardAdapter): the hook drives the AI for any
+   empty seat (no local useAITurn) and, when online, redacts the opponent's private hand and
+   the face-down deck so they never reach you. Everything below is rendered relative to
+   mySeat — your board, hand, food, eggs, score and the result banner are always "yours",
+   and the other seat is the rival/opponent. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { wingspanCardAdapter } from './net'
 import * as WS from './logic'
-import type { State, Player, Habitat, BirdDef, PlacedBird } from './logic'
+import type { Player, Habitat, BirdDef, PlacedBird } from './logic'
 
-const { BIRD, HABITATS, ROW_SIZE, makeGame } = WS
+const { BIRD, HABITATS, ROW_SIZE } = WS
 
 const HAB_LABEL: Record<Habitat, { name: string; act: string }> = {
   forest:    { name: 'Forest',    act: 'gain food' },
@@ -35,14 +42,17 @@ const TITLE_MARK = (
 )
 
 export function WingspanCard() {
-  const [s, setS] = useState<State>(() => makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(wingspanCardAdapter)
+  const oppSeat = 1 - mySeat // 2-player game: the other aviary
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  const you = s.players[0]
-  const yourTurn = s.winner == null && s.turn === 0 && you.cubesLeft > 0
+  const you = s.players[mySeat]
+  const foe = s.players[oppSeat]
+  const yourTurn = s.winner == null && isMyTurn && you.cubesLeft > 0
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
 
   function canPlay(id: string): boolean {
     if (!yourTurn) return false
@@ -55,26 +65,17 @@ export function WingspanCard() {
   }
 
   function play(id: string) {
-    setS(p => {
-      if (p.turn !== 0 || p.winner != null) return p
-      const def = BIRD[id]
-      if (!def) return p
-      return WS.playBird(p, 0, id, def.habitat)
-    })
+    if (!yourTurn) return
+    const def = BIRD[id]
+    if (!def) return
+    dispatch({ kind: 'play', cardId: id, habitat: def.habitat })
   }
   function doAction(h: Habitat) {
-    setS(p => {
-      if (p.turn !== 0 || p.winner != null || p.players[0].cubesLeft <= 0) return p
-      if (h === 'forest') return WS.gainFood(p, 0)
-      if (h === 'grassland') return WS.layEggs(p, 0)
-      return WS.drawCards(p, 0)
-    })
+    if (!yourTurn) return
+    if (h === 'forest') dispatch({ kind: 'food' })
+    else if (h === 'grassland') dispatch({ kind: 'eggs' })
+    else dispatch({ kind: 'draw' })
   }
-
-  // AI driver: tick changes on every AI mutation so single-action turns don't stall.
-  const aiActive = s.winner == null && s.turn === 1 && s.players[1].cubesLeft > 0
-  const tick = `${s.turn}-${s.players.map(p => p.cubesLeft).join('.')}-${s.players.map(p => p.food).join('.')}-${s.log.length}`
-  useAITurn(aiActive, () => setS(p => (p.turn === 1 && p.winner == null ? WS.aiTurn(p) : p)), { delayMs: 620, tick })
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
   useGameKeys({
@@ -90,16 +91,17 @@ export function WingspanCard() {
     },
   })
 
-  const liveScores = [WS.scorePlayer(s, 0), WS.scorePlayer(s, 1)]
+  const scMine = WS.scorePlayer(s, mySeat)
+  const scOpp = WS.scorePlayer(s, oppSeat)
 
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = `You built the finer aviary — ${liveScores[0]} to ${liveScores[1]}!` }
-  else if (s.winner === 1) { bk = 'lose'; banner = `The Rival's aviary scored higher — ${liveScores[1]} to ${liveScores[0]}.` }
-  else if (s.winner === -1) { bk = ''; banner = `A tie — ${liveScores[0]} apiece. A draw of feathers.` }
+  if (s.winner === mySeat) { bk = 'win'; banner = `You built the finer aviary — ${scMine} to ${scOpp}!` }
+  else if (s.winner === oppSeat) { bk = 'lose'; banner = `${oppLabel}'s aviary scored higher — ${scOpp} to ${scMine}.` }
+  else if (s.winner === -1) { bk = ''; banner = `A tie — ${scMine} apiece. A draw of feathers.` }
   else if (yourTurn) { bk = 'you'; banner = 'Your turn — play a bird, or take a habitat action' }
-  else { bk = 'foe'; banner = 'The Rival is taking their turn…' }
+  else { bk = 'foe'; banner = net.online ? `Waiting for the ${oppLabel.toLowerCase()}…` : `The ${oppLabel} is taking their turn…` }
 
-  const turnsTaken = (WS.TURNS_EACH - you.cubesLeft) + (WS.TURNS_EACH - s.players[1].cubesLeft)
+  const turnsTaken = (WS.TURNS_EACH - you.cubesLeft) + (WS.TURNS_EACH - foe.cubesLeft)
 
   return (
     <>
@@ -107,7 +109,7 @@ export function WingspanCard() {
         mark={TITLE_MARK}
         eyebrow="Wingspan · engine-building"
         title="Wingspan"
-        subtitle="play birds across forest, grassland & wetland — run the food→eggs→cards engine to out-score the Rival"
+        subtitle="play birds across forest, grassland & wetland — run the food→eggs→cards engine to out-score the rival"
         onRules={() => setShowRules(true)}
         onNew={newGame}
         modeLeft={<>Turns &nbsp;{turnsTaken}/{2 * WS.TURNS_EACH}</>}
@@ -119,7 +121,7 @@ export function WingspanCard() {
           <div className="ws-resbar">
             <div className="ws-stat"><span className="ws-stat-v">{you.food}</span><span className="ws-stat-l">🌰 food</span></div>
             <div className="ws-stat"><span className="ws-stat-v">{WS.totalEggs(you)}</span><span className="ws-stat-l">🥚 eggs</span></div>
-            <div className="ws-stat"><span className="ws-stat-v">{liveScores[0]}</span><span className="ws-stat-l">points</span></div>
+            <div className="ws-stat"><span className="ws-stat-v">{scMine}</span><span className="ws-stat-l">points</span></div>
             <div className="ws-cubes" title={`${you.cubesLeft} action cubes left`}>
               {Array.from({ length: WS.TURNS_EACH }).map((_, i) => (
                 <div key={i} className={'ws-cube' + (i >= you.cubesLeft ? ' spent' : '')} />
@@ -186,12 +188,16 @@ export function WingspanCard() {
         </div>
 
         <div className="side">
-          <div className="ws-scorebox">
-            <div className="ws-sc you"><div className="ws-sc-v">{liveScores[0]}</div><div className="ws-sc-l">You</div></div>
-            <div className="ws-sc foe"><div className="ws-sc-v">{liveScores[1]}</div><div className="ws-sc-l">Rival</div></div>
+          <div className="panel">
+            <OnlineBar net={net} />
           </div>
 
-          <FoePanel p={s.players[1]} active={s.turn === 1 && s.winner == null} score={liveScores[1]} />
+          <div className="ws-scorebox">
+            <div className="ws-sc you"><div className="ws-sc-v">{scMine}</div><div className="ws-sc-l">You</div></div>
+            <div className="ws-sc foe"><div className="ws-sc-v">{scOpp}</div><div className="ws-sc-l">{oppLabel}</div></div>
+          </div>
+
+          <FoePanel p={foe} label={oppLabel} active={s.winner == null && !isMyTurn} score={scOpp} />
 
           <div className="panel logbox" ref={logRef}>
             {s.log.map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}
@@ -199,7 +205,7 @@ export function WingspanCard() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} scores={liveScores} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={s.winner === mySeat} tie={s.winner === -1} mine={scMine} opp={scOpp} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -247,16 +253,16 @@ function HandCard({ def, playable, onClick }: { def: BirdDef; playable: boolean;
         <span className="ws-card-pts">{def.points}</span>
         <span className="ws-card-cap">{def.capacity}</span>
       </div>
-      <div className="ws-card-pw">{def.power ? POWER_TEXT[def.power] : ' '}</div>
+      <div className="ws-card-pw">{def.power ? POWER_TEXT[def.power] : ' '}</div>
     </button>
   )
 }
 
-function FoePanel({ p, active, score }: { p: Player; active: boolean; score: number }) {
+function FoePanel({ p, label, active, score }: { p: Player; label: string; active: boolean; score: number }) {
   return (
     <div className={'ws-foe' + (active ? ' active' : '')}>
       <div className="ws-foe-head">
-        <span className="ws-foe-name">{p.name}</span>
+        <span className="ws-foe-name">{label}</span>
         <span className="ws-foe-score">{score} pts</span>
       </div>
       <div className="ws-foe-res">
@@ -286,13 +292,11 @@ function FoePanel({ p, active, score }: { p: Player; active: boolean; score: num
   )
 }
 
-function ResultModal({ s, scores, onNew }: { s: State; scores: number[]; onNew: () => void }) {
-  const won = s.winner === 0
-  const tie = s.winner === -1
+function ResultModal({ won, tie, mine, opp, oppLabel, onNew }: { won: boolean; tie: boolean; mine: number; opp: number; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={tie ? 'Even flight' : won ? 'Best in show' : 'Out-classed'}
-      title={tie ? 'A Tie' : won ? 'You Win' : 'Rival Wins'}
+      title={tie ? 'A Tie' : won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
@@ -300,12 +304,12 @@ function ResultModal({ s, scores, onNew }: { s: State; scores: number[]; onNew: 
         <p>{tie
           ? 'Both aviaries scored exactly the same — a rare and beautiful equilibrium.'
           : won
-            ? 'Your engine hummed: food fed your birds, your birds laid eggs, and your aviary out-scored the Rival. A naturalist triumph!'
-            : 'The Rival ran a tighter engine this time. Play more high-value birds and keep those eggs flowing.'}</p>
+            ? 'Your engine hummed: food fed your birds, your birds laid eggs, and your aviary out-scored the rival. A naturalist triumph!'
+            : `The ${oppLabel.toLowerCase()} ran a tighter engine this time. Play more high-value birds and keep those eggs flowing.`}</p>
       </div>
       <div className="finalsc">
-        <span className="you">You {scores[0]}</span>
-        <span className="foe">Rival {scores[1]}</span>
+        <span className="you">You {mine}</span>
+        <span className="foe">{oppLabel} {opp}</span>
       </div>
     </Modal>
   )

@@ -1,12 +1,20 @@
 /* STAR REALMS — UI. A 2-player deckbuilding duel in deep space. You play your whole hand to
    build TRADE and COMBAT, buy ships/bases from the shared trade row, then spend combat to break
-   the foe's outposts and burn their authority from 50 to 0. The AI takes its full turn greedily. */
+   the foe's outposts and burn their authority from 50 to 0.
+
+   Online-capable via useGameSession(starRealmsAdapter): the hook drives the AI for any empty
+   seat (no local useAITurn) and, when online, redacts the opponent's private hand and both
+   players' face-down decks so they never reach you. Everything below is rendered relative to
+   mySeat — your authority, hand, bases and pools are always "yours"; the other seat is the
+   rival ("AI" solo, "Opponent" online). */
 
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { starRealmsAdapter } from './net'
 import * as SR from './logic'
 import type { StarRealmsState, CardInst, CardDef } from './logic'
 
@@ -20,33 +28,35 @@ const TITLE_MARK = (
 )
 
 export function StarRealms() {
-  const [s, setS] = useState<StarRealmsState>(() => SR.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(starRealmsAdapter)
+  const oppSeat = 1 - mySeat
   const [showRules, setShowRules] = useState(false)
-  const apply = (fn: (st: StarRealmsState) => void) =>
-    setS(prev => { const n = structuredClone(prev); fn(n); return n })
 
-  function newGame() { setS(SR.makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  const yourTurn = s.winner == null && s.turn === 0
-  const aiActive = s.winner == null && s.turn === 1
-  // The AI runs its WHOLE turn in one call; re-arm via the monotonic action counter.
-  useAITurn(aiActive, () => apply(st => SR.aiTurn(st)), { delayMs: 650, tick: s.actions })
+  const yourTurn = s.winner == null && isMyTurn
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
 
-  const you = s.players[0], foe = s.players[1]
+  const foeName = net.online ? 'Opponent' : 'AI'
+  const you = s.players[mySeat], foe = s.players[oppSeat]
   const foeHasOutpost = foe.bases.some(b => SR.def(b).outpost)
 
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'Victory — the foe is reduced to nothing' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'Defeat — your fleet is undone' }
+  if (s.winner === mySeat) { bk = 'win'; banner = 'Victory — the foe is reduced to nothing' }
+  else if (s.winner === oppSeat) { bk = 'lose'; banner = 'Defeat — your fleet is undone' }
   else if (yourTurn) { bk = 'you'; banner = 'Your turn — play cards, buy, then attack' }
-  else { bk = 'foe'; banner = 'The AI marshals its fleet…' }
+  else { bk = 'foe'; banner = `${foeName} marshals its fleet…` }
 
-  function play(id: number) { if (yourTurn) apply(st => SR.playCard(st, id)) }
-  function playAll() { if (yourTurn) apply(st => SR.playAll(st)) }
-  function buy(t: number | 'explorer') { if (yourTurn) apply(st => SR.buyCard(st, t)) }
-  function attack(t: 'face' | number) { if (yourTurn) apply(st => SR.attack(st, t)) }
-  function endTurn() { if (yourTurn) apply(st => SR.endTurn(st)) }
+  function play(id: number) { if (yourTurn) dispatch({ kind: 'play', cardId: id }) }
+  function playAll() { if (yourTurn) dispatch({ kind: 'playAll' }) }
+  function buy(t: number | 'explorer') {
+    if (!yourTurn) return
+    if (t === 'explorer') { dispatch({ kind: 'buy', cardId: 'explorer' }); return }
+    const c = s.tradeRow[t]
+    if (c != null) dispatch({ kind: 'buy', cardId: c.id })
+  }
+  function attack(t: 'face' | number) { if (yourTurn) dispatch({ kind: 'attack', target: t }) }
+  function endTurn() { if (yourTurn) dispatch({ kind: 'endTurn' }) }
 
   return (
     <>
@@ -65,7 +75,7 @@ export function StarRealms() {
         <div className="sr-wrap">
           {/* foe line */}
           <div className="sr-foeline">
-            <div className="sr-auth foe"><span className="lab">AI</span><span className="val">{foe.authority}</span></div>
+            <div className="sr-auth foe"><span className="lab">{foeName}</span><span className="val">{foe.authority}</span></div>
             <span className="sr-sect-h">deck {foe.deck.length} · discard {foe.discard.length}</span>
             <div className="sr-row" style={{ marginLeft: 'auto' }}>
               {foe.bases.length === 0 && <span className="sr-empty-note">no bases</span>}
@@ -136,9 +146,10 @@ export function StarRealms() {
 
         {/* side panel */}
         <div className="side">
+          <OnlineBar net={net} />
           <div className="panel sr-bigauth">
             <div className="col you"><div className="nm">You</div><div className="v">{you.authority}</div></div>
-            <div className="col foe"><div className="nm">AI</div><div className="v">{foe.authority}</div></div>
+            <div className="col foe"><div className="nm">{foeName}</div><div className="v">{foe.authority}</div></div>
           </div>
           <div className="panel">
             <div className="panel-l">Fleet</div>
@@ -153,7 +164,7 @@ export function StarRealms() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal s={s} mySeat={mySeat} foeName={foeName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -187,18 +198,18 @@ function factionShort(f: CardDef['faction']) {
   return f === 'trade' ? 'TRADE FED' : f === 'blob' ? 'BLOB' : f === 'star' ? 'STAR EMP' : f === 'machine' ? 'MACHINE' : 'UNALIGNED'
 }
 
-function ResultModal({ s, onNew }: { s: StarRealmsState; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ s, mySeat, foeName, onNew }: { s: StarRealmsState; mySeat: number; foeName: string; onNew: () => void }) {
+  const won = s.winner === mySeat
   return (
     <Modal
       eyebrow={won ? 'The void is yours' : 'Your fleet falls'}
-      title={won ? 'You Win' : 'AI Wins'}
+      title={won ? 'You Win' : `${foeName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>New duel</button>}
     >
       <div className="finalsc">
-        <span className="you">You {s.players[0].authority}</span>
-        <span className="foe">AI {s.players[1].authority}</span>
+        <span className="you">You {s.players[mySeat].authority}</span>
+        <span className="foe">{foeName} {s.players[1 - mySeat].authority}</span>
       </div>
     </Modal>
   )

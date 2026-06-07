@@ -1,14 +1,20 @@
-/* RADLANDS — UI. A 2-player post-apocalyptic tableau duel. You (player 0) defend three
-   CAMPS, each fronted by up to two PEOPLE; a card is PROTECTED while one of yours stands
-   ahead of it in the same column. Spend WATER (3+/turn) to play people, fire abilities
-   (Damage / Injure / Restore / Water / Draw), or queue delayed EVENTS. Destroy all three
-   enemy camps to win. The AI takes its whole multi-action turn one step at a time. */
+/* RADLANDS — UI. A 2-player post-apocalyptic tableau duel. You defend three CAMPS, each
+   fronted by up to two PEOPLE; a card is PROTECTED while one of yours stands ahead of it in
+   the same column. Spend WATER (3+/turn) to play people, fire abilities (Damage / Injure /
+   Restore / Water / Draw), or queue delayed EVENTS. Destroy all three enemy camps to win.
+
+   Online-capable via useGameSession(radlandsAdapter): the hook drives the AI for any empty
+   seat (solo play is unchanged) and, when hosting/joining, redacts each view so an opponent's
+   private hand and the face-down decks never reach you. Everything below is rendered relative
+   to mySeat — your board/hand/water are players[mySeat], the foe is players[1 - mySeat]. */
 
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { radlandsAdapter } from './net'
 import * as R from './logic'
 import type { RadlandsState, Player, AbilitySource, AbilityTarget, AbilityKind } from './logic'
 
@@ -27,24 +33,20 @@ type Sel =
   | null
 
 export function Radlands() {
-  const [s, setS] = useState<RadlandsState>(() => R.makeGame())
+  const { state: s, mySeat: mySeatRaw, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(radlandsAdapter)
+  const mySeat = mySeatRaw as Player
+  const oppSeat = (1 - mySeat) as Player // 2-player game: the other side
   const [sel, setSel] = useState<Sel>(null)
   const [showRules, setShowRules] = useState(false)
 
-  const apply = (fn: (st: RadlandsState) => void) =>
-    setS(prev => { const n = structuredClone(prev); fn(n); return n })
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
 
-  function newGame() { setS(R.makeGame()); setSel(null); setShowRules(false) }
-
-  const yourTurn = s.winner == null && s.turn === 0
-  const aiActive = s.winner == null && s.turn === 1
-  // The AI takes MULTIPLE actions per turn; re-arm the timer via the monotonic `actions`
-  // counter so each sub-step animates. (tick = s.actions — changes on every AI sub-action.)
-  useAITurn(aiActive, () => apply(st => R.aiStep(st)), { delayMs: 520, tick: s.actions })
+  const yourTurn = s.winner == null && isMyTurn
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => { setSel(null); setShowRules(false) } })
 
-  const you = s.players[0], foe = s.players[1]
-  const legal = yourTurn ? R.legalActions(s, 0) : []
+  const you = s.players[mySeat], foe = s.players[oppSeat]
+  const oppLabel = net.online ? 'Opponent' : 'AI'
+  const legal = yourTurn ? R.legalActions(s, mySeat) : []
 
   // ---- interaction ----
   function clickHandCard(cardId: string) {
@@ -53,7 +55,7 @@ export function Radlands() {
     if (d.kind === 'event') {
       // events fire immediately on click if affordable
       if (legal.some(a => a.type === 'event' && a.cardId === cardId)) {
-        apply(st => R.playEvent(st, 0, cardId)); setSel(null)
+        dispatch({ t: 'event', cardId }); setSel(null)
       }
       return
     }
@@ -63,7 +65,7 @@ export function Radlands() {
   function clickSlot(column: number, slot: number) {
     if (!yourTurn || !sel || sel.mode !== 'card') return
     if (legal.some(a => a.type === 'play' && a.cardId === sel.cardId && a.column === column && a.slot === slot)) {
-      apply(st => R.playPerson(st, 0, sel.cardId, column, slot)); setSel(null)
+      dispatch({ t: 'play', cardId: sel.cardId, column, slot }); setSel(null)
     }
   }
 
@@ -75,7 +77,7 @@ export function Radlands() {
     // economy abilities (no target) resolve immediately
     if (kind === 'water' || kind === 'draw' || kind === 'raid') {
       const m = matches[0]
-      if (m.type === 'ability') apply(st => R.useAbility(st, 0, m.source, m.target))
+      if (m.type === 'ability') dispatch({ t: 'ability', source: m.source, target: m.target })
       setSel(null)
       return
     }
@@ -86,11 +88,11 @@ export function Radlands() {
   function clickTarget(target: AbilityTarget) {
     if (!yourTurn || !sel || sel.mode !== 'ability') return
     if (legal.some(a => a.type === 'ability' && sameSource(a.source, sel.source) && a.target != null && sameTarget(a.target, target))) {
-      apply(st => R.useAbility(st, 0, sel.source, target)); setSel(null)
+      dispatch({ t: 'ability', source: sel.source, target }); setSel(null)
     }
   }
 
-  function endTurn() { if (yourTurn) { apply(st => R.endTurn(st)); setSel(null) } }
+  function endTurn() { if (yourTurn) { dispatch({ t: 'end' }); setSel(null) } }
 
   // ---- target highlighting helpers ----
   const primed = sel && sel.mode === 'ability' ? sel : null
@@ -106,12 +108,12 @@ export function Radlands() {
 
   // ---- banner ----
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'Victory — every enemy camp lies in ruins' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'Defeat — your camps are overrun' }
+  if (s.winner === mySeat) { bk = 'win'; banner = 'Victory — every enemy camp lies in ruins' }
+  else if (s.winner === oppSeat) { bk = 'lose'; banner = 'Defeat — your camps are overrun' }
   else if (yourTurn && primed) { bk = 'you'; banner = `Pick a target for ${primed.kind.toUpperCase()} — click a highlighted card` }
   else if (yourTurn && sel && sel.mode === 'card') { bk = 'you'; banner = 'Click a glowing slot to deploy — or an event to fire it' }
   else if (yourTurn) { bk = 'you'; banner = 'Your turn — deploy people, fire abilities, then end turn' }
-  else { bk = 'foe'; banner = 'The raiders make their move…' }
+  else { bk = 'foe'; banner = net.online ? 'Waiting for the opponent…' : 'The raiders make their move…' }
 
   const youAlive = you.columns.filter(c => !c.camp.destroyed).length
   const foeAlive = foe.columns.filter(c => !c.camp.destroyed).length
@@ -132,20 +134,20 @@ export function Radlands() {
       >
         <div className="rl-wrap">
           {/* foe board */}
-          <div className="rl-side-h"><span className="foe">Raiders</span> — enemy camps &amp; people</div>
-          <Board s={s} owner={1} foe orientationFoe
-            isTargetable={(c, sl) => isTargetable(1, c, sl)}
-            onTarget={(c, sl) => clickTarget({ player: 1, column: c, slot: sl })}
+          <div className="rl-side-h"><span className="foe">{net.online ? 'Opponent' : 'Raiders'}</span> — enemy camps &amp; people</div>
+          <Board s={s} owner={oppSeat} foe orientationFoe
+            isTargetable={(c, sl) => isTargetable(oppSeat, c, sl)}
+            onTarget={(c, sl) => clickTarget({ player: oppSeat, column: c, slot: sl })}
           />
 
           <div className="rl-divider" />
 
           {/* your board */}
           <div className="rl-side-h"><span className="you">You</span> — your camps &amp; people (click a ready card to use its ability)</div>
-          <Board s={s} owner={0}
+          <Board s={s} owner={mySeat}
             yourTurn={yourTurn}
-            isTargetable={(c, sl) => isTargetable(0, c, sl)}
-            onTarget={(c, sl) => clickTarget({ player: 0, column: c, slot: sl })}
+            isTargetable={(c, sl) => isTargetable(mySeat, c, sl)}
+            onTarget={(c, sl) => clickTarget({ player: mySeat, column: c, slot: sl })}
             primedKind={primed?.kind}
             selSource={sel && sel.mode === 'ability' ? sel.source : null}
             onAbility={clickAbilitySource}
@@ -224,7 +226,7 @@ export function Radlands() {
         <div className="side">
           <div className="panel rl-bigcamps">
             <div className="col you"><div className="nm">You</div><div className="v">{youAlive}</div><div className="sub">camps left</div></div>
-            <div className="col foe"><div className="nm">AI</div><div className="v">{foeAlive}</div><div className="sub">camps left</div></div>
+            <div className="col foe"><div className="nm">{oppLabel}</div><div className="v">{foeAlive}</div><div className="sub">camps left</div></div>
           </div>
           <div className="panel">
             <div className="panel-l">Supply</div>
@@ -233,14 +235,15 @@ export function Radlands() {
               <div className="cr"><span>Your deck</span><b>{you.deck.length}</b></div>
               <div className="cr"><span>Your discard</span><b>{you.discard.length}</b></div>
               <div className="cr"><span>Your hand</span><b>{you.hand.length}</b></div>
-              <div className="cr"><span>AI deck</span><b>{foe.deck.length}</b></div>
+              <div className="cr"><span>{oppLabel} deck</span><b>{foe.deck.length}</b></div>
             </div>
           </div>
+          <OnlineBar net={net} />
           <div className="panel logbox">{s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}</div>
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={s.winner === mySeat} you={youAlive} foe={foeAlive} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -380,20 +383,17 @@ function sameTarget(a: AbilityTarget, b: AbilityTarget): boolean {
   return a.player === b.player && a.column === b.column && a.slot === b.slot
 }
 
-function ResultModal({ s, onNew }: { s: RadlandsState; onNew: () => void }) {
-  const won = s.winner === 0
-  const youAlive = s.players[0].columns.filter(c => !c.camp.destroyed).length
-  const foeAlive = s.players[1].columns.filter(c => !c.camp.destroyed).length
+function ResultModal({ won, you, foe, oppLabel, onNew }: { won: boolean; you: number; foe: number; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'The wasteland is yours' : 'Your holdfast falls'}
-      title={won ? 'You Win' : 'AI Wins'}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>New raid</button>}
     >
       <div className="finalsc">
-        <span className="you">You · {youAlive} camps</span>
-        <span className="foe">AI · {foeAlive} camps</span>
+        <span className="you">You · {you} camps</span>
+        <span className="foe">{oppLabel} · {foe} camps</span>
       </div>
     </Modal>
   )
