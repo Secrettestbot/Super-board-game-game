@@ -1,13 +1,19 @@
-/* SKULL KING — UI.
-   Ported from design/examples/trick_skull_king/skull_king.jsx onto the framework shell.
-   Exercises a multi-phase flow (bid -> play -> trickEnd -> roundEnd) with two timers:
-   the AI play step (useAITurn) and the post-trick reveal pause (a collect timer). */
+/* SKULL KING — UI. Seat-relative + online-capable via useGameSession(skullKingAdapter).
+ *
+ * The adapter COLLAPSES the logic's mechanical phases (trickEnd -> collect, roundEnd ->
+ * deal next), so the networked state is only ever 'bid' / 'play' / 'gameOver'. To keep the
+ * old trick-reveal pause, this component reconstructs it LOCALLY: when a fresh completed
+ * trick appears (s.lastTrick changes), it freezes that trick on the felt for ~1.1s before
+ * showing the cleared table. This is pure presentation; the hook drives all real state and
+ * the AI for empty seats. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { skullKingAdapter } from './net'
 import * as SK from './logic'
 import type { Card as TCard, Kind, Player, Suit, SkullKingState } from './logic'
 
@@ -67,102 +73,125 @@ const TITLE_MARK = (
 )
 
 export function SkullKing() {
-  const [s, setS] = useState<SkullKingState>(() => SK.makeInitial("you"))
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(skullKingAdapter)
   const [bidSel, setBidSel] = useState<number | null>(null)
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(SK.makeInitial("you")); setBidSel(null); setShowRules(false) }
+  // Seat-relative identity. seat 0 = 'you', seat 1 = 'ai' in the logic.
+  const me: Player = mySeat === 0 ? 'you' : 'ai'
+  const foe: Player = me === 'you' ? 'ai' : 'you'
+  const meName = 'You'
+  const foeName = net.online ? 'Opponent' : 'The Rival'
+  const foeShort = net.online ? 'Opponent' : 'Rival'
 
-  // AI plays its card on a timer
-  useAITurn(s.phase === "play" && s.turn === "ai" && !s.winner, () => setS(p => SK.aiStep(p)), { delayMs: 720, tick: s.trick.length })
-  // collect a completed trick after a reveal pause
+  function newGame() { netNew(); setBidSel(null); setShowRules(false); setReveal(null) }
+
+  // ----- local trick-reveal animation -----------------------------------------
+  // The adapter collapses trickEnd, so completed tricks arrive already cleared (s.trick
+  // empty, s.lastTrick set). We replay the just-finished trick on the felt for a beat.
+  const [reveal, setReveal] = useState<{ cards: SK.TrickCard[]; winnerPlayer: Player; key: string } | null>(null)
+  const lastSeen = useRef<string>('')
   useEffect(() => {
-    if (s.phase === "trickEnd") {
-      const id = setTimeout(() => setS(p => SK.collectTrick(p)), 1080)
+    const lt = s.lastTrick
+    const key = lt ? `${s.round}:${lt.winnerPlayer}:${lt.cards.length}:${lt.bonus}:${s.tricksWon.you}:${s.tricksWon.ai}` : ''
+    if (lt && key !== lastSeen.current) {
+      lastSeen.current = key
+      setReveal({ cards: lt.cards, winnerPlayer: lt.winnerPlayer, key })
+      const id = setTimeout(() => setReveal(r => (r && r.key === key ? null : r)), 1080)
       return () => clearTimeout(id)
     }
-  }, [s.phase, s.trick])
+    if (!lt) lastSeen.current = ''
+  }, [s.lastTrick, s.round, s.tricksWon.you, s.tricksWon.ai])
 
   useEffect(() => { setBidSel(null) }, [s.round, s.phase])
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
 
-  const yourTurn = s.phase === "play" && s.turn === "you" && !s.winner
-  const legal = yourTurn ? SK.legalPlays(s.hands.you, s.trick) : []
+  const over = s.winner != null
+  const myTurnPlay = s.phase === 'play' && isMyTurn && !over && !reveal
+  const myTurnBid = s.phase === 'bid' && isMyTurn && !over
+  const legal = myTurnPlay ? SK.legalPlays(s.hands[me], s.trick) : []
   const legalIds = new Set(legal.map(c => c.id))
 
   function clickHandCard(c: TCard) {
-    if (!yourTurn || !legalIds.has(c.id)) return
-    setS(SK.playCard(s, "you", c.id))
+    if (!myTurnPlay || !legalIds.has(c.id)) return
+    dispatch({ kind: 'play', cardId: c.id })
   }
-  function confirmBid() { if (bidSel != null) setS(SK.submitBid(s, bidSel)) }
+  function confirmBid() { if (bidSel != null && myTurnBid) dispatch({ kind: 'bid', n: bidSel }) }
+
+  // ----- result relative to mySeat --------------------------------------------
+  const myScore = me === 'you' ? s.scores.you : s.scores.ai
+  const foeScore = me === 'you' ? s.scores.ai : s.scores.you
+  const myWon = s.winner === me
+  const foeWon = s.winner === foe
 
   // ===== banner =====
   let banner: string, bk = ""
-  if (s.winner) {
-    if (s.winner === "you") { bk = "win"; banner = "You hold the richest log — you win" }
-    else if (s.winner === "ai") { bk = "lose"; banner = "The rival out-plundered you" }
+  if (over) {
+    if (myWon) { bk = "win"; banner = "You hold the richest log — you win" }
+    else if (foeWon) { bk = "lose"; banner = `${foeShort} out-plundered you` }
     else { bk = ""; banner = "Even spoils — a dead heat" }
-  } else if (s.phase === "bid") { bk = "you"; banner = `Wager your tricks for round ${s.round}` }
-  else if (s.phase === "trickEnd" && s.pending) {
-    const w = s.pending.winnerPlayer
-    bk = w === "you" ? "you" : "foe"
-    banner = `${w === "you" ? "You take" : "Rival takes"} the trick${s.pending.bonus ? ` · +${s.pending.bonus}` : ""}`
-  } else if (s.phase === "roundEnd") { bk = ""; banner = `Round ${s.round} complete` }
-  else if (yourTurn) { bk = "you"; banner = s.trick.length === 0 ? "Your turn — lead a card" : "Your turn — follow" }
-  else { bk = "foe"; banner = "The rival is choosing…" }
+  } else if (reveal) {
+    const w = reveal.winnerPlayer
+    bk = w === me ? "you" : "foe"
+    banner = `${w === me ? "You take" : `${foeShort} takes`} the trick`
+  } else if (s.phase === "bid") {
+    bk = "you"
+    banner = myTurnBid ? `Wager your tricks for round ${s.round}` : `${foeShort} is wagering…`
+  } else if (myTurnPlay) {
+    bk = "you"; banner = s.trick.length === 0 ? "Your turn — lead a card" : "Your turn — follow"
+  } else { bk = "foe"; banner = `${foeShort} is choosing…` }
 
   // ===== felt content =====
   function FeltContent() {
     if (s.phase === "bid") {
       return <div className="felt-hint" style={{ fontSize: 14 }}>Both captains seal their wagers…</div>
     }
-    if (s.phase === "roundEnd") {
-      const last = s.roundLog[s.roundLog.length - 1]
-      return (
-        <div className="continue-bar" style={{ flexDirection: "column", gap: 14, textAlign: "center" }}>
-          <div className="trick-won-badge" style={{ fontSize: 22 }}>Round {last.round} settled</div>
-          <div className="cb-text" style={{ fontSize: 14 }}>
-            You {last.you.tricks}/{last.you.bid} → <b style={{ color: last.you.delta >= 0 ? "var(--good)" : "var(--warn)" }}>{last.you.delta >= 0 ? "+" : ""}{last.you.delta}</b>
-            &nbsp;&nbsp;·&nbsp;&nbsp;
-            Rival {last.ai.tricks}/{last.ai.bid} → <b style={{ color: last.ai.delta >= 0 ? "var(--good)" : "var(--warn)" }}>{last.ai.delta >= 0 ? "+" : ""}{last.ai.delta}</b>
-          </div>
-          <button className="btn-continue" onClick={() => setS(SK.nextRound(s))}>Deal round {s.round + 1}</button>
-        </div>
-      )
+    // a frozen, just-finished trick (local reveal) or the live trick
+    const showTrick = reveal ? reveal.cards : s.trick
+    if (showTrick.length === 0) {
+      const leaderIsMe = s.leader === me
+      return <div className="felt-hint">{leaderIsMe ? "You lead this trick" : `${foeShort} leads this trick`}</div>
     }
-    // play / trickEnd
-    if (s.trick.length === 0) {
-      return <div className="felt-hint">{s.leader === "you" ? "You lead this trick" : "Rival leads this trick"}</div>
-    }
-    const winIdx = s.phase === "trickEnd" && s.pending ? s.pending.winnerIdx : -1
+    const winnerPlayer = reveal ? reveal.winnerPlayer : null
     return (
       <div className="trick-area">
-        {s.trick.map((tk, i) => (
-          <div key={tk.card.id} className={"trick-slot" + (i === winIdx ? " win" : "")}>
-            <Card card={tk.card} className="played-in" />
-            <span className="slot-who">{tk.player === "you" ? "You" : "Rival"}{i === winIdx ? " · won" : ""}</span>
-          </div>
-        ))}
-        {s.trick.length === 1 && s.phase === "play" && (
+        {showTrick.map((tk, i) => {
+          const isWin = winnerPlayer != null && tk.player === winnerPlayer
+          const who = tk.player === me ? meName : foeShort
+          return (
+            <div key={tk.card.id + '-' + i} className={"trick-slot" + (isWin ? " win" : "")}>
+              <Card card={tk.card} className="played-in" />
+              <span className="slot-who">{who}{isWin ? " · won" : ""}</span>
+            </div>
+          )
+        })}
+        {!reveal && s.trick.length === 1 && s.phase === "play" && (
           <div className="trick-slot">
             <div className="empty-slot"></div>
-            <span className="slot-who">{s.turn === "you" ? "You" : "Rival"}</span>
+            <span className="slot-who">{s.turn === me ? meName : foeShort}</span>
           </div>
         )}
       </div>
     )
   }
 
-  const hand = sortHand(s.hands.you)
+  const hand = sortHand(s.hands[me])
+  const foeHandCount = s.hands[foe].length
 
   function madeClass(player: Player) {
     if (s.bids[player] == null) return ""
     const made = s.bids[player] === s.tricksWon[player]
-    if (s.phase === "roundEnd" || s.winner) return made ? "made" : "miss"
+    if (over) return made ? "made" : "miss"
     return ""
   }
+
+  // seat-relative bid/trick/score accessors
+  const myBid = s.bids[me]
+  const foeBid = s.bids[foe]
+  const myTricks = s.tricksWon[me]
+  const foeTricks = s.tricksWon[foe]
 
   return (
     <>
@@ -181,16 +210,16 @@ export function SkullKing() {
         <div className="tablecol">
           <div className="oppstrip">
             <div className="opp-id">
-              <span className="opp-name">The Rival</span>
-              <span className="opp-meta">{s.hands.ai.length} card{s.hands.ai.length === 1 ? "" : "s"} in hand</span>
+              <span className="opp-name">{foeName}</span>
+              <span className="opp-meta">{foeHandCount} card{foeHandCount === 1 ? "" : "s"} in hand</span>
             </div>
             <div className="opp-hand">
-              {s.hands.ai.map((_c, i) => <div className="cardback" key={i}></div>)}
+              {Array.from({ length: foeHandCount }, (_, i) => <div className="cardback" key={i}></div>)}
             </div>
             <div className="opp-tag">
-              <div className="opp-stat foe"><b>{s.bids.ai == null ? "—" : s.bids.ai}</b><span>bid</span></div>
-              <div className="opp-stat foe"><b>{s.tricksWon.ai}</b><span>won</span></div>
-              <div className="opp-stat foe"><b>{s.scores.ai}</b><span>score</span></div>
+              <div className="opp-stat foe"><b>{foeBid == null ? "—" : foeBid}</b><span>bid</span></div>
+              <div className="opp-stat foe"><b>{foeTricks}</b><span>won</span></div>
+              <div className="opp-stat foe"><b>{foeScore}</b><span>score</span></div>
             </div>
           </div>
 
@@ -199,15 +228,15 @@ export function SkullKing() {
           <div className="handrow">
             <div className="hand-label">
               <span className="hl-name">Your Hand</span>
-              <span className="hl-hint">{yourTurn ? (s.trick.length ? "follow suit if you can — specials are always legal" : "lead any card") : s.phase === "bid" ? "study your hand, then wager" : "—"}</span>
-              <span className="hl-stat">bid {s.bids.you == null ? "—" : s.bids.you} · won {s.tricksWon.you} · {s.scores.you} pts</span>
+              <span className="hl-hint">{myTurnPlay ? (s.trick.length ? "follow suit if you can — specials are always legal" : "lead any card") : s.phase === "bid" ? "study your hand, then wager" : "—"}</span>
+              <span className="hl-stat">bid {myBid == null ? "—" : myBid} · won {myTricks} · {myScore} pts</span>
             </div>
-            <div className={"hand-cards" + (yourTurn ? "" : " locked")}>
+            <div className={"hand-cards" + (myTurnPlay ? "" : " locked")}>
               {hand.length === 0
                 ? <div className="felt-hint" style={{ padding: "30px 0" }}>Hand played out.</div>
                 : hand.map(c => {
-                  const playable = yourTurn && legalIds.has(c.id)
-                  const illegal = yourTurn && !legalIds.has(c.id)
+                  const playable = myTurnPlay && legalIds.has(c.id)
+                  const illegal = myTurnPlay && !legalIds.has(c.id)
                   return <Card key={c.id} card={c} className={playable ? "playable" : ""} illegal={illegal}
                     onClick={playable ? () => clickHandCard(c) : undefined} />
                 })}
@@ -216,7 +245,9 @@ export function SkullKing() {
         </div>
 
         <div className="side">
-          {s.phase === "bid" ? (
+          <OnlineBar net={net} />
+
+          {s.phase === "bid" && myTurnBid ? (
             <div className="panel bidbox">
               <div className="bid-prompt">How many tricks will you take in <b>round {s.round}</b>?</div>
               <div className="bid-grid">
@@ -233,13 +264,13 @@ export function SkullKing() {
               <div className="panel-l">This round</div>
               <div className="bid-status">
                 <div className="bid-stat you">
-                  <div className="bs-who">You</div>
-                  <div className="bs-val"><span className={madeClass("you")}>{s.tricksWon.you}</span> / {s.bids.you}</div>
+                  <div className="bs-who">{meName}</div>
+                  <div className="bs-val"><span className={madeClass(me)}>{myTricks}</span> / {myBid == null ? "—" : myBid}</div>
                   <div className="bs-sub">won / bid</div>
                 </div>
                 <div className="bid-stat foe">
-                  <div className="bs-who">Rival</div>
-                  <div className="bs-val"><span className={madeClass("ai")}>{s.tricksWon.ai}</span> / {s.bids.ai}</div>
+                  <div className="bs-who">{foeShort}</div>
+                  <div className="bs-val"><span className={madeClass(foe)}>{foeTricks}</span> / {foeBid == null ? "—" : foeBid}</div>
                   <div className="bs-sub">won / bid</div>
                 </div>
               </div>
@@ -248,19 +279,23 @@ export function SkullKing() {
 
           <div className="panel scoreboard">
             <div className="sb-tot">
-              <div className="sbt you"><div className="who">You</div><div className="pts">{s.scores.you}</div></div>
-              <div className="sbt foe"><div className="who">Rival</div><div className="pts">{s.scores.ai}</div></div>
+              <div className="sbt you"><div className="who">{meName}</div><div className="pts">{myScore}</div></div>
+              <div className="sbt foe"><div className="who">{foeShort}</div><div className="pts">{foeScore}</div></div>
             </div>
-            <div className="sb-head"><span>R</span><span>You</span><span>Rival</span></div>
+            <div className="sb-head"><span>R</span><span>{meName}</span><span>{foeShort}</span></div>
             <div className="sb-rows">
               {s.roundLog.length === 0 && <div className="sb-row"><span className="rd">—</span><span className="sb-cell">no rounds yet</span><span></span></div>}
-              {s.roundLog.map(r => (
-                <div className="sb-row" key={r.round}>
-                  <span className="rd">{r.round}</span>
-                  <span className="sb-cell"><span className="bt">{r.you.tricks}/{r.you.bid}</span><span className={"dl " + (r.you.delta >= 0 ? "pos" : "neg")}>{r.you.delta >= 0 ? "+" : ""}{r.you.delta}</span></span>
-                  <span className="sb-cell"><span className="bt">{r.ai.tricks}/{r.ai.bid}</span><span className={"dl " + (r.ai.delta >= 0 ? "pos" : "neg")}>{r.ai.delta >= 0 ? "+" : ""}{r.ai.delta}</span></span>
-                </div>
-              ))}
+              {s.roundLog.map(r => {
+                const mine = me === 'you' ? r.you : r.ai
+                const theirs = me === 'you' ? r.ai : r.you
+                return (
+                  <div className="sb-row" key={r.round}>
+                    <span className="rd">{r.round}</span>
+                    <span className="sb-cell"><span className="bt">{mine.tricks}/{mine.bid}</span><span className={"dl " + (mine.delta >= 0 ? "pos" : "neg")}>{mine.delta >= 0 ? "+" : ""}{mine.delta}</span></span>
+                    <span className="sb-cell"><span className="bt">{theirs.tricks}/{theirs.bid}</span><span className={"dl " + (theirs.delta >= 0 ? "pos" : "neg")}>{theirs.delta >= 0 ? "+" : ""}{theirs.delta}</span></span>
+                  </div>
+                )
+              })}
             </div>
           </div>
 
@@ -271,22 +306,23 @@ export function SkullKing() {
         </div>
       </GameShell>
 
-      {s.winner && <WinModal s={s} onNew={newGame} />}
+      {over && <WinModal myScore={myScore} foeScore={foeScore} myWon={myWon} tie={s.winner === 'tie'} foeShort={foeShort} meName={meName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function WinModal({ s, onNew }: { s: SkullKingState; onNew: () => void }) {
-  const won = s.winner === "you", tie = s.winner === "tie"
+function WinModal({ myScore, foeScore, myWon, tie, foeShort, meName, onNew }: {
+  myScore: number; foeScore: number; myWon: boolean; tie: boolean; foeShort: string; meName: string; onNew: () => void
+}) {
   return (
     <Modal
-      eyebrow={tie ? "Split the bounty" : won ? "Captain of captains" : "Sent to the brig"}
-      title={tie ? "A Dead Heat" : won ? "You Win" : "Rival Wins"}
+      eyebrow={tie ? "Split the bounty" : myWon ? "Captain of captains" : "Sent to the brig"}
+      title={tie ? "A Dead Heat" : myWon ? "You Win" : `${foeShort} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Sail again</button>}
     >
-      <div className="finalsc"><span className="fs you">You {s.scores.you}</span><span className="fs foe">Rival {s.scores.ai}</span></div>
+      <div className="finalsc"><span className="fs you">{meName} {myScore}</span><span className="fs foe">{foeShort} {foeScore}</span></div>
     </Modal>
   )
 }

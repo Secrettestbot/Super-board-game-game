@@ -1,13 +1,21 @@
 /* THE FOX IN THE FOREST — UI (built for this codebase).
    A storybook trick-taking duel on the framework shell. Three painted suits, an ornate
-   decree card setting trump, and odd-card powers. Two timers: the AI's play step
-   (useAITurn) and the post-trick reveal pause (a collect timer), mirroring Skull King. */
+   decree card setting trump, and odd-card powers. Online-capable via useGameSession: the
+   host runs the real logic, a guest plays the other seat through a redacted per-seat view.
+
+   SEAT-RELATIVE: your hand is whichever side mySeat maps to (0='you', 1='ai'); banners,
+   scores and the opponent strip are all framed from your seat. In solo play mySeat is 0
+   and seat 1 is the fox AI, exactly as before. Two timers remain in the component:
+   the post-trick reveal pause (then dispatch a 'collect' for tricks you won) and the
+   hand-end deal — both expressed as net intents so the same path works online. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { foxInForestAdapter } from './net'
 import * as FX from './logic'
 import type { Card as TCard, Player, Suit, FoxState } from './logic'
 
@@ -48,82 +56,91 @@ const TITLE_MARK = (
 )
 
 export function FoxInForest() {
-  const [s, setS] = useState<FoxState>(() => FX.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(foxInForestAdapter)
   const [showRules, setShowRules] = useState(false)
   const [swapping, setSwapping] = useState(false)
   const [swanSkipped, setSwanSkipped] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(FX.makeGame()); setShowRules(false); setSwapping(false); setSwanSkipped(false) }
+  // Seat-relative players: `me` is the side you control, `foe` is the opponent.
+  const me: Player = mySeat === 1 ? 'ai' : 'you'
+  const foe: Player = me === 'you' ? 'ai' : 'you'
+  const foeName = net.online ? 'Opponent' : 'The Fox'
 
-  // While the human has led a 1 (and hasn't declined), hold the fox so the Swan-swap
-  // prompt can be answered.
-  const youSwanLead = FX.canSwapDecree(s, 'you') && !swanSkipped
-  // AI plays on a timer; re-arm on trick length + pending changes.
-  useAITurn(
-    s.phase === 'play' && s.turn === 'ai' && !s.pending && !s.winner && !youSwanLead,
-    () => setS(p => FX.aiStep(p)),
-    { delayMs: 700, tick: `${s.trick.length}-${s.pending ? 1 : 0}-${s.hand}` },
-  )
-  // collect a completed trick after a reveal pause
+  function newGame() { netNew(); setShowRules(false); setSwapping(false); setSwanSkipped(false) }
+
+  // The Swan-swap window is yours iff YOU just led a 1 and haven't yet decided. While it is
+  // open the adapter holds the follower, so the prompt below can be answered.
+  const youSwanLead = FX.canSwapDecree(s, me) && isMyTurn && s.trick.length === 1 && !swanSkipped
+
+  // Collect a completed trick after a reveal pause — only the trick winner drives it. The
+  // adapter routes the winner's seat here (isMyTurn), AI collects its own pending tricks.
   useEffect(() => {
-    if (s.pending) {
-      const id = setTimeout(() => setS(p => FX.collectTrick(p)), 1000)
+    if (s.pending && s.pending.winner === me && isMyTurn) {
+      const id = setTimeout(() => dispatch({ kind: 'collect' }), 1000)
       return () => clearTimeout(id)
     }
-  }, [s.pending, s.hand])
+  }, [s.pending, s.hand, me, isMyTurn, dispatch])
 
-  // The fox never swaps the decree (it simply plays its 1); only the human is prompted.
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
   useEffect(() => { setSwapping(false); setSwanSkipped(false) }, [s.hand, s.trick])
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => { setShowRules(false); setSwapping(false) } })
 
-  const yourTurn = s.phase === 'play' && s.turn === 'you' && !s.pending && !s.winner
+  const yourTurn = s.phase === 'play' && !s.pending && !s.winner && isMyTurn && !youSwanLead
   const led = s.trick.length ? s.trick[0].card : null
-  const legal = yourTurn ? FX.legalPlays(s.hands.you, led, s.trump) : []
+  const myHand = s.hands[me]
+  const legal = yourTurn ? FX.legalPlays(myHand, led, s.trump) : []
   const legalIds = new Set(legal.map(c => c.id))
   const canSwap = youSwanLead
 
   function clickHandCard(c: TCard) {
-    if (swapping) { setS(FX.swapDecree(s, 'you', c.id)); setSwapping(false); return }
+    if (swapping) { dispatch({ kind: 'swapDecree', cardId: c.id }); setSwapping(false); return }
     if (!yourTurn || !legalIds.has(c.id)) return
-    setS(FX.playCard(s, 'you', c.id))
+    dispatch({ kind: 'play', cardId: c.id })
   }
 
-  // ===== banner =====
+  // ===== banner (relative to your seat) =====
   let banner: string, bk = ''
   if (s.winner) {
-    if (s.winner === 'you') { bk = 'win'; banner = 'You win the wood — the fox bows out' }
-    else if (s.winner === 'ai') { bk = 'lose'; banner = 'The fox outfoxes you' }
+    if (s.winner === me) { bk = 'win'; banner = 'You win the wood — the fox bows out' }
+    else if (s.winner === foe) { bk = 'lose'; banner = net.online ? 'Your opponent prevails' : 'The fox outfoxes you' }
     else { bk = ''; banner = 'A tie at the forest’s edge' }
   } else if (s.phase === 'handEnd') { bk = ''; banner = `Hand ${s.hand} settled` }
   else if (swapping) { bk = 'you'; banner = 'Swan’s gift — pick a card to swap with the decree' }
   else if (s.pending) {
     const w = s.pending.winner
-    bk = w === 'you' ? 'you' : 'foe'
-    banner = `${w === 'you' ? 'You take' : 'The fox takes'} the trick`
+    bk = w === me ? 'you' : 'foe'
+    banner = `${w === me ? 'You take' : `${foeName} takes`} the trick`
   } else if (yourTurn) {
     bk = 'you'
     banner = s.trick.length === 0 ? 'Your turn — lead a card' : 'Your turn — follow suit'
-  } else { bk = 'foe'; banner = 'The fox is deciding…' }
+  } else { bk = 'foe'; banner = net.online ? 'Waiting for your opponent…' : 'The fox is deciding…' }
+
+  // host controls the next deal; a guest just waits for it.
+  const canDeal = net.amHost && s.phase === 'handEnd' && !s.winner
 
   // ===== felt content =====
   function FeltContent() {
     if (s.phase === 'handEnd' && !s.winner) {
       const last = s.handLog[s.handLog.length - 1]
+      const myRes = me === 'you' ? last.you : last.ai
+      const foeRes = me === 'you' ? last.ai : last.you
       return (
         <div className="fx-handend">
           <div className="fx-he-title">Hand {last.hand} settled</div>
           <div className="fx-he-row">
-            <span className="you">You · {last.you.tricks} tricks → <b>+{last.you.pts}</b>{last.you.sevens ? ` (${last.you.sevens}×7)` : ''}</span>
-            <span className="foe">Fox · {last.ai.tricks} tricks → <b>+{last.ai.pts}</b>{last.ai.sevens ? ` (${last.ai.sevens}×7)` : ''}</span>
+            <span className="you">You · {myRes.tricks} tricks → <b>+{myRes.pts}</b>{myRes.sevens ? ` (${myRes.sevens}×7)` : ''}</span>
+            <span className="foe">{foeName} · {foeRes.tricks} tricks → <b>+{foeRes.pts}</b>{foeRes.sevens ? ` (${foeRes.sevens}×7)` : ''}</span>
           </div>
-          <button className="fx-continue" onClick={() => setS(FX.nextHand(s))}>Deal hand {s.hand + 1}</button>
+          {canDeal
+            ? <button className="fx-continue" onClick={() => dispatch({ kind: 'nextHand' })}>Deal hand {s.hand + 1}</button>
+            : <div className="fx-hint">Waiting for the host to deal hand {s.hand + 1}…</div>}
         </div>
       )
     }
     if (s.trick.length === 0) {
-      return <div className="fx-hint">{s.leader === 'you' ? 'You lead this trick' : 'The fox leads this trick'}</div>
+      const leaderIsMe = s.leader === me
+      return <div className="fx-hint">{leaderIsMe ? 'You lead this trick' : `${foeName} leads this trick`}</div>
     }
     const winner = s.pending ? s.pending.winner : null
     return (
@@ -131,20 +148,23 @@ export function FoxInForest() {
         {s.trick.map((tk) => (
           <div key={tk.card.id} className={'fx-slot' + (winner === tk.player ? ' win' : '')}>
             <Card card={tk.card} className="played-in" />
-            <span className="fx-slot-who">{tk.player === 'you' ? 'You' : 'Fox'}{winner === tk.player ? ' · won' : ''}</span>
+            <span className="fx-slot-who">{tk.player === me ? 'You' : 'Foe'}{winner === tk.player ? ' · won' : ''}</span>
           </div>
         ))}
         {s.trick.length === 1 && !s.pending && (
           <div className="fx-slot">
             <div className="fx-empty" />
-            <span className="fx-slot-who">{s.turn === 'you' ? 'You' : 'Fox'}</span>
+            <span className="fx-slot-who">{s.turn === me ? 'You' : 'Foe'}</span>
           </div>
         )}
       </div>
     )
   }
 
-  const hand = sortHand(s.hands.you)
+  const hand = sortHand(myHand)
+  const foeHand = s.hands[foe]
+  const myTricks = s.tricksWon[me], foeTricks = s.tricksWon[foe]
+  const myScore = s.scores[me], foeScore = s.scores[foe]
   const handHint = swapping ? 'choose any card to trade for the decree'
     : yourTurn ? (s.trick.length ? 'follow the led suit if you hold it' : 'lead any card')
     : '—'
@@ -166,15 +186,15 @@ export function FoxInForest() {
         <div className="fx-table">
           <div className="fx-oppstrip">
             <div className="fx-opp-id">
-              <span className="fx-opp-name">The Fox</span>
-              <span className="fx-opp-meta">{s.hands.ai.length} card{s.hands.ai.length === 1 ? '' : 's'} in paw</span>
+              <span className="fx-opp-name">{foeName}</span>
+              <span className="fx-opp-meta">{foeHand.length} card{foeHand.length === 1 ? '' : 's'} in paw</span>
             </div>
             <div className="fx-opp-hand">
-              {s.hands.ai.map((_c, i) => <div className="fx-cardback" key={i} />)}
+              {foeHand.map((_c, i) => <div className="fx-cardback" key={i} />)}
             </div>
             <div className="fx-opp-tag">
-              <div className="fx-opp-stat foe"><b>{s.tricksWon.ai}</b><span>tricks</span></div>
-              <div className="fx-opp-stat foe"><b>{s.scores.ai}</b><span>score</span></div>
+              <div className="fx-opp-stat foe"><b>{foeTricks}</b><span>tricks</span></div>
+              <div className="fx-opp-stat foe"><b>{foeScore}</b><span>score</span></div>
             </div>
           </div>
 
@@ -184,7 +204,7 @@ export function FoxInForest() {
             <div className="fx-hand-label">
               <span className="hl-name">Your Hand</span>
               <span className="hl-hint">{handHint}</span>
-              <span className="hl-stat">{s.tricksWon.you} tricks · {s.scores.you} pts</span>
+              <span className="hl-stat">{myTricks} tricks · {myScore} pts</span>
             </div>
             <div className={'fx-hand-cards' + (yourTurn || swapping ? '' : ' locked')}>
               {hand.length === 0
@@ -201,7 +221,7 @@ export function FoxInForest() {
                 <button className="fx-swap-btn" onClick={() => setSwapping(true)}>
                   Swan: swap a card with the decree
                 </button>
-                <button className="fx-swap-btn ghost" onClick={() => setSwanSkipped(true)}>
+                <button className="fx-swap-btn ghost" onClick={() => { setSwanSkipped(true); dispatch({ kind: 'keepDecree' }) }}>
                   Keep the trump
                 </button>
               </div>
@@ -210,6 +230,10 @@ export function FoxInForest() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
+
           <div className="panel fx-decree">
             <div className="panel-l">The Decree · Trump</div>
             <div className="fx-decree-body">
@@ -224,24 +248,28 @@ export function FoxInForest() {
 
           <div className="panel fx-scoreboard">
             <div className="fx-sb-tot">
-              <div className="sbt you"><div className="who">You</div><div className="pts">{s.scores.you}</div></div>
+              <div className="sbt you"><div className="who">You</div><div className="pts">{myScore}</div></div>
               <div className="fx-target">/ {FX.TARGET}</div>
-              <div className="sbt foe"><div className="who">Fox</div><div className="pts">{s.scores.ai}</div></div>
+              <div className="sbt foe"><div className="who">{net.online ? 'Foe' : 'Fox'}</div><div className="pts">{foeScore}</div></div>
             </div>
             <div className="fx-tricks">
               <span>tricks won this hand</span>
-              <span className="fx-tval"><b className="you">{s.tricksWon.you}</b> · <b className="foe">{s.tricksWon.ai}</b></span>
+              <span className="fx-tval"><b className="you">{myTricks}</b> · <b className="foe">{foeTricks}</b></span>
             </div>
-            <div className="fx-sb-head"><span>H</span><span>You</span><span>Fox</span></div>
+            <div className="fx-sb-head"><span>H</span><span>You</span><span>{net.online ? 'Foe' : 'Fox'}</span></div>
             <div className="fx-sb-rows">
               {s.handLog.length === 0 && <div className="fx-sb-row"><span className="rd">—</span><span className="cell">no hands yet</span><span /></div>}
-              {s.handLog.map(r => (
-                <div className="fx-sb-row" key={r.hand}>
-                  <span className="rd">{r.hand}</span>
-                  <span className="cell"><span className="bt">{r.you.tricks}t</span><span className="dl pos">+{r.you.pts}</span></span>
-                  <span className="cell"><span className="bt">{r.ai.tricks}t</span><span className="dl pos">+{r.ai.pts}</span></span>
-                </div>
-              ))}
+              {s.handLog.map(r => {
+                const myR = me === 'you' ? r.you : r.ai
+                const foeR = me === 'you' ? r.ai : r.you
+                return (
+                  <div className="fx-sb-row" key={r.hand}>
+                    <span className="rd">{r.hand}</span>
+                    <span className="cell"><span className="bt">{myR.tricks}t</span><span className="dl pos">+{myR.pts}</span></span>
+                    <span className="cell"><span className="bt">{foeR.tricks}t</span><span className="dl pos">+{foeR.pts}</span></span>
+                  </div>
+                )
+              })}
             </div>
           </div>
 
@@ -251,22 +279,23 @@ export function FoxInForest() {
         </div>
       </GameShell>
 
-      {s.winner && <WinModal s={s} onNew={newGame} />}
+      {s.winner && <WinModal s={s} me={me} foeName={foeName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function WinModal({ s, onNew }: { s: FoxState; onNew: () => void }) {
-  const won = s.winner === 'you', tie = s.winner === 'tie'
+function WinModal({ s, me, foeName, onNew }: { s: FoxState; me: Player; foeName: string; onNew: () => void }) {
+  const won = s.winner === me, tie = s.winner === 'tie'
+  const myScore = s.scores[me], foeScore = s.scores[me === 'you' ? 'ai' : 'you']
   return (
     <Modal
       eyebrow={tie ? 'Even at dusk' : won ? 'Keeper of the wood' : 'Lost in the trees'}
-      title={tie ? 'A Tie' : won ? 'You Win' : 'The Fox Wins'}
+      title={tie ? 'A Tie' : won ? 'You Win' : `${foeName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {s.scores.you}</span><span className="foe">Fox {s.scores.ai}</span></div>
+      <div className="finalsc"><span className="you">You {myScore}</span><span className="foe">{foeName} {foeScore}</span></div>
     </Modal>
   )
 }

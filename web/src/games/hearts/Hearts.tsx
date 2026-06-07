@@ -1,24 +1,29 @@
-/* HEARTS — UI.
-   You are South (seat 0); West, North, East are AI. Four AI cards may resolve in sequence
-   within a trick AND across many tricks while it's "not your turn", so the useAITurn `tick`
-   must change on EVERY single AI play. We use `${handNo}-${played}-${trickLen}-${turn}`,
-   which is unique per ply (a played card advances either trick.length or played+leader). */
+/* HEARTS — UI. Seat-relative trick-taking on the framework shell.
+   Solo: you are seat 0 (South); West, North, East are AI — identical to before. Online:
+   useGameSession drives the authority + AI for empty seats, and the local player may be
+   ANY seat, so every read is relative to `mySeat`. Your seat always renders at the bottom
+   (South); the other three rotate clockwise around the table. isMyTurn gates passing and
+   playing; banners and the result are relative to your seat. The old useAITurn driver is
+   gone — the hook ticks the AI via the adapter. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { heartsAdapter } from './net'
 import * as H from './logic'
-import type { Card as TCard, State } from './logic'
-
-const NAMES = H.NAMES
+import type { Card as TCard, PassDir } from './logic'
 
 interface LogEntry { t: string; x: string }
 
-function CardView({ c, size, faded, dim, sel, win, onClick }: {
-  c: { suit: H.Suit; rank: number }; size: string; faded?: boolean; dim?: boolean; sel?: boolean; win?: boolean; onClick?: () => void
+function CardView({ c, size, faded, dim, sel, win, back, onClick }: {
+  c?: { suit: H.Suit; rank: number }; size: string; faded?: boolean; dim?: boolean; sel?: boolean; win?: boolean; back?: boolean; onClick?: () => void
 }) {
+  if (back || !c) {
+    return <div className={['card', size, 'back'].join(' ')} />
+  }
   const cls = ['card', size]
   if (H.isRed(c.suit)) cls.push('red')
   if (c.suit === 'S' && c.rank === 12) cls.push('qspade')
@@ -43,7 +48,7 @@ const TITLE_MARK = (
 )
 
 export function Hearts() {
-  const [s, setS] = useState<State>(() => H.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(heartsAdapter)
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number[]>([])      // your selected card ids while passing
   const [log, setLog] = useState<LogEntry[]>(() => [{ t: 'sys', x: openingLine(H.passDirForHand(1)) }])
@@ -52,20 +57,26 @@ export function Hearts() {
 
   function pushLog(entries: LogEntry[]) { setLog(l => l.concat(entries).slice(-60)) }
 
+  // ---- seat-relative naming. Position south=mySeat, then clockwise W,N,E.
+  function seatName(seat: number): string {
+    if (seat === mySeat) return 'You'
+    if (!net.online) return H.NAMES[seat]
+    const info = net.seats.find(x => x.seat === seat)
+    if (info && info.kind === 'guest') return info.label // "Player N"
+    if (info && info.kind === 'ai') return `AI ${seat + 1}`
+    return `Player ${seat + 1}`
+  }
+  // physical table positions are relative offsets from your seat (you sit South)
+  const SOUTH = mySeat
+  const WEST = (mySeat + 1) % 4
+  const NORTH = (mySeat + 2) % 4
+  const EAST = (mySeat + 3) % 4
+
   function newGame() {
-    const g = H.makeGame()
-    setS(g); setSel([]); setShowRules(false)
-    setLog([{ t: 'sys', x: openingLine(g.passDir) }])
+    netNew(); setSel([]); setShowRules(false)
+    setLog([{ t: 'sys', x: openingLine(H.passDirForHand(1)) }])
     prevTrickKey.current = ''
   }
-
-  // ---- AI driver: three AI seats may play in sequence within a trick, and AI seats lead
-  // many tricks while you're idle. `tick` changes on every ply so the timer re-arms each time.
-  const aiActive = s.phase === 'playing' && s.turn != null && s.turn !== 0 && s.winner == null
-  useAITurn(aiActive, () => setS(p => H.aiPlay(p, p.turn!)), {
-    delayMs: 560,
-    tick: `${s.handNo}-${s.played}-${s.trick.length}-${s.turn}`,
-  })
 
   // ---- log trick resolutions + hand/game results as state advances
   useEffect(() => {
@@ -75,20 +86,21 @@ export function Hearts() {
     prevTrickKey.current = key
     const lt = s.lastTrick
     const pts = lt.cards.reduce((a, e) => a + H.cardPoints(e.card), 0)
-    const playedStr = lt.cards.map(e => `${NAMES[e.seat]} ${H.cardLabel(e.card)}`).join(', ')
-    pushLog([{ t: pts > 0 ? 'pts' : 'ai', x: `${playedStr} — ${NAMES[lt.winner]} takes the trick${pts > 0 ? ` (+${pts})` : ''}.` }])
+    const playedStr = lt.cards.map(e => `${seatName(e.seat)} ${H.cardLabel(e.card)}`).join(', ')
+    pushLog([{ t: pts > 0 ? 'pts' : 'ai', x: `${playedStr} — ${seatName(lt.winner)} takes the trick${pts > 0 ? ` (+${pts})` : ''}.` }])
     if (s.played === 13 && (s.phase === 'handover' || s.phase === 'gameover')) {
       const moon = s.handPoints.filter(p => p === 0).length === 1 && s.handPoints.filter(p => p === 26).length === 3
       if (moon) {
         const shooter = s.handPoints.indexOf(0)
-        pushLog([{ t: 'moon', x: `🌙 ${NAMES[shooter]} shot the moon! Everyone else +26.` }])
+        pushLog([{ t: 'moon', x: `🌙 ${seatName(shooter)} shot the moon! Everyone else +26.` }])
       } else {
-        pushLog([{ t: 'sys', x: `Hand ${s.handNo} scored: ${s.handPoints.map((p, i) => `${NAMES[i]} +${p}`).join(', ')}.` }])
+        pushLog([{ t: 'sys', x: `Hand ${s.handNo} scored: ${s.handPoints.map((p, i) => `${seatName(i)} +${p}`).join(', ')}.` }])
       }
       if (s.phase === 'gameover' && s.winner != null) {
-        pushLog([{ t: 'win', x: `Game over — ${NAMES[s.winner]} win${s.winner === 0 ? '' : 's'} with the lowest score (${s.scores[s.winner]}).` }])
+        pushLog([{ t: 'win', x: `Game over — ${seatName(s.winner)} win${s.winner === mySeat ? '' : 's'} with the lowest score (${s.scores[s.winner]}).` }])
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.handNo, s.played, s.phase])
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [log])
@@ -99,49 +111,55 @@ export function Hearts() {
     onEscape: () => setShowRules(false),
   })
 
-  const yourPlayTurn = s.phase === 'playing' && s.turn === 0 && s.winner == null
-  const legalSet = yourPlayTurn ? new Set(H.legalPlays(s, 0).map(c => c.id)) : new Set<number>()
-  const passingYou = s.phase === 'passing'
+  const over = s.winner != null || s.phase === 'gameover'
+  const passingYou = s.phase === 'passing' && isMyTurn
+  const yourPlayTurn = s.phase === 'playing' && isMyTurn && !over
+  const legalSet = yourPlayTurn ? new Set(H.legalPlays(s, mySeat).map(c => c.id)) : new Set<number>()
 
   function toggleSel(id: number) {
     if (!passingYou) return
     setSel(cur => cur.includes(id) ? cur.filter(x => x !== id) : cur.length < 3 ? cur.concat(id) : cur)
   }
   function confirmPass() {
-    if (sel.length !== 3) return
-    const picks = [sel, H.aiPass(s, 1), H.aiPass(s, 2), H.aiPass(s, 3)]
-    const recv = H.passTarget(0, s.passDir)
-    const g = H.applyPass(s, picks)
-    pushLog([{ t: 'you', x: `You pass 3 cards ${s.passDir} to ${NAMES[recv]}.` }])
-    setSel([]); setS(g)
+    if (sel.length !== 3 || !passingYou) return
+    const recv = H.passTarget(mySeat, s.passDir)
+    dispatch({ kind: 'pass', cardIds: sel.slice() })
+    pushLog([{ t: 'you', x: `You pass 3 cards ${s.passDir} to ${seatName(recv)}.` }])
+    setSel([])
   }
-  function playYou(c: TCard) { if (yourPlayTurn && legalSet.has(c.id)) setS(H.playCard(s, 0, c.id)) }
+  function playYou(c: TCard) {
+    if (yourPlayTurn && legalSet.has(c.id)) dispatch({ kind: 'play', cardId: c.id })
+  }
 
   // current trick (or last) for the table center
   const showTrick = s.trick.length ? { cards: s.trick, winner: null as number | null } : s.lastTrick
   function seatCard(p: number) { return showTrick ? (showTrick.cards.find(e => e.seat === p) || null) : null }
 
-  // banner
+  // banner — relative to your seat
   let banner: string, bk = ''
   if (s.phase === 'gameover' && s.winner != null) {
-    if (s.winner === 0) { bk = 'win'; banner = 'You win!' } else { bk = 'lose'; banner = `${NAMES[s.winner]} wins` }
+    if (s.winner === mySeat) { bk = 'win'; banner = 'You win!' } else { bk = 'lose'; banner = `${seatName(s.winner)} wins` }
   } else if (s.phase === 'handover') {
     bk = 'foe'; banner = `Hand ${s.handNo} complete`
   } else if (passingYou) {
     bk = 'you'; banner = `Pass 3 cards ${s.passDir} (${sel.length}/3)`
+  } else if (s.phase === 'passing') {
+    bk = 'foe'; banner = net.online ? 'Waiting for everyone to pass…' : 'Passing…'
   } else if (yourPlayTurn) {
     bk = 'you'; banner = s.trick.length ? 'Your turn — follow suit' : 'Your turn — lead a card'
   } else if (s.turn != null) {
-    bk = 'foe'; banner = `${NAMES[s.turn]} is playing…`
+    bk = 'foe'; banner = `${seatName(s.turn)} is playing…`
   } else { banner = '…' }
 
   const leadScore = Math.min(...s.scores)
+  const myHand = H.sortHand(s.hands[mySeat])
 
   function Plate({ p, area }: { p: number; area: string }) {
-    const active = s.phase === 'playing' && s.turn === p && s.winner == null
+    const active = s.phase === 'playing' && s.turn === p && !over
+    const suffix = net.online ? '' : (p === 0 ? ' (S)' : ['', ' (W)', ' (N)', ' (E)'][p])
     return (
-      <div className={`plate ${area}${p === 0 ? ' you' : ''}${active ? ' active' : ''}`}>
-        <span className="pl-name">{NAMES[p]}{p === 0 ? ' (S)' : ['', ' (W)', ' (N)', ' (E)'][p]}</span>
+      <div className={`plate ${area}${p === mySeat ? ' you' : ''}${active ? ' active' : ''}`}>
+        <span className="pl-name">{seatName(p)}{suffix}</span>
         <div className="pl-meta">
           <span className="pl-cards">{s.hands[p].length}🂠</span>
           <span className="pl-pts"><span className="lbl">hand </span>{s.handPoints[p]}</span>
@@ -158,7 +176,7 @@ export function Hearts() {
         {e
           ? <CardView c={e.card} size="play" faded={showTrick!.winner != null && !isWin} win={isWin} />
           : <div className="play-empty" />}
-        <span className="tc-who">{NAMES[p]}</span>
+        <span className="tc-who">{seatName(p)}</span>
       </div>
     )
   }
@@ -179,25 +197,25 @@ export function Hearts() {
       >
         <div className="playcol">
           <div className="table">
-            <Plate p={2} area="seat-n" />
-            <Plate p={1} area="seat-w" />
+            <Plate p={NORTH} area="seat-n" />
+            <Plate p={WEST} area="seat-w" />
             <div className="tc trick-center">
-              <TrickSlot p={2} cls="tcn" />
-              <TrickSlot p={1} cls="tcw" />
+              <TrickSlot p={NORTH} cls="tcn" />
+              <TrickSlot p={WEST} cls="tcw" />
               <div className="tc-mid">
                 <div className="tc-label">{s.trick.length ? 'current trick' : s.lastTrick ? 'last trick' : 'trick'}</div>
                 <div className="tc-hint">{s.heartsBroken ? '♥ broken' : '♥ unbroken'}</div>
               </div>
-              <TrickSlot p={3} cls="tce" />
-              <TrickSlot p={0} cls="tcs" />
+              <TrickSlot p={EAST} cls="tce" />
+              <TrickSlot p={SOUTH} cls="tcs" />
             </div>
-            <Plate p={3} area="seat-e" />
-            <Plate p={0} area="seat-s" />
+            <Plate p={EAST} area="seat-e" />
+            <Plate p={SOUTH} area="seat-s" />
           </div>
 
           {passingYou ? (
             <div className="passbar">
-              <span className="pb-txt">Select <b>3</b> cards to pass <b>{s.passDir}</b> to <b>{NAMES[H.passTarget(0, s.passDir)]}</b></span>
+              <span className="pb-txt">Select <b>3</b> cards to pass <b>{s.passDir}</b> to <b>{seatName(H.passTarget(mySeat, s.passDir))}</b></span>
               <button className="btn-pass" disabled={sel.length !== 3} onClick={confirmPass}>Pass {sel.length}/3</button>
             </div>
           ) : null}
@@ -208,7 +226,7 @@ export function Hearts() {
               <span className="yh-tip">{passingYou ? 'tap 3 to pass' : yourPlayTurn ? 'tap a highlighted card' : ''}</span>
             </div>
             <div className="hand">
-              {H.sortHand(s.hands[0]).map(c => {
+              {myHand.map(c => {
                 const isLegal = legalSet.has(c.id)
                 const isSel = sel.includes(c.id)
                 const clickable = passingYou || (yourPlayTurn && isLegal)
@@ -230,11 +248,14 @@ export function Hearts() {
 
         <div className="side">
           <div className="panel">
+            <OnlineBar net={net} />
+          </div>
+          <div className="panel">
             <div className="panel-l">Scores · first to {H.TARGET} ends it, lowest wins</div>
             <div className="scorelist">
               {[0, 1, 2, 3].map(p => (
-                <div key={p} className={`sc-row${p === 0 ? ' you' : ''}${s.scores[p] === leadScore ? ' lead' : ''}`}>
-                  <span className="sc-name">{NAMES[p]}</span>
+                <div key={p} className={`sc-row${p === mySeat ? ' you' : ''}${s.scores[p] === leadScore ? ' lead' : ''}`}>
+                  <span className="sc-name">{seatName(p)}</span>
                   <span className="sc-hand">{s.handPoints[p] > 0 ? `+${s.handPoints[p]}` : ''}</span>
                   <span className="sc-total">{s.scores[p]}</span>
                 </div>
@@ -253,20 +274,24 @@ export function Hearts() {
           eyebrow={`Hand ${s.handNo} done`}
           title="Scores"
           closeOnOverlay={false}
-          actions={<button className="btn-modal" onClick={() => setS(H.nextHand(s))}>Next hand →</button>}
+          actions={net.amHost
+            ? <button className="btn-modal" onClick={() => dispatch({ kind: 'next' })}>Next hand →</button>
+            : <span className="modal-wait">Waiting for the host…</span>}
         >
-          <FinalScores s={s} />
+          <FinalScores s={s} seatName={seatName} />
         </Modal>
       )}
 
       {s.phase === 'gameover' && s.winner != null && (
         <Modal
-          eyebrow={s.winner === 0 ? 'Lowest score' : 'Better luck next time'}
-          title={s.winner === 0 ? 'You Win!' : `${NAMES[s.winner]} Wins`}
+          eyebrow={s.winner === mySeat ? 'Lowest score' : 'Better luck next time'}
+          title={s.winner === mySeat ? 'You Win!' : `${seatName(s.winner)} Wins`}
           closeOnOverlay={false}
-          actions={<button className="btn-modal" onClick={newGame}>New game</button>}
+          actions={net.amHost
+            ? <button className="btn-modal" onClick={newGame}>New game</button>
+            : <span className="modal-wait">Waiting for the host…</span>}
         >
-          <FinalScores s={s} />
+          <FinalScores s={s} seatName={seatName} />
         </Modal>
       )}
 
@@ -275,13 +300,13 @@ export function Hearts() {
   )
 }
 
-function FinalScores({ s }: { s: State }) {
+function FinalScores({ s, seatName }: { s: H.State; seatName: (seat: number) => string }) {
   const min = Math.min(...s.scores)
   return (
     <div className="final-scores">
       {[0, 1, 2, 3].map(p => (
         <div key={p} className={`fs-row${s.scores[p] === min ? ' win' : ''}`}>
-          <span>{NAMES[p]}{s.handPoints[p] > 0 ? ` (+${s.handPoints[p]})` : ''}</span>
+          <span>{seatName(p)}{s.handPoints[p] > 0 ? ` (+${s.handPoints[p]})` : ''}</span>
           <span>{s.scores[p]}</span>
         </div>
       ))}
@@ -289,7 +314,7 @@ function FinalScores({ s }: { s: State }) {
   )
 }
 
-function openingLine(dir: H.PassDir): string {
+function openingLine(dir: PassDir): string {
   return dir === 'hold' ? 'New game — no passing this hand. Holder of 2♣ leads.' : `New game — pass 3 cards ${dir}.`
 }
 
@@ -302,7 +327,8 @@ function RulesModal({ onClose }: { onClose: () => void }) {
         <p>Each hand you may <b>pass 3 cards</b> — left, right, across, then a no-pass hand, cycling. Whoever holds the <b>2♣</b> leads it to the first trick.</p>
         <p><b>Follow suit</b> if you can; otherwise play anything. No points may be dropped on the very first trick, and <b>hearts can't be led</b> until they've been "broken" by being discarded on an off-suit trick. Highest card of the led suit wins the trick and leads next.</p>
         <p><b>Shoot the moon:</b> take <i>all 26</i> points in a hand and you score 0 while everyone else takes 26.</p>
-        <p>The game ends when someone reaches {H.TARGET}; the <b>lowest</b> total wins. You are <b>South</b>.</p>
+        <p>The game ends when someone reaches {H.TARGET}; the <b>lowest</b> total wins.</p>
+        <p>You can <b>play online</b> with up to three friends — host a table from the side panel and share the link; empty seats are filled by the AI.</p>
         <p><b>Keys:</b> <kbd>N</kbd> new · <kbd>?</kbd> rules · <kbd>Esc</kbd> close.</p>
       </div>
     </Modal>

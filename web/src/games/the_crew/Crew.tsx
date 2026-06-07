@@ -1,17 +1,23 @@
 /* THE CREW — UI.
-   Ported from design/examples/coop_the_crew/crew.jsx onto the framework shell. A 3-player
-   co-op trick-taker: two AI crewmates (Vega, Orion) play on a timer. Because a crewmate
-   can win a trick and lead the next, the AI turn re-arms on s.trickNo (useAITurn tick). */
+   A 3-player co-op trick-taker on the framework shell. Seat-relative: your hand comes
+   from `mySeat`, isMyTurn gates play, and the tasks / trick / progress are shared and
+   public. Solo play fills the other two seats with the existing co-op AI (driven by the
+   session hook); online play lets teammates join those seats. Because a crewmate can win
+   a trick and lead the next, the AI re-arms inside useGameSession on tickKey.
+
+   HIDDEN INFO: only your own hand is real; teammates' hands are redacted to counts (the
+   adapter blanks them before a view crosses the wire). */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { theCrewAdapter, seedMission } from './net'
 import * as CR from './logic'
 import type { Card as TCard, CrewState, Task } from './logic'
 
-const NAMES = CR.NAMES
 const CREWCLS = ["cr-you", "cr-vega", "cr-orion"]
 
 function Card({ c, size, faded, dim, onClick, ring }: {
@@ -30,17 +36,6 @@ function Card({ c, size, faded, dim, onClick, ring }: {
   )
 }
 
-function TaskBadge({ task, small }: { task: Task; small?: boolean }) {
-  const c = { suit: task.suit, val: task.val }
-  return (
-    <div className={"taskbadge" + (task.done ? " done" : "") + (task.failed ? " failed" : "")}>
-      <Card c={c} size={small ? "tiny" : "mini"} ring={task.assignee} />
-      {task.done && <span className="tb-mark ok">✓</span>}
-      {task.failed && <span className="tb-mark no">✗</span>}
-    </div>
-  )
-}
-
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
     <rect x="3" y="3" width="42" height="42" rx="10" fill="#0b1018" stroke="#2e3f52" strokeWidth="1.5" />
@@ -52,33 +47,53 @@ const TITLE_MARK = (
 )
 
 export function Crew() {
+  // Mission number is host/UI state; bumping `epoch` remounts the session so makeGame()
+  // mints the seeded mission. Online play stays on mission 1 (epoch never advances there).
   const [mission, setMission] = useState(1)
-  const [s, setS] = useState<CrewState>(() => CR.makeMission(1))
+  const [epoch, setEpoch] = useState(0)
+  function startMission(n: number) { seedMission(n); setMission(n); setEpoch(e => e + 1) }
+  return <CrewBoard key={epoch} mission={mission} onStartMission={startMission} />
+}
+
+function CrewBoard({ mission, onStartMission }: { mission: number; onStartMission: (n: number) => void }) {
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(theCrewAdapter)
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function startMission(n: number) { setMission(n); setS(CR.makeMission(n)); setShowRules(false) }
+  // Restart the current mission: reset local UI then the session.
+  function restart() { setShowRules(false); seedMission(mission); netNew() }
 
-  // 3 players: when the turn passes between the two AI crewmates `active` stays true, so
-  // re-arm the timer on every turn change (and new trick), not just per trick.
-  useAITurn(!s.result && s.turn != null && s.turn !== 0, () => setS(p => CR.aiStep(p)), { delayMs: 620, tick: `${s.trickNo}-${s.turn}` })
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
-  useGameKeys({ onNew: () => startMission(mission), onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
+  useGameKeys({ onNew: restart, onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
 
-  const yourTurn = !s.result && s.turn === 0
-  const legal = yourTurn ? new Set(CR.legalCards(s.hands[0], s.trick).map(c => c.id)) : new Set<number>()
+  // Seat-relative naming: in solo keep the flavour names; online say "You" / "Player N".
+  function nameFor(p: number): string {
+    if (p === mySeat) return "You"
+    if (net.online) return `Player ${p + 1}`
+    return CR.NAMES[p] ?? `Player ${p + 1}`
+  }
 
-  function playYou(c: TCard) { if (yourTurn && legal.has(c.id)) setS(CR.playCard(s, 0, c.id)) }
+  const yourTurn = !s.result && isMyTurn
+  const myHand = s.hands[mySeat] ?? []
+  const legal = yourTurn ? new Set(CR.legalCards(myHand, s.trick).map(c => c.id)) : new Set<number>()
+
+  function playYou(c: TCard) { if (yourTurn && legal.has(c.id)) dispatch({ kind: 'play', cardId: c.id }) }
 
   const shown = s.trick.length ? { cards: s.trick, winner: null as number | null } : s.lastTrick
   function seatCard(p: number) { return shown ? (shown.cards.find(e => e.player === p) || null) : null }
   function tasksOf(p: number) { return s.tasks.filter(t => t.assignee === p) }
 
+  // Other crew seats (everyone but me), in stable order, for the two top panels.
+  const otherSeats: number[] = []
+  for (let p = 0; p < s.hands.length; p++) if (p !== mySeat) otherSeats.push(p)
+  // Trick-center column order: left teammate, me (centre), right teammate.
+  const centerOrder = [otherSeats[0], mySeat, otherSeats[1]].filter((p): p is number => p != null)
+
   let banner: string, bk = ""
   if (s.result === "win") { bk = "win"; banner = "Mission accomplished" }
   else if (s.result === "lose") { bk = "lose"; banner = "Mission failed" }
   else if (yourTurn) { bk = "you"; banner = s.trick.length ? "Your turn — follow the lead" : "Your turn — lead a card" }
-  else { bk = "foe"; banner = `${NAMES[s.turn!]} is playing…` }
+  else { bk = "foe"; banner = `${nameFor(s.turn!)} is playing…` }
 
   function CrewSeat({ p }: { p: number }) {
     const c = seatCard(p)
@@ -86,7 +101,7 @@ export function Crew() {
     return (
       <div className={"seat " + CREWCLS[p] + (s.turn === p && !s.result ? " active" : "")}>
         <div className="seat-top">
-          <span className="seat-name">{NAMES[p]}</span>
+          <span className="seat-name">{nameFor(p)}</span>
           <span className="seat-cards">{s.hands[p].length}🂠</span>
         </div>
         <div className="seat-tasks">{tasksOf(p).map(tk => <TaskBadge key={tk.cardId} task={tk} small />)}{tasksOf(p).length === 0 && <span className="no-task">no task</span>}</div>
@@ -103,7 +118,7 @@ export function Crew() {
         title="The Crew"
         subtitle="silent teamwork in deep space — win the right cards for the right crewmate"
         onRules={() => setShowRules(true)}
-        onNew={() => startMission(mission)}
+        onNew={restart}
         newLabel="Restart"
         modeLeft={`Mission ${mission} · ${s.tasks.filter(t => t.done).length}/${s.tasks.length} tasks`}
         banner={banner}
@@ -112,28 +127,28 @@ export function Crew() {
       >
         <div className="playcol">
           <div className="crewstrip">
-            <CrewSeat p={1} />
+            {otherSeats[0] != null ? <CrewSeat p={otherSeats[0]} /> : <div className="seat" />}
             <div className="trick-center">
               <div className="tc-label">{shown ? (s.trick.length ? "current trick" : "last trick") : "awaiting launch"}</div>
               <div className="tc-cards">
-                {[1, 0, 2].map(p => { const e = seatCard(p); return (
+                {centerOrder.map(p => { const e = seatCard(p); return (
                   <div key={p} className={"tc-slot" + (shown && shown.winner === p ? " win" : "")}>
                     {e ? <Card c={e.card} size="play" faded={shown!.winner != null && shown!.winner !== p} /> : <div className="play-empty"></div>}
-                    <span className="tc-who">{NAMES[p]}</span>
+                    <span className="tc-who">{nameFor(p)}</span>
                   </div>
                 ) })}
               </div>
             </div>
-            <CrewSeat p={2} />
+            {otherSeats[1] != null ? <CrewSeat p={otherSeats[1]} /> : <div className="seat" />}
           </div>
 
           <div className="youzone">
             <div className="youhead">
               <span className="yh-name">You</span>
-              <div className="yh-tasks">{tasksOf(0).map(tk => <TaskBadge key={tk.cardId} task={tk} />)}{tasksOf(0).length === 0 && <span className="no-task">no task assigned</span>}</div>
+              <div className="yh-tasks">{tasksOf(mySeat).map(tk => <TaskBadge key={tk.cardId} task={tk} />)}{tasksOf(mySeat).length === 0 && <span className="no-task">no task assigned</span>}</div>
             </div>
             <div className="hand">
-              {CR.sortHand(s.hands[0]).map(c => {
+              {CR.sortHand(myHand).map(c => {
                 const isLegal = legal.has(c.id)
                 const isTask = s.tasks.some(tk => tk.cardId === c.id)
                 return <div key={c.id} className={"handcard" + (yourTurn && !isLegal ? " illegal" : "") + (isTask ? " istask" : "")}>
@@ -152,7 +167,7 @@ export function Crew() {
               {s.tasks.map(tk => (
                 <div key={tk.cardId} className={"tl-row" + (tk.done ? " done" : "") + (tk.failed ? " failed" : "")}>
                   <Card c={{ suit: tk.suit, val: tk.val }} size="mini" ring={tk.assignee} />
-                  <span className="tl-who">{NAMES[tk.assignee]}</span>
+                  <span className="tl-who">{nameFor(tk.assignee)}</span>
                   <span className="tl-status">{tk.done ? "✓ done" : tk.failed ? "✗ failed" : "pending"}</span>
                 </div>
               ))}
@@ -162,16 +177,29 @@ export function Crew() {
           <div className="panel logbox" ref={logRef}>
             {s.log.map((l, i) => <div key={i} className={"log-line " + l.t}>{l.x}</div>)}
           </div>
+
+          <div className="panel"><OnlineBar net={net} /></div>
         </div>
       </GameShell>
 
-      {s.result && <ResultModal s={s} mission={mission} onNext={() => startMission(mission + 1)} onRetry={() => startMission(mission)} />}
+      {s.result && <ResultModal s={s} mission={mission} canAdvance={!net.online} onNext={() => onStartMission(mission + 1)} onRetry={restart} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, mission, onNext, onRetry }: { s: CrewState; mission: number; onNext: () => void; onRetry: () => void }) {
+function TaskBadge({ task, small }: { task: Task; small?: boolean }) {
+  const c = { suit: task.suit, val: task.val }
+  return (
+    <div className={"taskbadge" + (task.done ? " done" : "") + (task.failed ? " failed" : "")}>
+      <Card c={c} size={small ? "tiny" : "mini"} ring={task.assignee} />
+      {task.done && <span className="tb-mark ok">✓</span>}
+      {task.failed && <span className="tb-mark no">✗</span>}
+    </div>
+  )
+}
+
+function ResultModal({ s, mission, canAdvance, onNext, onRetry }: { s: CrewState; mission: number; canAdvance: boolean; onNext: () => void; onRetry: () => void }) {
   const won = s.result === "win"
   return (
     <Modal
@@ -180,7 +208,7 @@ function ResultModal({ s, mission, onNext, onRetry }: { s: CrewState; mission: n
       closeOnOverlay={false}
       actions={won
         ? <>
-            <button className="btn-modal" onClick={onNext}>Mission {mission + 1} →</button>
+            {canAdvance && <button className="btn-modal" onClick={onNext}>Mission {mission + 1} →</button>}
             <button className="btn-modal ghost" onClick={onRetry}>Replay</button>
           </>
         : <button className="btn-modal" onClick={onRetry}>Retry mission</button>}

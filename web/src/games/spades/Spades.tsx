@@ -1,24 +1,33 @@
 /* SPADES — UI.
-   4-player partnership trick-taking on the framework shell. You are seat 0 (south);
-   your partner sits across (seat 2, north); the rival pair is West (1) and East (3).
+   4-player partnership trick-taking on the framework shell. Online-capable via
+   useGameSession(spadesAdapter): the hook drives the AI for any empty seat (no local
+   useAITurn) and, when online, redacts every other seat's private hand so it never
+   reaches you.
 
-   Two driven processes: the AI bids then plays across many tricks (useAITurn), and a
-   short reveal pause after a completed trick before it's swept (a collect timer is not
-   needed since playCard resolves instantly — instead we pause on a full trick via a
-   derived flag). The AI acts MANY times consecutively, so useAITurn's `tick` must change
-   on every AI action; we feed it the monotonically-increasing `s.ply` counter. */
+   Everything is rendered relative to mySeat. Your hand is hands[mySeat]; isMyTurn gates
+   both bidding and playing. The table is rotated so YOU always sit south, your partner
+   (seat mySeat+2) sits north across from you, and the two opponents sit west / east.
+   Partnership scores stay "your team" vs "the rivals" regardless of which seat you hold.
+   When online, the human seats are labelled "You" / "Player N" and the AI seats are
+   left as their table names. */
 
 import { useEffect, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { spadesAdapter } from './net'
 import * as SP from './logic'
 import type { Card as TCard, Seat, Suit, SpadesState } from './logic'
+import type { OnlineController } from '../../net/useGameSession'
 
 const SUIT_SYM: Record<Suit, string> = { C: '♣', D: '♦', H: '♥', S: '♠' }
 const SUIT_COLOR: Record<Suit, string> = { C: 'black', D: 'red', H: 'red', S: 'spade' }
 const SUIT_ORDER: Record<Suit, number> = { S: 0, H: 1, C: 2, D: 3 }
+
+/** Visual ring positions, index 0..3 = south/west/north/east. */
+const RING = ['south', 'west', 'north', 'east']
 
 function sortHand(hand: TCard[]): TCard[] {
   return hand.slice().sort((a, b) =>
@@ -47,26 +56,38 @@ const TITLE_MARK = (
 )
 
 export function Spades() {
-  const [s, setS] = useState<SpadesState>(() => SP.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(spadesAdapter)
+  const me = mySeat as Seat
   const [bidSel, setBidSel] = useState<number | null>(null)
   const [showRules, setShowRules] = useState(false)
   // pause flag: when a trick is complete (lastTrick set & trick empty) we briefly show it.
   const [sweeping, setSweeping] = useState(false)
 
-  function newGame() { setS(SP.makeGame()); setBidSel(null); setShowRules(false); setSweeping(false) }
+  function newGame() { netNew(); setBidSel(null); setShowRules(false); setSweeping(false) }
 
-  const yourBidTurn = s.phase === 'bidding' && s.turn === 0
-  const yourPlayTurn = s.phase === 'playing' && s.turn === 0 && s.trick.length < 4
-  const aiActive = s.winner == null && !sweeping && s.turn !== 0 &&
-    (s.phase === 'bidding' || (s.phase === 'playing' && s.trick.length < 4))
+  // ----- seat-relative helpers -------------------------------------------------
+  const myTeam = SP.teamOf(me)
+  // Ring position of a seat relative to me (0 = south = you, 2 = north = partner).
+  const ringOf = (seat: Seat) => (seat - me + 4) % 4
+  // Display name for a seat. Online: human seats become You / Player N; AI keep their
+  // table name. Solo: the original SEAT_NAME labels (relative to mySeat = 0).
+  function nameOf(seat: Seat): string {
+    if (seat === me) return 'You'
+    if (net.online) {
+      const info = net.seats[seat]
+      if (info && (info.kind === 'host' || info.kind === 'guest')) {
+        return seat === ((me + 2) % 4) ? 'Partner' : `Player ${seat + 1}`
+      }
+      // AI / open seat
+      return seat === ((me + 2) % 4) ? 'Partner' : 'Opponent'
+    }
+    return SP.SEAT_NAME[seat]
+  }
 
-  // Drive the AI: bids then plays, MANY consecutive actions. tick = s.ply changes every action.
-  useAITurn(aiActive, () => setS(p => SP.aiStep(p)), { delayMs: 620, tick: s.ply })
+  const yourBidTurn = s.phase === 'bidding' && isMyTurn
+  const yourPlayTurn = s.phase === 'playing' && isMyTurn && s.trick.length < 4
 
-  // When a trick just completed (4 cards were shown then swept by playCard), show the
-  // final card set briefly. We detect "a fresh trick just resolved" via lastTrick + empty trick.
-  // playCard clears trick immediately, so we instead hold a reveal when the previous render
-  // had 3 cards and the human/AI played the 4th. Simpler: pause whenever lastTrick changes.
+  // When a trick just completed, show the final card set briefly before it's swept.
   useEffect(() => {
     if (s.lastTrick && s.phase !== 'done') {
       setSweeping(true)
@@ -78,31 +99,34 @@ export function Spades() {
   useEffect(() => { setBidSel(null) }, [s.handNo, s.phase])
   useGameKeys({ onNew: newGame, onToggleRules: () => setShowRules(v => !v), onEscape: () => setShowRules(false) })
 
-  const legal = yourPlayTurn && !sweeping ? SP.legalPlays(s, 0) : []
+  const legal = yourPlayTurn && !sweeping ? SP.legalPlays(s, me) : []
   const legalIds = new Set(legal.map(c => c.id))
 
   function clickCard(c: TCard) {
     if (!yourPlayTurn || sweeping || !legalIds.has(c.id)) return
-    setS(SP.playCard(s, 0, c))
+    dispatch({ kind: 'play', cardId: c.id })
   }
-  function confirmBid() { if (bidSel != null) setS(SP.placeBid(s, 0, bidSel)) }
+  function confirmBid() { if (bidSel != null) dispatch({ kind: 'bid', n: bidSel }) }
+
+  const over = s.winner != null
+  const youWon = s.winner === myTeam
 
   // ===== banner =====
   let banner = '', bk = ''
-  if (s.winner != null) {
-    if (s.winner === 0) { bk = 'win'; banner = 'Your team takes the table — you win' }
+  if (over) {
+    if (youWon) { bk = 'win'; banner = 'Your team takes the table — you win' }
     else { bk = 'lose'; banner = 'The rival pair runs out the score' }
   } else if (s.phase === 'bidding') {
     if (yourBidTurn) { bk = 'you'; banner = 'Bid the tricks you expect to take' }
-    else { bk = 'foe'; banner = `${SP.SEAT_NAME[s.turn]} is bidding…` }
+    else { bk = 'foe'; banner = `${nameOf(s.turn)} is bidding…` }
   } else if (sweeping && s.lastTrick) {
     const w = s.lastTrick.winner
-    bk = SP.teamOf(w) === 0 ? 'you' : 'foe'
-    banner = `${w === 0 ? 'You take' : SP.SEAT_NAME[w] + ' takes'} the trick`
+    bk = SP.teamOf(w) === myTeam ? 'you' : 'foe'
+    banner = `${w === me ? 'You take' : nameOf(w) + ' takes'} the trick`
   } else if (yourPlayTurn) {
     bk = 'you'; banner = s.trick.length === 0 ? 'Your lead' : 'Your turn — follow suit'
   } else {
-    bk = 'foe'; banner = `${SP.SEAT_NAME[s.turn]} is playing…`
+    bk = 'foe'; banner = `${nameOf(s.turn)} is playing…`
   }
 
   // current trick map by seat
@@ -111,20 +135,20 @@ export function Spades() {
   for (const t of showTrick) trickBySeat[t.seat] = t.card
   const winSeat = sweeping && s.lastTrick ? s.lastTrick.winner : -1
 
-  function Seat({ seat }: { seat: Seat }) {
-    const team = SP.teamOf(seat) === 0 ? 'teamA' : 'teamB'
-    const active = s.winner == null && s.turn === seat && !sweeping
+  function SeatPlate({ seat }: { seat: Seat }) {
+    const team = SP.teamOf(seat) === myTeam ? 'teamA' : 'teamB'
+    const active = !over && s.turn === seat && !sweeping
     const n = s.hands[seat].length
     return (
-      <div className={['seat-plate', 'seat-' + ['south', 'west', 'north', 'east'][seat]].join(' ')}>
+      <div className={['seat-plate', 'seat-' + RING[ringOf(seat)]].join(' ')}>
         <div className={['seat-id', team, active ? 'active' : ''].join(' ')}>
-          <span className={['seat-name', team].join(' ')}>{SP.SEAT_NAME[seat]}{seat === 0 ? '' : ''}</span>
+          <span className={['seat-name', team].join(' ')}>{nameOf(seat)}</span>
           <span className="seat-meta">
             bid <b>{s.bids[seat] == null ? '—' : (s.bids[seat] === 0 ? 'NIL' : s.bids[seat])}</b>
             &nbsp;·&nbsp; won <b>{s.tricksWon[seat]}</b>
           </span>
         </div>
-        {seat !== 0 && (
+        {seat !== me && (
           <div className="seat-back-row">
             {Array.from({ length: Math.min(n, 13) }, (_, i) => <div className="minicard" key={i} />)}
           </div>
@@ -133,16 +157,18 @@ export function Spades() {
     )
   }
 
-  const hand = sortHand(s.hands[0])
-  const cA = SP.teamContract(s, 0), cB = SP.teamContract(s, 1)
-  const tA = s.tricksWon[0] + s.tricksWon[2], tB = s.tricksWon[1] + s.tricksWon[3]
+  const hand = sortHand(s.hands[me] ?? [])
+  const cA = SP.teamContract(s, myTeam)
+  const cB = SP.teamContract(s, (1 - myTeam) as SP.Team)
+  const tA = s.tricksWon[me] + s.tricksWon[(me + 2) % 4]
+  const rivalTricks = s.tricksWon[(me + 1) % 4] + s.tricksWon[(me + 3) % 4]
 
   function FeltCenter() {
     if (s.phase === 'bidding') {
       return <div className="felt-hint">Each player bids the tricks they expect. Your team's bids combine into one contract.</div>
     }
     if (s.trick.length === 0 && !(sweeping && s.lastTrick)) {
-      return <div className="felt-hint">{SP.SEAT_NAME[s.leader]} {s.leader === 0 ? 'lead' : 'leads'} this trick{!s.spadesBroken ? ' · spades not broken' : ''}</div>
+      return <div className="felt-hint">{nameOf(s.leader)} {s.leader === me ? 'lead' : 'leads'} this trick{!s.spadesBroken ? ' · spades not broken' : ''}</div>
     }
     return (
       <div className="center-cross">
@@ -150,15 +176,19 @@ export function Spades() {
           const c = trickBySeat[seat]
           if (!c) return null
           return (
-            <div key={seat} className={['tslot', 'p' + seat, seat === winSeat ? 'win' : ''].join(' ')}>
+            <div key={seat} className={['tslot', 'p' + ringOf(seat), seat === winSeat ? 'win' : ''].join(' ')}>
               <CardView card={c} className="played-in" />
-              <span className="tslot-who">{seat === 0 ? 'You' : SP.SEAT_NAME[seat]}{seat === winSeat ? ' · won' : ''}</span>
+              <span className="tslot-who">{seat === me ? 'You' : nameOf(seat)}{seat === winSeat ? ' · won' : ''}</span>
             </div>
           )
         })}
       </div>
     )
   }
+
+  const partner: Seat = ((me + 2) % 4) as Seat
+  const oppL: Seat = ((me + 1) % 4) as Seat
+  const oppR: Seat = ((me + 3) % 4) as Seat
 
   return (
     <>
@@ -176,11 +206,11 @@ export function Spades() {
       >
         <div className="tablecol">
           <div className="felt">
-            <Seat seat={2} />
-            <Seat seat={1} />
+            <SeatPlate seat={partner} />
+            <SeatPlate seat={oppL} />
             <FeltCenter />
-            <Seat seat={3} />
-            <Seat seat={0} />
+            <SeatPlate seat={oppR} />
+            <SeatPlate seat={me} />
           </div>
 
           <div className="handrow">
@@ -192,7 +222,7 @@ export function Spades() {
                   : s.phase === 'bidding' ? 'study your hand, then bid' : '—'}
               </span>
               <span className="hl-stat">
-                bid {s.bids[0] == null ? '—' : (s.bids[0] === 0 ? 'NIL' : s.bids[0])} · won {s.tricksWon[0]}
+                bid {s.bids[me] == null ? '—' : (s.bids[me] === 0 ? 'NIL' : s.bids[me])} · won {s.tricksWon[me]}
               </span>
             </div>
             <div className={'hand-cards' + (yourPlayTurn && !sweeping ? '' : ' locked')}>
@@ -210,6 +240,8 @@ export function Spades() {
         </div>
 
         <div className="side">
+          <OnlineBar net={net} />
+
           {yourBidTurn ? (
             <div className="panel bidbox">
               <div className="bid-prompt">How many tricks for <b>your team</b>?</div>
@@ -232,16 +264,16 @@ export function Spades() {
                 <div className="contract-card teamA">
                   <div className="cc-who teamA">Your Team</div>
                   <div className="cc-val">
-                    <span className={s.phase !== 'bidding' && tA >= cA && cA > 0 ? 'made' : (s.phase !== 'bidding' && cA > 0 ? '' : '')}>{tA}</span> / {cA}
+                    <span className={s.phase !== 'bidding' && tA >= cA && cA > 0 ? 'made' : ''}>{tA}</span> / {cA}
                   </div>
                   <div className="cc-sub">won / bid</div>
-                  <div className="cc-bids">{seatBidStr(s, 0)} &amp; {seatBidStr(s, 2)}</div>
+                  <div className="cc-bids">{seatBidStr(s, me, nameOf)} &amp; {seatBidStr(s, partner, nameOf)}</div>
                 </div>
                 <div className="contract-card teamB">
                   <div className="cc-who teamB">Rivals</div>
-                  <div className="cc-val"><span>{tB}</span> / {cB}</div>
+                  <div className="cc-val"><span>{rivalTricks}</span> / {cB}</div>
                   <div className="cc-sub">won / bid</div>
-                  <div className="cc-bids">{seatBidStr(s, 1)} &amp; {seatBidStr(s, 3)}</div>
+                  <div className="cc-bids">{seatBidStr(s, oppL, nameOf)} &amp; {seatBidStr(s, oppR, nameOf)}</div>
                 </div>
               </div>
             </div>
@@ -251,13 +283,13 @@ export function Spades() {
             <div className="sb-tot">
               <div className="sbt teamA">
                 <div className="who">Your Team</div>
-                <div className="pts">{s.scores[0]}</div>
-                <div className="bagn">{s.bags[0]} bag{s.bags[0] === 1 ? '' : 's'}</div>
+                <div className="pts">{s.scores[myTeam]}</div>
+                <div className="bagn">{s.bags[myTeam]} bag{s.bags[myTeam] === 1 ? '' : 's'}</div>
               </div>
               <div className="sbt teamB">
                 <div className="who">Rivals</div>
-                <div className="pts">{s.scores[1]}</div>
-                <div className="bagn">{s.bags[1]} bag{s.bags[1] === 1 ? '' : 's'}</div>
+                <div className="pts">{s.scores[1 - myTeam]}</div>
+                <div className="bagn">{s.bags[1 - myTeam]} bag{s.bags[1 - myTeam] === 1 ? '' : 's'}</div>
               </div>
             </div>
             <div className="sb-head"><span>H</span><span>You</span><span>Rivals</span></div>
@@ -266,8 +298,8 @@ export function Spades() {
               {s.handLog.map(h => (
                 <div className="sb-row" key={h.handNo}>
                   <span className="rd">{h.handNo}</span>
-                  <span className="sb-cell"><span className="bt">{h.tricks[0]}/{h.contract[0]}</span><span className={'dl ' + (h.delta[0] >= 0 ? 'pos' : 'neg')}>{h.delta[0] >= 0 ? '+' : ''}{h.delta[0]}</span></span>
-                  <span className="sb-cell"><span className="bt">{h.tricks[1]}/{h.contract[1]}</span><span className={'dl ' + (h.delta[1] >= 0 ? 'pos' : 'neg')}>{h.delta[1] >= 0 ? '+' : ''}{h.delta[1]}</span></span>
+                  <span className="sb-cell"><span className="bt">{h.tricks[myTeam]}/{h.contract[myTeam]}</span><span className={'dl ' + (h.delta[myTeam] >= 0 ? 'pos' : 'neg')}>{h.delta[myTeam] >= 0 ? '+' : ''}{h.delta[myTeam]}</span></span>
+                  <span className="sb-cell"><span className="bt">{h.tricks[1 - myTeam]}/{h.contract[1 - myTeam]}</span><span className={'dl ' + (h.delta[1 - myTeam] >= 0 ? 'pos' : 'neg')}>{h.delta[1 - myTeam] >= 0 ? '+' : ''}{h.delta[1 - myTeam]}</span></span>
                 </div>
               ))}
             </div>
@@ -275,30 +307,28 @@ export function Spades() {
         </div>
       </GameShell>
 
-      {s.winner != null && <WinModal s={s} onNew={newGame} />}
+      {over && <WinModal s={s} youWon={youWon} myTeam={myTeam} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function seatBidStr(s: SpadesState, seat: Seat): string {
+function seatBidStr(s: SpadesState, seat: Seat, nameOf: (seat: Seat) => string): string {
   const b = s.bids[seat]
-  const name = seat === 0 ? 'You' : SP.SEAT_NAME[seat]
-  return `${name} ${b == null ? '—' : (b === 0 ? 'nil' : b)}`
+  return `${nameOf(seat)} ${b == null ? '—' : (b === 0 ? 'nil' : b)}`
 }
 
-function WinModal({ s, onNew }: { s: SpadesState; onNew: () => void }) {
-  const won = s.winner === 0
+function WinModal({ s, youWon, myTeam, onNew }: { s: SpadesState; youWon: boolean; myTeam: SP.Team; onNew: () => void }) {
   return (
     <Modal
-      eyebrow={won ? 'Hand and table' : 'Outbid and outplayed'}
-      title={won ? 'Your Team Wins' : 'Rivals Win'}
+      eyebrow={youWon ? 'Hand and table' : 'Outbid and outplayed'}
+      title={youWon ? 'Your Team Wins' : 'Rivals Win'}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Deal again</button>}
     >
       <div className="finalsc">
-        <span className="fs teamA">Your Team {s.scores[0]}</span>
-        <span className="fs teamB">Rivals {s.scores[1]}</span>
+        <span className="fs teamA">Your Team {s.scores[myTeam]}</span>
+        <span className="fs teamB">Rivals {s.scores[1 - myTeam]}</span>
       </div>
     </Modal>
   )
@@ -309,7 +339,7 @@ function RulesModal({ onClose }: { onClose: () => void }) {
     <Modal eyebrow="How to play" title="Spades" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Deal me in</button>}>
       <div className="modal-body">
-        <p>Four players, two partnerships. <b>You</b> (south) team with <b>Partner</b> across the table; <b>West</b> and <b>East</b> are the rival pair. Everyone is dealt 13 cards. <b>Spades are always trump.</b></p>
+        <p>Four players, two partnerships. <b>You</b> team with your <b>Partner</b> across the table; the other pair are your rivals. Everyone is dealt 13 cards. <b>Spades are always trump.</b></p>
         <p><b>Bidding:</b> each player bids how many tricks they'll take. Your two bids combine into one team contract. A bid of <b>Nil (0)</b> is a solo gamble — score big for taking zero tricks, lose big if you take any.</p>
         <div className="rules-legend">
           <div className="rl-item"><span className="rl-swatch" style={{ background: '#1c1b24' }} />Spades — trump; can't be led until "broken" by a discard</div>

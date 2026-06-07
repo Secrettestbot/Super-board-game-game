@@ -1,16 +1,24 @@
 /* GIN RUMMY — UI (built for this codebase). A speakeasy card table: you vs a
-   heuristic AI. Your sorted hand highlights melds vs deadwood; stock + discard
-   piles sit center; draw / discard / knock / gin controls live in the side rail.
-   The AI takes its whole turn (draw THEN discard) in one onStep, so the useAITurn
-   tick is just s.step. End state is shown by default via the result modal. */
+   heuristic AI, or a friend online. Your sorted hand highlights melds vs deadwood;
+   stock + discard piles sit center; draw / discard / knock / gin controls live in the
+   side rail.
+
+   Online-capable via useGameSession(ginRummyAdapter): the hook drives the AI for any
+   empty seat (no local useAITurn) and, when online, redacts the opponent's private
+   hand and the face-down stock so they never reach you. Everything below is rendered
+   relative to mySeat — "your" hand, score, deadwood and the result banner are always
+   yours, and the other side is the rival (the "Opponent" when online). The host deals
+   each next hand via a {kind:'next'} intent. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { ginRummyAdapter } from './net'
 import * as G from './logic'
-import type { GinState, Card, Meld } from './logic'
+import type { GinState, Card, Meld, Who } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -76,21 +84,28 @@ function sortMeld(m: Meld): Card[] {
 }
 
 export function GinRummy() {
-  const [s, setS] = useState<GinState>(() => G.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(ginRummyAdapter)
+
+  // Seat-relative sides: seat 0 = the 'you' side, seat 1 = the 'ai' side.
+  const me: Who = mySeat === 0 ? 'you' : 'ai'
+  const opp: Who = me === 'you' ? 'ai' : 'you'
+  const myHand = me === 'you' ? s.you : s.ai
+  const oppHand = me === 'you' ? s.ai : s.you
+  const myScore = s.scores[me]
+  const oppScore = s.scores[opp]
+  const oppLabel = net.online ? 'Opponent' : 'Rival'
+
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(G.makeGame()); setSel(null); setShowRules(false) }
-  function continueRound() { setS((p) => G.nextRound(p)); setSel(null) }
-
-  // The AI plays its whole turn in one step; re-arm on s.step.
-  const aiActive = s.winner == null && s.turn === 'ai' && s.phase !== 'roundOver' && s.phase !== 'gameOver'
-  useAITurn(aiActive, () => setS((p) => G.aiTurn(p)), { delayMs: 720, tick: s.step })
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
+  function continueRound() { dispatch({ kind: 'next' }); setSel(null) }
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = 0 }, [s.log])
 
-  const yourTurn = s.winner == null && s.turn === 'you' && s.phase !== 'roundOver' && s.phase !== 'gameOver'
+  const roundEnded = s.phase === 'roundOver' || s.phase === 'gameOver'
+  const yourTurn = s.winner == null && !roundEnded && isMyTurn
 
   useGameKeys({
     onNew: newGame,
@@ -99,25 +114,27 @@ export function GinRummy() {
     extra: (e) => {
       if (!yourTurn) return false
       if (s.phase === 'draw') {
-        if (e.key === 's' || e.key === 'S') { setS(G.drawStock(s)); return true }
-        if (e.key === 'd' || e.key === 'D') { if (G.topDiscard(s)) setS(G.drawDiscard(s)); return true }
+        if (e.key === 's' || e.key === 'S') { doDraw('stock'); return true }
+        if (e.key === 'd' || e.key === 'D') { if (G.topDiscard(s)) doDraw('discard'); return true }
       }
       return false
     },
   })
 
-  const meldInfo = G.bestMelds(s.you)
+  const meldInfo = G.bestMelds(myHand)
   const dead = meldInfo.deadwoodValue
-  const handFull = s.you.length === G.HAND_SIZE
+  const handFull = myHand.length === G.HAND_SIZE
 
   function doDraw(from: 'stock' | 'discard') {
     if (!yourTurn || s.phase !== 'draw') return
-    setS(from === 'stock' ? G.drawStock(s) : G.drawDiscard(s))
+    dispatch({ kind: 'draw', source: from })
     setSel(null)
   }
   function doDiscard(knock: boolean) {
     if (!yourTurn || s.phase !== 'discard' || sel == null) return
-    setS(G.discard(s, sel, knock))
+    const previewDeadVal = G.deadwoodOf(myHand.filter((c) => c.id !== sel))
+    if (knock) dispatch({ kind: previewDeadVal === 0 ? 'gin' : 'knock', cardId: sel })
+    else dispatch({ kind: 'discard', cardId: sel })
     setSel(null)
   }
 
@@ -125,26 +142,34 @@ export function GinRummy() {
   let previewDead: number | null = null
   let previewGin = false
   if (s.phase === 'discard' && yourTurn && sel != null) {
-    const rest = s.you.filter((c) => c.id !== sel)
+    const rest = myHand.filter((c) => c.id !== sel)
     previewDead = G.deadwoodOf(rest)
     previewGin = previewDead === 0
   }
   const previewKnock = previewDead != null && previewDead <= 10
 
+  // round result, relative to my seat
+  const r = s.round
+  const iScored = r?.scorer === me
+  const oppScored = r != null && r.scorer === opp
+  const iKnocked = r?.by === me
+
   // banner
   let banner = '', bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = `You win the match ${s.scores.you}–${s.scores.ai}!` }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = `The house wins ${s.scores.ai}–${s.scores.you}.` }
-  else if (s.phase === 'roundOver' && s.round) {
-    bk = s.round.scorer === 'you' ? 'win' : s.round.scorer === 'ai' ? 'lose' : ''
-    banner = roundBanner(s)
+  if (s.winner === me) { bk = 'win'; banner = `You win the match ${myScore}–${oppScore}!` }
+  else if (s.winner === opp) { bk = 'lose'; banner = `${oppLabel} wins the match ${oppScore}–${myScore}.` }
+  else if (s.phase === 'roundOver' && r) {
+    bk = iScored ? 'win' : oppScored ? 'lose' : ''
+    banner = roundBanner(r, me, oppLabel)
   } else if (yourTurn) {
     bk = 'you'
     banner = s.phase === 'draw' ? 'Your turn — draw from stock or discard' : `Discard a card${dead <= 10 ? ' · or knock' : ''}`
-  } else { bk = 'foe'; banner = 'The rival is playing their turn…' }
+  } else { bk = 'foe'; banner = net.online ? `Waiting for the ${oppLabel.toLowerCase()}…` : 'The rival is playing their turn…' }
 
   const top = G.topDiscard(s)
-  const organized = organize(s.you)
+  const organized = organize(myHand)
+  const myDeadForResult = me === 'you' ? r?.youDead : r?.aiDead
+  const oppDeadForResult = me === 'you' ? r?.aiDead : r?.youDead
 
   return (
     <>
@@ -155,19 +180,19 @@ export function GinRummy() {
         subtitle="meld your hand into sets and runs, shed the deadwood, and knock before the rival — first to 100 takes the night"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`You ${s.scores.you} · Rival ${s.scores.ai} — race to ${G.TARGET}`}
+        modeLeft={`You ${myScore} · ${oppLabel} ${oppScore} — race to ${G.TARGET}`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>s · stock &nbsp; d · discard &nbsp; N · new</>}
       >
         <div className="gr-table">
-          {/* rival */}
+          {/* opponent */}
           <div className="gr-seat foe">
-            <div className="gr-seat-label"><span className="gr-dot foe" /> Rival<span className="gr-meta">{s.ai.length} cards</span></div>
+            <div className="gr-seat-label"><span className="gr-dot foe" /> {oppLabel}<span className="gr-meta">{oppHand.length} cards</span></div>
             <div className="gr-hand foe">
-              {s.ai.map((c, i) => (
-                <div key={c.id} className="gr-slot" style={{ ['--i' as any]: i }}>
-                  <CardView card={c} faceUp={s.winner != null || s.phase === 'roundOver'} small />
+              {oppHand.map((c, i) => (
+                <div key={c.id >= 0 ? c.id : 'h' + i} className="gr-slot" style={{ ['--i' as any]: i }}>
+                  <CardView card={c} faceUp={roundEnded && c.id >= 0} small />
                 </div>
               ))}
             </div>
@@ -225,15 +250,19 @@ export function GinRummy() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
+
           {/* scoreboard */}
           <div className="panel gr-score">
             <div className={'gr-srow' + (yourTurn ? ' on' : '')}>
               <span className="gr-dot you" /><span className="gr-sname">You</span>
-              <span className="gr-spts">{s.scores.you}</span>
+              <span className="gr-spts">{myScore}</span>
             </div>
-            <div className={'gr-srow' + (s.turn === 'ai' && s.winner == null ? ' on' : '')}>
-              <span className="gr-dot foe" /><span className="gr-sname">Rival</span>
-              <span className="gr-spts">{s.scores.ai}</span>
+            <div className={'gr-srow' + (s.winner == null && !roundEnded && !isMyTurn ? ' on' : '')}>
+              <span className="gr-dot foe" /><span className="gr-sname">{oppLabel}</span>
+              <span className="gr-spts">{oppScore}</span>
             </div>
             <div className="gr-target">first to {G.TARGET}</div>
           </div>
@@ -241,9 +270,11 @@ export function GinRummy() {
           {/* control */}
           <div className="panel gr-control">
             {s.phase === 'roundOver' && (
-              <button className="gr-btn primary wide" onClick={s.winner ? newGame : continueRound}>
-                {s.winner ? 'New match' : 'Deal next hand'}
-              </button>
+              net.online && mySeat !== 0
+                ? <div className="gr-hint">Waiting for the host to deal the next hand…</div>
+                : <button className="gr-btn primary wide" onClick={s.winner ? newGame : continueRound}>
+                    {s.winner ? 'New match' : 'Deal next hand'}
+                  </button>
             )}
 
             {yourTurn && s.phase === 'draw' && (
@@ -278,8 +309,8 @@ export function GinRummy() {
               </>
             )}
 
-            {!yourTurn && s.winner == null && s.phase !== 'roundOver' && (
-              <div className="gr-hint">The rival is deciding…</div>
+            {!yourTurn && s.winner == null && !roundEnded && (
+              <div className="gr-hint">{net.online ? `The ${oppLabel.toLowerCase()} is deciding…` : 'The rival is deciding…'}</div>
             )}
           </div>
 
@@ -290,66 +321,96 @@ export function GinRummy() {
         </div>
       </GameShell>
 
-      {(s.phase === 'roundOver' || s.winner != null) && s.round && (
-        <RoundModal s={s} onContinue={s.winner ? newGame : continueRound} />
+      {roundEnded && r && (
+        <RoundModal
+          s={s}
+          r={r}
+          won={s.winner === me}
+          matchOver={s.winner != null}
+          iKnocked={iKnocked}
+          iScored={iScored}
+          myScore={myScore}
+          oppScore={oppScore}
+          myDead={myDeadForResult ?? 0}
+          oppDead={oppDeadForResult ?? 0}
+          oppLabel={oppLabel}
+          canContinue={!(net.online && mySeat !== 0)}
+          onContinue={s.winner ? newGame : continueRound}
+        />
       )}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function roundBanner(s: GinState): string {
-  const r = s.round!
+function roundBanner(r: NonNullable<GinState['round']>, me: Who, oppLabel: string): string {
   if (r.kind === 'wash') return 'Stock exhausted — the hand washes. Deal again.'
-  const who = r.by === 'you' ? 'You' : 'Rival'
+  const who = r.by === me ? 'You' : oppLabel
   if (r.kind === 'gin') return `${who} went gin — +${r.points}.`
   if (r.kind === 'undercut') {
-    const sc = r.scorer === 'you' ? 'You' : 'Rival'
+    const sc = r.scorer === me ? 'You' : oppLabel
     return `Undercut! ${sc} score +${r.points}.`
   }
-  const sc = r.scorer === 'you' ? 'You' : 'Rival'
+  const sc = r.scorer === me ? 'You' : oppLabel
   return `${who} knocked — ${sc} score +${r.points}.`
 }
 
-function RoundModal({ s, onContinue }: { s: GinState; onContinue: () => void }) {
-  const r = s.round!
-  const matchOver = s.winner != null
-  const youWonMatch = s.winner === 'you'
-  const title = matchOver ? (youWonMatch ? 'You Win the Match' : 'The House Wins') : roundTitle(r)
-  const eyebrow = matchOver ? (youWonMatch ? 'Cleaned them out' : 'Out of chips') : r.kind === 'wash' ? 'No score' : 'Hand over'
+function RoundModal({
+  s, r, won, matchOver, iKnocked, iScored, myScore, oppScore, myDead, oppDead, oppLabel, canContinue, onContinue,
+}: {
+  s: GinState
+  r: NonNullable<GinState['round']>
+  won: boolean
+  matchOver: boolean
+  iKnocked: boolean
+  iScored: boolean
+  myScore: number
+  oppScore: number
+  myDead: number
+  oppDead: number
+  oppLabel: string
+  canContinue: boolean
+  onContinue: () => void
+}) {
+  void s; void iScored
+  const title = matchOver ? (won ? 'You Win the Match' : `${oppLabel} Wins`) : roundTitle(r, iKnocked, oppLabel)
+  const eyebrow = matchOver ? (won ? 'Cleaned them out' : 'Out of chips') : r.kind === 'wash' ? 'No score' : 'Hand over'
   return (
     <Modal
       eyebrow={eyebrow}
       title={title}
-      closeOnOverlay={!matchOver}
-      onClose={matchOver ? undefined : onContinue}
-      actions={<button className="btn-modal" onClick={onContinue}>{matchOver ? 'Play again' : 'Next hand'}</button>}
+      closeOnOverlay={!matchOver && canContinue}
+      onClose={matchOver || !canContinue ? undefined : onContinue}
+      actions={canContinue
+        ? <button className="btn-modal" onClick={onContinue}>{matchOver ? 'Play again' : 'Next hand'}</button>
+        : undefined}
     >
       <div className="modal-body">
         <div className="gr-result-grid">
           <div className="gr-rcol">
             <div className="gr-rname you">You</div>
-            <div className="gr-rdead">deadwood {r.youDead}</div>
+            <div className="gr-rdead">deadwood {myDead}</div>
           </div>
           <div className="gr-rvs">{r.points >= 0 ? `+${r.points}` : r.points}</div>
           <div className="gr-rcol">
-            <div className="gr-rname foe">Rival</div>
-            <div className="gr-rdead">deadwood {r.aiDead}</div>
+            <div className="gr-rname foe">{oppLabel}</div>
+            <div className="gr-rdead">deadwood {oppDead}</div>
           </div>
         </div>
-        <div className="gr-rscore">Match: <b className="you">{s.scores.you}</b> — <b className="foe">{s.scores.ai}</b> (to {G.TARGET})</div>
+        <div className="gr-rscore">Match: <b className="you">{myScore}</b> — <b className="foe">{oppScore}</b> (to {G.TARGET})</div>
         {r.layoffs.length > 0 && (
           <div className="gr-rlay">Laid off: {r.layoffs.map((c) => G.cardLabel(c)).join('  ')}</div>
         )}
+        {!canContinue && <div className="gr-rlay">Waiting for the host to deal the next hand…</div>}
       </div>
     </Modal>
   )
 }
-function roundTitle(r: NonNullable<GinState['round']>): string {
-  if (r.kind === 'gin') return r.by === 'you' ? 'Gin!' : 'Rival Gin'
+function roundTitle(r: NonNullable<GinState['round']>, iKnocked: boolean, oppLabel: string): string {
+  if (r.kind === 'gin') return iKnocked ? 'Gin!' : `${oppLabel} Gin`
   if (r.kind === 'undercut') return 'Undercut'
   if (r.kind === 'wash') return 'Wash'
-  return r.by === 'you' ? 'You Knocked' : 'Rival Knocked'
+  return iKnocked ? 'You Knocked' : `${oppLabel} Knocked`
 }
 
 function RulesModal({ onClose }: { onClose: () => void }) {
