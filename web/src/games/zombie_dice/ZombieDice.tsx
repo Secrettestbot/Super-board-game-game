@@ -1,14 +1,17 @@
-/* ZOMBIE DICE — UI (built for this codebase). A push-your-luck dice game vs a greedy
-   AI on the framework shell. The AI rolls several times per turn, so useAITurn re-arms
-   on a tick that changes every roll (roll/shot/brain counters). */
+/* ZOMBIE DICE — UI (built for this codebase). A push-your-luck dice game on the framework
+   shell. Online-capable via useGameSession: the host runs the real logic and AI fills any
+   empty seat; the view is seat-relative so a guest can play seat 1. Seats: 0 = 'you',
+   1 = 'ai'/opponent. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { zombieDiceAdapter } from './net'
 import * as ZD from './logic'
-import type { ZombieState, Rolled } from './logic'
+import type { ZombieState, Rolled, Player } from './logic'
 
 const { GOAL } = ZD
 
@@ -35,20 +38,20 @@ function Die({ r }: { r: Rolled }) {
 }
 
 export function ZombieDice() {
-  const [s, setS] = useState<ZombieState>(() => ZD.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(zombieDiceAdapter)
+  // Seat 0 = 'you', seat 1 = 'ai'/opponent. Everything below is relative to mySeat.
+  const me: Player = mySeat === 0 ? 'you' : 'ai'
+  const foe: Player = me === 'you' ? 'ai' : 'you'
+
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(ZD.makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  const yourTurn = !s.winner && s.turn === 'you'
+  const yourTurn = !s.winner && isMyTurn
 
-  function doRoll() { if (yourTurn) setS(p => ZD.roll(p)) }
-  function doStop() { if (yourTurn && s.rolling) setS(p => ZD.stop(p)) }
-
-  // The AI rolls several times per turn; re-arm the timer every step via a changing tick.
-  useAITurn(!s.winner && s.turn === 'ai', () => setS(p => ZD.aiStep(p)),
-    { delayMs: 620, tick: `${s.scores.you}-${s.scores.ai}-${s.brains}-${s.shots}-${s.rolling}` })
+  function doRoll() { if (yourTurn) dispatch({ kind: 'roll' }) }
+  function doStop() { if (yourTurn && s.rolling) dispatch({ kind: 'stop' }) }
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
   useGameKeys({
@@ -63,15 +66,18 @@ export function ZombieDice() {
     },
   })
 
+  const meLabel = 'You'
+  const foeLabel = net.online ? 'Opponent' : 'Rival'
+
   const cup = ZD.cupCount(s.cup)
   const brainChips = Array.from({ length: s.brains })
   const shotChips = Array.from({ length: s.shots })
 
   let banner: string, bk = ''
-  if (s.winner === 'you') { bk = 'win'; banner = `You win — ${s.scores.you} brains devoured!` }
-  else if (s.winner === 'ai') { bk = 'lose'; banner = `The rival wins — ${s.scores.ai} brains.` }
+  if (s.winner === me) { bk = 'win'; banner = `You win — ${s.scores[me]} brains devoured!` }
+  else if (s.winner === foe) { bk = 'lose'; banner = `${foeLabel} wins — ${s.scores[foe]} brains.` }
   else if (yourTurn) { bk = 'you'; banner = s.rolling ? 'Your turn — roll again or stop & bank' : 'Your turn — roll the dice' }
-  else { bk = 'foe'; banner = 'The rival is rolling…' }
+  else { bk = 'foe'; banner = `${foeLabel} is rolling…` }
 
   const canRoll = yourTurn && !s.winner
   const canStop = yourTurn && s.rolling
@@ -120,12 +126,14 @@ export function ZombieDice() {
         </div>
 
         <div className="side">
+          <OnlineBar net={net} />
+
           <div className="panel scoreboard">
-            <div className={'sc you' + (s.turn === 'you' && !s.winner ? ' on' : '')}>
-              <span className="sc-ic">🧟</span><span className="sc-name">You</span><span className="sc-n">{s.scores.you}</span>
+            <div className={'sc you' + (s.turn === me && !s.winner ? ' on' : '')}>
+              <span className="sc-ic">🧟</span><span className="sc-name">{meLabel}</span><span className="sc-n">{s.scores[me]}</span>
             </div>
-            <div className={'sc ai' + (s.turn === 'ai' && !s.winner ? ' on' : '')}>
-              <span className="sc-ic">🧟‍♂️</span><span className="sc-name">Rival</span><span className="sc-n">{s.scores.ai}</span>
+            <div className={'sc ai' + (s.turn === foe && !s.winner ? ' on' : '')}>
+              <span className="sc-ic">🧟‍♂️</span><span className="sc-name">{foeLabel}</span><span className="sc-n">{s.scores[foe]}</span>
             </div>
             <div className="sc-goal">first to {GOAL} brains wins</div>
           </div>
@@ -133,7 +141,7 @@ export function ZombieDice() {
           <div className="panel">
             <div className="panel-l">This turn</div>
             <div className="zd-stats">
-              <div className="zd-stat"><span>Brains banked if you stop</span><b>{(s.turn === 'you' && !s.winner ? s.scores.you : s.scores[s.turn ?? 'you']) + s.brains}</b></div>
+              <div className="zd-stat"><span>Brains banked if you stop</span><b>{s.scores[s.turn ?? me] + s.brains}</b></div>
               <div className="zd-stat"><span>Shotguns</span><b>{s.shots} / 3</b></div>
               <div className="zd-stat"><span>Dice left in cup</span><b>{s.cup.length} / 13</b></div>
               <div className="zd-cup">
@@ -150,22 +158,23 @@ export function ZombieDice() {
         </div>
       </GameShell>
 
-      {s.winner && <ResultModal s={s} onNew={newGame} />}
+      {s.winner && <ResultModal s={s} me={me} foeLabel={foeLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: ZombieState; onNew: () => void }) {
-  const won = s.winner === 'you'
+function ResultModal({ s, me, foeLabel, onNew }: { s: ZombieState; me: Player; foeLabel: string; onNew: () => void }) {
+  const foe: Player = me === 'you' ? 'ai' : 'you'
+  const won = s.winner === me
   return (
     <Modal
       eyebrow={won ? 'Brains acquired' : 'Out-feasted'}
-      title={won ? 'You Win' : 'Rival Wins'}
+      title={won ? 'You Win' : `${foeLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {s.scores.you}</span><span className="foe">Rival {s.scores.ai}</span></div>
+      <div className="finalsc"><span className="you">You {s.scores[me]}</span><span className="foe">{foeLabel} {s.scores[foe]}</span></div>
     </Modal>
   )
 }

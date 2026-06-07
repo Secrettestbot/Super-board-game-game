@@ -1,15 +1,18 @@
-/* KING OF TOKYO — UI. Three monsters brawl with six dice. The AI plays player 1 & 2
-   in several sub-steps per turn (roll / keep+reroll / resolve / end / yield), so
-   useAITurn re-arms on `s.step` — a monotonic counter the logic bumps on every
-   state-advancing action. AI yield decisions are also driven through the same path. */
+/* KING OF TOKYO — UI. Three monsters brawl with six dice. Online-capable via
+   useGameSession(kingOfTokyoAdapter): the host runs the real logic, empty seats are
+   filled by the AI, and a guest plays a non-host monster. Everything is public so no
+   redaction is needed. The view is seat-relative — "your" monster is mySeat, isMyTurn
+   gates every action, and remote opponents are labelled "Opponent" / "Player N". */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { kingOfTokyoAdapter } from './net'
 import * as KOT from './logic'
-import type { KotState, Face, Monster } from './logic'
+import type { KotState, Monster } from './logic'
 
 const { WIN_VP, MAX_HEALTH } = KOT
 
@@ -35,12 +38,12 @@ function dieClass(kept: boolean, idle: boolean): string {
   return c
 }
 
-function MonsterCard({ m, on, you }: { m: Monster; on: boolean; you: boolean }) {
+function MonsterCard({ m, on, you, label }: { m: Monster; on: boolean; you: boolean; label: string }) {
   return (
     <div className={'kot-mon' + (you ? ' you-mon' : '') + (on ? ' on' : '') + (m.alive ? '' : ' dead') + (m.inTokyo ? ' in-tokyo' : '')}>
       <div className="kot-mon-head">
         <span className="kot-mon-emoji">{MON_EMOJI[m.id]}</span>
-        <span className="kot-mon-name">{m.id === 0 ? 'You' : m.name}</span>
+        <span className="kot-mon-name">{label}</span>
         {m.inTokyo && <span className="kot-tokyo-badge">Tokyo</span>}
       </div>
       <div className="kot-stats">
@@ -64,30 +67,34 @@ function MonsterCard({ m, on, you }: { m: Monster; on: boolean; you: boolean }) 
   )
 }
 
+/** Seat-relative display name for a monster: "You" for your own seat; the monster's name
+ *  in solo play; and "Opponent" (2-player) or "Player N" (3+) for remote seats online. */
+function nameFor(s: KotState, id: number, mySeat: number, online: boolean): string {
+  if (id === mySeat) return 'You'
+  if (!online) return s.monsters[id].name
+  return s.monsters.length === 2 ? 'Opponent' : `Player ${id + 1}`
+}
+
 export function KingOfTokyo() {
-  const [s, setS] = useState<KotState>(() => KOT.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(kingOfTokyoAdapter)
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(KOT.makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  const yourTurn = s.winner == null && s.turn === 0
-  const yourRoll = yourTurn && s.phase === 'roll'
-  const yourYield = s.winner == null && s.phase === 'yield' && s.pendingYield != null && s.pendingYield.defender === 0
+  const yourTurn = s.winner == null && isMyTurn
+  // During a yield prompt the seat-to-move is the Tokyo defender, so isMyTurn already
+  // becomes true for whoever must answer — but the roll/resolve/end actions still belong
+  // to the turn player, so gate those on the turn proper (not the yield).
+  const myTurnProper = s.winner == null && s.turn === mySeat && s.phase !== 'yield'
+  const yourRoll = myTurnProper && s.phase === 'roll'
+  const yourYield = s.winner == null && s.phase === 'yield' && s.pendingYield != null && s.pendingYield.defender === mySeat
 
-  function doRoll() { if (yourRoll && s.rerollsLeft > 0) setS(p => KOT.rollDice(p)) }
-  function doResolve() { if (yourRoll && s.rolled) setS(p => KOT.resolveDice(p)) }
-  function doEnd() { if (yourTurn && s.phase === 'resolved') setS(p => KOT.endTurn(p)) }
-  function doToggle(i: number) { if (yourRoll && s.rolled) setS(p => KOT.toggleKeep(p, i)) }
-  function doYield(yes: boolean) { if (yourYield) setS(p => KOT.yieldTokyo(p, yes)) }
-
-  // AI is active when it's an AI player's sub-action OR an AI yield decision is pending,
-  // and there's no winner. Re-arm on every sub-step via the monotonic counter s.step.
-  const aiActive = s.winner == null && (
-    (s.turn !== 0 && s.phase !== 'yield') ||
-    (s.phase === 'yield' && s.pendingYield != null && s.pendingYield.defender !== 0)
-  )
-  useAITurn(aiActive, () => setS(p => KOT.aiStep(p)), { delayMs: 560, tick: s.step })
+  function doRoll() { if (yourRoll && s.rerollsLeft > 0) dispatch({ kind: 'roll' }) }
+  function doResolve() { if (yourRoll && s.rolled) dispatch({ kind: 'resolve' }) }
+  function doEnd() { if (myTurnProper && s.phase === 'resolved') dispatch({ kind: 'end' }) }
+  function doToggle(i: number) { if (yourRoll && s.rolled) dispatch({ kind: 'hold', i }) }
+  function doYield(yes: boolean) { if (yourYield) dispatch({ kind: 'yield', yes }) }
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
 
@@ -101,7 +108,7 @@ export function KingOfTokyo() {
       }
       if (e.key === 'Enter') {
         if (yourRoll && s.rolled) { doResolve(); return true }
-        if (yourTurn && s.phase === 'resolved') { doEnd(); return true }
+        if (myTurnProper && s.phase === 'resolved') { doEnd(); return true }
       }
       if ((e.key === 'y' || e.key === 'Y') && yourYield) { doYield(true); return true }
       return false
@@ -113,17 +120,19 @@ export function KingOfTokyo() {
 
   let banner: string, bk = ''
   if (s.winner != null) {
-    if (s.winner === 0) { bk = 'win'; banner = 'You win — King of Tokyo!' }
-    else { bk = 'lose'; banner = `${s.monsters[s.winner].name} wins.` }
+    if (s.winner === mySeat) { bk = 'win'; banner = 'You win — King of Tokyo!' }
+    else { bk = 'lose'; banner = `${nameFor(s, s.winner, mySeat, net.online)} wins.` }
   } else if (yourYield) {
     bk = 'you'; banner = `You're hit in Tokyo for ${s.pendingYield?.damage} — yield or hold?`
-  } else if (yourTurn) {
+  } else if (myTurnProper) {
     bk = 'you'
     if (!s.rolled) banner = 'Your turn — roll the dice'
     else if (s.phase === 'roll') banner = s.rerollsLeft > 0 ? 'Keep dice & reroll, or resolve' : 'Out of rerolls — resolve'
     else banner = 'Turn resolved — end turn'
   } else {
-    bk = 'foe'; banner = `${s.monsters[s.turn].name} is rampaging…`
+    const actor = s.phase === 'yield' && s.pendingYield != null ? s.pendingYield.defender : s.turn
+    const verb = s.phase === 'yield' ? 'is deciding whether to yield Tokyo…' : 'is rampaging…'
+    bk = 'foe'; banner = `${nameFor(s, actor, mySeat, net.online)} ${verb}`
   }
 
   return (
@@ -144,20 +153,20 @@ export function KingOfTokyo() {
           <div>
             <div className="kot-monsters">
               {s.monsters.map(m => (
-                <MonsterCard key={m.id} m={m} you={m.id === 0} on={s.turn === m.id && s.winner == null} />
+                <MonsterCard key={m.id} m={m} you={m.id === mySeat} on={s.turn === m.id && s.winner == null} label={nameFor(s, m.id, mySeat, net.online)} />
               ))}
             </div>
 
             <div className="kot-arena">
               <span className="kot-tokyo-plate">🗼 TOKYO</span>
               <span className="kot-tokyo-occ">
-                {tokyoOcc == null ? 'empty — claim it with a claw' : <>held by <b>{tokyoOcc === 0 ? 'You' : s.monsters[tokyoOcc].name}</b></>}
+                {tokyoOcc == null ? 'empty — claim it with a claw' : <>held by <b>{nameFor(s, tokyoOcc, mySeat, net.online)}</b></>}
               </span>
             </div>
 
             <div className="kot-tray">
               <div className="kot-tray-head">
-                <span className="kot-tray-l">{s.rolled ? 'your dice · click to keep' : 'press roll to begin'}</span>
+                <span className="kot-tray-l">{!s.rolled ? 'press roll to begin' : yourRoll ? 'your dice · click to keep' : `${nameFor(s, s.turn, mySeat, net.online)}'s dice`}</span>
                 <span className="kot-reroll">rolls left: {s.rerollsLeft}</span>
               </div>
               <div className="kot-dice">
@@ -185,13 +194,16 @@ export function KingOfTokyo() {
                     {s.rolled ? 'Reroll' : 'Roll'}
                   </button>
                   <button className="kot-btn ghost" onClick={doResolve} disabled={!yourRoll || !s.rolled}>Resolve</button>
-                  <button className="kot-btn" onClick={doEnd} disabled={!yourTurn || s.phase !== 'resolved'}>End Turn</button>
+                  <button className="kot-btn" onClick={doEnd} disabled={!myTurnProper || s.phase !== 'resolved'}>End Turn</button>
                 </div>
               )}
             </div>
           </div>
 
           <div className="kot-side">
+            <div className="panel">
+              <OnlineBar net={net} />
+            </div>
             <div className="panel">
               <div className="panel-l">Dice faces</div>
               <div className="kot-legend">
@@ -212,15 +224,15 @@ export function KingOfTokyo() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal s={s} mySeat={mySeat} online={net.online} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: KotState; onNew: () => void }) {
-  const won = s.winner === 0
-  const champ = s.winner != null ? (s.winner === 0 ? 'You' : s.monsters[s.winner].name) : ''
+function ResultModal({ s, mySeat, online, onNew }: { s: KotState; mySeat: number; online: boolean; onNew: () => void }) {
+  const won = s.winner === mySeat
+  const champ = s.winner != null ? nameFor(s, s.winner, mySeat, online) : ''
   return (
     <Modal
       eyebrow={won ? 'Tokyo is yours' : 'Crushed'}
@@ -235,7 +247,7 @@ function ResultModal({ s, onNew }: { s: KotState; onNew: () => void }) {
             : `${champ} took the crown. The city trembles.`}
         </p>
         <p>
-          Final VP — {s.monsters.map(m => `${m.id === 0 ? 'You' : m.name}: ${m.vp}`).join(' · ')}
+          Final VP — {s.monsters.map(m => `${nameFor(s, m.id, mySeat, online)}: ${m.vp}`).join(' · ')}
         </p>
       </div>
     </Modal>

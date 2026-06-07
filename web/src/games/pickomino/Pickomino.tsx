@@ -1,13 +1,17 @@
 /* PICKOMINO / HECKMECK — UI (built for this codebase). Push-your-luck worm-roasting
-   dice vs two greedy AIs on the framework shell. Each AI takes MANY sub-steps per turn
-   (roll, set aside, roll, … stop), and there are two of them — so useAITurn re-arms on a
-   tick that changes on every AI sub-step (a monotonic action counter). */
+   dice on the framework shell. Online-capable via useGameSession: the host runs the real
+   logic and AI fills any empty seat; the view is seat-relative so a guest can play seat 1
+   or 2. Each turn is MANY sub-steps (roll, set aside, roll, … stop), and the active seat
+   keeps rolling/keeping until it claims a tile or busts — the hook re-arms the AI on a
+   tickKey that changes on every action. Seats: 0 = You, 1/2 = the rivals. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { pickominoAdapter } from './net'
 import * as P from './logic'
 import type { PickominoState, Face, Tile, PlayerState } from './logic'
 
@@ -49,35 +53,33 @@ function TileChip({ t, dim, hot }: { t: Tile; dim?: boolean; hot?: boolean }) {
 }
 
 export function Pickomino() {
-  const [s, setS] = useState<PickominoState>(() => P.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(pickominoAdapter)
   const [showRules, setShowRules] = useState(false)
-  const [acts, setActs] = useState(0) // monotonic action counter -> AI tick
   const logRef = useRef<HTMLDivElement>(null)
 
-  function bump(fn: (p: PickominoState) => PickominoState) {
-    setS(fn)
-    setActs(a => a + 1)
-  }
-
   function newGame() {
-    setS(P.makeGame())
-    setActs(0)
+    netNew()
     setShowRules(false)
   }
 
   const over = s.phase === 'over'
-  const yourTurn = !over && s.turn === 0
+  const yourTurn = !over && isMyTurn
+  // The seat currently rolling (may be you, an AI, or a remote opponent).
+  const activeSeat = over ? mySeat : s.turn
   const avail = yourTurn ? P.availableValues(s) : []
   const sum = P.sumOf(s.aside)
   const canStopNow = yourTurn && P.canStop(s)
   const canRoll = yourTurn && !s.hasRolled && s.aside.length < P.N_DICE
 
-  function doRoll() { if (canRoll) bump(P.rollDice) }
-  function doStop() { if (yourTurn && (P.canStop(s) || s.aside.length > 0)) bump(P.stop) }
-  function doSetAside(v: Face) { if (yourTurn && s.hasRolled && avail.includes(v)) bump(p => P.setAside(p, v)) }
+  // Name a non-you seat relative to whether we're online.
+  function seatLabel(seat: number): string {
+    if (seat === mySeat) return 'You'
+    return net.online ? 'Opponent' : s.players[seat]?.name ?? `Player ${seat + 1}`
+  }
 
-  // Two AIs, each taking many sub-steps; re-arm the timer on every action via the counter.
-  useAITurn(!over && s.turn !== 0, () => bump(P.aiStep), { delayMs: 560, tick: acts })
+  function doRoll() { if (canRoll) dispatch({ kind: 'roll' }) }
+  function doStop() { if (yourTurn && !s.hasRolled && canStopNow) dispatch({ kind: 'stop' }) }
+  function doSetAside(v: Face) { if (yourTurn && s.hasRolled && avail.includes(v)) dispatch({ kind: 'keep', face: v }) }
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
 
@@ -98,11 +100,11 @@ export function Pickomino() {
 
   let banner: string, bk = ''
   if (over) {
-    const won = s.winner === 0
+    const won = s.winner === mySeat
     bk = won ? 'win' : 'lose'
     banner = won
-      ? `You win — ${P.playerWorms(s.players[0])} worms roasted!`
-      : `${s.players[s.winner ?? 1].name} wins with ${P.playerWorms(s.players[s.winner ?? 1])} worms.`
+      ? `You win — ${P.playerWorms(s.players[mySeat])} worms roasted!`
+      : `${seatLabel(s.winner ?? 0)} wins with ${P.playerWorms(s.players[s.winner ?? 0])} worms.`
   } else if (yourTurn) {
     bk = 'you'
     if (!s.hasRolled && s.aside.length === 0) banner = 'Your turn — roll the worm dice'
@@ -111,7 +113,7 @@ export function Pickomino() {
     else banner = `Roll again — need ${P.MIN_SUM}+${P.hasWorm(s.aside) ? '' : ' and a 🐛'} (sum ${sum})`
   } else {
     bk = 'foe'
-    banner = `${s.players[s.turn].name} is rolling…`
+    banner = `${seatLabel(activeSeat)} is rolling…`
   }
 
   const reachTile = P.takeableRowTile(s.row, sum)
@@ -147,7 +149,7 @@ export function Pickomino() {
           {/* Dice table */}
           <div className="panel pk-table">
             <div className="pk-table-head">
-              <div className="panel-l">{yourTurn ? 'your dice' : `${s.players[s.turn === -1 ? 0 : s.turn].name}'s dice`}</div>
+              <div className="panel-l">{yourTurn ? 'your dice' : `${seatLabel(activeSeat)}'s dice`}</div>
               <div className="pk-sum">
                 sum <b>{sum}</b>{P.hasWorm(s.aside) ? <span className="pk-worm-ok"> · 🐛 locked</span> : <span className="pk-worm-no"> · no 🐛 yet</span>}
               </div>
@@ -178,18 +180,27 @@ export function Pickomino() {
               <button className="pk-btn" onClick={doRoll} disabled={!canRoll}>
                 {s.aside.length === 0 ? 'Roll 8 Dice' : 'Roll Again'}
               </button>
-              <button className="pk-btn stop" onClick={doStop} disabled={!yourTurn || !canStopNow}>
+              <button className="pk-btn stop" onClick={doStop} disabled={!yourTurn || s.hasRolled || !canStopNow}>
                 Stop &amp; Take
-                {canStopNow && (steal ? ` ${steal.name}'s ${sum}` : reachTile ? ` ${reachTile.n}` : '')}
+                {canStopNow && (steal ? ` ${seatLabel(steal.seat)}'s ${sum}` : reachTile ? ` ${reachTile.n}` : '')}
               </button>
             </div>
           </div>
         </div>
 
         <div className="side">
+          <OnlineBar net={net} />
+
           <div className="panel pk-scores">
             {s.players.map(p => (
-              <PlayerCard key={p.seat} p={p} active={!over && s.turn === p.seat} worms={P.playerWorms(p)} />
+              <PlayerCard
+                key={p.seat}
+                p={p}
+                you={p.seat === mySeat}
+                label={seatLabel(p.seat)}
+                active={!over && s.turn === p.seat}
+                worms={P.playerWorms(p)}
+              />
             ))}
             <div className="pk-goal">most worms when the grill empties wins</div>
           </div>
@@ -200,19 +211,19 @@ export function Pickomino() {
         </div>
       </GameShell>
 
-      {over && <ResultModal s={s} onNew={newGame} />}
+      {over && <ResultModal s={s} mySeat={mySeat} seatLabel={seatLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function PlayerCard({ p, active, worms }: { p: PlayerState; active: boolean; worms: number }) {
+function PlayerCard({ p, you, label, active, worms }: { p: PlayerState; you: boolean; label: string; active: boolean; worms: number }) {
   const top = P.topTile(p)
   return (
-    <div className={'pk-pc' + (p.seat === 0 ? ' you' : ' ai') + (active ? ' on' : '')}>
+    <div className={'pk-pc' + (you ? ' you' : ' ai') + (active ? ' on' : '')}>
       <div className="pk-pc-head">
-        <span className="pk-pc-ic">{p.seat === 0 ? '🍖' : p.seat === 1 ? '🐔' : '🐦'}</span>
-        <span className="pk-pc-name">{p.name}</span>
+        <span className="pk-pc-ic">{you ? '🍖' : p.seat === 1 ? '🐔' : '🐦'}</span>
+        <span className="pk-pc-name">{label}</span>
         <span className="pk-pc-w">{worms} 🐛</span>
       </div>
       <div className="pk-pc-stack">
@@ -225,19 +236,19 @@ function PlayerCard({ p, active, worms }: { p: PlayerState; active: boolean; wor
   )
 }
 
-function ResultModal({ s, onNew }: { s: PickominoState; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ s, mySeat, seatLabel, onNew }: { s: PickominoState; mySeat: number; seatLabel: (seat: number) => string; onNew: () => void }) {
+  const won = s.winner === mySeat
   return (
     <Modal
       eyebrow={won ? 'Worms roasted' : 'Out-foraged'}
-      title={won ? 'You Win' : `${s.players[s.winner ?? 1].name} Wins`}
+      title={won ? 'You Win' : `${seatLabel(s.winner ?? 0)} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="pk-final">
         {s.players.map(p => (
           <span key={p.seat} className={'pk-final-row' + (p.seat === s.winner ? ' win' : '')}>
-            <b>{p.name}</b> {P.playerWorms(p)} 🐛 · {p.stack.length} tiles
+            <b>{seatLabel(p.seat)}</b> {P.playerWorms(p)} 🐛 · {p.stack.length} tiles
           </span>
         ))}
       </div>

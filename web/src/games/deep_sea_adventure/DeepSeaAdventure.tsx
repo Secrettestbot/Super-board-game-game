@@ -1,14 +1,17 @@
 /* DEEP SEA ADVENTURE — UI (built for this codebase). Push-your-luck dice race: three
-   divers share one air tank, racing down a treasure path and back. Two AI divers each
-   take MULTIPLE sub-steps per turn (choose direction → roll/move → pick up/drop/pass),
-   so useAITurn re-arms on a tick that changes on every AI sub-step (a monotonic action
-   counter). */
+   divers share one air tank, racing down a treasure path and back. Online-capable via
+   useGameSession: the host runs the real logic, guests send move intents and render a
+   per-seat view. Empty seats are driven by the existing AI inside the hook. Hidden info —
+   the point VALUES of OTHER divers' carried treasures are masked to a guest; only YOUR
+   carried values (from mySeat) are shown, plus everyone's public carry COUNT. */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { deepSeaAdventureAdapter } from './net'
 import * as D from './logic'
 import type { DeepSeaState, Tile, Diver } from './logic'
 
@@ -56,41 +59,40 @@ function PathCell({ tile, idx, divers, land }: { tile: Tile; idx: number; divers
 }
 
 export function DeepSeaAdventure() {
-  const [s, setS] = useState<DeepSeaState>(() => D.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(deepSeaAdventureAdapter)
   const [showRules, setShowRules] = useState(false)
-  const [acts, setActs] = useState(0) // monotonic action counter -> AI tick
   const logRef = useRef<HTMLDivElement>(null)
 
-  function bump(fn: (p: DeepSeaState) => DeepSeaState) {
-    setS(fn)
-    setActs(a => a + 1)
-  }
+  // Name a diver relative to you: yourself is "You", others are neutral when online.
+  const diverName = (d: Diver) =>
+    d.seat === mySeat ? 'You' : net.online ? (d.seat === 0 ? 'Host' : `Player ${d.seat + 1}`) : d.name
 
   function newGame() {
-    setS(D.makeGame())
-    setActs(0)
+    netNew()
     setShowRules(false)
   }
 
   const over = s.phase === 'over'
-  const me = s.divers[0]
-  const yourTurn = !over && s.turn === 0 && !me.returned
+  const me = s.divers[mySeat]
+  const yourTurn = !over && isMyTurn && !me.returned
+  // 'choose' with no committed direction: you may dive deeper (roll) or turn around.
   const canChoose = yourTurn && s.phase === 'choose' && !s.chose
-  const canRoll = yourTurn && s.phase === 'choose' && s.chose
+  // ready to roll once a direction is committed (or you can roll straight from choose = dive).
+  const canRoll = yourTurn && s.phase === 'choose'
   const canAct = yourTurn && s.phase === 'rolled'
   const onTile = canAct ? s.path[me.pos] : null
   const tileHasTreasure = !!onTile && me.pos > 0 && (onTile.stack.length > 0 || !D.isBlank(onTile))
   const tileBlank = !!onTile && me.pos > 0 && D.isBlank(onTile)
   const canDrop = canAct && me.carrying.length > 0 && !!tileBlank
 
-  function doDir(dir: D.Dir) { if (canChoose) bump(p => D.chooseDirection(p, dir)) }
-  function doRoll() { if (canRoll) bump(D.move) }
-  function doPickUp() { if (canAct) bump(D.pickUp) }
-  function doDrop() { if (canDrop) bump(D.drop) }
-  function doPass() { if (canAct) bump(D.pass) }
+  function doDive() { if (canChoose) dispatch({ kind: 'roll' }) }
+  function doTurnAround() { if (canChoose) dispatch({ kind: 'turnAround' }) }
+  function doRoll() { if (canRoll) dispatch({ kind: 'roll' }) }
+  function doPickUp() { if (canAct) dispatch({ kind: 'grab' }) }
+  function doDrop() { if (canDrop) dispatch({ kind: 'drop', idx: me.carrying.length - 1 }) }
+  function doPass() { if (canAct) dispatch({ kind: 'pass' }) }
 
-  // Two AIs, each taking several sub-steps per turn; re-arm the timer on every action.
-  useAITurn(!over && s.turn !== 0, () => bump(D.aiStep), { delayMs: 620, tick: acts })
+  // AI for empty seats is driven inside useGameSession; no useAITurn here.
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
 
@@ -101,8 +103,8 @@ export function DeepSeaAdventure() {
     extra: (e) => {
       if (!yourTurn) return false
       const k = e.key.toLowerCase()
-      if (canChoose && k === 'd') { doDir('down'); return true }
-      if (canChoose && (k === 'u' || k === 'w')) { doDir('up'); return true }
+      if (canChoose && !me.turned && k === 'd') { doDive(); return true }
+      if (canChoose && (k === 'u' || k === 'w')) { doTurnAround(); return true }
       if (canRoll && (k === ' ' || k === 'spacebar' || e.key === ' ')) { doRoll(); return true }
       if (canAct && (k === 'g' || e.key === 'Enter')) { doPickUp(); return true }
       if (canDrop && k === 'x') { doDrop(); return true }
@@ -113,24 +115,24 @@ export function DeepSeaAdventure() {
 
   let banner: string, bk = ''
   if (over) {
-    const won = s.winner === 0
+    const won = s.winner === mySeat
     bk = won ? 'win' : 'lose'
-    const w = s.winner ?? 1
+    const w = s.winner ?? (mySeat === 0 ? 1 : 0)
     banner = won
-      ? `You win — ${D.score(s, 0)} pts of treasure banked!`
-      : `${s.divers[w].name} wins with ${D.score(s, w)} pts.`
+      ? `You win — ${D.score(s, mySeat)} pts of treasure banked!`
+      : `${diverName(s.divers[w])} wins with ${D.score(s, w)} pts.`
   } else if (yourTurn) {
     bk = 'you'
-    if (canChoose) banner = me.turned ? 'Heading up — roll to surface' : 'Your turn — dive deeper or turn back?'
+    if (canChoose) banner = 'Your turn — dive deeper or turn back?'
     else if (canRoll) banner = `Roll to move ${me.direction === 'up' ? 'up' : 'down'} (load ${me.carrying.length})`
     else if (canAct) banner = tileHasTreasure ? 'Grab the treasure, or move on' : 'Drop a treasure here, or move on'
     else banner = 'Your turn'
-  } else if (!over && s.divers[0].returned && s.turn === 0) {
+  } else if (!over && me.returned && isMyTurn) {
     bk = 'you'
     banner = 'You are safely aboard — waiting on the others'
   } else {
     bk = 'foe'
-    banner = `${s.divers[s.turn].name} is diving…`
+    banner = `${diverName(s.divers[s.turn])} is diving…`
   }
 
   const airPct = Math.max(0, Math.min(100, (s.air / D.START_AIR) * 100))
@@ -175,7 +177,7 @@ export function DeepSeaAdventure() {
           {/* Controls */}
           <div className="panel ds-controls">
             <div className="ds-ctl-head">
-              <div className="panel-l">{yourTurn ? 'your move' : over ? 'game over' : `${s.divers[s.turn].name}'s dive`}</div>
+              <div className="panel-l">{yourTurn ? 'your move' : over ? 'game over' : `${diverName(s.divers[s.turn])}'s dive`}</div>
               <div className="ds-dice">
                 <span className={'ds-die' + (s.dice ? '' : ' empty')}>{s.dice ? s.dice[0] : '?'}</span>
                 <span className={'ds-die' + (s.dice ? '' : ' empty')}>{s.dice ? s.dice[1] : '?'}</span>
@@ -193,9 +195,9 @@ export function DeepSeaAdventure() {
             </div>
 
             <div className="ds-actions">
-              <button className="ds-btn alt" onClick={() => doDir('down')} disabled={!canChoose || me.turned}>Dive deeper ↓</button>
-              <button className="ds-btn ghost" onClick={() => doDir('up')} disabled={!canChoose}>Turn back ↑</button>
-              <button className="ds-btn" onClick={doRoll} disabled={!canRoll}>Roll &amp; move</button>
+              <button className="ds-btn alt" onClick={doDive} disabled={!canChoose || me.turned}>Dive deeper ↓</button>
+              <button className="ds-btn ghost" onClick={doTurnAround} disabled={!canChoose}>Turn back ↑</button>
+              <button className="ds-btn" onClick={doRoll} disabled={!canRoll || !s.chose}>Roll &amp; move</button>
               <button className="ds-btn" onClick={doPickUp} disabled={!canAct || !tileHasTreasure}>Grab treasure</button>
               <button className="ds-btn ghost" onClick={doDrop} disabled={!canDrop}>Drop here</button>
               <button className="ds-btn ghost" onClick={doPass} disabled={!canAct}>Move on</button>
@@ -204,9 +206,12 @@ export function DeepSeaAdventure() {
         </div>
 
         <div className="ds-side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel ds-scores">
             {s.divers.map(d => (
-              <DiverCard key={d.seat} d={d} active={!over && s.turn === d.seat} />
+              <DiverCard key={d.seat} d={d} name={diverName(d)} mine={d.seat === mySeat} active={!over && s.turn === d.seat} />
             ))}
             <div className="ds-goal">most banked points after 3 rounds wins</div>
           </div>
@@ -217,18 +222,18 @@ export function DeepSeaAdventure() {
         </div>
       </GameShell>
 
-      {over && <ResultModal s={s} onNew={newGame} />}
+      {over && <ResultModal s={s} mySeat={mySeat} nameOf={diverName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function DiverCard({ d, active }: { d: Diver; active: boolean }) {
+function DiverCard({ d, name, mine, active }: { d: Diver; name: string; mine: boolean; active: boolean }) {
   return (
-    <div className={'ds-pc' + (d.seat === 0 ? ' you' : ' ai') + (active ? ' on' : '')}>
+    <div className={'ds-pc' + (mine ? ' you' : ' ai') + (active ? ' on' : '')}>
       <div className="ds-pc-head">
         <span className={'ds-pc-pin d' + d.seat}>{diverGlyph(d.seat)}</span>
-        <span className="ds-pc-name">{d.name}</span>
+        <span className="ds-pc-name">{name}</span>
         <span className="ds-pc-bank">{d.banked}</span>
       </div>
       <div className="ds-pc-stat">
@@ -240,21 +245,21 @@ function DiverCard({ d, active }: { d: Diver; active: boolean }) {
   )
 }
 
-function ResultModal({ s, onNew }: { s: DeepSeaState; onNew: () => void }) {
-  const won = s.winner === 0
-  const w = s.winner ?? 1
+function ResultModal({ s, mySeat, nameOf, onNew }: { s: DeepSeaState; mySeat: number; nameOf: (d: Diver) => string; onNew: () => void }) {
+  const won = s.winner === mySeat
+  const w = s.winner ?? (mySeat === 0 ? 1 : 0)
   const ranked = s.divers.slice().sort((a, b) => b.banked - a.banked)
   return (
     <Modal
       eyebrow={won ? 'Treasure secured' : 'Out-dived'}
-      title={won ? 'You Win' : `${s.divers[w].name} Wins`}
+      title={won ? 'You Win' : `${nameOf(s.divers[w])} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Dive again</button>}
     >
       <div className="ds-final">
         {ranked.map(d => (
           <span key={d.seat} className={'ds-final-row' + (d.seat === s.winner ? ' win' : '')}>
-            <b>{d.name}</b> <span className="pts">{d.banked} pts</span>
+            <b>{nameOf(d)}</b> <span className="pts">{d.banked} pts</span>
           </span>
         ))}
       </div>

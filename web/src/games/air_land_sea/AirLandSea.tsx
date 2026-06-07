@@ -1,14 +1,22 @@
 /* AIR, LAND & SEA — UI (built for this codebase). Three theaters — AIR · LAND · SEA — run across
-   a campaign map. You (lower) and the enemy AI (upper) stack cards on your side of each theater.
+   a campaign map. You (lower) and the enemy (upper) stack cards on your side of each theater.
    Pick a card from your hand, choose FACE-UP (into its own theater, ability fires) or FACE-DOWN
    (any theater, strength 2), then click a theater to deploy. Withdraw to concede a losing battle.
-   Win two of three theaters to take the battle; first to 12 VP wins the war. */
+   Win two of three theaters to take the battle; first to 12 VP wins the war.
+
+   ONLINE: seat-relative via useGameSession. "You" is always the local seat (mySeat); the other
+   seat is the opponent (the AI in solo, a remote human online). Your hand, the scoreboard and the
+   banners are all read from mySeat's perspective; the opponent's hand and the face-down deck never
+   cross the wire (see net.ts redactFor). isMyTurn gates every action; the host owes the "next
+   battle" advance between battles. Solo play (mySeat 0, opponent is the AI) is unchanged. */
 
 import { useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { airLandSeaAdapter } from './net'
 import * as ALS from './logic'
 import type { State, Card, Seat, Placed } from './logic'
 
@@ -37,21 +45,16 @@ const TITLE_MARK = (
 )
 
 export function AirLandSea() {
-  const [s, setS] = useState<State>(() => ALS.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(airLandSeaAdapter)
+  const me = mySeat as Seat
+  const foe: Seat = me === 0 ? 1 : 0
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number | null>(null)          // selected card id
   const [faceDown, setFaceDown] = useState(false)               // pending placement mode
 
-  function newGame() { setS(ALS.makeGame()); setSel(null); setFaceDown(false); setShowRules(false) }
-  function next() { setS(ALS.nextBattle(s)); setSel(null); setFaceDown(false) }
+  function newGame() { netNew(); setSel(null); setFaceDown(false); setShowRules(false) }
+  function next() { dispatch({ kind: 'next' }); setSel(null); setFaceDown(false) }
 
-  // AI plays across many turns AND many battles; tick changes on every AI action so the timer
-  // re-arms each step rather than stalling. active = AI's turn AND no war winner.
-  useAITurn(
-    s.winner == null && s.phase === 'battle' && s.turn === 1,
-    () => setS(p => ALS.aiTurn(p)),
-    { delayMs: 600, tick: s.tick },
-  )
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
@@ -62,8 +65,10 @@ export function AirLandSea() {
     },
   })
 
-  const yourTurn = s.winner == null && s.phase === 'battle' && s.turn === 0
-  const selCard: Card | null = sel != null ? s.hands[0].find(c => c.id === sel) ?? null : null
+  const yourTurn = s.winner == null && s.phase === 'battle' && isMyTurn
+  const myHand = s.hands[me]
+  const selCard: Card | null = sel != null ? myHand.find(c => c.id === sel) ?? null : null
+  const oppLabel = net.online ? 'Opponent' : 'Enemy'
 
   // Which theaters can the selected card legally deploy to in the current mode?
   function legalForSel(): number[] {
@@ -80,26 +85,28 @@ export function AirLandSea() {
   function deploy(theaterIndex: number) {
     if (!yourTurn || selCard == null) return
     if (!legalTheaters.includes(theaterIndex)) return
-    setS(ALS.play(s, 0, selCard, theaterIndex, faceDown))
+    dispatch({ kind: 'deploy', cardId: selCard.id, theater: theaterIndex, faceDown })
     setSel(null)
     setFaceDown(false)
   }
   function doWithdraw() {
-    if (yourTurn) { setS(ALS.withdraw(s, 0)); setSel(null); setFaceDown(false) }
+    if (yourTurn) { dispatch({ kind: 'withdraw' }); setSel(null); setFaceDown(false) }
   }
 
-  const defender: Seat = s.turn === 0 ? 1 : 0 // who would win ties at THIS instant (live preview)
+  // Who would win ties at THIS instant (live preview): the seat NOT to move defends.
+  const defender: Seat = s.turn === 0 ? 1 : 0
+
+  const r = s.battleResult
+  const youWonBattle = r?.winner === me
 
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = 'You reached 12 VP — the war is won!' }
-  else if (s.winner === 1) { bk = 'lose'; banner = 'The enemy reached 12 VP — you lose the war' }
+  if (s.winner === me) { bk = 'win'; banner = 'You reached 12 VP — the war is won!' }
+  else if (s.winner === foe) { bk = 'lose'; banner = `${oppLabel} reached 12 VP — you lose the war` }
   else if (s.phase === 'battleOver') {
-    const r = s.battleResult
-    const youWon = r?.winner === 0
-    bk = youWon ? 'win' : 'lose'
-    banner = youWon
+    bk = youWonBattle ? 'win' : 'lose'
+    banner = youWonBattle
       ? `You won the battle (+${r?.vpAwarded} VP). Begin the next battle.`
-      : `The enemy won the battle (+${r?.vpAwarded} VP). Begin the next battle.`
+      : `${oppLabel} won the battle (+${r?.vpAwarded} VP). Begin the next battle.`
   }
   else if (yourTurn) {
     bk = 'you'
@@ -109,7 +116,7 @@ export function AirLandSea() {
         ? 'Face-down · click any theater to deploy (strength 2)'
         : `Face-up · deploy ${selCard.name} ${selCard.value} to ${THEATER_LABEL[selCard.theater]}`
   }
-  else { bk = 'foe'; banner = 'The enemy is deploying…' }
+  else { bk = 'foe'; banner = net.online ? `${oppLabel} is deploying…` : 'The enemy is deploying…' }
 
   return (
     <>
@@ -120,7 +127,7 @@ export function AirLandSea() {
         subtitle="deploy across three theaters of war — control two of three to take the battle; first to 12 victory points wins"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`Battle ${s.battleNo} · VP ${s.vp[0]}–${s.vp[1]}`}
+        modeLeft={`Battle ${s.battleNo} · VP ${s.vp[me]}–${s.vp[foe]}`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>F · flip &nbsp; N · new &nbsp; ? · rules</>}
@@ -132,10 +139,12 @@ export function AirLandSea() {
                 key={theater}
                 theater={theater}
                 index={ti}
-                stacks={s.theaters[ti]}
-                str0={ALS.theaterStrength(s, 0, ti)}
-                str1={ALS.theaterStrength(s, 1, ti)}
-                control={ALS.theaterControl(s, ti, defender)}
+                youStack={s.theaters[ti][me]}
+                foeStack={s.theaters[ti][foe]}
+                strYou={ALS.theaterStrength(s, me, ti)}
+                strFoe={ALS.theaterStrength(s, foe, ti)}
+                youControl={ALS.theaterControl(s, ti, defender) === me}
+                oppLabel={oppLabel}
                 live={legalTheaters.includes(ti)}
                 onDeploy={() => deploy(ti)}
               />
@@ -159,36 +168,36 @@ export function AirLandSea() {
 
           {/* your hand */}
           <div className="als-hand">
-            {s.hands[0]
+            {myHand
               .slice()
               .sort((a, b) => THEATERS.indexOf(a.theater) - THEATERS.indexOf(b.theater) || a.value - b.value)
-              .map(c => {
-                const playableFaceUp = yourTurn
-                return (
-                  <button
-                    key={c.id}
-                    className={'als-card t-' + c.theater + (sel === c.id ? ' sel' : '')}
-                    onClick={() => pick(c.id)}
-                    disabled={!playableFaceUp}
-                    title={`${c.name} ${c.value} (${THEATER_LABEL[c.theater]}) — ${ABILITY_TEXT[c.ability]}`}
-                  >
-                    <span className="als-c-top">
-                      <span className="als-c-val">{c.value}</span>
-                      <span className="als-c-icon">{THEATER_ICON[c.theater]}</span>
-                    </span>
-                    <span className="als-c-name">{c.name}</span>
-                    <span className="als-c-ability">{ABILITY_TEXT[c.ability]}</span>
-                  </button>
-                )
-              })}
-            {s.hands[0].length === 0 && <div className="als-empty">No cards in hand.</div>}
+              .map(c => (
+                <button
+                  key={c.id}
+                  className={'als-card t-' + c.theater + (sel === c.id ? ' sel' : '')}
+                  onClick={() => pick(c.id)}
+                  disabled={!yourTurn}
+                  title={`${c.name} ${c.value} (${THEATER_LABEL[c.theater]}) — ${ABILITY_TEXT[c.ability]}`}
+                >
+                  <span className="als-c-top">
+                    <span className="als-c-val">{c.value}</span>
+                    <span className="als-c-icon">{THEATER_ICON[c.theater]}</span>
+                  </span>
+                  <span className="als-c-name">{c.name}</span>
+                  <span className="als-c-ability">{ABILITY_TEXT[c.ability]}</span>
+                </button>
+              ))}
+            {myHand.length === 0 && <div className="als-empty">No cards in hand.</div>}
           </div>
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel als-scoreboard">
-            <ScoreRow name="You" vp={s.vp[0]} on={s.turn === 0 && s.winner == null && s.phase === 'battle'} you />
-            <ScoreRow name="Enemy" vp={s.vp[1]} on={s.turn === 1 && s.winner == null && s.phase === 'battle'} />
+            <ScoreRow name="You" vp={s.vp[me]} on={s.turn === me && s.winner == null && s.phase === 'battle'} you />
+            <ScoreRow name={oppLabel} vp={s.vp[foe]} on={s.turn === foe && s.winner == null && s.phase === 'battle'} />
             <div className="als-vpline"><span>Target</span><span>{ALS.WIN_VP} VP</span></div>
           </div>
           <div className="panel logbox">
@@ -197,8 +206,12 @@ export function AirLandSea() {
         </div>
       </GameShell>
 
-      {s.phase === 'battleOver' && <BattleModal s={s} onNext={next} onNew={newGame} />}
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.phase === 'battleOver' && s.winner == null && (
+        isMyTurn
+          ? <BattleModal s={s} me={me} oppLabel={oppLabel} onNext={next} onNew={newGame} />
+          : <WaitModal oppLabel={oppLabel} />
+      )}
+      {s.winner != null && <ResultModal s={s} me={me} foe={foe} won={s.winner === me} oppLabel={oppLabel} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -233,30 +246,29 @@ function Stack({ cards, theaterIndex, foe }: { cards: Placed[]; theaterIndex: nu
   )
 }
 
-function TheaterColumn({ theater, index, stacks, str0, str1, control, live, onDeploy }: {
-  theater: string; index: number; stacks: ALS.TheaterStacks; str0: number; str1: number
-  control: Seat; live: boolean; onDeploy: () => void
+function TheaterColumn({ theater, index, youStack, foeStack, strYou, strFoe, youControl, oppLabel, live, onDeploy }: {
+  theater: string; index: number; youStack: Placed[]; foeStack: Placed[]; strYou: number; strFoe: number
+  youControl: boolean; oppLabel: string; live: boolean; onDeploy: () => void
 }) {
   let cls = 'als-theater t-' + theater
   if (live) cls += ' live'
-  if (control === 0) cls += ' ctrl-you'
-  else cls += ' ctrl-foe'
+  cls += youControl ? ' ctrl-you' : ' ctrl-foe'
   return (
     <div className={cls} onClick={live ? onDeploy : undefined}>
       <div className="als-th-foe-str">
-        <span className={'als-str' + (control === 1 ? ' lead' : '')}>{str1}</span>
+        <span className={'als-str' + (!youControl ? ' lead' : '')}>{strFoe}</span>
       </div>
-      <Stack cards={stacks[1]} theaterIndex={index} foe />
+      <Stack cards={foeStack} theaterIndex={index} foe />
 
       <div className="als-th-head">
         <span className="als-th-icon">{THEATER_ICON[theater]}</span>
         <span className="als-th-name">{THEATER_LABEL[theater]}</span>
-        <span className={'als-th-flag ' + (control === 0 ? 'you' : 'foe')}>{control === 0 ? 'You' : 'Enemy'}</span>
+        <span className={'als-th-flag ' + (youControl ? 'you' : 'foe')}>{youControl ? 'You' : oppLabel}</span>
       </div>
 
-      <Stack cards={stacks[0]} theaterIndex={index} />
+      <Stack cards={youStack} theaterIndex={index} />
       <div className="als-th-you-str">
-        <span className={'als-str' + (control === 0 ? ' lead' : '')}>{str0}</span>
+        <span className={'als-str' + (youControl ? ' lead' : '')}>{strYou}</span>
       </div>
     </div>
   )
@@ -274,13 +286,14 @@ function ScoreRow({ name, vp, on, you }: { name: string; vp: number; on: boolean
   )
 }
 
-function BattleModal({ s, onNext, onNew }: { s: State; onNext: () => void; onNew: () => void }) {
+function BattleModal({ s, me, oppLabel, onNext, onNew }: { s: State; me: Seat; oppLabel: string; onNext: () => void; onNew: () => void }) {
   const r = s.battleResult!
-  const youWon = r.winner === 0
+  const foe: Seat = me === 0 ? 1 : 0
+  const youWon = r.winner === me
   return (
     <Modal
       eyebrow={r.byWithdrawal ? 'Withdrawal' : 'Battle resolved'}
-      title={youWon ? 'You won the battle' : 'The enemy won the battle'}
+      title={youWon ? 'You won the battle' : `${oppLabel} won the battle`}
       closeOnOverlay={false}
       actions={<>
         <button className="btn-modal ghost" onClick={onNew}>New war</button>
@@ -290,32 +303,39 @@ function BattleModal({ s, onNext, onNew }: { s: State; onNext: () => void; onNew
       <div className="modal-body">
         <div className="als-result-row">
           {THEATERS.map((t, i) => (
-            <div key={t} className={'als-res-th ' + (r.control[i] === 0 ? 'you' : 'foe')}>
+            <div key={t} className={'als-res-th ' + (r.control[i] === me ? 'you' : 'foe')}>
               <span>{THEATER_LABEL[t]}</span>
-              <b>{r.control[i] === 0 ? 'You' : 'Enemy'}</b>
+              <b>{r.control[i] === me ? 'You' : oppLabel}</b>
             </div>
           ))}
         </div>
         <p className="als-res-line">
-          Strength <b className="you">{r.strength[0]}</b> – <b className="foe">{r.strength[1]}</b>.
-          {' '}{youWon ? 'You' : 'The enemy'} gained <b>+{r.vpAwarded} VP</b>
-          {r.byWithdrawal ? ' by withdrawal' : ''}. Score now <b>{s.vp[0]}–{s.vp[1]}</b>.
+          Strength <b className="you">{r.strength[me]}</b> – <b className="foe">{r.strength[foe]}</b>.
+          {' '}{youWon ? 'You' : oppLabel} gained <b>+{r.vpAwarded} VP</b>
+          {r.byWithdrawal ? ' by withdrawal' : ''}. Score now <b>{s.vp[me]}–{s.vp[foe]}</b>.
         </p>
       </div>
     </Modal>
   )
 }
 
-function ResultModal({ s, onNew }: { s: State; onNew: () => void }) {
-  const won = s.winner === 0
+function WaitModal({ oppLabel }: { oppLabel: string }) {
+  return (
+    <Modal eyebrow="Battle resolved" title="Standby" closeOnOverlay={false} actions={null}>
+      <div className="modal-body"><p>Waiting for {oppLabel.toLowerCase()} (host) to begin the next battle…</p></div>
+    </Modal>
+  )
+}
+
+function ResultModal({ s, me, foe, won, oppLabel, onNew }: { s: State; me: Seat; foe: Seat; won: boolean; oppLabel: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'The war is won' : 'The war is lost'}
-      title={won ? 'You Win' : 'Enemy Wins'}
+      title={won ? 'You Win' : `${oppLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>New war</button>}
     >
-      <div className="als-final"><span className="you">You {s.vp[0]}</span><span className="foe">Enemy {s.vp[1]}</span></div>
+      <div className="als-final"><span className="you">You {s.vp[me]}</span><span className="foe">{oppLabel} {s.vp[foe]}</span></div>
     </Modal>
   )
 }

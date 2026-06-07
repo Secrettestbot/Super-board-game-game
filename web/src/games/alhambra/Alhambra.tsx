@@ -1,17 +1,22 @@
 /* ALHAMBRA — UI (built for this codebase).
-   Tile-buying with 4 currencies vs two greedy AIs on the framework shell. Take
-   money cards, buy building tiles (priced in a specific currency; exact pay =
-   extra turn), and build type majorities scored across 3 rounds. The two AI
-   players each act once per turn, and exact payments chain extra turns — so the
-   useAITurn driver re-arms on s.step (which bumps on EVERY applied action).
-   UI shows the end state by default.
+   Tile-buying with 4 currencies vs two rival architects on the framework shell. Take
+   money cards, buy building tiles (priced in a specific currency; exact pay = extra
+   turn), and build type majorities scored across 3 rounds.
+
+   Online-capable via useGameSession(alhambraAdapter): the host runs the real logic and
+   fills empty seats with the greedy AI; a guest plays a non-host seat over the wire and
+   only ever sees its OWN money hand (opponents' hands + the face-down decks are redacted).
+   Everything is seat-relative — "you" is mySeat, opponents are AI in solo and "Opponent"/
+   "Player N" online. Solo play (mySeat 0, seats 1/2 AI) is unchanged.
 */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { alhambraAdapter } from './net'
 import * as A from './logic'
 import type { AlhambraState, Currency, Building, PlayerState, PlayerIdx, Tile } from './logic'
 
@@ -28,12 +33,13 @@ const TITLE_MARK = (
 )
 
 const CUR_LABEL: Record<Currency, string> = { green: 'Green', blue: 'Blue', orange: 'Orange', yellow: 'Yellow' }
-const curClass = (c: Currency) => 'cur-' + c
 const curBg = (c: Currency) => 'bg-' + c
 const buildClass = (b: Building) => 'b-' + b
 
 export function Alhambra() {
-  const [s, setS] = useState<AlhambraState>(() => A.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(alhambraAdapter)
+  const me = s.players[mySeat]
+
   const [showRules, setShowRules] = useState(false)
   // Selected money-market indices for a "take", or selected hand card ids for a buy.
   const [moneyPicks, setMoneyPicks] = useState<number[]>([])
@@ -42,14 +48,18 @@ export function Alhambra() {
   const logRef = useRef<HTMLDivElement>(null)
 
   function newGame() {
-    setS(A.makeGame()); setMoneyPicks([]); setPayPicks([]); setBuyTarget(null); setShowRules(false)
+    netNew(); setMoneyPicks([]); setPayPicks([]); setBuyTarget(null); setShowRules(false)
   }
 
-  const yourTurn = s.winner == null && s.turn === 0
+  const yourTurn = s.winner == null && isMyTurn
 
-  // Two AIs + exact-payment extra turns => chained AI actions. Re-arm on s.step
-  // (bumps every applied action) so the driver fires for every consecutive AI move.
-  useAITurn(A.isAITurn(s), () => setS((p) => A.aiTurn(p)), { delayMs: 560, tick: s.step })
+  // Naming relative to mySeat: in solo the others are AIs; online they are remote humans.
+  const seatName = (i: number) => {
+    if (i === mySeat) return 'You'
+    if (net.online) return `Player ${i + 1}`
+    return `AI ${i}`
+  }
+  const oppShort = net.online ? 'a rival' : 'the AI architects'
 
   // Clear selections whenever it stops being your turn (or the game advances).
   useEffect(() => { if (!yourTurn) { setMoneyPicks([]); setPayPicks([]); setBuyTarget(null) } }, [yourTurn, s.step])
@@ -59,8 +69,6 @@ export function Alhambra() {
     onToggleRules: () => setShowRules((v) => !v),
     onEscape: () => { setShowRules(false); setMoneyPicks([]); setPayPicks([]); setBuyTarget(null) },
   })
-
-  const me = s.players[0]
 
   // ---- money take selection ----
   function toggleMoney(i: number) {
@@ -80,7 +88,7 @@ export function Alhambra() {
   }
   function doTake() {
     if (!yourTurn || !A.canTakeMoney(s, moneyPicks)) return
-    setS(A.takeMoney(s, 0, moneyPicks))
+    dispatch({ kind: 'take', indices: moneyPicks })
     setMoneyPicks([])
   }
 
@@ -110,7 +118,7 @@ export function Alhambra() {
     let sum = 0
     for (const id of payPicks) { const c = me.hand.find((x) => x.id === id); if (c) sum += c.value }
     if (sum < tile.cost) return
-    setS(A.buyBuilding(s, 0, buyTarget, payPicks))
+    dispatch({ kind: 'buy', marketIndex: buyTarget, payment: payPicks })
     setBuyTarget(null); setPayPicks([])
   }
 
@@ -118,8 +126,8 @@ export function Alhambra() {
   const round = Math.min(s.roundsScored + 1, 3)
   let banner: string, bk = ''
   if (s.winner != null) {
-    if (s.winner === 0) { bk = 'win'; banner = `You win — ${me.score} points!` }
-    else { bk = 'lose'; banner = `AI ${s.winner} wins with ${s.players[s.winner].score} points` }
+    if (s.winner === mySeat) { bk = 'win'; banner = `You win — ${me.score} points!` }
+    else { bk = 'lose'; banner = `${seatName(s.winner)} wins with ${s.players[s.winner].score} points` }
   } else if (yourTurn) {
     bk = 'you'
     if (buyTarget != null) {
@@ -131,11 +139,15 @@ export function Alhambra() {
       let sum = 0; for (const j of moneyPicks) sum += s.moneyMarket[j]!.value
       banner = `Take ${moneyPicks.length} card${moneyPicks.length > 1 ? 's' : ''} (sum ${sum})`
     } else banner = 'Your turn — take money or buy a tile'
-  } else { bk = 'foe'; banner = `AI ${s.turn} is building…` }
+  } else { bk = 'foe'; banner = `${seatName(s.turn)} is building…` }
 
   const buySum = payPicks.reduce((a, id) => { const c = me.hand.find((x) => x.id === id); return a + (c ? c.value : 0) }, 0)
   const buyTile = buyTarget != null ? s.buildingMarket[buyTarget] : null
   const canDoBuy = buyTile != null && buySum >= buyTile.cost
+
+  // Seats listed you-first so the scoreboard reads relative to mySeat.
+  const seatOrder = s.players.map((_, i) => i).sort((a, b) => (a === mySeat ? -1 : b === mySeat ? 1 : a - b))
+  const scoreLine = seatOrder.map(i => `${seatName(i)} ${s.players[i].score}`).join(' · ')
 
   return (
     <>
@@ -147,7 +159,7 @@ export function Alhambra() {
         onRules={() => setShowRules(true)}
         onNew={newGame}
         newLabel="New Game"
-        modeLeft={`Round ${round}/3 · You ${me.score} · AI1 ${s.players[1].score} · AI2 ${s.players[2].score}`}
+        modeLeft={`Round ${round}/3 · ${scoreLine}`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>click money / tile · take or buy &nbsp; N · new</>}
@@ -240,17 +252,26 @@ export function Alhambra() {
               <div className="al-control-hint">
                 {yourTurn
                   ? 'On your turn do ONE: take money (1 card, or several summing ≤5), OR buy a market tile by paying its cost in the required currency. Pay the EXACT cost to earn an extra turn.'
-                  : 'Waiting for the AI architects…'}
+                  : `Waiting for ${oppShort}…`}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Side: boards + log */}
+        {/* Side: online bar + boards + log */}
         <div className="side">
-          <Board label="You" who="you" p={me} idx={0} active={yourTurn} all={s.players} />
-          <Board label="AI 1" who="ai1" p={s.players[1]} idx={1} active={s.turn === 1 && s.winner == null} all={s.players} />
-          <Board label="AI 2" who="ai2" p={s.players[2]} idx={2} active={s.turn === 2 && s.winner == null} all={s.players} />
+          <div className="panel"><OnlineBar net={net} /></div>
+          {seatOrder.map((i) => (
+            <Board
+              key={i}
+              label={seatName(i)}
+              who={i === mySeat ? 'you' : i === seatOrder[1] ? 'ai1' : 'ai2'}
+              p={s.players[i]}
+              idx={i as PlayerIdx}
+              active={s.turn === i && s.winner == null}
+              all={s.players}
+            />
+          ))}
           <div className="panel logbox" ref={logRef}>
             {s.log.slice().reverse().map((l, i) => (
               <div key={i} className={'log-line ' + l.t}>{l.x}</div>
@@ -259,7 +280,7 @@ export function Alhambra() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal s={s} mySeat={mySeat} won={s.winner === mySeat} winnerName={seatName(s.winner)} amHost={net.amHost} seatName={seatName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -366,25 +387,36 @@ function MiniGrid({ p }: { p: PlayerState }) {
   )
 }
 
-function ResultModal({ s, onNew }: { s: AlhambraState; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({
+  s, won, winnerName, seatName, mySeat, amHost, onNew,
+}: {
+  s: AlhambraState
+  mySeat: number
+  won: boolean
+  winnerName: string
+  amHost: boolean
+  seatName: (i: number) => string
+  onNew: () => void
+}) {
   return (
     <Modal
       eyebrow={won ? 'Master architect' : 'Outbuilt'}
-      title={won ? 'You Win' : `AI ${s.winner} Wins`}
+      title={won ? 'You Win' : `${winnerName} Wins`}
       closeOnOverlay={false}
-      actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
+      actions={amHost ? <button className="btn-modal" onClick={onNew}>Play again</button> : undefined}
     >
       <div className="modal-body">
         <p style={{ textAlign: 'center', fontSize: 15 }}>
-          <b style={{ color: won ? 'var(--you)' : 'var(--ink-2)' }}>You {s.players[0].score}</b>
-          {'   ·   '}
-          <b>AI1 {s.players[1].score}</b>
-          {'   ·   '}
-          <b>AI2 {s.players[2].score}</b>
+          {s.players.map((p, i) => (
+            <b key={i} style={{ color: i === mySeat ? 'var(--you)' : 'var(--ink-2)' }}>
+              {seatName(i)} {p.score}{i < s.players.length - 1 ? '   ·   ' : ''}
+            </b>
+          ))}
         </p>
         <p style={{ textAlign: 'center' }}>
-          {won ? 'You built the strongest Alhambra over three scoring rounds.' : 'A rival architect claimed the majorities.'}
+          {won
+            ? 'You built the strongest Alhambra over three scoring rounds.'
+            : 'A rival architect claimed the majorities.'}
         </p>
       </div>
     </Modal>
@@ -396,12 +428,13 @@ function RulesModal({ onClose }: { onClose: () => void }) {
     <Modal eyebrow="How to play" title="Alhambra" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Start building</button>}>
       <div className="modal-body">
-        <p>You and two AI architects compete to build the grandest <b>Alhambra</b>. Money comes in <b>four currencies</b> (green, blue, orange, yellow); each building tile is priced in <b>one specific currency</b>.</p>
+        <p>You and two rival architects compete to build the grandest <b>Alhambra</b>. Money comes in <b>four currencies</b> (green, blue, orange, yellow); each building tile is priced in <b>one specific currency</b>.</p>
         <p>On your turn do <b>one</b> action:</p>
         <p>• <b>Take money</b> — grab one money card from the market, or several cards whose values sum to <b>5 or less</b>.</p>
         <p>• <b>Buy a tile</b> — pay its cost with cards of the required currency. Overpaying is allowed but you get <b>no change</b>. Pay the <b>exact</b> amount and you earn an <b>extra turn</b>!</p>
         <p>Bought tiles are placed into your Alhambra next to the fountain or existing buildings. There are <b>six building types</b> (pavilion, seraglio, arcade, chambers, garden, tower).</p>
         <p>Scoring happens in <b>three rounds</b> as the money deck depletes. For each building type, the player with the <b>most</b> of that type scores (and 2nd place in later rounds), plus a bonus for the <b>longest connected wall</b>. Most points at the end wins.</p>
+        <p>Your money hand is <b>private</b> — rivals only see how many cards you hold, never their values.</p>
         <p><b>Keys:</b> <kbd>N</kbd> new game · <kbd>?</kbd> rules · <kbd>Esc</kbd> clear / close.</p>
       </div>
     </Modal>
