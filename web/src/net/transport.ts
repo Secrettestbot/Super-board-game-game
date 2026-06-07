@@ -12,11 +12,27 @@
  * (which would be a server) are out of scope — most home networks connect directly.
  */
 
-/** Public STUN servers (NAT discovery only — no data passes through them). */
-const ICE_SERVERS: RTCIceServer[] = [
+/* ICE servers. STUN (NAT discovery only — no data flows through it) is the default; it's
+ * enough for most networks. Some networks give zero usable host/STUN candidates (strict
+ * NATs, blocked UDP, Linux mDNS quirks) and then need a TURN relay, which forwards the
+ * DTLS-encrypted traffic. We do NOT bake a third-party TURN into the default (keeps it
+ * pure-P2P), but you can add your own (or a trusted public one) without rebuilding by
+ * setting localStorage['sbgg.iceServers'] to a JSON RTCIceServer[]. Example in the console:
+ *   localStorage['sbgg.iceServers'] = JSON.stringify([
+ *     { urls: 'turn:your.turn.host:443?transport=tcp', username: 'u', credential: 'p' }])
+ * Do this on BOTH peers. */
+const DEFAULT_ICE: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
 ]
+
+function iceServers(): RTCIceServer[] {
+  try {
+    const extra = JSON.parse(localStorage.getItem('sbgg.iceServers') || '[]')
+    if (Array.isArray(extra) && extra.length) return [...DEFAULT_ICE, ...extra]
+  } catch { /* ignore malformed config */ }
+  return DEFAULT_ICE
+}
 
 /** A minimal duplex message channel over a WebRTC data channel. */
 export interface Transport {
@@ -84,7 +100,7 @@ function decodeDesc(code: string): RTCSessionDescriptionInit {
 }
 
 /** Resolve once ICE gathering is complete, or after a short cap so we don't hang. */
-function iceComplete(pc: RTCPeerConnection, capMs = 2500): Promise<void> {
+function iceComplete(pc: RTCPeerConnection, capMs = 5000): Promise<void> {
   if (pc.iceGatheringState === 'complete') return Promise.resolve()
   return new Promise(resolve => {
     let done = false
@@ -103,7 +119,7 @@ function candCount(sdp: string | null | undefined): number {
 }
 
 function newPC(tag: string): RTCPeerConnection {
-  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+  const pc = new RTCPeerConnection({ iceServers: iceServers() })
   // Connection diagnostics — filter the console by "[net]" to see where a handshake stalls.
   pc.addEventListener('icegatheringstatechange', () => console.info(`[net] ${tag} gathering:`, pc.iceGatheringState))
   pc.addEventListener('iceconnectionstatechange', () => console.info(`[net] ${tag} ice:`, pc.iceConnectionState))
