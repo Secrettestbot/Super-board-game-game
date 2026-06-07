@@ -10,10 +10,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { hanabiAdapter } from './net'
 import * as H from './logic'
-import type { HanabiState, HeldCard, Clue, Color, Value } from './logic'
+import type { HeldCard, Clue, Color, Value } from './logic'
 
 const NAMES = H.PLAYER_NAMES
 const COLORS = H.COLORS
@@ -75,22 +77,25 @@ function HiddenCard({ hc, idx, selected, onClick }: { hc: HeldCard; idx: number;
 }
 
 export function Hanabi() {
-  const [s, setS] = useState<HanabiState>(() => H.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(hanabiAdapter)
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number | null>(null) // selected card in YOUR hand
   const [clueTo, setClueTo] = useState<number | null>(null) // partner we're cluing
   const logRef = useRef<HTMLDivElement>(null)
 
   function newGame() {
-    setS(H.makeGame())
+    netNew()
     setSel(null)
     setClueTo(null)
     setShowRules(false)
   }
 
-  // 3 players: your two AI partners take consecutive turns. `active` while it's an AI
-  // partner's turn and the game isn't over; re-arm on s.step (changes every AI action).
-  useAITurn(!s.gameOver && s.turn !== 0, () => setS((p) => H.aiTurn(p)), { delayMs: 760, tick: s.step })
+  // Name a seat from the local player's perspective: you / a numbered teammate.
+  const nameOf = (p: number) => (p === mySeat ? 'You' : net.online ? `Player ${p + 1}` : NAMES[p])
+
+  // The other seats, in seating order starting just after you (so partners read naturally).
+  const partners: number[] = []
+  for (let off = 1; off < s.hands.length; off++) partners.push((mySeat + off) % s.hands.length)
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
@@ -110,7 +115,7 @@ export function Hanabi() {
     },
   })
 
-  const yourTurn = !s.gameOver && s.turn === 0
+  const yourTurn = !s.gameOver && isMyTurn
   const sc = H.score(s)
 
   let banner: string, bk = ''
@@ -119,21 +124,21 @@ export function Hanabi() {
     banner = `Display over — ${sc} / 25 · ${ratingFor(sc)}`
   } else if (yourTurn) {
     bk = 'you'
-    banner = clueTo != null ? `Clue ${NAMES[clueTo]} — pick a colour or value` : sel != null ? 'Play or discard the selected card' : 'Your turn — clue a partner, or pick your own card'
+    banner = clueTo != null ? `Clue ${nameOf(clueTo)} — pick a colour or value` : sel != null ? 'Play or discard the selected card' : 'Your turn — clue a partner, or pick your own card'
   } else {
     bk = 'foe'
-    banner = `${NAMES[s.turn]} is deciding…`
+    banner = `${nameOf(s.turn)} is deciding…`
   }
 
   function doPlay() {
     if (yourTurn && sel != null) {
-      setS(H.playCard(s, 0, sel))
+      dispatch({ kind: 'play', cardIdx: sel })
       setSel(null)
     }
   }
   function doDiscard() {
     if (yourTurn && sel != null && s.clueTokens < H.MAX_CLUES) {
-      setS(H.discard(s, 0, sel))
+      dispatch({ kind: 'discard', cardIdx: sel })
       setSel(null)
     } else if (yourTurn && sel != null && s.clueTokens >= H.MAX_CLUES) {
       // Cannot discard at full clue tokens — keep selection, no-op.
@@ -144,7 +149,7 @@ export function Hanabi() {
     // Must match at least one card (illegal otherwise) — guard for a clean UX.
     const matches = s.hands[to].some((hc) => (clue.kind === 'color' ? hc.card.color === clue.color : hc.card.value === clue.value))
     if (!matches) return
-    setS(H.giveClue(s, 0, to, clue))
+    dispatch({ kind: 'hint', toSeat: to, hint: clue })
     setClueTo(null)
   }
 
@@ -160,7 +165,7 @@ export function Hanabi() {
     return (
       <div className={'hb-partner' + (active ? ' active' : '') + (choosing ? ' choosing' : '')}>
         <div className="hb-phead">
-          <span className="hb-pname">{NAMES[p]}</span>
+          <span className="hb-pname">{nameOf(p)}</span>
           <span className="hb-pmeta">{hand.length} cards</span>
           {yourTurn && s.clueTokens > 0 && (
             <button className={'hb-cluebtn' + (choosing ? ' on' : '')} onClick={() => setClueTo(choosing ? null : p)}>
@@ -262,8 +267,9 @@ export function Hanabi() {
 
           {/* Partners (face up) */}
           <div className="hb-partners">
-            <PartnerHand p={1} />
-            <PartnerHand p={2} />
+            {partners.map((p) => (
+              <PartnerHand key={p} p={p} />
+            ))}
           </div>
 
           {/* Your hand (face down — only clue knowledge shown) */}
@@ -273,7 +279,7 @@ export function Hanabi() {
               <span className="hb-pmeta">your cards face away — you only know what you've been told</span>
             </div>
             <div className="hb-hand yourhand">
-              {s.hands[0].map((hc, i) => (
+              {s.hands[mySeat].map((hc, i) => (
                 <HiddenCard
                   key={hc.card.id}
                   hc={hc}
@@ -303,6 +309,9 @@ export function Hanabi() {
         </div>
 
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
           <div className="panel hb-discardpanel">
             <div className="panel-l">Discard pile</div>
             <div className="hb-discardgrid">

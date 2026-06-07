@@ -6,10 +6,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { welcomeToAdapter } from './net'
 import * as W from './logic'
-import type { State, EffectKind, Placement, Sheet } from './logic'
+import type { EffectKind, Placement, Sheet } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -38,32 +40,32 @@ const EFFECT_HINT: Record<EffectKind, string> = {
 }
 
 export function WelcomeTo() {
-  const [s, setS] = useState<State>(() => W.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(welcomeToAdapter)
+  const foeSeat = mySeat === 0 ? 1 : 0
   const [showRules, setShowRules] = useState(false)
   const [pickedPair, setPickedPair] = useState<number | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
 
   function newGame() {
-    setS(W.makeGame()); setShowRules(false); setPickedPair(null)
+    netNew(); setShowRules(false); setPickedPair(null)
   }
 
-  // The AI plays its own sheet across many rounds; re-arm on s.step so it keeps going.
-  useAITurn(s.winner == null && s.turn === 1, () => setS(p => W.aiTurn(p, 1)), { delayMs: 560, tick: s.step })
+  // The AI driver lives in useGameSession (re-armed by adapter.tickKey on every action).
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = 0 }, [s.log])
   // Drop a stale pair selection whenever a new round flips.
   useEffect(() => { setPickedPair(null) }, [s.step])
 
-  const yourTurn = s.winner == null && s.turn === 0
-  const youSheet = s.sheets[0]
-  const aiSheet = s.sheets[1]
+  const yourTurn = s.winner == null && isMyTurn
+  const youSheet = s.sheets[mySeat]
+  const aiSheet = s.sheets[foeSeat]
 
   // Auto-refuse if it's your turn and you literally can't place anything.
   useEffect(() => {
-    if (yourTurn && !s.picked[0] && !W.canPlaceAny(youSheet, s.flips)) {
-      const id = setTimeout(() => setS(p => W.refuse(p, 0)), 700)
+    if (yourTurn && !s.picked[mySeat] && !W.canPlaceAny(youSheet, s.flips)) {
+      const id = setTimeout(() => dispatch({ kind: 'refuse' }), 700)
       return () => clearTimeout(id)
     }
-  }, [yourTurn, s.picked, youSheet, s.flips])
+  }, [yourTurn, s.picked, mySeat, youSheet, s.flips, dispatch])
 
   useGameKeys({
     onNew: newGame,
@@ -96,20 +98,24 @@ export function WelcomeTo() {
     if (!yourTurn || pickedPair == null) return
     const pl = lotMap(si, li)
     if (pl == null) return
-    setS(p => W.place(p, 0, pickedPair, si, li, { number: pl.number, fenceSide: 'right' }))
+    dispatch({ kind: 'pick', pairIndex: pickedPair, streetIndex: si, lotIndex: li, number: pl.number, fenceSide: 'right' })
     setPickedPair(null)
   }
 
+  const foeName = net.online ? `Player ${foeSeat + 1}` : 'Rival'
+  const youScore = s.scores[mySeat]
+  const foeScore = s.scores[foeSeat]
+
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = `You win — ${s.scores[0]} to ${s.scores[1]}!` }
-  else if (s.winner === 1) { bk = 'lose'; banner = `Rival wins — ${s.scores[1]} to ${s.scores[0]}` }
-  else if (s.winner === 'draw') { bk = ''; banner = `Tied ${s.scores[0]}–${s.scores[1]}` }
+  if (s.winner === mySeat) { bk = 'win'; banner = `You win — ${youScore} to ${foeScore}!` }
+  else if (s.winner === foeSeat) { bk = 'lose'; banner = `${foeName} wins — ${foeScore} to ${youScore}` }
+  else if (s.winner === 'draw') { bk = ''; banner = `Tied ${youScore}–${foeScore}` }
   else if (yourTurn) {
     bk = 'you'
     banner = !W.canPlaceAny(youSheet, s.flips)
       ? 'No legal build — permit refused…'
       : pickedPair == null ? 'Pick a number+effect pair' : 'Click a glowing lot to build'
-  } else { bk = 'foe'; banner = 'The rival is planning their block…' }
+  } else { bk = 'foe'; banner = net.online ? `${foeName} is planning their block…` : 'The rival is planning their block…' }
 
   return (
     <>
@@ -120,7 +126,7 @@ export function WelcomeTo() {
         subtitle="build three streets of an ascending postwar suburb — pair a number with an effect, complete estates, fill pools, and edge out the rival"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`You ${s.scores[0]} · Rival ${s.scores[1]}`}
+        modeLeft={`You ${youScore} · ${foeName} ${foeScore}`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>1·2·3 pick &nbsp; N · new &nbsp; ? · rules</>}
@@ -131,7 +137,7 @@ export function WelcomeTo() {
             <div className="wt-sheet-head">
               <span className="wt-pin you" />
               <span className="wt-sheet-name">Your neighborhood</span>
-              <span className="wt-sheet-score">{s.scores[0]}</span>
+              <span className="wt-sheet-score">{youScore}</span>
             </div>
             {youSheet.streets.map((st, si) => (
               <div className="wt-street" key={si}>
@@ -207,18 +213,20 @@ export function WelcomeTo() {
             <div className="panel wt-plans">
               <div className="wt-pl">city plans</div>
               {s.plans.map(p => {
-                const owner = p.done[0] ? 'you' : p.done[1] ? 'foe' : ''
+                const owner = p.done[mySeat] ? 'you' : p.done[foeSeat] ? 'foe' : ''
                 return (
                   <div key={p.id} className={'wt-plan' + (owner ? ' claimed ' + owner : '')}>
                     <span className="wt-plan-label">{p.label}</span>
                     <span className="wt-plan-bonus">+{p.bonus}</span>
-                    <span className="wt-plan-tag">{owner === 'you' ? 'You' : owner === 'foe' ? 'Rival' : 'open'}</span>
+                    <span className="wt-plan-tag">{owner === 'you' ? 'You' : owner === 'foe' ? foeName : 'open'}</span>
                   </div>
                 )
               })}
             </div>
 
-            <OppSummary sheet={aiSheet} score={s.scores[1]} active={s.turn === 1 && s.winner == null} />
+            <OppSummary name={foeName} sheet={aiSheet} score={foeScore} active={s.turn === foeSeat && !s.picked[foeSeat] && s.winner == null} />
+
+            <OnlineBar net={net} />
 
             <div className="panel logbox wt-log" ref={logRef}>
               {s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}
@@ -227,18 +235,27 @@ export function WelcomeTo() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal winner={s.winner} scores={s.scores} onNew={newGame} />}
+      {s.winner != null && (
+        <ResultModal
+          won={s.winner === mySeat}
+          draw={s.winner === 'draw'}
+          foeName={foeName}
+          youScore={youScore}
+          foeScore={foeScore}
+          onNew={newGame}
+        />
+      )}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function OppSummary({ sheet, score, active }: { sheet: Sheet; score: number; active: boolean }) {
+function OppSummary({ name, sheet, score, active }: { name: string; sheet: Sheet; score: number; active: boolean }) {
   return (
     <div className={'panel wt-opp' + (active ? ' active' : '')}>
       <div className="wt-opp-head">
         <span className="wt-pin foe" />
-        <span className="wt-sheet-name">Rival</span>
+        <span className="wt-sheet-name">{name}</span>
         <span className="wt-sheet-score">{score}</span>
       </div>
       <div className="wt-opp-streets">
@@ -263,20 +280,18 @@ function OppSummary({ sheet, score, active }: { sheet: Sheet; score: number; act
   )
 }
 
-function ResultModal({ winner, scores, onNew }: { winner: 0 | 1 | 'draw'; scores: [number, number]; onNew: () => void }) {
-  const won = winner === 0
-  const draw = winner === 'draw'
+function ResultModal({ won, draw, foeName, youScore, foeScore, onNew }: { won: boolean; draw: boolean; foeName: string; youScore: number; foeScore: number; onNew: () => void }) {
   return (
     <Modal
-      eyebrow={draw ? 'A tied block' : won ? 'Best neighborhood on the block' : 'The rival built better'}
-      title={draw ? 'Tie Game' : won ? 'You Win' : 'Rival Wins'}
+      eyebrow={draw ? 'A tied block' : won ? 'Best neighborhood on the block' : `${foeName} built better`}
+      title={draw ? 'Tie Game' : won ? 'You Win' : `${foeName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="finalsc">
-        <span className="you">You {scores[0]}</span>
+        <span className="you">You {youScore}</span>
         <span className="vs">·</span>
-        <span className="foe">Rival {scores[1]}</span>
+        <span className="foe">{foeName} {foeScore}</span>
       </div>
     </Modal>
   )

@@ -1,17 +1,23 @@
-/* THE MIND — UI (built for this codebase). A COOPERATIVE real-time-ish card game.
-   You are player 0; players 1 and 2 are AI partners. Play every card onto one shared
-   pile in ascending order without communicating. The AI partners auto-play on internal
-   timers (driven by useAITurn re-armed on s.clock + state changes); you play your lowest
-   via a button when you judge it's time. A life is lost if a card is played while a
-   lower one is still held. Clear the final level to win; run out of lives to lose. */
+/* THE MIND — UI. A COOPERATIVE, wordless, real-time-ish card game on the framework
+   shell. Play every card onto one shared pile in ascending order without communicating.
+
+   Seat-relative & online-capable: your hand comes from `mySeat`, your "play my lowest"
+   button is gated on holding the single lowest outstanding card (isMyTurn), and the
+   level / lives / shuriken / pile are shared and public. Solo fills the partner seats
+   with the existing co-op timing AI (driven by useGameSession on tickKey); hosting lets
+   real teammates take those seats. Online, partners are "Player N" / "Teammate".
+
+   HIDDEN INFO: only your own hand is real — partners' hands are redacted to counts by the
+   adapter before a view crosses the wire (you only ever see how many cards they hold). */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { theMindAdapter } from './net'
 import * as M from './logic'
-import type { MindState } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -25,45 +31,40 @@ const TITLE_MARK = (
   </svg>
 )
 
-// Tick cadence for the simulation clock (ms per tick). Each tick lets ready AIs play.
-const TICK_MS = 240
-
 export function TheMind() {
-  const [s, setS] = useState<MindState>(() => M.makeGame(1))
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(theMindAdapter)
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(M.makeGame(1)); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
   const playing = s.phase === 'playing'
   const complete = M.levelComplete(s) // level cleared, ready to advance
   const handCount = M.totalCardsLeft(s)
 
-  // The AI partners run on timers. While the game is in play and the current level is
-  // not yet fully cleared, keep ticking the simulation. We re-arm on s.clock so the
-  // driver keeps firing every tick, plus on handCount/level so it re-arms after plays
-  // and level changes. When a level is complete we pause (no tick) until advance.
-  const aiActive = playing && !complete && handCount > 0
-  useAITurn(aiActive, () => setS(p => M.tick(p)), { delayMs: TICK_MS, tick: `${s.clock}:${handCount}:${s.level}` })
-
-  // Auto-advance to the next level a beat after a level is cleared.
+  // Auto-advance to the next level a beat after a level is cleared. Only the host/local
+  // authority deals the next level (the adapter routes the breather turn to seat 0);
+  // guests just receive the new view. Mirrors the original solo auto-step.
   useEffect(() => {
-    if (!complete) return
-    const id = setTimeout(() => setS(p => M.advanceLevel(p)), 1100)
+    if (!complete || !net.amHost) return
+    const id = setTimeout(() => dispatch({ kind: 'advance' }), 1100)
     return () => clearTimeout(id)
-  }, [complete, s.level])
+  }, [complete, s.level, net.amHost, dispatch])
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = 0 }, [s.log])
 
-  function doPlay() {
-    if (!playing || complete) return
-    if (s.hands[0].length === 0) return
-    setS(p => M.playLowest(p, 0))
-  }
+  // Your hand & whether you currently hold the single lowest outstanding card (your turn).
+  const myHand = s.hands[mySeat] ?? []
+  const yourTurn = playing && !complete && isMyTurn && myHand.length > 0
+  const myLowest = myHand.length > 0 ? myHand[0] : null
+
+  function doPlay() { if (yourTurn) dispatch({ kind: 'play' }) }
+  // Shuriken is a shared action; only the seat currently "to move" can route it through
+  // the turn surface (the adapter gates it to the lowest holder).
   function doShuriken() {
-    if (!playing || complete) return
-    if (s.shuriken <= 0) return
-    setS(p => M.useShuriken(p))
+    if (!playing || complete || s.shuriken <= 0 || handCount === 0) return
+    if (!isMyTurn) return
+    dispatch({ kind: 'star' })
   }
 
   useGameKeys({
@@ -78,9 +79,14 @@ export function TheMind() {
     },
   })
 
-  const yourLowest = M.yourLowest(s)
   const tension = M.tension(s)
   const tensionPct = Math.round(tension * 100)
+
+  // Seat-relative naming: in solo keep the "Partner N" flavour; online say "Teammate".
+  function nameFor(p: number): string {
+    if (p === mySeat) return 'You'
+    return net.online ? `Player ${p + 1}` : `Partner ${p}`
+  }
 
   let banner: string, bk = ''
   if (s.phase === 'won') { bk = 'win'; banner = 'In sync — the team cleared The Mind!' }
@@ -88,13 +94,19 @@ export function TheMind() {
   else if (complete) { bk = 'win'; banner = `Level ${s.level} cleared — breathe…` }
   else {
     bk = 'you'
-    banner = yourLowest != null
-      ? 'Sense the moment — play your lowest when it feels right'
-      : 'Your hand is empty — trust your partners'
+    banner = myHand.length === 0
+      ? `Your hand is empty — trust your ${net.online ? 'teammates' : 'partners'}`
+      : yourTurn
+        ? 'You hold the lowest — play it when it feels right'
+        : 'Sense the moment — wait for the lowest card to surface'
   }
 
   const lives = Array.from({ length: M.START_LIVES }, (_, i) => i < s.lives)
   const stars = Array.from({ length: M.START_SHURIKEN }, (_, i) => i < s.shuriken)
+
+  // Partner seats = everyone but me, in stable order.
+  const partnerSeats: number[] = []
+  for (let p = 0; p < s.hands.length; p++) if (p !== mySeat) partnerSeats.push(p)
 
   return (
     <>
@@ -102,7 +114,9 @@ export function TheMind() {
         mark={TITLE_MARK}
         eyebrow="The Mind · wordless cooperation"
         title="The Mind"
-        subtitle="play every card onto one pile in ascending order — no talking, no signals, just shared intuition with two AI partners"
+        subtitle={net.online
+          ? 'play every card onto one pile in ascending order — no talking, no signals, just shared intuition with your teammates'
+          : 'play every card onto one pile in ascending order — no talking, no signals, just shared intuition with two AI partners'}
         onRules={() => setShowRules(true)}
         onNew={newGame}
         modeLeft={<>Level {s.level} / {s.maxLevel} &nbsp;·&nbsp; {handCount} cards left</>}
@@ -147,9 +161,9 @@ export function TheMind() {
             <div className="panel tm-hand-panel">
               <div className="tm-hand-label">your hand</div>
               <div className="tm-hand">
-                {s.hands[0].length === 0
+                {myHand.length === 0
                   ? <div className="tm-hand-empty">empty</div>
-                  : s.hands[0].map((v, i) => (
+                  : myHand.map((v, i) => (
                       <div key={v} className={'tm-card' + (i === 0 ? ' lowest' : '')}>
                         {v}
                         {i === 0 && <span className="tm-card-tag">lowest</span>}
@@ -160,14 +174,14 @@ export function TheMind() {
               <div className="tm-btns">
                 <button
                   className="tm-btn play"
-                  disabled={!playing || complete || yourLowest == null}
+                  disabled={!yourTurn}
                   onClick={doPlay}
                 >
-                  Play my lowest{yourLowest != null ? ` (${yourLowest})` : ''}
+                  Play my lowest{myLowest != null ? ` (${myLowest})` : ''}
                 </button>
                 <button
                   className="tm-btn star"
-                  disabled={!playing || complete || s.shuriken <= 0 || handCount === 0}
+                  disabled={!playing || complete || s.shuriken <= 0 || handCount === 0 || !isMyTurn}
                   onClick={doShuriken}
                 >
                   ★ Shuriken
@@ -176,8 +190,12 @@ export function TheMind() {
             </div>
           </div>
 
-          {/* Side: status + partners + log */}
+          {/* Side: online bar + status + partners + log */}
           <div className="side">
+            <div className="panel">
+              <OnlineBar net={net} />
+            </div>
+
             <div className="panel tm-status">
               <div className="tm-stat-row">
                 <span className="tm-stat-cap">lives</span>
@@ -198,11 +216,11 @@ export function TheMind() {
             </div>
 
             <div className="panel tm-partners">
-              <div className="tm-partners-label">partners</div>
-              {[1, 2].map(p => (
+              <div className="tm-partners-label">{net.online ? 'teammates' : 'partners'}</div>
+              {partnerSeats.map(p => (
                 <div key={p} className="tm-partner">
                   <span className="tm-partner-dot" />
-                  <span className="tm-partner-name">Partner {p}</span>
+                  <span className="tm-partner-name">{nameFor(p)}</span>
                   <span className="tm-partner-cards">
                     {s.hands[p].length === 0
                       ? 'done'
@@ -221,7 +239,7 @@ export function TheMind() {
       </GameShell>
 
       {(s.phase === 'won' || s.phase === 'lost') && <ResultModal won={s.phase === 'won'} level={s.level} onNew={newGame} />}
-      {showRules && <RulesModal onClose={() => setShowRules(false)} />}
+      {showRules && <RulesModal online={net.online} onClose={() => setShowRules(false)} />}
     </>
   )
 }
@@ -243,14 +261,14 @@ function ResultModal({ won, level, onNew }: { won: boolean; level: number; onNew
   )
 }
 
-function RulesModal({ onClose }: { onClose: () => void }) {
+function RulesModal({ online, onClose }: { online: boolean; onClose: () => void }) {
   return (
     <Modal eyebrow="How to play" title="The Mind" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Begin</button>}>
       <div className="modal-body">
-        <p><b>The Mind</b> is cooperative — you and <b>two AI partners</b> share one goal and <b>never communicate</b>. The deck is numbered <b>1 to 100</b>.</p>
+        <p><b>The Mind</b> is cooperative — you and {online ? <>your <b>teammates</b></> : <>two <b>AI partners</b></>} share one goal and <b>never communicate</b>. The deck is numbered <b>1 to 100</b>.</p>
         <p>Each <b>level</b>, everyone is dealt that many cards (level 1 → 1 card each, level 2 → 2 each, and so on). The team must play <b>every card</b> onto a single shared pile in <b>strictly ascending order</b>.</p>
-        <p>There are <b>no turns</b>. Your partners play on their own timing; <b>you play your lowest card</b> with the button (or <kbd>Space</kbd>) whenever you sense it's the lowest one left. If any card is played while someone still holds a <b>lower</b> one, the team <b>loses a life</b> and those lower cards are revealed and discarded.</p>
+        <p>There are <b>no turns</b>. Everyone senses the timing together; <b>you play your lowest card</b> with the button (or <kbd>Space</kbd>) whenever you sense it's the lowest one left. If any card is played while someone still holds a <b>lower</b> one, the team <b>loses a life</b> and those lower cards are revealed and discarded.</p>
         <p>You have <b>{M.START_LIVES} lives</b> and a <b>shuriken</b> (★): spend it (or <kbd>S</kbd>) and everyone discards their lowest card face up — no life lost. Clear all <b>{M.MAX_LEVEL} levels</b> to win; lose all lives and the game ends.</p>
         <p><b>Keys:</b> <kbd>Space</kbd> play lowest · <kbd>S</kbd> shuriken · <kbd>N</kbd> new · <kbd>?</kbd> rules · <kbd>Esc</kbd> close.</p>
       </div>

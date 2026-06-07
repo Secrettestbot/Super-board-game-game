@@ -4,11 +4,13 @@
    P0 each round across 10 rounds. The AI drafts several times per game, so its driver
    re-arms on s.step (useAITurn tick). End state is shown by default at game over. */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { sagradaAdapter } from './net'
 import * as S from './logic'
 import type { SagradaState, Cell, Die, Player, Color } from './logic'
 
@@ -51,21 +53,25 @@ function CellView({
 }
 
 function Window({
-  s, player, isYou, targets, onCell,
+  s, player, isYou, foeLabel, targets, onCell,
 }: {
-  s: SagradaState; player: Player; isYou: boolean
+  s: SagradaState; player: Player; isYou: boolean; foeLabel: string
   targets: Set<number>; onCell?: (i: number) => void
 }) {
   const bd = S.scoreWindow(s, player)
   const active = s.winner == null && s.turn === player
   const cls = ['sg-board', isYou ? 'you' : 'foe']
   if (active) cls.push('active')
+  // Your own secret is always visible to you; the opponent's only at game end. In online
+  // play redactFor blanks the foe's secret to a non-colour, so it never reaches the client.
+  const knownSecret = isYou || s.winner != null
+  const secret = s.secret[player]
   return (
     <div className={cls.join(' ')}>
       <div className="sg-board-head">
         <span className="sg-board-who">
           <span className={'sg-pawn ' + (isYou ? 'you' : 'foe')} />
-          {isYou ? 'Your window' : 'AI window'}
+          {isYou ? 'Your window' : `${foeLabel} window`}
         </span>
         <span className="sg-board-score">{bd.total} pts</span>
       </div>
@@ -75,33 +81,35 @@ function Window({
         ))}
       </div>
       <div className="sg-secret">
-        secret colour · <span style={{ color: 'var(--ink-2)' }}>{isYou || s.winner != null ? s.secret[player] : 'hidden'}</span>
+        secret colour · <span style={{ color: 'var(--ink-2)' }}>{knownSecret ? secret : 'hidden'}</span>
       </div>
     </div>
   )
 }
 
 export function Sagrada() {
-  const [s, setS] = useState<SagradaState>(() => S.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(sagradaAdapter)
   const [sel, setSel] = useState<number | null>(null) // selected draft-pool index (yours)
   const [showRules, setShowRules] = useState(false)
 
-  function newGame() { setS(S.makeGame()); setSel(null); setShowRules(false) }
+  // Seat-relative: you sit at mySeat (0 in solo / when hosting, 1 as a guest); the
+  // opponent is the other seat. In online play the rival is a person -> "Opponent".
+  const me: Player = (mySeat === 1 ? 1 : 0)
+  const foe: Player = (me === 0 ? 1 : 0)
+  const foeLabel = net.online ? 'Opponent' : 'AI'
 
-  const yourTurn = s.winner == null && s.turn === 0
-  const aiTurn = s.winner == null && s.turn === 1
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
 
-  // AI drafts many times across the game — re-arm on s.step (the action counter).
-  useAITurn(aiTurn, () => setS(p => S.aiTurn(p)), { delayMs: 620, tick: s.step })
+  const yourTurn = s.winner == null && isMyTurn
 
-  // If it's your turn but you cannot legally place any pooled die, auto-skip after a beat.
+  // If it's your turn but you cannot legally place any pooled die, auto-pass after a beat.
   useEffect(() => {
     if (!yourTurn) return
-    if (!S.hasLegalMove(s, 0)) {
-      const id = setTimeout(() => setS(p => (p.turn === 0 && p.winner == null && !S.hasLegalMove(p, 0)) ? S.skipPick(p, 0) : p), 700)
+    if (!S.hasLegalMove(s, me)) {
+      const id = setTimeout(() => { dispatch({ kind: 'pass' }) }, 700)
       return () => clearTimeout(id)
     }
-  }, [s, yourTurn])
+  }, [s, yourTurn, me, dispatch])
 
   // Clear a stale selection if the pool/turn changed.
   useEffect(() => { setSel(null) }, [s.round, s.step])
@@ -115,7 +123,7 @@ export function Sagrada() {
   // Legal placement targets for the currently selected die (yours).
   const targets = (() => {
     if (!yourTurn || sel == null || sel >= s.pool.length) return new Set<number>()
-    return new Set(S.legalPlacements(s.windows[0], s.pool[sel]))
+    return new Set(S.legalPlacements(s.windows[me], s.pool[sel]))
   })()
 
   function draftDie(i: number) {
@@ -124,23 +132,23 @@ export function Sagrada() {
   }
   function placeAt(cell: number) {
     if (!yourTurn || sel == null) return
-    setS(p => S.placeDie(p, 0, sel, cell))
+    dispatch({ kind: 'place', draftIndex: sel, cellIndex: cell })
     setSel(null)
   }
 
-  // Banner.
+  const youScore = S.scoreWindow(s, me).total
+  const foeScore = S.scoreWindow(s, foe).total
+
+  // Banner — relative to your seat.
   let banner: string, bk = ''
   if (s.winner != null && s.scores) {
-    if (s.winner === 0) { bk = 'win'; banner = `You win — ${s.scores[0]} to ${s.scores[1]}!` }
-    else { bk = 'lose'; banner = `The AI wins — ${s.scores[1]} to ${s.scores[0]}.` }
+    if (s.winner === me) { bk = 'win'; banner = `You win — ${youScore} to ${foeScore}!` }
+    else { bk = 'lose'; banner = `${foeLabel} wins — ${foeScore} to ${youScore}.` }
   } else if (yourTurn) {
     bk = 'you'
-    banner = !S.hasLegalMove(s, 0) ? 'No legal placement — skipping…'
+    banner = !S.hasLegalMove(s, me) ? 'No legal placement — skipping…'
       : sel == null ? 'Draft a die from the pool' : 'Place it in a highlighted cell'
-  } else { bk = 'foe'; banner = 'The AI is drafting…' }
-
-  const youScore = S.scoreWindow(s, 0).total
-  const aiScore = S.scoreWindow(s, 1).total
+  } else { bk = 'foe'; banner = `${foeLabel} is drafting…` }
 
   return (
     <>
@@ -151,7 +159,7 @@ export function Sagrada() {
         subtitle="draft jewel-toned dice and lead them into your window — match the patterns, never repeat a neighbour's colour or value"
         onRules={() => setShowRules(true)}
         onNew={newGame}
-        modeLeft={`Round ${s.round} / ${S.ROUNDS} · You ${youScore} · AI ${aiScore}`}
+        modeLeft={`Round ${s.round} / ${S.ROUNDS} · You ${youScore} · ${foeLabel} ${foeScore}`}
         banner={banner}
         bannerClass={bk}
         modeRight={<>click · draft &amp; place &nbsp; N · new &nbsp; ? · rules</>}
@@ -162,7 +170,7 @@ export function Sagrada() {
             <div className="sg-pool">
               {s.pool.length === 0 ? <span className="sg-pool-empty">pool empty</span>
                 : s.pool.map((d, i) => {
-                  const draftable = yourTurn && S.canPlaceAnywhere(s.windows[0], d)
+                  const draftable = yourTurn && S.canPlaceAnywhere(s.windows[me], d)
                   return (
                     <div
                       key={i}
@@ -178,8 +186,8 @@ export function Sagrada() {
           </div>
 
           <div className="sg-windows">
-            <Window s={s} player={0} isYou targets={targets} onCell={placeAt} />
-            <Window s={s} player={1} isYou={false} targets={new Set()} />
+            <Window s={s} player={me} isYou foeLabel={foeLabel} targets={targets} onCell={placeAt} />
+            <Window s={s} player={foe} isYou={false} foeLabel={foeLabel} targets={new Set()} />
           </div>
         </div>
 
@@ -188,9 +196,9 @@ export function Sagrada() {
             <div className="sg-obj-h">Objectives</div>
             <div className="sg-obj priv">
               <div className="sg-obj-name">
-                <span className={'sg-swatch ' + s.secret[0]} /> Private · {s.secret[0]}
+                <span className={'sg-swatch ' + s.secret[me]} /> Private · {s.secret[me]}
               </div>
-              <div className="sg-obj-desc">Sum the pips of every {s.secret[0]} die in your window.</div>
+              <div className="sg-obj-desc">Sum the pips of every {s.secret[me]} die in your window.</div>
             </div>
             {s.publics.map(o => (
               <div className="sg-obj" key={o.id}>
@@ -203,8 +211,10 @@ export function Sagrada() {
 
           <div className="panel sg-scorebox">
             <div className="sg-srow"><span className={'sg-pawn you'} /><span className="sg-who">You</span><span className="sg-pts">{youScore}</span></div>
-            <div className="sg-srow"><span className={'sg-pawn foe'} /><span className="sg-who">AI</span><span className="sg-pts">{aiScore}</span></div>
+            <div className="sg-srow"><span className={'sg-pawn foe'} /><span className="sg-who">{foeLabel}</span><span className="sg-pts">{foeScore}</span></div>
           </div>
+
+          <div className="panel"><OnlineBar net={net} /></div>
 
           <div className="panel logbox">
             {s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}
@@ -212,17 +222,19 @@ export function Sagrada() {
         </div>
       </GameShell>
 
-      {s.winner != null && s.scores && <ResultModal s={s} onNew={newGame} />}
-      {showRules && <RulesModal secret={s.secret[0]} onClose={() => setShowRules(false)} />}
+      {s.winner != null && s.scores && <ResultModal s={s} me={me} foe={foe} foeLabel={foeLabel} onNew={newGame} />}
+      {showRules && <RulesModal secret={s.secret[me]} foeLabel={foeLabel} onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ s, onNew }: { s: SagradaState; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ s, me, foe, foeLabel, onNew }: {
+  s: SagradaState; me: Player; foe: Player; foeLabel: string; onNew: () => void
+}) {
+  const won = s.winner === me
   const tie = s.scores![0] === s.scores![1]
-  const bdY = S.scoreWindow(s, 0)
-  const bdA = S.scoreWindow(s, 1)
+  const bdY = S.scoreWindow(s, me)
+  const bdA = S.scoreWindow(s, foe)
   function Col({ who, bd, cls }: { who: string; bd: S.ScoreBreakdown; cls: string }) {
     return (
       <div className={'sg-fcol ' + cls}>
@@ -237,26 +249,26 @@ function ResultModal({ s, onNew }: { s: SagradaState; onNew: () => void }) {
   return (
     <Modal
       eyebrow={won ? 'Window of light' : tie ? 'Dead heat' : 'Outshone'}
-      title={won ? 'You Win' : tie ? 'Tie — You Win' : 'AI Wins'}
+      title={won ? 'You Win' : tie ? 'Tie — You Win' : `${foeLabel} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="modal-body">
         <div className="sg-final">
           <Col who="You" bd={bdY} cls="you" />
-          <Col who="AI" bd={bdA} cls="foe" />
+          <Col who={foeLabel} bd={bdA} cls="foe" />
         </div>
       </div>
     </Modal>
   )
 }
 
-function RulesModal({ secret, onClose }: { secret: Color; onClose: () => void }) {
+function RulesModal({ secret, foeLabel, onClose }: { secret: Color; foeLabel: string; onClose: () => void }) {
   return (
     <Modal eyebrow="How to play" title="Sagrada" onClose={onClose}
       actions={<button className="btn-modal" onClick={onClose}>Begin</button>}>
       <div className="modal-body">
-        <p>Fill your <b>5×4 window</b> (20 cells) with drafted dice over <b>10 rounds</b>. Each round five dice are rolled into a shared <b>draft pool</b>; you and the AI alternate drafting one die in snake order (You, AI, AI, You) and leading it into your window.</p>
+        <p>Fill your <b>5×4 window</b> (20 cells) with drafted dice over <b>10 rounds</b>. Each round five dice are rolled into a shared <b>draft pool</b>; you and the {foeLabel} alternate drafting one die in snake order (You, {foeLabel}, {foeLabel}, You) and leading it into your window.</p>
         <p><b>Placement:</b> your first die must touch an <b>edge or corner</b>. Every later die must sit <b>orthogonally adjacent</b> to a placed die and may <i>not</i> touch a die of the <b>same colour</b> or <b>same value</b>. A cell's printed colour tint or engraved value must be matched.</p>
         <p><b>Scoring at the end:</b> your <b>private</b> objective sums the pips of your secret colour (this game: <b>{secret}</b>). Three <b>public</b> objectives (shown in the side panel) reward patterns across both windows. Then <b>−1 per empty cell</b>. Highest total wins; ties go to you.</p>
         <p><b>Keys:</b> <kbd>N</kbd> new game · <kbd>?</kbd> rules · <kbd>Esc</kbd> deselect/close. Click a pool die, then a highlighted cell to place it.</p>

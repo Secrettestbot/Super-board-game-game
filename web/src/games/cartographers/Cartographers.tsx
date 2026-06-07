@@ -3,16 +3,20 @@
    Pick a shape option, rotate/flip it, choose an allowed terrain, then hover the board and
    click to stamp it. Two edicts score each season; highest total over 4 seasons wins.
 
-   The AI places several times across a season, so its driver re-arms on s.step (useAITurn
-   tick). The end state is shown by default — no hiding entrance animation on content. */
+   Online-capable via useGameSession(cartographersAdapter): the hook drives the rival seat
+   (AI when local, a remote human when hosting/joining) and re-arms on the logic's tickKey.
+   Everything is seat-relative — your map/score/edicts come from mySeat — so a guest plays
+   seat 1 just as the host plays seat 0. The end state is shown by default. */
 
 import { useEffect, useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { cartographersAdapter } from './net'
 import * as C from './logic'
-import type { State, Terrain, Shape, Cell, Edict } from './logic'
+import type { State, Terrain, Shape, Cell, Edict, Player } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -39,7 +43,9 @@ function cellClass(v: Cell): string {
 }
 
 export function Cartographers() {
-  const [s, setS] = useState<State>(() => C.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(cartographersAdapter)
+  const me = mySeat as Player // seat 0 = you, seat 1 = rival
+  const opp = (1 - me) as Player
   const [showRules, setShowRules] = useState(false)
   // Player input scratch state (reset per card).
   const [shapeIdx, setShapeIdx] = useState(0)
@@ -48,14 +54,13 @@ export function Cartographers() {
   const [hover, setHover] = useState<number | null>(null)
 
   function newGame() {
-    setS(C.makeGame())
+    netNew()
     setShowRules(false)
+    setShapeIdx(0); setOriIdx(0); setHover(null); setTerrain(null)
   }
 
-  const yourTurn = s.phase === 'placing' && !s.maps[0].placed
-  // AI plays after you've placed (sequential, clearer to watch). Re-arms on s.step.
-  useAITurn(s.phase === 'placing' && s.maps[0].placed && !s.maps[1].placed && s.winner == null,
-    () => setS(p => { const n = C.aiTurn(p); return n }), { delayMs: 520, tick: s.step })
+  // It's your move when the session says so AND you still owe a placement this card.
+  const yourTurn = s.phase === 'placing' && isMyTurn && !s.maps[me].placed
 
   // Current card's chosen shape, all its orientations.
   const shapes: Shape[] = s.card ? s.card.shapes : []
@@ -72,7 +77,7 @@ export function Cartographers() {
     // A placement is legal if its absolute cells are all open AND (ruins rule) — we test
     // each anchor directly, matching legalPlacements but keyed by the anchor cell.
     const set = new Set<number>()
-    const grid = s.maps[0].grid
+    const grid = s.maps[me].grid
     const maxR = Math.max(...ori.map(c => c[0]))
     const maxC = Math.max(...ori.map(c => c[1]))
     const ruinsOpen = grid.some(v => v === 'ruins')
@@ -92,7 +97,7 @@ export function Cartographers() {
       set.add(cand.anchor)
     }
     return set
-  }, [yourTurn, s.card, ori, s.maps[0].grid])
+  }, [yourTurn, s.card, ori, s.maps[me].grid])
 
   // Cells of the previewed placement at the hovered anchor.
   const previewCells = useMemo(() => {
@@ -113,9 +118,8 @@ export function Cartographers() {
     if (!legalAnchors.has(i)) return
     const r0 = Math.floor(i / C.SIZE), c0 = i % C.SIZE
     const cells = ori.map(([dr, dc]) => [r0 + dr, c0 + dc] as [number, number])
-    const next = C.placeShape(s, 0, cells, terrain)
-    setS(next)
-    // After you place, the AI takes over (driven by useAITurn). Keep input ready for next card.
+    dispatch({ kind: 'place', shapeId: shapeIdx, cells, terrain })
+    // After you place, the host advances (rival/AI, then next card). Keep input ready.
     setHover(null)
   }
 
@@ -134,7 +138,7 @@ export function Cartographers() {
   function canPlaceAnywhere(): boolean {
     if (!s.card) return false
     for (const sh of s.card.shapes) {
-      if (C.legalPlacements(s.maps[0].grid, sh).length > 0) return true
+      if (C.legalPlacements(s.maps[me].grid, sh).length > 0) return true
     }
     return false
   }
@@ -154,12 +158,16 @@ export function Cartographers() {
   })
 
   const curPair = C.edictPair(s.season)
-  const you = s.maps[0], foe = s.maps[1]
+  const you = s.maps[me], foe = s.maps[opp]
+  const myWin = s.winner === me
+  const foeLabel = net.online ? `Player ${opp + 1}` : 'the rival'
+  const foeName = net.online ? `Player ${opp + 1}` : 'Rival'
+  const foeDrawing = net.online ? `${foeName} is drawing their map…` : 'The rival is drawing their map…'
 
   let banner: string, bk = ''
   if (s.phase === 'over') {
-    if (s.winner === 0) { bk = 'win'; banner = `You win — ${you.score} to ${foe.score}!` }
-    else if (s.winner === 1) { bk = 'lose'; banner = `The rival wins — ${foe.score} to ${you.score}` }
+    if (myWin) { bk = 'win'; banner = `You win — ${you.score} to ${foe.score}!` }
+    else if (s.winner === opp) { bk = 'lose'; banner = `${foeName} wins — ${foe.score} to ${you.score}` }
     else { banner = `A draw — ${you.score} all` }
   } else if (s.phase === 'seasonEnd') {
     bk = 'you'; banner = `${C.SEASON_NAMES[s.season]} scored — begin ${C.SEASON_NAMES[s.season + 1]}`
@@ -168,7 +176,7 @@ export function Cartographers() {
   } else if (yourTurn) {
     bk = 'you'; banner = terrain ? `Draw the ${s.card?.name} as ${TERRAIN_LABEL[terrain]}` : 'Choose a terrain'
   } else {
-    bk = 'foe'; banner = 'The rival is drawing their map…'
+    bk = 'foe'; banner = `${foeDrawing}`
   }
 
   return (
@@ -245,7 +253,7 @@ export function Cartographers() {
                 <div className="ct-actions">
                   <button className="ct-btn" onClick={() => setOriIdx(v => (v + 1) % Math.max(1, oris.length))}>Rotate</button>
                   <button className="ct-btn" onClick={() => setOriIdx(v => (v + 4) % Math.max(1, oris.length))}>Flip</button>
-                  {deadlocked && <button className="ct-btn skip" onClick={() => setS(C.skipPlacement(s, 0))}>Skip</button>}
+                  {deadlocked && <button className="ct-btn skip" onClick={() => dispatch({ kind: 'skip' })}>Skip</button>}
                 </div>
               )}
               <div className="ct-hint">
@@ -253,7 +261,7 @@ export function Cartographers() {
                   : deadlocked ? 'This shape fits nowhere. Skip the card.'
                   : yourTurn ? 'Pick terrain + orientation, then click a glowing cell to stamp.'
                   : s.phase === 'over' ? 'The realm is fully charted.'
-                  : 'The rival is drawing…'}
+                  : `${foeName} is drawing…`}
               </div>
             </div>
 
@@ -271,29 +279,31 @@ export function Cartographers() {
 
           {/* OPPONENT MAP (smaller) */}
           <div className="ct-mapwrap foe">
-            <div className="ct-maptitle"><span className="ct-dot foe" />Rival <b>{foe.score}</b></div>
+            <div className="ct-maptitle"><span className="ct-dot foe" />{foeName} <b>{foe.score}</b></div>
             <div className="ct-grid small">
               {foe.grid.map((v, i) => <div key={i} className={cellClass(v)} />)}
             </div>
             <div className="ct-scoreline">
-              <SeasonBar label="You" scores={evenScores(s.seasonScores)} total={you.score} cls="you" />
-              <SeasonBar label="Rival" scores={oddScores(s.seasonScores)} total={foe.score} cls="foe" />
+              <SeasonBar label="You" scores={seatScores(s.seasonScores, me)} total={you.score} cls="you" />
+              <SeasonBar label={foeName} scores={seatScores(s.seasonScores, opp)} total={foe.score} cls="foe" />
             </div>
+            <OnlineBar net={net} />
           </div>
         </div>
       </GameShell>
 
       {s.phase === 'seasonEnd' && (
-        <SeasonModal s={s} onContinue={() => setS(C.nextSeason(s))} />
+        <SeasonModal s={s} me={me} opp={opp} foeName={foeName} canContinue={isMyTurn}
+          onContinue={() => dispatch({ kind: 'next' })} />
       )}
-      {s.phase === 'over' && <ResultModal s={s} onNew={newGame} />}
+      {s.phase === 'over' && <ResultModal s={s} me={me} opp={opp} foeName={foeName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function evenScores(a: number[]): number[] { return a.filter((_, i) => i % 2 === 0) }
-function oddScores(a: number[]): number[] { return a.filter((_, i) => i % 2 === 1) }
+/** seasonScores is interleaved [p0, p1, p0, p1, …]; pull out one seat's per-season deltas. */
+function seatScores(a: number[], seat: number): number[] { return a.filter((_, i) => i % 2 === seat) }
 
 function ShapeMini({ shape }: { shape: Shape }) {
   const norm = C.normalize(shape)
@@ -331,23 +341,25 @@ function SeasonBar({ label, scores, total, cls }: { label: string; scores: numbe
   )
 }
 
-function SeasonModal({ s, onContinue }: { s: State; onContinue: () => void }) {
+function SeasonModal({ s, me, opp, foeName, canContinue, onContinue }: { s: State; me: Player; opp: Player; foeName: string; canContinue: boolean; onContinue: () => void }) {
   const pair = s.scoredEdicts
   const es: [Edict, Edict] = [s.edicts[pair[0]], s.edicts[pair[1]]]
-  const yd = C.seasonScore({ ...s.maps[0] }, es)
-  const fd = C.seasonScore({ ...s.maps[1] }, es)
+  const yd = C.seasonScore({ ...s.maps[me] }, es)
+  const fd = C.seasonScore({ ...s.maps[opp] }, es)
   return (
     <Modal
       eyebrow={`${C.SEASON_NAMES[s.season]} · season ${s.season + 1} scored`}
       title={`${es[0].name} + ${es[1].name}`}
       closeOnOverlay={false}
-      actions={<button className="btn-modal" onClick={onContinue}>Continue</button>}
+      actions={canContinue
+        ? <button className="btn-modal" onClick={onContinue}>Continue</button>
+        : <button className="btn-modal" disabled>Waiting for host…</button>}
     >
       <div className="modal-body">
         <div className="ct-seasontable">
-          <div className="ct-st-row head"><span /><span>You</span><span>Rival</span></div>
+          <div className="ct-st-row head"><span /><span>You</span><span>{foeName}</span></div>
           <div className="ct-st-row"><span>This season</span><span className="you">+{yd}</span><span className="foe">+{fd}</span></div>
-          <div className="ct-st-row total"><span>Running total</span><span className="you">{s.maps[0].score}</span><span className="foe">{s.maps[1].score}</span></div>
+          <div className="ct-st-row total"><span>Running total</span><span className="you">{s.maps[me].score}</span><span className="foe">{s.maps[opp].score}</span></div>
         </div>
         <p>Next: <b>{C.SEASON_NAMES[s.season + 1]}</b> scores <b>{C.EDICTS[C.edictPair(s.season + 1)[0]].name}</b> + <b>{C.EDICTS[C.edictPair(s.season + 1)[1]].name}</b>.</p>
       </div>
@@ -355,20 +367,20 @@ function SeasonModal({ s, onContinue }: { s: State; onContinue: () => void }) {
   )
 }
 
-function ResultModal({ s, onNew }: { s: State; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ s, me, opp, foeName, onNew }: { s: State; me: Player; opp: Player; foeName: string; onNew: () => void }) {
+  const won = s.winner === me
   const draw = s.winner === 2
   return (
     <Modal
       eyebrow={draw ? 'Evenly charted' : won ? 'The realm is yours' : 'Out-mapped'}
-      title={draw ? 'A Draw' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'A Draw' : won ? 'You Win' : `${foeName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
       <div className="modal-body">
         <div className="finalsc">
-          <span className="you">You {s.maps[0].score}</span>
-          <span className="foe">Rival {s.maps[1].score}</span>
+          <span className="you">You {s.maps[me].score}</span>
+          <span className="foe">{foeName} {s.maps[opp].score}</span>
         </div>
         <p>Four seasons charted across the eleven-by-eleven realm. Highest cumulative edict and coin total wins.</p>
       </div>
