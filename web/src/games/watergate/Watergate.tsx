@@ -1,15 +1,21 @@
-/* WATERGATE — UI (built for this codebase). A 1970s-newsprint tug-of-war: you are the
-   Washington Post EDITOR pulling evidence to your side; the AI is NIXON pushing momentum
-   to his wall. Play a card for its VALUE (pick a token to move) or its EVENT. The AI plays
-   one card per turn across rounds, so its driver re-arms on a monotonic tick. */
+/* WATERGATE — UI. A 1970s-newsprint tug-of-war between the Washington Post EDITOR (pulls
+   evidence to the front page) and NIXON's administration (pushes momentum to his wall).
+   Play a card for its VALUE (pick a token to move) or its EVENT.
+
+   Online-capable & seat-relative: the local player controls mySeat's side (seat 0 = Editor,
+   seat 1 = Nixon), sees only its own hand, and the tug track is drawn so the local side's
+   end is on the right ("your side"). Empty seats are driven by the existing AI via the hook;
+   isMyTurn gates all actions. Solo play is unchanged (mySeat 0 = Editor, AI = Nixon). */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { OnlineBar } from '../../framework/OnlineBar'
+import { useGameSession } from '../../net/useGameSession'
+import { watergateAdapter } from './net'
 import * as W from './logic'
-import type { WatergateState, Card, Token } from './logic'
+import type { Card, Token, Player } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -35,35 +41,21 @@ const EVENT_TAG: Record<string, string> = {
   surge: 'SURGE', shred: 'SHRED', subpoena: 'SUBPOENA', recount: 'RECOUNT', draw2: 'TIP',
 }
 
-// fraction 0..1 of position p across the full track for left-offset rendering
-function frac(p: number): number {
-  return (p + W.TRACK) / (W.TRACK * 2)
-}
-
 export function Watergate() {
-  const [s, setS] = useState<WatergateState>(() => W.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(watergateAdapter)
+  const me = mySeat as Player          // 0 = Editor, 1 = Nixon
+  const foe = (1 - me) as Player
+  const iAmEditor = me === W.EDITOR
+
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<{ id: number; kind: 'value' | 'event' } | null>(null)
-  const [aiTick, setAiTick] = useState(0)
   const logRef = useRef<HTMLDivElement>(null)
 
   function newGame() {
-    setS(W.makeGame())
+    netNew()
     setShowRules(false)
     setSel(null)
-    setAiTick((t) => t + 1)
   }
-
-  // The AI plays one card per turn, across rounds — re-arm on a monotonic tick that
-  // changes every AI action so the driver never stalls.
-  useAITurn(
-    s.winner == null && s.turn === W.NIXON,
-    () => {
-      setS((p) => W.aiTurn(p))
-      setAiTick((t) => t + 1)
-    },
-    { delayMs: 650, tick: aiTick },
-  )
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = 0
@@ -78,25 +70,30 @@ export function Watergate() {
     },
   })
 
-  const yourTurn = s.winner == null && s.turn === W.EDITOR
+  const yourTurn = s.winner == null && isMyTurn
   const links = W.linkCount(s)
   const mom = W.momentum(s)
   const evs = W.evidenceTokens(s)
   const infs = W.informantTokens(s)
 
-  // selected card object (if any)
-  const selCard: Card | undefined = sel ? s.hands[W.EDITOR].find((c) => c.id === sel.id) : undefined
-  // when a VALUE card is selected, which tokens may the editor click to move?
-  const movableIds = new Set(W.movableTokens(s, W.EDITOR).map((t) => t.id))
+  // fraction 0..1 across the track for left-offset rendering, oriented so the LOCAL
+  // player's wall/goal is on the right. Editor's goal is +TRACK; Nixon's wall is -TRACK.
+  function frac(p: number): number {
+    const raw = (p + W.TRACK) / (W.TRACK * 2)
+    return iAmEditor ? raw : 1 - raw
+  }
+
+  // selected card object (must be in MY live hand)
+  const selCard: Card | undefined = sel ? s.hands[me].find((c) => c.id === sel.id) : undefined
+  // when a VALUE card is selected, which tokens may I click to move?
+  const movableIds = new Set(W.movableTokens(s, me).map((t) => t.id))
   const awaitingToken = !!(selCard && sel?.kind === 'value')
 
   function pickCard(c: Card, kind: 'value' | 'event') {
     if (!yourTurn) return
     if (kind === 'event') {
-      // events resolve immediately
-      setS(W.playEvent(s, W.EDITOR, c.id))
+      dispatch({ kind: 'play', cardId: c.id, useFor: 'event' })
       setSel(null)
-      setAiTick((t) => t + 1)
       return
     }
     // value: arm token-selection
@@ -106,28 +103,45 @@ export function Watergate() {
   function clickToken(t: Token) {
     if (!awaitingToken || !selCard) return
     if (!movableIds.has(t.id)) return
-    setS(W.playValue(s, W.EDITOR, selCard.id, [{ id: t.id, amount: selCard.value }]))
+    dispatch({
+      kind: 'play',
+      cardId: selCard.id,
+      useFor: 'value',
+      tokens: [{ id: t.id, amount: selCard.value }],
+    })
     setSel(null)
-    setAiTick((tk) => tk + 1)
   }
+
+  // seat-relative labels
+  const oppLabel = net.online ? 'Opponent' : iAmEditor ? 'Nixon' : 'The Post'
+  const myName = iAmEditor ? 'The Post' : 'Nixon'
+  const myWin = s.winner === me
 
   let banner: string, bk = ''
-  if (s.winner === W.EDITOR) {
-    bk = 'win'
-    banner = 'The story runs — the Post wins!'
-  } else if (s.winner === W.NIXON) {
-    bk = 'lose'
-    banner = 'The administration buries it — Nixon wins'
+  if (s.winner != null) {
+    if (myWin) {
+      bk = 'win'
+      banner = iAmEditor ? 'The story runs — you win!' : 'You buried it — you win!'
+    } else {
+      bk = 'lose'
+      banner = iAmEditor ? 'The administration buries it — you lose' : 'The story runs — you lose'
+    }
   } else if (yourTurn) {
     bk = 'you'
-    banner = awaitingToken ? 'Choose a token to pull toward the Post' : 'Your move — play a card for value or event'
+    banner = awaitingToken
+      ? `Choose a token to ${iAmEditor ? 'pull toward the Post' : 'shove toward Nixon'}`
+      : 'Your move — play a card for value or event'
   } else {
     bk = 'foe'
-    banner = "Nixon's people are working the phones…"
+    banner = net.online
+      ? `${oppLabel} is deciding…`
+      : "Nixon's people are working the phones…"
   }
 
-  // group evidence + informant for the board lanes
+  // group momentum + informant + evidence for the board lanes
   const laneTokens: Token[] = [mom, ...infs, ...evs]
+  // momentum progress toward Nixon's wall (-TRACK), shown on the Nixon bar.
+  const momToWall = mom.pos <= -W.TRACK ? 'WALL' : -mom.pos + W.TRACK
 
   return (
     <>
@@ -148,14 +162,14 @@ export function Watergate() {
         modeRight={<>click card · click token &nbsp; N · new &nbsp; ? · rules</>}
       >
         <div className="wg-wrap">
-          {/* tug-of-war board */}
+          {/* tug-of-war board, oriented so MY end is on the right */}
           <div className="wg-board">
             <div className="wg-ends">
-              <div className="wg-end foe">
+              <div className={'wg-end ' + (iAmEditor ? 'foe' : 'you')}>
                 <span className="wg-end-l">NIXON</span>
                 <span className="wg-end-s">momentum wall</span>
               </div>
-              <div className="wg-end you">
+              <div className={'wg-end ' + (iAmEditor ? 'you' : 'foe')}>
                 <span className="wg-end-l">THE POST</span>
                 <span className="wg-end-s">front page</span>
               </div>
@@ -201,14 +215,14 @@ export function Watergate() {
             </div>
           </div>
 
-          {/* hand */}
+          {/* hand — always MY own hand (redacted views hide the opponent's) */}
           <div className="wg-hand">
             <div className="wg-hand-l">
               your hand {yourTurn ? '' : '· (waiting)'}
             </div>
             <div className="wg-cards">
-              {s.hands[W.EDITOR].length === 0 && <div className="wg-empty">no cards — round resolving…</div>}
-              {s.hands[W.EDITOR].map((c) => {
+              {s.hands[me].length === 0 && <div className="wg-empty">no cards — round resolving…</div>}
+              {s.hands[me].map((c) => {
                 const isSelVal = sel?.id === c.id && sel.kind === 'value'
                 return (
                   <div className={'wg-card' + (isSelVal ? ' armed' : '')} key={c.id}>
@@ -237,7 +251,7 @@ export function Watergate() {
             </div>
             {awaitingToken && selCard && (
               <div className="wg-prompt">
-                Pulling with <b>{selCard.value}</b> power — click a glowing evidence or informant token.
+                {iAmEditor ? 'Pulling' : 'Shoving'} with <b>{selCard.value}</b> power — click a glowing token.
                 <button className="wg-cancel" onClick={() => setSel(null)}>cancel</button>
               </div>
             )}
@@ -246,24 +260,30 @@ export function Watergate() {
 
         {/* side panel */}
         <div className="side">
+          <div className="panel">
+            <OnlineBar net={net} />
+          </div>
+
           <div className="panel wg-status">
-            <div className="wg-srow you-row">
-              <span className="wg-dot you" />
-              <span className="wg-who">The Post</span>
+            <div className={'wg-srow ' + (iAmEditor ? 'you-row' : 'foe-row')}>
+              <span className={'wg-dot ' + (iAmEditor ? 'you' : 'foe')} />
+              <span className="wg-who">The Post{iAmEditor ? ' (you)' : ''}</span>
               <span className="wg-goal">{links}/{W.LINKS_TO_WIN} links</span>
             </div>
             <div className="wg-bar">
-              <div className="wg-bar-fill you" style={{ width: (links / W.LINKS_TO_WIN) * 100 + '%' }} />
+              <div className={'wg-bar-fill ' + (iAmEditor ? 'you' : 'foe')} style={{ width: (links / W.LINKS_TO_WIN) * 100 + '%' }} />
             </div>
-            <div className="wg-srow foe-row">
-              <span className="wg-dot foe" />
-              <span className="wg-who">Nixon</span>
-              <span className="wg-goal">momentum {mom.pos <= -W.TRACK ? 'WALL' : (-mom.pos + W.TRACK)}/{W.TRACK * 2}</span>
+            <div className={'wg-srow ' + (iAmEditor ? 'foe-row' : 'you-row')}>
+              <span className={'wg-dot ' + (iAmEditor ? 'foe' : 'you')} />
+              <span className="wg-who">Nixon{iAmEditor ? '' : ' (you)'}</span>
+              <span className="wg-goal">momentum {momToWall}{momToWall === 'WALL' ? '' : '/' + W.TRACK * 2}</span>
             </div>
             <div className="wg-bar">
-              <div className="wg-bar-fill foe" style={{ width: (frac(-mom.pos) * 100) + '%' }} />
+              <div className={'wg-bar-fill ' + (iAmEditor ? 'foe' : 'you')} style={{ width: ((mom.pos <= -W.TRACK ? W.TRACK * 2 : -mom.pos + W.TRACK) / (W.TRACK * 2)) * 100 + '%' }} />
             </div>
-            <div className="wg-round">Round {s.round} of {W.ROUNDS} · {s.hands[W.EDITOR].length + s.hands[W.NIXON].length} cards in play</div>
+            <div className="wg-round">
+              Round {s.round} of {W.ROUNDS} · you hold {s.hands[me].length} · {oppLabel} holds {s.hands[foe].length}
+            </div>
           </div>
 
           <div className="panel logbox" ref={logRef}>
@@ -274,23 +294,25 @@ export function Watergate() {
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal winner={s.winner} onNew={newGame} />}
+      {s.winner != null && <ResultModal won={myWin} iAmEditor={iAmEditor} online={net.online} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
-function ResultModal({ winner, onNew }: { winner: W.Player; onNew: () => void }) {
-  const won = winner === W.EDITOR
+function ResultModal({ won, iAmEditor, online, onNew }: { won: boolean; iAmEditor: boolean; online: boolean; onNew: () => void }) {
+  const editorWon = won === iAmEditor // true iff the Post took the game
+  const eyebrow = won ? 'Above the fold' : 'Spiked'
+  const title = won ? 'You Win' : online ? 'Opponent Wins' : iAmEditor ? 'Nixon Wins' : 'The Post Wins'
   return (
     <Modal
-      eyebrow={won ? 'Above the fold' : 'Spiked'}
-      title={won ? 'The Post Wins' : 'Nixon Wins'}
+      eyebrow={eyebrow}
+      title={title}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Run it again</button>}
     >
       <div className="finalsc">
-        {won ? (
+        {editorWon ? (
           <span className="you">Two evidence links printed — the story holds.</span>
         ) : (
           <span className="foe">The administration ran out the clock.</span>
@@ -309,10 +331,10 @@ function RulesModal({ onClose }: { onClose: () => void }) {
       actions={<button className="btn-modal" onClick={onClose}>Go to press</button>}
     >
       <div className="modal-body">
-        <p>An asymmetric tug-of-war. <b>You are the Washington Post editor</b>; the AI plays <b>Nixon's administration</b>. Tokens sit on a track running from Nixon's wall (left) through center to the Post's front page (right).</p>
-        <p>Each round you both hold a hand of cards. A card has a <b>value</b> (power) and an <b>event</b>. On your turn, play one card for its <b>Value</b> — then click a glowing <b>evidence</b> or <b>informant</b> token to pull it toward your side — <i>or</i> for its <b>Event</b> (a special effect, resolved at once).</p>
-        <p><b>You win</b> by completing <b>two links</b>: pull two evidence tokens all the way to the front page. <b>Nixon wins</b> by pulling the <b>momentum</b> token to his wall, or by <b>surviving all {W.ROUNDS} rounds</b> with the story unproven.</p>
-        <p><b>Events:</b> Surge (momentum your way), Subpoena (pull all evidence), Recount (momentum to center), Source Tip (draw 2). Nixon also wields Shred (knock back your leading evidence).</p>
+        <p>An asymmetric tug-of-war. One side is the <b>Washington Post editor</b>; the other is <b>Nixon's administration</b>. Tokens sit on a track running from Nixon's wall through center to the Post's front page. Your end is drawn on the right.</p>
+        <p>Each round you both hold a hand of cards. A card has a <b>value</b> (power) and an <b>event</b>. On your turn, play one card for its <b>Value</b> — then click a glowing token to move it toward your side — <i>or</i> for its <b>Event</b> (a special effect, resolved at once).</p>
+        <p><b>The Post wins</b> by completing <b>two links</b>: pulling two evidence tokens all the way to the front page. <b>Nixon wins</b> by pulling the <b>momentum</b> token to his wall, or by <b>surviving all {W.ROUNDS} rounds</b> with the story unproven.</p>
+        <p><b>Events:</b> Surge (momentum your way), Subpoena (pull all evidence), Recount (momentum to center), Source Tip (draw 2). Nixon also wields Shred (knock back the leading evidence).</p>
         <p><b>Keys:</b> <kbd>N</kbd> new game · <kbd>?</kbd> rules · <kbd>Esc</kbd> cancel / close.</p>
       </div>
     </Modal>

@@ -1,16 +1,20 @@
 /* THAT'S PRETTY CLEVER! — UI (built for this codebase). Six chunky coloured dice on a dark
-   tray, a silver platter for set-aside dice, five colour tracks per sheet. You take a 3-pick
-   active turn; the AI takes its own 3-pick turns AND a single platter die on your turns. The
-   AI's many sub-steps (roll, pick, pick, pick, platter) are driven by useAITurn's `tick` — a
-   monotonic action counter that changes on every AI sub-action so the timer keeps re-arming. */
+   tray, a silver platter for set-aside dice, five colour tracks per sheet. Online-capable via
+   useGameSession: the host runs the real logic, guests send move intents and render the public
+   view. Seat-relative — your own sheet/score come from `mySeat`, your picks are gated by
+   `isMyTurn`, and banners/score/result are stated from your seat's point of view. The AI fills
+   any empty seat (driven inside the hook); solo play is unchanged (you are seat 0, the rival is
+   an AI seat). */
 
 import { useMemo, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { thatsPrettyCleverAdapter } from './net'
 import * as G from './logic'
-import type { State, Die, Color } from './logic'
+import type { Die, Color } from './logic'
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -42,38 +46,38 @@ function DieView({ d, className = '', onClick, small }: { d: Die; className?: st
 }
 
 export function ThatsPrettyClever() {
-  const [s, setS] = useState<State>(() => G.makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(thatsPrettyCleverAdapter)
   const [showRules, setShowRules] = useState(false)
   const [sel, setSel] = useState<number | null>(null)          // selected die index in current roll/platter
-  const [aiActs, setAiActs] = useState(0)                       // monotonic AI action counter (the tick)
 
-  function newGame() { setS(G.makeGame()); setSel(null); setShowRules(false); setAiActs(0) }
+  const me = mySeat as 0 | 1
+  const foe = (me === 0 ? 1 : 0) as 0 | 1
+  const over = s.winner != null
 
-  const ai = (s.you === 0 ? 1 : 0) as 0 | 1
-  const yourActiveTurn = s.winner == null && s.active === s.you
-  const youArePlatter = s.winner == null && s.phase === 'platter' && s.platterPending.includes(s.you)
-  const aiActiveStep = s.winner == null && s.active === ai && (s.phase === 'roll' || s.phase === 'pick')
-  const aiPlatterStep = s.winner == null && s.phase === 'platter' && s.platterPending.includes(ai)
-  const aiBusy = aiActiveStep || aiPlatterStep
+  // What to call the other player on this screen.
+  const oppName = net.online ? `Player ${foe + 1}` : 'Rival'
 
-  // ONE scheduled AI sub-action. Returns true-ish progress via the action counter so the tick
-  // changes and re-arms the timer for the NEXT sub-action.
-  useAITurn(aiBusy, () => {
-    setS(prev => {
-      if (prev.winner != null) return prev
-      if (prev.active === ai && (prev.phase === 'roll' || prev.phase === 'pick')) return G.aiActiveTurn(prev)
-      if (prev.phase === 'platter' && prev.platterPending.includes(ai)) return G.aiPlatterPick(prev, ai)
-      return prev
-    })
-    setAiActs(n => n + 1)
-  }, { delayMs: 480, tick: aiActs })
+  function newGame() { netNew(); setSel(null); setShowRules(false) }
+
+  // My role this turn, from MY seat.
+  const yourActiveTurn = !over && s.active === me
+  const youArePlatter = !over && s.phase === 'platter' && s.platterPending.includes(me)
+  // The opponent (whoever is not me) is acting — show their tray as read-only.
+  const foeActive = !over && s.active === foe && (s.phase === 'roll' || s.phase === 'pick')
+  const foePlatter = !over && s.phase === 'platter' && s.platterPending.includes(foe)
+  const foeBusy = foeActive || foePlatter
+
+  // Gate all of MY interactions on isMyTurn so a guest cannot drive a seat that is not theirs.
+  const canPick = isMyTurn && yourActiveTurn && s.phase === 'pick'
+  const canRoll = isMyTurn && yourActiveTurn && s.phase === 'roll'
+  const canPlatter = isMyTurn && youArePlatter
 
   useGameKeys({
     onNew: newGame,
     onToggleRules: () => setShowRules(v => !v),
     onEscape: () => { setShowRules(false); setSel(null) },
     extra: (e) => {
-      if ((e.key === ' ' || e.key === 'Enter') && yourActiveTurn && s.phase === 'roll') { setS(G.rollDice(s)); return true }
+      if ((e.key === ' ' || e.key === 'Enter') && canRoll) { dispatch({ kind: 'roll' }); return true }
       return false
     },
   })
@@ -88,38 +92,39 @@ export function ThatsPrettyClever() {
   }, [sel, s])
 
   function clickRollDie(i: number) {
-    if (!yourActiveTurn || s.phase !== 'pick') return
+    if (!canPick) return
     const d = s.roll[i]
     if (d.color === 'white') { setSel(i); return }      // need a colour chip next
-    setS(G.pickDie(s, i)); setSel(null)
+    dispatch({ kind: 'pick', die: i }); setSel(null)
   }
   function clickPlatterDie(i: number) {
-    if (!youArePlatter) return
+    if (!canPlatter) return
     const d = s.platter[i]
     if (d.color === 'white') { setSel(i); return }
-    setS(G.platterPick(s, s.you, i)); setSel(null)
+    dispatch({ kind: 'pick', die: i }); setSel(null)
   }
   function chooseWild(c: Exclude<Color, 'white'>) {
     if (sel == null) return
-    if (s.phase === 'pick' && yourActiveTurn) { setS(G.pickDie(s, sel, c)); setSel(null) }
-    else if (s.phase === 'platter' && youArePlatter) { setS(G.platterPick(s, s.you, sel, c)); setSel(null) }
+    if (canPick) { dispatch({ kind: 'pick', die: sel, target: c }); setSel(null) }
+    else if (canPlatter) { dispatch({ kind: 'pick', die: sel, target: c }); setSel(null) }
   }
-  function roll() { if (yourActiveTurn && s.phase === 'roll') setS(G.rollDice(s)) }
-  function stopTurn() { if (yourActiveTurn && s.phase === 'pick') { setS(G.forfeitPick(s)); setSel(null) } }
+  function roll() { if (canRoll) dispatch({ kind: 'roll' }) }
+  function stopTurn() { if (canPick) { dispatch({ kind: 'done' }); setSel(null) } }
 
-  const t0 = G.totalScore(s.sheets[0]), t1 = G.totalScore(s.sheets[1])
-  const noLegal = yourActiveTurn && s.phase === 'pick' && !G.hasLegalPick(s)
+  const myTotal = G.totalScore(s.sheets[me]), foeTotal = G.totalScore(s.sheets[foe])
+  const noLegal = canPick && !G.hasLegalPick(s)
 
-  // banner
+  // banner — stated from MY seat
   let banner: string, bk = ''
-  if (s.winner === s.you) { bk = 'win'; banner = `You win — ${Math.max(t0, t1)} to ${Math.min(t0, t1)}` }
-  else if (s.winner === ai) { bk = 'lose'; banner = `The rival wins — ${Math.max(t0, t1)} to ${Math.min(t0, t1)}` }
-  else if (s.winner === 'draw') { bk = ''; banner = `A tie — ${t0}–${t1}` }
-  else if (yourActiveTurn && s.phase === 'roll') { bk = 'you'; banner = `Your turn — roll (${s.picksLeft} pick${s.picksLeft === 1 ? '' : 's'} left)` }
-  else if (yourActiveTurn && s.phase === 'pick') { bk = 'you'; banner = selDie?.color === 'white' ? 'White die — choose a colour track' : noLegal ? 'No legal die — end your turn' : 'Pick a die into its colour track' }
-  else if (youArePlatter) { bk = 'you'; banner = selDie?.color === 'white' ? 'White from the platter — choose a colour' : 'Take ONE die from the silver platter' }
-  else if (aiBusy) { bk = 'foe'; banner = aiPlatterStep ? 'Rival is taking a platter die…' : 'Rival is rolling & picking…' }
-  else { bk = 'foe'; banner = 'Rival is thinking…' }
+  if (s.winner === me) { bk = 'win'; banner = `You win — ${Math.max(myTotal, foeTotal)} to ${Math.min(myTotal, foeTotal)}` }
+  else if (s.winner === foe) { bk = 'lose'; banner = `${oppName} wins — ${Math.max(myTotal, foeTotal)} to ${Math.min(myTotal, foeTotal)}` }
+  else if (s.winner === 'draw') { bk = ''; banner = `A tie — ${myTotal}–${foeTotal}` }
+  else if (canRoll) { bk = 'you'; banner = `Your turn — roll (${s.picksLeft} pick${s.picksLeft === 1 ? '' : 's'} left)` }
+  else if (canPick) { bk = 'you'; banner = selDie?.color === 'white' ? 'White die — choose a colour track' : noLegal ? 'No legal die — end your turn' : 'Pick a die into its colour track' }
+  else if (canPlatter) { bk = 'you'; banner = selDie?.color === 'white' ? 'White from the platter — choose a colour' : 'Take ONE die from the silver platter' }
+  else if (yourActiveTurn || youArePlatter) { bk = 'you'; banner = 'Waiting…' }
+  else if (foeBusy) { bk = 'foe'; banner = foePlatter ? `${oppName} is taking a platter die…` : `${oppName} is rolling & picking…` }
+  else { bk = 'foe'; banner = `${oppName} is thinking…` }
 
   return (
     <>
@@ -139,9 +144,9 @@ export function ThatsPrettyClever() {
           {/* dice tray */}
           <div className="tpc-tray">
             <div className="tpc-tray-head">
-              <span className="tpc-tray-title">{yourActiveTurn ? 'Your tray' : 'Rival’s tray'}</span>
+              <span className="tpc-tray-title">{yourActiveTurn ? 'Your tray' : `${oppName}’s tray`}</span>
               <span className="tpc-tray-sub">{whiteVal != null ? `white = ${whiteVal} (adds to blue)` : 'roll to begin'}</span>
-              <span className="tpc-picks">{(s.active === s.you || aiActiveStep) && s.winner == null ? `${s.picksLeft} pick${s.picksLeft === 1 ? '' : 's'} left` : ''}</span>
+              <span className="tpc-picks">{(yourActiveTurn || foeActive) && !over ? `${s.picksLeft} pick${s.picksLeft === 1 ? '' : 's'} left` : ''}</span>
             </div>
 
             <div className="tpc-dicerow">
@@ -152,7 +157,7 @@ export function ThatsPrettyClever() {
                     key={i}
                     d={d}
                     className={sel === i ? 'selected' : ''}
-                    onClick={yourActiveTurn && s.phase === 'pick' ? () => clickRollDie(i) : undefined}
+                    onClick={canPick ? () => clickRollDie(i) : undefined}
                   />
                 ))}
             </div>
@@ -162,7 +167,7 @@ export function ThatsPrettyClever() {
               <div className="tpc-wild">
                 <span className="tpc-wild-l">use white ({selDie.value}) as:</span>
                 {G.TRACK_COLORS.map(c => {
-                  const sheet = s.sheets[s.phase === 'platter' ? s.you : s.you]
+                  const sheet = s.sheets[me]
                   const ok = G.canPlace(sheet, 'white', c, selDie.value, null)
                   return <button key={c} className={'tpc-chip ' + c} disabled={!ok} onClick={() => chooseWild(c)}>{c}</button>
                 })}
@@ -180,48 +185,54 @@ export function ThatsPrettyClever() {
                       key={i}
                       d={d}
                       small
-                      className={(youArePlatter && sel === i ? 'selected' : '') + (!youArePlatter ? ' dim' : '')}
-                      onClick={youArePlatter ? () => clickPlatterDie(i) : undefined}
+                      className={(canPlatter && sel === i ? 'selected' : '') + (!canPlatter ? ' dim' : '')}
+                      onClick={canPlatter ? () => clickPlatterDie(i) : undefined}
                     />
                   ))}
               </div>
             </div>
 
             <div className="tpc-actions">
-              {yourActiveTurn && s.phase === 'roll' && <button className="tpc-btn primary" onClick={roll}>Roll dice</button>}
-              {yourActiveTurn && s.phase === 'pick' && <button className="tpc-btn warn" onClick={stopTurn}>End turn</button>}
+              {canRoll && <button className="tpc-btn primary" onClick={roll}>Roll dice</button>}
+              {canPick && <button className="tpc-btn warn" onClick={stopTurn}>End turn</button>}
             </div>
           </div>
 
-          {/* sheets */}
+          {/* sheets — my sheet first */}
           <div className="tpc-sheets">
-            {s.sheets.map((sheet, pi) => (
-              <SheetView key={pi} sheet={sheet} name={pi === s.you ? 'You' : 'Rival'} active={s.active === pi && s.winner == null} />
+            {([me, foe] as (0 | 1)[]).map(pi => (
+              <SheetView
+                key={pi}
+                sheet={s.sheets[pi]}
+                name={pi === me ? 'You' : oppName}
+                active={s.active === pi && !over}
+              />
             ))}
           </div>
         </div>
 
         <div className="side">
           <div className="panel tpc-scorebox">
-            <div className={'tpc-score' + (s.active === s.you && s.winner == null ? ' on' : '')}>
+            <div className={'tpc-score' + (s.active === me && !over ? ' on' : '')}>
               <span className="tpc-score-name">You</span>
-              <span className="tpc-score-fox">{G.foxCount(s.sheets[s.you])}🦊</span>
-              <span className="tpc-score-n">{t0}</span>
+              <span className="tpc-score-fox">{G.foxCount(s.sheets[me])}🦊</span>
+              <span className="tpc-score-n">{myTotal}</span>
             </div>
-            <div className={'tpc-score' + (s.active === ai && s.winner == null ? ' on' : '')}>
-              <span className="tpc-score-name">Rival</span>
-              <span className="tpc-score-fox">{G.foxCount(s.sheets[ai])}🦊</span>
-              <span className="tpc-score-n">{t1}</span>
+            <div className={'tpc-score' + (s.active === foe && !over ? ' on' : '')}>
+              <span className="tpc-score-name">{oppName}</span>
+              <span className="tpc-score-fox">{G.foxCount(s.sheets[foe])}🦊</span>
+              <span className="tpc-score-n">{foeTotal}</span>
             </div>
             <div className="tpc-hint">Foxes 🦊 multiply your <b>lowest</b> track at the end.</div>
           </div>
+          <OnlineBar net={net} />
           <div className="panel logbox">
             {s.log.slice().reverse().map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}
           </div>
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} t0={t0} t1={t1} onNew={newGame} />}
+      {over && <ResultModal won={s.winner === me} draw={s.winner === 'draw'} myTotal={myTotal} foeTotal={foeTotal} oppName={oppName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
@@ -299,16 +310,15 @@ function SheetView({ sheet, name, active }: { sheet: G.Sheet; name: string; acti
   )
 }
 
-function ResultModal({ s, t0, t1, onNew }: { s: State; t0: number; t1: number; onNew: () => void }) {
-  const won = s.winner === s.you, draw = s.winner === 'draw'
+function ResultModal({ won, draw, myTotal, foeTotal, oppName, onNew }: { won: boolean; draw: boolean; myTotal: number; foeTotal: number; oppName: string; onNew: () => void }) {
   return (
     <Modal
       eyebrow={draw ? 'Dead even' : won ? 'Pretty clever!' : 'Out-played'}
-      title={draw ? 'A Tie' : won ? 'You Win' : 'Rival Wins'}
+      title={draw ? 'A Tie' : won ? 'You Win' : `${oppName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
-      <div className="finalsc"><span className="you">You {t0}</span><span className="foe">Rival {t1}</span></div>
+      <div className="finalsc"><span className="you">You {myTotal}</span><span className="foe">{oppName} {foeTotal}</span></div>
     </Modal>
   )
 }
@@ -320,7 +330,7 @@ function RulesModal({ onClose }: { onClose: () => void }) {
       <div className="modal-body">
         <p>On <b>your</b> turn you get <b>3 picks</b>. Each pick: roll all unused dice, choose <b>one</b> die and place it on its matching colour track. Then <b>every die showing a lower value</b> is set aside on the <b>silver platter</b> (gone for this turn); re-roll the rest and pick again.</p>
         <p>The <b>white</b> die is a <b>wildcard</b> — use it as any colour. The white value also adds to your <b>blue</b> sum.</p>
-        <p>After your 3 picks, the <b>rival takes one die from the platter</b> for a single placement (and vice-versa on their turn).</p>
+        <p>After your 3 picks, the <b>opponent takes one die from the platter</b> for a single placement (and vice-versa on their turn).</p>
         <p><b>Tracks:</b> <b>Yellow</b> 4×4 grid (full columns score, the diagonal grants a fox) · <b>Blue</b> 3×3 grid filled by white+blue · <b>Green</b> rising threshold, further = more points · <b>Orange</b> write the value, some cells ×2/×3 · <b>Purple</b> each value must beat the last (a 6 resets it). <b>Foxes 🦊</b> multiply your lowest-scoring track at the end.</p>
         <p>Play <b>6 rounds</b>; highest total wins. <b>Keys:</b> <kbd>Space</kbd> roll · <kbd>N</kbd> new · <kbd>?</kbd> rules · <kbd>Esc</kbd> close.</p>
       </div>

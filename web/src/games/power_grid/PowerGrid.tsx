@@ -1,4 +1,5 @@
-/* POWER GRID — UI. You (player 0) vs one greedy AI (player 1).
+/* POWER GRID — UI. Seat-relative: you play `mySeat` (0 solo / host, the open seat as a
+   guest), the other seat is the rival utility (an AI locally, a remote opponent online).
 
    Each ROUND has five phases: AUCTION (buy a power plant at its listed cost in turn order)
    -> RESOURCES (buy fuel at prices that rise as supply drains) -> BUILD (connect cities;
@@ -6,19 +7,22 @@
    payout table). The game ends when a player connects 7 cities; most cities powered wins
    (tie -> money).
 
-   The AI takes MANY sub-steps per round (buy plant, buy each fuel batch, build each city,
-   power). useAITurn re-arms on a `tick` that CHANGES on every AI mutation
-   (round·phase·turn·orderIdx·log length) so it never stalls. */
+   Online play is host-authoritative via useGameSession(powerGridAdapter): the host runs the
+   real logic, guests send kinded intents and render a per-seat view. An unfilled seat is
+   driven by the existing greedy AI (the hook re-arms on adapter.tickKey). MONEY is hidden:
+   a guest only ever sees its own cash; an opponent's money shows as "?". */
 
 import { useEffect, useRef, useState } from 'react'
 import { GameShell } from '../../framework/GameShell'
 import { Modal } from '../../framework/Modal'
-import { useAITurn } from '../../framework/useAITurn'
+import { OnlineBar } from '../../framework/OnlineBar'
 import { useGameKeys } from '../../framework/useGameKeys'
+import { useGameSession } from '../../net/useGameSession'
+import { powerGridAdapter } from './net'
 import * as PG from './logic'
 import type { State, Player, Plant, FuelId, ResourceId } from './logic'
 
-const { makeGame, RESOURCES } = PG
+const { RESOURCES } = PG
 
 const TITLE_MARK = (
   <svg className="title-mark" viewBox="0 0 48 48" aria-hidden="true">
@@ -35,37 +39,34 @@ const FUEL_GLYPH: Record<FuelId, string> = {
 const RES_GLYPH: Record<ResourceId, string> = { coal: '⬛', oil: '🛢️', garbage: '♻️', uranium: '☢️' }
 
 export function PowerGrid() {
-  const [s, setS] = useState<State>(() => makeGame())
+  const { state: s, mySeat, isMyTurn, dispatch, newGame: netNew, net } = useGameSession(powerGridAdapter)
   const [showRules, setShowRules] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  function newGame() { setS(makeGame()); setShowRules(false) }
+  function newGame() { netNew(); setShowRules(false) }
 
-  const you = s.players[0]
-  const ai = s.players[1]
-  const yours = s.winner == null && s.turn === 0
+  const foeSeat = mySeat === 0 ? 1 : 0
+  const you = s.players[mySeat]
+  const foe = s.players[foeSeat]
+  const foeName = net.online ? 'Opponent' : foe.name
+  const yours = s.winner == null && isMyTurn
 
-  // ----- player actions -----
+  // ----- player actions (always submit intents for your own seat) -----
   function clickPlant(i: number) {
-    setS(p => (p.phase === 'auction' && p.turn === 0 && PG.canBuyPlant(p, 0, i) ? PG.buyPlant(p, 0, i) : p))
+    if (yours && s.phase === 'auction' && PG.canBuyPlant(s, mySeat, i)) dispatch({ kind: 'buyPlant', plantId: s.market[i].id })
   }
-  function pass() { setS(p => (p.phase === 'auction' && p.turn === 0 ? PG.passAuction(p, 0) : p)) }
+  function pass() { if (yours && s.phase === 'auction') dispatch({ kind: 'passAuction' }) }
   function buyFuel(r: ResourceId) {
-    setS(p => (p.phase === 'resources' && p.turn === 0 && PG.canBuyResource(p, 0, r, 1) ? PG.buyResource(p, 0, r, 1) : p))
+    if (yours && s.phase === 'resources' && PG.canBuyResource(s, mySeat, r, 1)) dispatch({ kind: 'buyResource', res: r, qty: 1 })
   }
-  function doneResources() { setS(p => (p.phase === 'resources' && p.turn === 0 ? PG.endResources(p, 0) : p)) }
+  function doneResources() { if (yours && s.phase === 'resources') dispatch({ kind: 'endResources' }) }
   function clickCity(id: string) {
-    setS(p => (p.phase === 'build' && p.turn === 0 && PG.canBuildCity(p, 0, id) ? PG.buildCity(p, 0, id) : p))
+    if (yours && s.phase === 'build' && PG.canBuildCity(s, mySeat, id)) dispatch({ kind: 'buildCity', cityId: id })
   }
-  function doneBuild() { setS(p => (p.phase === 'build' && p.turn === 0 ? PG.endBuild(p, 0) : p)) }
+  function doneBuild() { if (yours && s.phase === 'build') dispatch({ kind: 'endBuild' }) }
   function powerAll() {
-    setS(p => (p.phase === 'bureau' && p.turn === 0 ? PG.powerCities(p, 0, p.players[0].plants.map(pl => pl.id)) : p))
+    if (yours && s.phase === 'bureau') dispatch({ kind: 'power', plantIds: you.plants.map(pl => pl.id) })
   }
-
-  // ----- AI driver: one sub-step per call; tick changes on every AI mutation -----
-  const aiActive = s.winner == null && s.turn === 1
-  const tick = `${s.round}-${s.phase}-${s.turn}-${s.orderIdx}-${s.done.join('')}-${s.log.length}`
-  useAITurn(aiActive, () => setS(p => (p.turn === 1 && p.winner == null ? PG.aiTurn(p) : p)), { delayMs: 520, tick })
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [s.log])
 
@@ -84,10 +85,10 @@ export function PowerGrid() {
     },
   })
 
-  // ----- banner -----
+  // ----- banner (relative to your seat) -----
   let banner: string, bk = ''
-  if (s.winner === 0) { bk = 'win'; banner = `You powered ${you.powered} cities — you win!` }
-  else if (s.winner === 1) { bk = 'lose'; banner = `${ai.name} powered ${ai.powered} cities — you lose.` }
+  if (s.winner === mySeat) { bk = 'win'; banner = `You powered ${you.powered} cities — you win!` }
+  else if (s.winner === foeSeat) { bk = 'lose'; banner = `${foeName} powered ${foe.powered} cities — you lose.` }
   else if (yours) {
     bk = 'you'
     banner =
@@ -95,7 +96,7 @@ export function PowerGrid() {
       : s.phase === 'resources' ? 'Buy fuel for your plants'
       : s.phase === 'build' ? 'Connect cities to your network'
       : 'Bureaucracy — power your cities'
-  } else { bk = 'foe'; banner = `${ai.name} is taking their turn…` }
+  } else { bk = 'foe'; banner = `${foeName} is taking their turn…` }
 
   const phaseLabel =
     s.phase === 'auction' ? 'Auction' : s.phase === 'resources' ? 'Resources'
@@ -116,40 +117,47 @@ export function PowerGrid() {
         modeRight={<>click · act &nbsp; space · done/power &nbsp; N · new</>}
       >
         <div className="pg-main">
-          <Map s={s} can={yours && s.phase === 'build'} onCity={clickCity} />
+          <Map s={s} mySeat={mySeat} can={yours && s.phase === 'build'} onCity={clickCity} />
 
           <div className="pg-markets">
             <PlantMarket s={s} you={you} can={yours && s.phase === 'auction'} onPick={clickPlant} />
-            <ResourceMarket s={s} you={you} can={yours && s.phase === 'resources'} onBuy={buyFuel} />
+            <ResourceMarket s={s} you={you} mySeat={mySeat} can={yours && s.phase === 'resources'} onBuy={buyFuel} />
           </div>
 
           <PhaseBar
-            s={s} yours={yours}
+            s={s} mySeat={mySeat} yours={yours}
             onPass={pass} onDoneRes={doneResources} onDoneBuild={doneBuild} onPower={powerAll}
           />
         </div>
 
         <div className="side">
-          <PlayerCard p={you} you active={s.turn === 0 && s.winner == null} />
-          <PlayerCard p={ai} you={false} active={s.turn === 1 && s.winner == null} />
+          <PlayerCard p={you} name={you.name} you active={s.turn === mySeat && s.winner == null} />
+          <PlayerCard p={foe} name={foeName} you={false} active={s.turn === foeSeat && s.winner == null} />
+          <OnlineBar net={net} />
           <div className="panel pg-log" ref={logRef}>
             {s.log.map((l, i) => <div key={i} className={'log-line ' + l.t}>{l.x}</div>)}
           </div>
         </div>
       </GameShell>
 
-      {s.winner != null && <ResultModal s={s} onNew={newGame} />}
+      {s.winner != null && <ResultModal s={s} mySeat={mySeat} foeName={foeName} onNew={newGame} />}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </>
   )
 }
 
+// ---------- helpers ----------
+
+/** Render a money value, masking hidden (redacted) cash from other seats as "?". */
+function money(m: number): string {
+  return m < 0 ? '?' : `${m}`
+}
+
 // ---------- map ----------
 
-function Map({ s, can, onCity }: { s: State; can: boolean; onCity: (id: string) => void }) {
+function Map({ s, mySeat, can, onCity }: { s: State; mySeat: number; can: boolean; onCity: (id: string) => void }) {
   const cityOwner = (id: string): number | null => {
-    if (s.players[0].network.includes(id)) return 0
-    if (s.players[1].network.includes(id)) return 1
+    for (let i = 0; i < s.players.length; i++) if (s.players[i].network.includes(id)) return i
     return null
   }
   return (
@@ -169,9 +177,9 @@ function Map({ s, can, onCity }: { s: State; can: boolean; onCity: (id: string) 
         })}
         {s.cities.map(c => {
           const owner = cityOwner(c.id)
-          const buildable = can && PG.canBuildCity(s, 0, c.id)
-          const cost = PG.buildCost(s, 0, c.id)
-          const cls = `pg-city${owner === 0 ? ' you' : owner === 1 ? ' foe' : ''}${buildable ? ' buildable' : ''}`
+          const buildable = can && PG.canBuildCity(s, mySeat, c.id)
+          const cost = PG.buildCost(s, mySeat, c.id)
+          const cls = `pg-city${owner === mySeat ? ' you' : owner != null ? ' foe' : ''}${buildable ? ' buildable' : ''}`
           return (
             <g key={c.id} className={cls} onClick={() => buildable && onCity(c.id)} role={buildable ? 'button' : undefined}>
               <circle cx={c.x} cy={c.y} r={3.4} className="pg-city-dot" />
@@ -230,8 +238,8 @@ function PlantMarket({ s, you, can, onPick }: {
 
 // ---------- resource market ----------
 
-function ResourceMarket({ s, you, can, onBuy }: {
-  s: State; you: Player; can: boolean; onBuy: (r: ResourceId) => void
+function ResourceMarket({ s, you, mySeat, can, onBuy }: {
+  s: State; you: Player; mySeat: number; can: boolean; onBuy: (r: ResourceId) => void
 }) {
   return (
     <div className="panel pg-market">
@@ -241,7 +249,7 @@ function ResourceMarket({ s, you, can, onBuy }: {
         {RESOURCES.map(r => {
           const remaining = s.supply[r]
           const price = PG.resourcePrice(r, remaining)
-          const ok = can && PG.canBuyResource(s, 0, r, 1)
+          const ok = can && PG.canBuyResource(s, mySeat, r, 1)
           return (
             <div key={r} className={`pg-fuelrow ${r}${ok ? ' buyable' : ''}`}
               onClick={() => ok && onBuy(r)} role={ok ? 'button' : undefined}>
@@ -260,11 +268,11 @@ function ResourceMarket({ s, you, can, onBuy }: {
 
 // ---------- phase bar ----------
 
-function PhaseBar({ s, yours, onPass, onDoneRes, onDoneBuild, onPower }: {
-  s: State; yours: boolean
+function PhaseBar({ s, mySeat, yours, onPass, onDoneRes, onDoneBuild, onPower }: {
+  s: State; mySeat: number; yours: boolean
   onPass: () => void; onDoneRes: () => void; onDoneBuild: () => void; onPower: () => void
 }) {
-  const you = s.players[0]
+  const you = s.players[mySeat]
   let info = ''
   if (s.phase === 'auction') info = you.plants.length >= 3 ? 'Your plant slots are full (3).' : `You hold ${you.plants.length}/3 plants.`
   else if (s.phase === 'resources') info = 'Click a fuel to buy 1 unit. Stock fuel for the bureau phase.'
@@ -285,12 +293,12 @@ function PhaseBar({ s, yours, onPass, onDoneRes, onDoneBuild, onPower }: {
 
 // ---------- player card ----------
 
-function PlayerCard({ p, you, active }: { p: Player; you: boolean; active: boolean }) {
+function PlayerCard({ p, name, you, active }: { p: Player; name: string; you: boolean; active: boolean }) {
   return (
     <div className={`panel pg-player${you ? ' you-p' : ''}${active ? ' active' : ''}`}>
       <div className="pg-p-head">
-        <span className={'pg-p-name ' + (you ? 'you' : 'foe')}>{p.name}</span>
-        <span className="pg-p-money">{p.money}<small>elektro</small></span>
+        <span className={'pg-p-name ' + (you ? 'you' : 'foe')}>{name}</span>
+        <span className="pg-p-money">{money(p.money)}<small>elektro</small></span>
       </div>
       <div className="pg-p-stats">
         <span className="pg-chip cities">{p.network.length}<small>cities</small></span>
@@ -317,12 +325,15 @@ function PlayerCard({ p, you, active }: { p: Player; you: boolean; active: boole
 
 // ---------- modals ----------
 
-function ResultModal({ s, onNew }: { s: State; onNew: () => void }) {
-  const won = s.winner === 0
+function ResultModal({ s, mySeat, foeName, onNew }: { s: State; mySeat: number; foeName: string; onNew: () => void }) {
+  const won = s.winner === mySeat
+  const foeSeat = mySeat === 0 ? 1 : 0
+  const you = s.players[mySeat]
+  const foe = s.players[foeSeat]
   return (
     <Modal
       eyebrow={won ? 'Grid secured' : 'Out-powered'}
-      title={won ? 'You Win' : `${s.players[1].name} Wins`}
+      title={won ? 'You Win' : `${foeName} Wins`}
       closeOnOverlay={false}
       actions={<button className="btn-modal" onClick={onNew}>Play again</button>}
     >
@@ -332,8 +343,8 @@ function ResultModal({ s, onNew }: { s: State; onNew: () => void }) {
           : 'The rival utility powered more cities. Buy fuel-efficient plants and expand faster next time.'}</p>
       </div>
       <div className="finalsc">
-        <span className="you">You {s.players[0].powered} powered · {s.players[0].money}₠</span>
-        <span className="foe">{s.players[1].name} {s.players[1].powered} powered · {s.players[1].money}₠</span>
+        <span className="you">You {you.powered} powered · {money(you.money)}₠</span>
+        <span className="foe">{foeName} {foe.powered} powered · {money(foe.money)}₠</span>
       </div>
     </Modal>
   )
