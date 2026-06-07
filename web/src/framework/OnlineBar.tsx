@@ -45,18 +45,21 @@ export function OnlineBar({ net }: { net: OnlineController }) {
 
   // ---- guest view -------------------------------------------------------------
   if (net.online && !net.amHost) {
+    const connected = net.status === 'guest'
     return (
       <div className="ob-wrap">
         <div className="ob-status">
-          {net.status === 'guest'
-            ? <span className="ob-dot ok" />
-            : <span className="ob-dot wait" />}
-          {net.status === 'guest' ? 'Connected to host' : 'Joining…'}
+          <span className={'ob-dot ' + (connected ? 'ok' : net.status === 'error' ? '' : 'wait')} />
+          {connected ? 'Connected to host'
+            : net.status === 'error' ? 'Connection failed — bad or expired invite link'
+            : net.answerCode ? 'Almost there — send your code back'
+            : 'Joining…'}
         </div>
-        {net.answerCode && net.status !== 'guest' && (
+        {!connected && net.answerCode && (
           <div className="ob-panel">
-            <p className="ob-hint">Send this answer code back to the host to finish connecting:</p>
-            <CopyField label="Answer" value={net.answerCode} />
+            <p className="ob-hint"><b>Send this code back to the host</b> to finish connecting (they paste it into their "answer code" box):</p>
+            <CopyField label="Your code" value={net.answerCode} />
+            <p className="ob-hint">Then wait here — the game starts automatically once they connect you.</p>
           </div>
         )}
         <SeatList net={net} />

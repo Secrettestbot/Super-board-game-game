@@ -33,18 +33,12 @@ class ChannelTransport implements Transport {
   private openCbs: (() => void)[] = []
   private closeCbs: (() => void)[] = []
   open = false
+  private dc: RTCDataChannel | null = null
 
-  constructor(
-    private pc: RTCPeerConnection,
-    private dc: RTCDataChannel,
-  ) {
-    dc.onopen = () => { this.open = true; this.openCbs.forEach(c => c()) }
-    dc.onclose = () => { this.open = false; this.closeCbs.forEach(c => c()) }
-    dc.onmessage = e => {
-      let parsed: unknown
-      try { parsed = JSON.parse(e.data as string) } catch { return }
-      this.msgCbs.forEach(c => c(parsed))
-    }
+  // The data channel may not exist yet: the host creates it up front, but the guest only
+  // receives it (via pc.ondatachannel) once the connection establishes — which can't happen
+  // until AFTER the guest has handed its answer code back. So the channel is bound lazily.
+  constructor(private pc: RTCPeerConnection, dc?: RTCDataChannel) {
     // a sudden teardown of the peer connection also means the channel is gone
     pc.onconnectionstatechange = () => {
       const st = pc.connectionState
@@ -53,13 +47,26 @@ class ChannelTransport implements Transport {
         this.closeCbs.forEach(c => c())
       }
     }
+    if (dc) this.bind(dc)
   }
 
-  send(msg: unknown) { if (this.dc.readyState === 'open') this.dc.send(JSON.stringify(msg)) }
+  bind(dc: RTCDataChannel) {
+    this.dc = dc
+    dc.onopen = () => { this.open = true; this.openCbs.forEach(c => c()) }
+    dc.onclose = () => { this.open = false; this.closeCbs.forEach(c => c()) }
+    dc.onmessage = e => {
+      let parsed: unknown
+      try { parsed = JSON.parse(e.data as string) } catch { return }
+      this.msgCbs.forEach(c => c(parsed))
+    }
+    if (dc.readyState === 'open') { this.open = true; this.openCbs.forEach(c => c()) }
+  }
+
+  send(msg: unknown) { if (this.dc && this.dc.readyState === 'open') this.dc.send(JSON.stringify(msg)) }
   onMessage(cb: (m: unknown) => void) { this.msgCbs.push(cb) }
   onOpen(cb: () => void) { if (this.open) cb(); else this.openCbs.push(cb) }
   onClose(cb: () => void) { this.closeCbs.push(cb) }
-  close() { try { this.dc.close() } catch { /* ignore */ } try { this.pc.close() } catch { /* ignore */ } }
+  close() { try { this.dc?.close() } catch { /* ignore */ } try { this.pc.close() } catch { /* ignore */ } }
 }
 
 /** base64url <-> string, so a code rides safely in a URL fragment. */
@@ -124,18 +131,18 @@ export interface GuestHandle {
   transport: Transport
 }
 
-/** Guest side: consume the host's offer code and produce an answer code to send back. */
+/** Guest side: consume the host's offer code and produce an answer code to send back.
+ * The answer is ready as soon as ICE gathering completes — it must NOT wait for the data
+ * channel (which only arrives after the host accepts this very answer). The transport binds
+ * the channel lazily when pc.ondatachannel fires post-handshake. */
 export async function joinConnection(offerCode: string): Promise<GuestHandle> {
   const pc = newPC()
-  let resolveDC!: (dc: RTCDataChannel) => void
-  const dcPromise = new Promise<RTCDataChannel>(r => { resolveDC = r })
-  pc.ondatachannel = e => resolveDC(e.channel)
+  const transport = new ChannelTransport(pc) // channel bound later, on ondatachannel
+  pc.ondatachannel = e => transport.bind(e.channel)
   await pc.setRemoteDescription(decodeDesc(offerCode.trim()))
   const answer = await pc.createAnswer()
   await pc.setLocalDescription(answer)
   await iceComplete(pc)
-  const dc = await dcPromise
-  const transport = new ChannelTransport(pc, dc)
   return { answerCode: encodeDesc(pc.localDescription!), transport }
 }
 

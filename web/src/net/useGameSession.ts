@@ -60,11 +60,16 @@ export function useGameSession<S, I>(adapter: GameAdapter<S, I>): GameSession<S,
     return () => active?.onChange(null)
   }, [mode])
 
-  const isGuest = mode === 'guest'
-  const session = isGuest ? guestRef.current! : hostRef.current!
+  const amGuest = mode === 'guest'
+  // The guest session is created asynchronously inside joinFromOffer (after the WebRTC
+  // answer is generated). Between setMode('guest') and that assignment there's a render
+  // where guestRef is still null — fall back to the local host session so we never read
+  // from null (that would crash the whole page to a blank screen).
+  const guestReady = amGuest && guestRef.current != null
+  const session = guestReady ? guestRef.current! : hostRef.current!
 
-  // ---- AI driver (authority only) ---------------------------------------------
-  const aiSeat = !isGuest ? hostRef.current!.aiSeat() : null
+  // ---- AI driver (authority only — never while we're a guest) ------------------
+  const aiSeat = !amGuest ? hostRef.current!.aiSeat() : null
   useAITurn(aiSeat != null, () => hostRef.current!.stepAI(), {
     delayMs: 480,
     tick: session.tickKey(),
@@ -72,7 +77,7 @@ export function useGameSession<S, I>(adapter: GameAdapter<S, I>): GameSession<S,
 
   // ---- surface to component ---------------------------------------------------
   const state = session.getState()
-  const mySeat = isGuest ? guestRef.current!.mySeat() : 0
+  const mySeat = guestReady ? guestRef.current!.mySeat() : 0
   const isMyTurn = session.isMyTurn()
 
   const dispatch = useCallback((intent: I) => {
@@ -111,13 +116,22 @@ export function useGameSession<S, I>(adapter: GameAdapter<S, I>): GameSession<S,
   const joinFromOffer = useCallback(async (offer: string): Promise<string> => {
     setMode('guest')
     setStatus('joining')
-    const { answerCode: ans, transport } = await joinConnection(offer)
+    let handle
+    try {
+      handle = await joinConnection(offer)
+    } catch {
+      setStatus('error'); force()
+      return ''
+    }
+    const { answerCode: ans, transport } = handle
     const gs = new GuestSession<S, I>(adapter, transport)
     gs.onChange(force)
     guestRef.current = gs
+    // Stay in 'joining' (so the OnlineBar shows the answer code to copy back) until the
+    // host accepts it and the data channel actually opens — only then are we connected.
+    transport.onOpen(() => { setStatus('guest'); force() })
     transport.onClose(() => { setStatus('error'); force() })
     setAnswerCode(ans)
-    setStatus('guest')
     force()
     return ans
   }, [adapter])
