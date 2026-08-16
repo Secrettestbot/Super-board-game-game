@@ -425,6 +425,15 @@ class MandalaGame(BaseGame):
             return best_move
         return {"action": "draw"}
 
+    def _has_legal_placement(self, player):
+        """True if the player holds a colour not already in some mandala."""
+        sp = str(player) if isinstance(player, int) else player
+        for m_idx in range(2):
+            present = self._mandala_colors(m_idx)
+            if any(c not in present for c in self.hands[sp]):
+                return True
+        return False
+
     def check_game_over(self):
         # Game ends when deck is empty and a player can't draw
         if not self.deck:
@@ -435,6 +444,12 @@ class MandalaGame(BaseGame):
                 # Check if current player has no cards
                 cp = str(self.current_player)
                 if len(self.hands[cp]) == 0:
+                    self.game_over = True
+                # A colour already in a mandala cannot be played there, so a
+                # player can hold cards with nowhere to put them. With the
+                # deck empty there is nothing left to draw either, and the
+                # turn would repeat forever.
+                elif not any(self._has_legal_placement(sp) for sp in ["1", "2"]):
                     self.game_over = True
 
         if self.game_over:

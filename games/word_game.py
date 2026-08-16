@@ -557,10 +557,12 @@ class WordGame(BaseGame):
         if not rack:
             return ("pass",)
 
-        if difficulty == 'easy':
-            if self.bag and len(rack) >= 2:
-                return ("exchange", rack[0] if rack[0] != ' ' else rack[0])
-            return ("pass",)
+        # The easy AI used to exchange a tile every single turn. Exchanging
+        # returns tiles to the bag, so the bag never emptied and the passes
+        # never accumulated - neither end condition could ever be met. Let it
+        # exchange occasionally and otherwise play like the others.
+        if difficulty == 'easy' and self.bag and len(rack) >= 2 and rand.random() < 0.2:
+            return ("exchange", rack[0])
 
         is_first = all(
             self.board[r][c] is None

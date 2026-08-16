@@ -398,47 +398,56 @@ class RollThroughAgesGame(BaseGame):
             d['food'] = 0
             d['disaster'] += short
 
-        # Build phase: spend workers and coins/goods
-        if difficulty == 'easy':
-            pass
-        else:
-            # Try to build a city if affordable
-            if d['cities'] < 7:
-                cost = 3 + d['cities']
-                if d['workers'] >= cost:
-                    d['workers'] -= cost
-                    d['cities'] += 1
+        # Build phase: spend workers and coins/goods. The easy AI used to skip
+        # building entirely, so it never gained a development or finished a
+        # monument - and those are the only two end conditions. It now builds
+        # too, just without weighing up the options.
+        import random as _rand
 
-            # Try to buy a development
-            affordable = [(dv, info) for dv, info in self.devs.items()
-                          if dv not in d['devs'] and d['coins'] + d['goods'] >= info['cost']]
-            if affordable:
-                if difficulty == 'hard':
-                    affordable.sort(key=lambda x: x[1]['vp'] / max(x[1]['cost'], 1), reverse=True)
+        # Try to build a city if affordable
+        if d['cities'] < 7:
+            cost = 3 + d['cities']
+            if d['workers'] >= cost:
+                d['workers'] -= cost
+                d['cities'] += 1
+
+        # Try to buy a development
+        affordable = [(dv, info) for dv, info in self.devs.items()
+                      if dv not in d['devs'] and d['coins'] + d['goods'] >= info['cost']]
+        if affordable:
+            if difficulty == 'hard':
+                affordable.sort(key=lambda x: x[1]['vp'] / max(x[1]['cost'], 1), reverse=True)
                 dv, info = affordable[0]
-                cost = info['cost']
-                g_spent = min(d['goods'], cost)
-                d['goods'] -= g_spent
-                d['coins'] -= (cost - g_spent)
-                d['devs'].append(dv)
+            elif difficulty == 'easy':
+                dv, info = _rand.choice(affordable)
+            else:
+                dv, info = affordable[0]
+            cost = info['cost']
+            g_spent = min(d['goods'], cost)
+            d['goods'] -= g_spent
+            d['coins'] -= (cost - g_spent)
+            d['devs'].append(dv)
 
-            # Spend remaining workers on monuments
-            if d['workers'] > 0:
-                available = [(m, info) for m, info in self.mons.items()
-                             if m not in d['mon_done']]
-                if available:
+        # Spend remaining workers on monuments
+        if d['workers'] > 0:
+            available = [(m, info) for m, info in self.mons.items()
+                         if m not in d['mon_done']]
+            if available:
+                if difficulty == 'easy':
+                    m, info = _rand.choice(available)
+                else:
                     available.sort(key=lambda x: x[1]['w'] - d['mon_prog'][x[0]])
                     m, info = available[0]
-                    total_w = info['w'] - (2 if self._has('masonry') else 0)
-                    total_w = max(1, total_w)
-                    remain = total_w - d['mon_prog'][m]
-                    actual = min(d['workers'], remain)
-                    d['workers'] -= actual
-                    d['mon_prog'][m] += actual
-                    if d['mon_prog'][m] >= total_w:
-                        d['mon_done'].append(m)
-                        if m not in self.mon_first:
-                            self.mon_first[m] = self.current_player
+                total_w = info['w'] - (2 if self._has('masonry') else 0)
+                total_w = max(1, total_w)
+                remain = total_w - d['mon_prog'][m]
+                actual = min(d['workers'], remain)
+                d['workers'] -= actual
+                d['mon_prog'][m] += actual
+                if d['mon_prog'][m] >= total_w:
+                    d['mon_done'].append(m)
+                    if m not in self.mon_first:
+                        self.mon_first[m] = self.current_player
 
         d['workers'] = 0
         self.phase = 'roll'
