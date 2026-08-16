@@ -1115,14 +1115,18 @@ class MainMenu:
             mod = importlib.import_module(module_path)
             game_class = getattr(mod, class_name)
             game = game_class(variation=data.get('variation', 'standard'))
+            # Restore the players and AI settings before setup(): some games
+            # ask setup questions only when there is no AI, so a resumed game
+            # would otherwise re-ask them with the wrong assumptions.
+            game.players = data.get('players', ["Player 1", "Player 2"])
+            game.ai_player = data.get('ai_player', None)
+            game.ai_difficulty = data.get('ai_difficulty', 'medium')
             game.setup()
             game.current_player = data.get('current_player', 1)
             game.players = data.get('players', ["Player 1", "Player 2"])
             game.turn_number = data.get('turn_number', 0)
             game.move_history = data.get('move_history', [])
             game.load_state(data.get('game_state', {}))
-            game.ai_player = data.get('ai_player', None)
-            game.ai_difficulty = data.get('ai_difficulty', 'medium')
             game._resumed = True
 
             result = game.play()

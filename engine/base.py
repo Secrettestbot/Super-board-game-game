@@ -204,7 +204,15 @@ class BaseGame(ABC):
                         if self.make_move(move):
                             break
                     else:
-                        continue
+                        # The computer cannot produce a move this position
+                        # accepts. Retrying forever would hang the game with
+                        # no way out, so stop and let the player decide.
+                        clear_screen()
+                        self.display()
+                        print("\n  The computer has no move it can make here.")
+                        print("  Ending the game.")
+                        input("\n  Press Enter to return to menu...")
+                        return None
                 self.move_history.append(str(move))
                 self.turn_number += 1
                 self.check_game_over()
