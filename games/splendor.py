@@ -115,6 +115,7 @@ class SplendorGame(BaseGame):
         self.target_points = 15
         self.final_round = False
         self.final_round_last_player = None
+        self.consecutive_passes = 0
 
     def setup(self):
         """Initialize the game."""
@@ -142,6 +143,7 @@ class SplendorGame(BaseGame):
 
         noble_count = 2 if quick else 3
         self.nobles = _generate_nobles(noble_count)
+        self.consecutive_passes = 0
 
         for i in range(2):
             self.player_gems[i] = {c: 0 for c in GEM_COLORS + ["*"]}
@@ -241,6 +243,31 @@ class SplendorGame(BaseGame):
         return move_str
 
     # ------------------------------------------------------------------ logic
+    def _can_take_full_gems(self, player_idx):
+        """True if a standard take (3 different, or 2 of one colour) is legal."""
+        available = [c for c in GEM_COLORS if self.gems.get(c, 0) > 0]
+        total = self._total_tokens(player_idx)
+        if len(available) >= 3 and total + 3 <= 10:
+            return True
+        if total + 2 <= 10 and any(self.gems.get(c, 0) >= 4 for c in GEM_COLORS):
+            return True
+        return False
+
+    def _legal_gem_take(self, player_idx):
+        """Return a legal 'gems ...' move string, or None if none exists."""
+        available = [c for c in GEM_COLORS if self.gems.get(c, 0) > 0]
+        total = self._total_tokens(player_idx)
+        if len(available) >= 3 and total + 3 <= 10:
+            return f"gems {available[0]} {available[1]} {available[2]}"
+        for c in GEM_COLORS:
+            if self.gems.get(c, 0) >= 4 and total + 2 <= 10:
+                return f"gems {c} {c}"
+        # Partial takes, legal only because a full take is not
+        for n in (2, 1):
+            if len(available) >= n and total + n <= 10:
+                return "gems " + " ".join(available[:n])
+        return None
+
     def _can_afford(self, player_idx, cost):
         """Check if player can afford a card cost (bonuses + tokens + gold)."""
         bonuses = self._bonuses(player_idx)
@@ -290,6 +317,13 @@ class SplendorGame(BaseGame):
             self.tier_face_up[tier_idx].append(self.tier_decks[tier_idx].pop())
 
     def make_move(self, move):
+        """Apply move, tracking consecutive passes. Returns True if valid."""
+        ok = self._apply_move(move)
+        if ok and str(move).strip().lower().split()[:1] != ["pass"]:
+            self.consecutive_passes = 0
+        return ok
+
+    def _apply_move(self, move):
         """Apply move. Returns True if valid."""
         if move is None:
             return False
@@ -299,6 +333,14 @@ class SplendorGame(BaseGame):
             return False
 
         action = parts[0]
+
+        # --- Pass (only when the player genuinely has no action) ---
+        if action == "pass":
+            if self._has_any_action(pi):
+                print("  You still have a legal action.")
+                return False
+            self.consecutive_passes += 1
+            return True
 
         # --- Take gems ---
         if action == "gems":
@@ -335,6 +377,28 @@ class SplendorGame(BaseGame):
                         return False
                 if self._total_tokens(pi) + 3 > 10:
                     print("  Would exceed 10 token limit.")
+                    return False
+                for c in colors:
+                    self.gems[c] -= 1
+                    self.player_gems[pi][c] += 1
+                return True
+
+            # Fewer than 3 different: only allowed when a full take is
+            # impossible (supply exhausted or the 10-token cap). Without this
+            # a player at the cap with nothing affordable has no legal move.
+            if 1 <= len(colors) <= 2 and len(set(colors)) == len(colors):
+                for c in colors:
+                    if c not in GEM_COLORS:
+                        print(f"  Invalid gem type: {c}")
+                        return False
+                    if self.gems.get(c, 0) < 1:
+                        print(f"  No {GEM_NAMES.get(c, c)} available.")
+                        return False
+                if self._total_tokens(pi) + len(colors) > 10:
+                    print("  Would exceed 10 token limit.")
+                    return False
+                if self._can_take_full_gems(pi):
+                    print("  Take 2 same or 3 different gems.")
                     return False
                 for c in colors:
                     self.gems[c] -= 1
@@ -431,9 +495,31 @@ class SplendorGame(BaseGame):
         return False
 
     # ----------------------------------------------------------- game over
+    def _has_any_action(self, player_idx):
+        """True if the player can take gems, reserve, or buy something."""
+        if self._legal_gem_take(player_idx):
+            return True
+        if len(self.player_reserved[player_idx]) < 3 and any(self.tier_face_up):
+            return True
+        for tier_idx in range(3):
+            for card in self.tier_face_up[tier_idx]:
+                if self._can_afford(player_idx, card["cost"]):
+                    return True
+        for card in self.player_reserved[player_idx]:
+            if self._can_afford(player_idx, card["cost"]):
+                return True
+        return False
+
     def check_game_over(self):
         """Check if game end is triggered."""
         pi = self.current_player - 1
+
+        # Both players passed in a row: nobody can act, so score it out now.
+        if self.consecutive_passes >= 2:
+            self.game_over = True
+            p1, p2 = self.player_points
+            self.winner = 1 if p1 > p2 else (2 if p2 > p1 else None)
+            return
 
         # First player to reach target triggers final round
         if not self.final_round and self.player_points[pi] >= self.target_points:
@@ -475,6 +561,7 @@ class SplendorGame(BaseGame):
             "target_points": self.target_points,
             "final_round": self.final_round,
             "final_round_last_player": self.final_round_last_player,
+            "consecutive_passes": self.consecutive_passes,
         }
 
     def load_state(self, state):
@@ -490,6 +577,7 @@ class SplendorGame(BaseGame):
         self.target_points = state["target_points"]
         self.final_round = state["final_round"]
         self.final_round_last_player = state["final_round_last_player"]
+        self.consecutive_passes = state.get("consecutive_passes", 0)
 
     # ----------------------------------------------------------- ai
     def get_ai_move(self):
@@ -516,33 +604,24 @@ class SplendorGame(BaseGame):
                 if choice[0] == "buy_reserved":
                     return f"buy reserved {choice[2] + 1}"
                 return f"buy {choice[1] + 1} {choice[2] + 1}"
-            # Take random gems
+            # Take random gems. Each branch must check headroom for the
+            # number of tokens it actually takes, or the move is rejected and
+            # the engine re-asks forever.
             available = [c for c in GEM_COLORS if self.gems.get(c, 0) > 0]
-            if len(available) >= 3 and self._total_tokens(pi) + 3 <= 10:
+            total = self._total_tokens(pi)
+            if len(available) >= 3 and total + 3 <= 10:
                 chosen = random.sample(available, 3)
                 return f"gems {chosen[0]} {chosen[1]} {chosen[2]}"
-            elif available and self._total_tokens(pi) + 2 <= 10:
-                c = random.choice(available)
-                if self.gems.get(c, 0) >= 4:
+            if total + 2 <= 10:
+                doubles = [c for c in available if self.gems.get(c, 0) >= 4]
+                if doubles:
+                    c = random.choice(doubles)
                     return f"gems {c} {c}"
-                if len(available) >= 3:
-                    chosen = random.sample(available, 3)
-                    return f"gems {chosen[0]} {chosen[1]} {chosen[2]}"
-                elif len(available) >= 2 and self._total_tokens(pi) + 2 <= 10:
-                    # Take what we can
-                    pass
-            # Fallback: take any 3 different
-            available = [c for c in GEM_COLORS if self.gems.get(c, 0) > 0]
-            if len(available) >= 3 and self._total_tokens(pi) + 3 <= 10:
-                chosen = random.sample(available, min(3, len(available)))
-                return f"gems {' '.join(chosen)}"
-            if available and self.gems.get(available[0], 0) >= 4 and self._total_tokens(pi) + 2 <= 10:
-                return f"gems {available[0]} {available[0]}"
             # Reserve a card
             for tier_idx in range(3):
                 if self.tier_face_up[tier_idx] and len(self.player_reserved[pi]) < 3:
                     return f"reserve {tier_idx + 1} 1"
-            return f"gems {GEM_COLORS[0]} {GEM_COLORS[1]} {GEM_COLORS[2]}"
+            return self._fallback_ai_move(pi, affordable)
 
         # Medium/Hard: prioritize buying high-point cards
         if affordable:
@@ -613,9 +692,26 @@ class SplendorGame(BaseGame):
         for tier_idx in [2, 1, 0]:
             if self.tier_face_up[tier_idx] and len(self.player_reserved[pi]) < 3:
                 return f"reserve {tier_idx + 1} 1"
-        if len(available) >= 3:
-            return f"gems {available[0]} {available[1]} {available[2]}"
-        return f"gems W U G"
+        return self._fallback_ai_move(pi, affordable)
+
+    def _fallback_ai_move(self, pi, affordable):
+        """Last-resort AI move that is guaranteed legal where one exists.
+
+        Returning a fixed string here would loop forever: the engine keeps
+        asking for a move until make_move accepts one.
+        """
+        take = self._legal_gem_take(pi)
+        if take:
+            return take
+        for tier_idx in range(3):
+            if self.tier_face_up[tier_idx] and len(self.player_reserved[pi]) < 3:
+                return f"reserve {tier_idx + 1} 1"
+        if affordable:
+            choice = affordable[0]
+            if choice[0] == "buy_reserved":
+                return f"buy reserved {choice[2] + 1}"
+            return f"buy {choice[1] + 1} {choice[2] + 1}"
+        return "pass"
 
     # ----------------------------------------------------------- tutorial
     def get_tutorial(self):

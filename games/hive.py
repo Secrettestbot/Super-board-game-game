@@ -53,6 +53,7 @@ class HiveGame(BaseGame):
         self.queen_placed = {1: False, 2: False}
         # position of each player's queen (for surrounding check)
         self.queen_pos = {1: None, 2: None}
+        self.consecutive_passes = 0
 
     # ------------------------------------------------------------------ #
     #  Setup
@@ -73,6 +74,7 @@ class HiveGame(BaseGame):
         self.pieces_placed = {1: 0, 2: 0}
         self.queen_placed = {1: False, 2: False}
         self.queen_pos = {1: None, 2: None}
+        self.consecutive_passes = 0
 
     # ------------------------------------------------------------------ #
     #  Display
@@ -571,10 +573,35 @@ class HiveGame(BaseGame):
             return False
         player = self.current_player
 
+        if move[0] == "pass":
+            # Hive rule: a player with no legal move must pass.
+            if self._has_legal_move(player):
+                print("  You have a legal move, so you may not pass.")
+                return False
+            self.consecutive_passes += 1
+            return True
         if move[0] == "place":
-            return self._do_place(player, move[1], move[2])
+            ok = self._do_place(player, move[1], move[2])
         elif move[0] == "move":
-            return self._do_move(player, move[1], move[2])
+            ok = self._do_move(player, move[1], move[2])
+        else:
+            return False
+        if ok:
+            self.consecutive_passes = 0
+        return ok
+
+    def _has_legal_move(self, player):
+        """True if *player* can place a piece or move one."""
+        placements = self._valid_placement_positions(player)
+        if placements and any(n > 0 for n in self.hands[player].values()):
+            must_queen = (self.pieces_placed[player] == 3
+                          and not self.queen_placed[player])
+            if not must_queen or self.hands[player].get("Queen", 0) > 0:
+                return True
+        if self.queen_placed[player]:
+            for pos, _p, _pt in list(self._all_pieces_on_board(player)):
+                if self._get_valid_moves_for_piece(pos):
+                    return True
         return False
 
     def _do_place(self, player, piece_type, dest):
@@ -684,13 +711,9 @@ class HiveGame(BaseGame):
 
         all_moves = place_moves + move_moves
         if not all_moves:
-            if place_moves:
-                return random.choice(place_moves)
-            if hand:
-                for pt, count in hand.items():
-                    if count > 0 and placement_positions:
-                        return ("place", pt, next(iter(placement_positions)))
-            return ("place", "Queen", (0, 0))
+            # No placement and no movement available: the rules say pass.
+            # Returning a made-up placement here would be rejected forever.
+            return ("pass",)
 
         if difficulty == 'easy':
             return random.choice(all_moves)
@@ -757,6 +780,12 @@ class HiveGame(BaseGame):
 
     def check_game_over(self):
         """Check if either queen is surrounded."""
+        # Both players passed in a row - neither can ever move again.
+        if self.consecutive_passes >= 2:
+            self.game_over = True
+            self.winner = None
+            return
+
         p1_surrounded = self._is_surrounded(self.queen_pos.get(1))
         p2_surrounded = self._is_surrounded(self.queen_pos.get(2))
 
@@ -770,6 +799,11 @@ class HiveGame(BaseGame):
         elif p2_surrounded:
             self.game_over = True
             self.winner = 1
+        elif self._repetition_draw():
+            # Neither queen is threatened and the same position keeps coming
+            # back: the players are just shuffling. Call it a draw.
+            self.game_over = True
+            self.winner = None
 
     # ------------------------------------------------------------------ #
     #  State serialization
@@ -793,11 +827,13 @@ class HiveGame(BaseGame):
                 for k, v in self.queen_pos.items()
             },
             "variation": self.variation,
+            "consecutive_passes": self.consecutive_passes,
         }
 
     def load_state(self, state):
         """Restore game state."""
         self.variation = state["variation"]
+        self.consecutive_passes = state.get("consecutive_passes", 0)
         self.board = {}
         for key, stack in state["board"].items():
             q, r = key.split(",")

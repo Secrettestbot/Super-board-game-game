@@ -64,6 +64,32 @@ class BaseGame(ABC):
         self._resumed = False
         self.ai_player = None
         self.ai_difficulty = "medium"
+        self._position_counts = {}
+
+    # Games that can shuffle pieces back and forth forever opt into a draw by
+    # repetition by calling _repetition_draw() from check_game_over().
+    repetition_limit = 4
+
+    def _position_key(self):
+        """A hashable snapshot of the position, including side to move."""
+        return json.dumps(
+            {'state': self.get_state(), 'player': self.current_player},
+            sort_keys=True, default=str,
+        )
+
+    def _repetition_draw(self):
+        """Record the current position; True once it has repeated too often.
+
+        Positional games with no progress rule (Hive, Xiangqi, ...) can
+        otherwise loop forever when both sides just shuffle pieces.
+        """
+        try:
+            key = self._position_key()
+        except Exception:
+            return False
+        count = self._position_counts.get(key, 0) + 1
+        self._position_counts[key] = count
+        return count >= self.repetition_limit
 
     @abstractmethod
     def setup(self):

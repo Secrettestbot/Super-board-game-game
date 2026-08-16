@@ -498,6 +498,35 @@ class BlockadeGame(BaseGame):
                                             return f"{direction} {dist} {wall_str} {wo}"
                                         return f"{pi + 1} {direction} {dist} {wall_str} {wo}"
                         self.pawns[p][pi] = old_pos
+
+            # No pawn move admits any legal wall, so a wall-less move is the
+            # only option. Pick one the pawn can actually make rather than
+            # guessing a direction that may be blocked.
+            for pi in range(num_pawns):
+                pr, pc = self.pawns[p][pi]
+                pawn_positions = self._get_all_pawn_positions()
+                pawn_positions.discard((pr, pc))
+                forward = 'down' if p == 1 else 'up'
+                for direction, (dr, dc) in [(forward, (1, 0) if p == 1 else (-1, 0)),
+                                            ('left', (0, -1)), ('right', (0, 1)),
+                                            ('up' if p == 1 else 'down',
+                                             (-1, 0) if p == 1 else (1, 0))]:
+                    for dist in [1, 2]:
+                        cr, cc = pr, pc
+                        valid_path = True
+                        for _ in range(dist):
+                            nr, nc = cr + dr, cc + dc
+                            if not self._is_path_clear(cr, cc, nr, nc, pawn_positions):
+                                valid_path = False
+                                break
+                            cr, cc = nr, nc
+                        if not valid_path:
+                            continue
+                        if num_pawns == 1:
+                            return f"{direction} {dist}"
+                        return f"{pi + 1} {direction} {dist}"
+
+            # Completely immobilised: fall back to a forward step.
             direction = 'down' if p == 1 else 'up'
             if num_pawns == 1:
                 return f"{direction} 1"

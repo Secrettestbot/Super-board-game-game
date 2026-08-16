@@ -453,7 +453,16 @@ class ArchaeologyGame(BaseGame):
                 choices.append("bank")
             if self.marketplace and hand_treasures:
                 choices.append("trade")
-            pick = random.choice(choices) if "dig" in choices and self.deck else "bank"
+            # Banking nothing is rejected by make_move, so only bank when
+            # there is actually a treasure to bank.
+            if self.deck and "dig" in choices:
+                pick = random.choice(choices)
+            elif hand_treasures:
+                pick = "bank"
+            elif self.deck:
+                pick = "dig"
+            else:
+                return "pass"
             if pick == "bank":
                 indices = [i for i, c in enumerate(self.hands[p]) if c in TREASURE_ICONS]
                 return ("bank", indices)
@@ -482,6 +491,13 @@ class ArchaeologyGame(BaseGame):
                 indices = [i for i, c in enumerate(self.hands[p]) if c in TREASURE_ICONS]
                 return ("bank", indices)
 
+        # Once the deck is exhausted there is nothing left to dig for, so
+        # holding cards has no upside - bank them. Trading on forever here
+        # would keep the game running indefinitely.
+        if not self.deck and hand_treasures:
+            indices = [i for i, c in enumerate(self.hands[p]) if c in TREASURE_ICONS]
+            return ("bank", indices)
+
         # Trade if marketplace has something we want
         if self.marketplace and hand_treasures:
             # Check if marketplace has a card that matches our existing sets
@@ -490,9 +506,13 @@ class ArchaeologyGame(BaseGame):
                 banked_counts[c] = banked_counts.get(c, 0) + 1
             for mkt_idx, mkt_card in enumerate(self.marketplace):
                 if banked_counts.get(mkt_card, 0) > 0:
-                    # Find a hand card that's less useful
+                    # Only trade *up*: give away a card that matches none of our
+                    # banked sets. Swapping two useful cards would let the AI
+                    # trade the same pair back and forth forever without ever
+                    # digging, and the game would never end.
                     for hand_idx, hc in enumerate(self.hands[p]):
-                        if hc in TREASURE_ICONS and hc != mkt_card:
+                        if (hc in TREASURE_ICONS and hc != mkt_card
+                                and banked_counts.get(hc, 0) == 0):
                             return ("trade", hand_idx, mkt_idx)
 
         # Dig if deck available
