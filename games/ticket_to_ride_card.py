@@ -744,7 +744,30 @@ class TicketToRideCardGame(BaseGame):
                 if card:
                     self.hands[cp].append(card)
 
+    def _can_claim_any(self, player):
+        """True if *player* could claim some unclaimed route right now."""
+        hand_counts = {}
+        for c in self.hands[player]:
+            hand_counts[c] = hand_counts.get(c, 0) + 1
+        wild_count = hand_counts.get("Wild", 0)
+        for i, (a, b, length, color, _) in enumerate(self.routes):
+            if i in self.claimed or self.trains_left[player] < length:
+                continue
+            cols = [color] if color else COLORS
+            for col in cols:
+                if hand_counts.get(col, 0) + wild_count >= length:
+                    return True
+        return False
+
     def check_game_over(self):
+        # With no cards left to draw and no route either player can claim,
+        # nobody can ever spend down to the two trains that trigger the last
+        # round - the AI would just keep drawing from an empty deck forever.
+        if not self.last_round and not self.train_deck and not self.discard:
+            if not any(self._can_claim_any(p) for p in (1, 2)):
+                self.last_round = True
+                self.last_round_trigger = self.current_player
+
         if self.last_round:
             self.passes_after_trigger += 1
             if self.passes_after_trigger >= 2:
