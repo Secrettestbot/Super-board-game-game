@@ -355,6 +355,15 @@ class CartographersHeroesGame(BaseGame):
 
         return None
 
+    def switch_player(self):
+        """No-op: make_move drives turn order itself.
+
+        Every branch below sets current_player explicitly; letting the engine
+        flip it as well after each accepted move undid those transitions, so
+        the season never advanced.
+        """
+        return
+
     def make_move(self, move):
         if move is None:
             return False
