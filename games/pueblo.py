@@ -449,9 +449,23 @@ class PuebloGame(BaseGame):
 
         return best_move if best_move else {"piece": candidates[0][0], "rotation": candidates[0][1], "row": candidates[0][2], "col": candidates[0][3]}
 
+    def _has_any_placement(self, player):
+        """True if *player* can still legally place one of their pieces."""
+        for piece_name in self.pieces_remaining[player]:
+            for cells in self._get_all_rotations(piece_name):
+                for r in range(self.grid_size):
+                    for c in range(self.grid_size):
+                        if self._can_place_piece(cells, r, c):
+                            return True
+        return False
+
     def check_game_over(self):
-        # Game ends when all pieces are placed
-        if not self.pieces_remaining[1] and not self.pieces_remaining[2]:
+        # Game ends when all pieces are placed, or when the board is so full
+        # that neither player can place anything more - otherwise both sides
+        # pass at each other forever while the chief keeps scoring.
+        if ((not self.pieces_remaining[1] and not self.pieces_remaining[2])
+                or (not self._has_any_placement(1)
+                    and not self._has_any_placement(2))):
             # Final scoring: chief does a full walk around remaining perimeter
             for _ in range(len(self.perimeter)):
                 self._score_chief_view()

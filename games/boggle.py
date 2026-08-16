@@ -121,6 +121,8 @@ class BoggleGame(BaseGame):
         "standard": "Standard Boggle (4x4)",
         "big": "Big Boggle (5x5)",
     }
+    # Hard stop so a game where neither side pulls ahead still ends.
+    max_rounds = 30
 
     def setup(self):
         """Initialize the game board and state."""
@@ -135,6 +137,7 @@ class BoggleGame(BaseGame):
         self.round_scored = False
         self.round_summary = ""
         self.target_score = 50
+        self.max_rounds = 30
 
     def display(self):
         """Display the current game state."""
@@ -324,12 +327,41 @@ class BoggleGame(BaseGame):
                     break
                 dfs(r, c, {(r, c)}, cell_strings[r][c])
 
-        word_list = sorted(words, key=lambda w: -len(w))[:max_words]
+        # Both seats run the same search on the same grid, so taking a
+        # deterministic "best" slice hands both players an identical list.
+        # Every word then cancels as shared, nobody ever scores, and the race
+        # to the target score never ends. Sample instead, favouring longer
+        # words, so the two players turn in different lists.
+        ranked = sorted(words, key=lambda w: -len(w))
+        pool = ranked[:max_words * 3]
+        if len(pool) > max_words:
+            weights = [len(w) ** 2 for w in pool]
+            word_list = []
+            remaining = list(pool)
+            remaining_w = list(weights)
+            while remaining and len(word_list) < max_words:
+                pick = random.choices(range(len(remaining)), weights=remaining_w)[0]
+                word_list.append(remaining.pop(pick))
+                remaining_w.pop(pick)
+        else:
+            word_list = pool
         self.round_words[self.collecting_player] = word_list
         return "done"
 
     def check_game_over(self):
         """Check if any player has reached the target score."""
+        # Safety net: if neither player pulls ahead to the target, stop after
+        # max_rounds and award it on points rather than playing forever.
+        if self.round_number > self.max_rounds:
+            self.game_over = True
+            if self.scores[0] > self.scores[1]:
+                self.winner = 1
+            elif self.scores[1] > self.scores[0]:
+                self.winner = 2
+            else:
+                self.winner = None
+            return
+
         if self.scores[0] >= self.target_score or self.scores[1] >= self.target_score:
             if self.scores[0] >= self.target_score and self.scores[1] >= self.target_score:
                 # Both crossed on same round — higher wins

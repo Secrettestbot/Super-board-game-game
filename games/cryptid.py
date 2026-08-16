@@ -369,31 +369,46 @@ class CryptidGame(BaseGame):
         opp_yes = set((r, c) for (r, c), v in self.player_tokens[opp - 1].items() if v)
         opp_no = set((r, c) for (r, c), v in self.player_tokens[opp - 1].items() if not v)
 
-        candidates = [pos for pos in own_yes if pos not in opp_no]
+        # A wrong guess costs only a NO token on our own board, so exclude
+        # anywhere we have already ruled out or we would guess it forever.
+        own_ruled_out = set(
+            pos for pos, v in self.player_tokens[cp - 1].items() if not v
+        )
+        candidates = [pos for pos in own_yes
+                      if pos not in opp_no and pos not in own_ruled_out]
+
+        # Positions consistent with *both* clues are where the creature can be.
+        both_yes = [pos for pos in candidates if pos in opp_yes]
 
         if difficulty == 'easy':
+            # Even the easy AI has to commit eventually, or the game never
+            # ends: it only finishes on a correct guess.
+            if both_yes and random.random() < 0.5:
+                return ("guess", *random.choice(both_yes))
             if unknown:
                 return ("search", *random.choice(unknown))
-            return ("search", *random.choice(all_pos))
+            if candidates:
+                return ("guess", *random.choice(candidates))
+            return ("guess", *random.choice(all_pos))
 
-        if difficulty == 'hard' and len(candidates) == 1:
-            pos = candidates[0]
-            if pos in opp_yes:
-                return ("guess", pos[0], pos[1])
+        if both_yes:
+            if difficulty == 'hard' or len(both_yes) <= 2:
+                return ("guess", *random.choice(both_yes))
 
-        both_yes = [pos for pos in candidates if pos in opp_yes]
-        if difficulty == 'hard' and len(both_yes) == 1:
-            return ("guess", both_yes[0][0], both_yes[0][1])
-
-        search_targets = [pos for pos in candidates if pos not in opp_yes and pos not in opp_no]
+        search_targets = [pos for pos in candidates
+                          if pos not in opp_yes and pos not in opp_no]
         if search_targets:
-            if difficulty == 'hard':
-                return ("search", *random.choice(search_targets))
             return ("search", *random.choice(search_targets))
 
         if unknown:
             return ("search", *random.choice(unknown))
-        return ("search", *random.choice(all_pos))
+
+        # Everything is known and nothing is left to search: guess.
+        if both_yes:
+            return ("guess", *random.choice(both_yes))
+        if candidates:
+            return ("guess", *random.choice(candidates))
+        return ("guess", *random.choice(all_pos))
 
     def check_game_over(self):
         # Already handled in make_move for guesses
