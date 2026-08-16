@@ -447,7 +447,11 @@ class TargiExpansionGame(BaseGame):
                     if self._is_interior(rr, cc)
                     and self.interior_cards[rr - 1][cc - 1] is not None
                 )
-                s += buyable * 6
+                # Weighted well above any resource yield: buying tribe cards
+                # is the win condition and resources are only a means to it.
+                # A tempting resource card would otherwise keep the AI from
+                # ever forming an intersection over a card it could buy.
+                s += buyable * 25
                 if difficulty == "medium":
                     s += rand.uniform(-1, 1)
                 scored.append((s, r, c))
@@ -489,6 +493,9 @@ class TargiExpansionGame(BaseGame):
         """
         return
 
+    # Safety net for a board state neither player can make progress from.
+    max_rounds = 200
+
     def check_game_over(self):
         reached = any(len(self.tribe_cards_owned[str(p)]) >= self.target_tribes
                       for p in (1, 2))
@@ -497,7 +504,10 @@ class TargiExpansionGame(BaseGame):
         exhausted = (not self.interior_deck
                      and all(card is None
                              for row in self.interior_cards for card in row))
-        if not (reached or exhausted):
+        # The remaining cards can also be permanently unaffordable (a
+        # resource nobody produces) while workers keep cycling. Cap the
+        # rounds so the game is always decided on points.
+        if not (reached or exhausted or self.round_number > self.max_rounds):
             return
 
         self.game_over = True

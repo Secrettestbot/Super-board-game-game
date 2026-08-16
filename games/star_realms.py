@@ -549,12 +549,21 @@ class StarRealms(BaseGame):
 
         return "end"
 
+    # A player who out-heals the damage they take, behind bases that keep
+    # being replayed, can never be reduced to zero authority.
+    max_turns = 600
+
     def check_game_over(self):
         for player in [1, 2]:
             if self.authority[player] <= 0:
                 self.game_over = True
                 self.winner = 2 if player == 1 else 1
                 return
+
+        if self.turn_number >= self.max_turns:
+            self.game_over = True
+            a1, a2 = self.authority[1], self.authority[2]
+            self.winner = 1 if a1 > a2 else (2 if a2 > a1 else None)
 
     def get_state(self):
         return {

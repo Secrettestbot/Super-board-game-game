@@ -352,6 +352,15 @@ class GoGame(BaseGame):
         if self._repetition_draw():
             self.game_over = True
             self._score_game()
+            return
+
+        # An AI that always finds some move to play never triggers the two
+        # passes that normally end a game, and capture-and-recapture keeps
+        # producing fresh positions that superko cannot catch. Cap the game
+        # at a length no real game reaches and score the board.
+        if self.turn_number >= self.size * self.size * 4:
+            self.game_over = True
+            self._score_game()
 
     def _score_game(self):
         """Score using Chinese (area) scoring: stones on board + territory.

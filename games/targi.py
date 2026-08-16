@@ -100,6 +100,7 @@ class TargiGame(BaseGame):
         self.phase = "place_workers"  # place_workers, resolve, buy
         self.workers_placed = 0
         self.robber_pos = 0  # Robber moves around border each round
+        self.round_number = 1
         self.log = []
 
     def setup(self):
@@ -125,6 +126,7 @@ class TargiGame(BaseGame):
             self.worker_positions[sp] = []
 
         self.robber_pos = 0
+        self.round_number = 1
         self.phase = "place_workers"
         self.workers_placed = 0
         self.log = ["Game started! Place your workers on the border."]
@@ -419,6 +421,7 @@ class TargiGame(BaseGame):
                 self.robber_pos = (self.robber_pos + 1) % len(BORDER_POSITIONS)
                 self.phase = "place_workers"
                 self.current_player = 1
+                self.round_number += 1
             self.log.append(f"{self.players[cp-1]} finished buying.")
             return True
 
@@ -464,7 +467,11 @@ class TargiGame(BaseGame):
                     if self._is_interior(rr, cc)
                     and self.interior_cards[rr - 1][cc - 1] is not None
                 )
-                s += buyable * 6
+                # Weighted well above any resource yield: buying tribe cards
+                # is the win condition and resources are only a means to it.
+                # A tempting resource card would otherwise keep the AI from
+                # ever forming an intersection over a card it could buy.
+                s += buyable * 25
                 if difficulty == "medium":
                     s += rand.uniform(-1, 1)
                 scored.append((s, r, c))
@@ -506,6 +513,9 @@ class TargiGame(BaseGame):
         """
         return
 
+    # Safety net for a board state neither player can make progress from.
+    max_rounds = 200
+
     def check_game_over(self):
         reached = any(len(self.tribe_cards_owned[str(p)]) >= self.target_tribes
                       for p in (1, 2))
@@ -515,7 +525,10 @@ class TargiGame(BaseGame):
         exhausted = (not self.interior_deck
                      and all(card is None
                              for row in self.interior_cards for card in row))
-        if not (reached or exhausted):
+        # The remaining cards can also be permanently unaffordable (a
+        # resource nobody produces) while workers keep cycling. Cap the
+        # rounds so the game is always decided on points.
+        if not (reached or exhausted or self.round_number > self.max_rounds):
             return
 
         self.game_over = True
@@ -542,6 +555,7 @@ class TargiGame(BaseGame):
                                  for k, v in self.worker_positions.items()},
             "phase": self.phase,
             "robber_pos": self.robber_pos,
+            "round_number": self.round_number,
             "workers_placed": self.workers_placed,
             "log": self.log,
         }
@@ -559,6 +573,7 @@ class TargiGame(BaseGame):
         }
         self.phase = state["phase"]
         self.robber_pos = state["robber_pos"]
+        self.round_number = state.get("round_number", 1)
         self.workers_placed = state.get("workers_placed", 0)
         self.log = state.get("log", [])
 
