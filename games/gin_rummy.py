@@ -726,7 +726,11 @@ class GinRummyGame(BaseGame):
 
         if best_knock_idx is not None:
             if difficulty == 'easy':
-                if best_knock_dw <= 3:
+                # Knock as soon as it is legal. Holding out for deadwood of 3
+                # while discarding at random meant the easy AI almost never
+                # knocked, so rounds only ever ended by exhausting the deck -
+                # which scores nothing - and the target was never reached.
+                if best_knock_dw <= self.knock_value:
                     return f"knock {best_knock_idx + 1}"
             elif difficulty == 'medium':
                 if best_knock_dw <= 6:
