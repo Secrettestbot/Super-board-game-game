@@ -299,13 +299,15 @@ class AlquerqueGame(BaseGame):
     def get_state(self):
         return {
             "board": self.board[:],
-            "pieces_count": self.pieces_count.copy(),
+            # JSON turns int dict keys into strings, so store them as strings
+            # and convert back on load.
+            "pieces_count": {str(k): v for k, v in self.pieces_count.items()},
             "must_continue_from": self.must_continue_from,
         }
 
     def load_state(self, state):
         self.board = state["board"]
-        self.pieces_count = state["pieces_count"]
+        self.pieces_count = {int(k): v for k, v in state["pieces_count"].items()}
         self.must_continue_from = state.get("must_continue_from")
 
     def get_ai_move(self):

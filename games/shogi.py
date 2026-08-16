@@ -489,7 +489,7 @@ class ShogiGame(BaseGame):
                         # Quick validation
                         if piece == 'P':
                             has_pawn_col = any(
-                                pc == 'P' and pl2 == player and c2 == c
+                                pc2 == 'P' and pl2 == player and c2 == c
                                 for (r2, c2), (pl2, pc2) in self.board.items()
                             )
                             if has_pawn_col:

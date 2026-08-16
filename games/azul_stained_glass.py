@@ -13,6 +13,10 @@ COLORS = ["Red", "Blue", "Yellow", "Purple", "Orange"]
 COLOR_SYM = {"Red": "R", "Blue": "B", "Yellow": "Y", "Purple": "P",
              "Orange": "O", None: "."}
 
+# Marker placed in a player's broken area for taking first from the center.
+FIRST_MARKER = "first"
+BROKEN_SYM = dict(COLOR_SYM, **{FIRST_MARKER: "1st"})
+
 # Window pattern: 5 columns x 4 rows, each cell accepts specific colors
 # Standard patterns per column (which colors are allowed)
 WINDOW_PATTERNS = [
@@ -242,7 +246,7 @@ class AzulStainedGlassGame(BaseGame):
                             cells.append(" . ")
                 print(f"    R{row+1}: " + " ".join(cells))
             if self.broken[sp]:
-                br = " ".join(COLOR_SYM[c] for c in self.broken[sp])
+                br = " ".join(BROKEN_SYM.get(c, "?") for c in self.broken[sp])
                 print(f"    Broken: {br}")
 
         if self.log:
@@ -323,7 +327,7 @@ class AzulStainedGlassGame(BaseGame):
                 if not self.first_player_taken:
                     self.first_player_taken = True
                     self.first_player_next = cp
-                    self.broken[sp].append("first")  # marker penalty
+                    self.broken[sp].append(FIRST_MARKER)  # marker penalty
                 for c in self.center:
                     if c == color:
                         taken.append(c)

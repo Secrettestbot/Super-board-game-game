@@ -49,6 +49,7 @@ class CaboGame(BaseGame):
         self.cabo_called_by = None
         self.cabo_final_turns = 0
         self.log = []
+        self._drawn_card = None   # card held mid-turn during the "drawn" phase
 
     def setup(self):
         self.deck = list(DECK_COMPOSITION)
@@ -473,6 +474,9 @@ class CaboGame(BaseGame):
             "cabo_called_by": self.cabo_called_by,
             "cabo_final_turns": self.cabo_final_turns,
             "log": self.log,
+            # Mid-turn state: a game suspended during the "drawn" phase must
+            # remember the card in hand or it cannot be resumed.
+            "drawn_card": self._drawn_card,
         }
 
     def load_state(self, state):
@@ -484,6 +488,7 @@ class CaboGame(BaseGame):
         self.cabo_called_by = state["cabo_called_by"]
         self.cabo_final_turns = state["cabo_final_turns"]
         self.log = state.get("log", [])
+        self._drawn_card = state.get("drawn_card")
 
     def get_tutorial(self):
         return """
