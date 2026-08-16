@@ -517,6 +517,9 @@ class ChineseCheckersGame(BaseGame):
         path, _ = all_moves[0]
         return path
 
+    # Neither side may ever fill their target triangle under random play.
+    max_turns = 1500
+
     def check_game_over(self):
         """Check if a player has filled the opposite triangle."""
         # P1 goal is p2_home (bottom triangle)
@@ -542,6 +545,16 @@ class ChineseCheckersGame(BaseGame):
         if self._repetition_draw():
             self.game_over = True
             self.winner = None
+            return
+
+        # Random play shuffles pieces without ever repeating a position
+        # exactly, so also cap the game and award it to whoever has more
+        # pieces home.
+        if self.turn_number >= self.max_turns:
+            self.game_over = True
+            home1 = sum(1 for pos in p1_goal if self.board.get(pos) == P1)
+            home2 = sum(1 for pos in p2_goal if self.board.get(pos) == P2)
+            self.winner = 1 if home1 > home2 else (2 if home2 > home1 else None)
 
     # ------------------------------------------------------------------
     # Save / Load
