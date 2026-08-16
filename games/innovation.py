@@ -561,11 +561,21 @@ class InnovationGame(BaseGame):
             self.boards[player][best_color]["splay"] = direction
             self._add_log(f"  Splayed {best_color} {direction}")
 
+    def switch_player(self):
+        """No-op: a turn is two actions, and _check_actions hands over.
+
+        The engine calls switch_player() after every accepted move, so
+        letting it flip here as well passed the turn after a single action
+        and left the shared action counter meaningless - the game never
+        progressed.
+        """
+        return
+
     def _check_actions(self):
         """Check if turn is over."""
         if self.actions_remaining <= 0:
             self.actions_remaining = 2
-            self.switch_player()
+            super().switch_player()
 
     def get_ai_move(self):
         import random
@@ -642,6 +652,9 @@ class InnovationGame(BaseGame):
 
         return ("action", act_str)
 
+    # Hard stop for a game that stalls short of the achievement target.
+    max_turns = 600
+
     def check_game_over(self):
         if self.game_over:
             return
@@ -652,9 +665,11 @@ class InnovationGame(BaseGame):
                 self._add_log(f"{self.players[p-1]} wins with {self.achievements_to_win} achievements!")
                 return
 
-        # Check if all supply is empty
+        # Neither side may ever score enough to claim an achievement, and
+        # dogma actions alone do not exhaust the supply, so cap the game and
+        # settle it the same way an empty supply would.
         total_supply = sum(len(self.supply_piles.get(a, [])) for a in range(1, self.max_age + 1))
-        if total_supply == 0:
+        if total_supply == 0 or self.turn_number >= self.max_turns:
             # Player with highest score wins
             s1 = self._score_total(1)
             s2 = self._score_total(2)

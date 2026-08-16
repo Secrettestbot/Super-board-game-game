@@ -121,6 +121,16 @@ class PortRoyalGame(BaseGame):
                 strength += 1
         return strength
 
+    def _ship_strength(self, card):
+        """Sword strength needed to defeat a ship.
+
+        A ship's coin value is its reward, not its strength: requiring
+        strength equal to the reward meant a player who starts with no swords
+        could never beat even a 1-coin ship, so no coins were ever earned, no
+        crew could be hired, and no points were ever scored.
+        """
+        return max(0, card["coins"] - 1)
+
     def _get_hire_discount(self, player):
         sp = str(player)
         discount = 0
@@ -351,7 +361,7 @@ class PortRoyalGame(BaseGame):
             strength = self._get_sword_strength(cp)
             for card in self.harbor[:]:
                 if card["type"] == "ship":
-                    if strength >= card["coins"]:
+                    if strength >= self._ship_strength(card):
                         self.coins[sp] += card["coins"]
                         trader_bonus = self._count_ability(cp, "trader")
                         self.coins[sp] += trader_bonus
@@ -393,7 +403,7 @@ class PortRoyalGame(BaseGame):
                 return True
             elif card["type"] == "ship":
                 strength = self._get_sword_strength(cp)
-                if strength < card["coins"]:
+                if strength < self._ship_strength(card):
                     return False
                 self.coins[sp] += card["coins"]
                 self.harbor.pop(idx)
