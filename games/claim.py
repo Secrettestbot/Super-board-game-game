@@ -418,7 +418,17 @@ class ClaimGame(BaseGame):
         return ("play", str(idx + 1))
 
     def check_game_over(self):
-        if self.phase == 2 and not self.followers[1] and not self.followers[2]:
+        # Phase 2 needs a card from each player to resolve a trick. The Undead
+        # rule hands extra followers to the trick loser in phase 1, so the two
+        # piles can end up different sizes; once either is empty no further
+        # trick is possible and the players would pass at each other forever.
+        # Any cards the other player still holds count for them.
+        if self.phase == 2 and (not self.followers[1] or not self.followers[2]):
+            for p in (1, 2):
+                if self.followers[p]:
+                    self.score_piles[p].extend(self.followers[p])
+                    self.followers[p] = []
+
             # Count faction majorities
             faction_counts = {1: {}, 2: {}}
             for p in (1, 2):

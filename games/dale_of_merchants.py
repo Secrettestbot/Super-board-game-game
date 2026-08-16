@@ -82,8 +82,10 @@ class DaleOfMerchantsGame(BaseGame):
         self.player_stall_count = [0, 0]
         self.active_folk = []
         self.phase = "action"
+        self.consecutive_passes = 0
 
     def setup(self):
+        self.consecutive_passes = 0
         if self.variation == "quick":
             self.stalls_to_win = 5
         # Pick 4 animalfolk types
@@ -196,15 +198,21 @@ class DaleOfMerchantsGame(BaseGame):
         action = parts[0]
 
         if action == "buy":
-            return self._do_buy(p, parts)
+            ok = self._do_buy(p, parts)
         elif action == "stall":
-            return self._do_build_stall(p, parts)
+            ok = self._do_build_stall(p, parts)
         elif action == "discard":
-            return self._do_discard(p, parts)
+            ok = self._do_discard(p, parts)
         elif action == "pass":
-            return self._do_pass(p)
+            ok = self._do_pass(p)
+            if ok:
+                self.consecutive_passes += 1
+            return ok
         else:
             return False
+        if ok:
+            self.consecutive_passes = 0
+        return ok
 
     def _do_buy(self, p, parts):
         """Buy a card from market using hand cards as payment."""
@@ -448,6 +456,33 @@ class DaleOfMerchantsGame(BaseGame):
                 self.winner = i + 1
                 return
 
+        # Cards spent on stalls leave circulation, so a player's deck can
+        # shrink to a handful that cycles hand -> discard -> hand with the
+        # stall target permanently out of reach. Neither running dry nor a
+        # long run of mutual passes can make progress, so settle it on stalls
+        # built rather than passing back and forth forever.
+        stalled = all(not self.player_hands[i] and not self.player_decks[i]
+                      and not self.player_discards[i] for i in range(2))
+        if stalled or self.consecutive_passes >= 8:
+            self.game_over = True
+            if self.player_stall_count[0] > self.player_stall_count[1]:
+                self.winner = 1
+            elif self.player_stall_count[1] > self.player_stall_count[0]:
+                self.winner = 2
+            else:
+                # Tie-break on the total value built into the stalls.
+                totals = [
+                    sum(c["value"] for stall in self.player_stalls[i]
+                        for c in stall["cards"])
+                    for i in range(2)
+                ]
+                if totals[0] > totals[1]:
+                    self.winner = 1
+                elif totals[1] > totals[0]:
+                    self.winner = 2
+                else:
+                    self.winner = None
+
     def get_state(self):
         return {
             "stalls_to_win": self.stalls_to_win,
@@ -459,6 +494,7 @@ class DaleOfMerchantsGame(BaseGame):
             "player_discards": copy.deepcopy(self.player_discards),
             "player_stalls": copy.deepcopy(self.player_stalls),
             "player_stall_count": self.player_stall_count[:],
+            "consecutive_passes": self.consecutive_passes,
             "active_folk": self.active_folk[:],
             "phase": self.phase,
         }
@@ -473,6 +509,7 @@ class DaleOfMerchantsGame(BaseGame):
         self.player_discards = state["player_discards"]
         self.player_stalls = state["player_stalls"]
         self.player_stall_count = state["player_stall_count"]
+        self.consecutive_passes = state.get("consecutive_passes", 0)
         self.active_folk = state["active_folk"]
         self.phase = state["phase"]
 

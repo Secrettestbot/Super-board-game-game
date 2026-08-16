@@ -172,6 +172,9 @@ class UndauntedGame(BaseGame):
         'skirmish': 'Skirmish: 3x3 grid, 20-card decks',
     }
     side_labels = ("Player 1", "Player 2")
+    # Hard stop: a stand-off where neither side takes the objective majority
+    # would otherwise run forever.
+    max_turns = 500
 
     def setup(self):
         """Initialize the game."""
@@ -728,8 +731,13 @@ class UndauntedGame(BaseGame):
             unit_pos = self._find_unit_cell(p, card['symbol'])
 
             if card['name'] == 'Squad Leader':
-                best_action = ('special', cidx_str)
-                best_score = 100
+                # Score it like any other option instead of forcing it. A
+                # flat override meant the AI played Command every turn it
+                # held a Squad Leader and never attacked or took an
+                # objective, so the game had no way to end.
+                if best_score < 25:
+                    best_action = ('special', cidx_str)
+                    best_score = 25
                 continue
 
             if card['name'] == 'Medic' and pd['casualties']:
@@ -815,6 +823,23 @@ class UndauntedGame(BaseGame):
                 self.game_over = True
                 self.winner = 1 if p == 2 else 2
                 return
+
+        # Neither side may ever reach the objective majority. Cap the game so
+        # it ends on objectives held, then on units still standing.
+        if self.turn_number >= self.max_turns:
+            self.game_over = True
+            held = [self.player_data[str(p)]['objectives_controlled'] for p in (1, 2)]
+            if held[0] != held[1]:
+                self.winner = 1 if held[0] > held[1] else 2
+                return
+            units = [
+                len(self.player_data[str(p)]['draw_pile'])
+                + len(self.player_data[str(p)]['hand'])
+                + len(self.player_data[str(p)]['discard'])
+                for p in (1, 2)
+            ]
+            self.winner = (1 if units[0] > units[1]
+                           else 2 if units[1] > units[0] else None)
 
     def get_state(self):
         """Return serializable game state."""

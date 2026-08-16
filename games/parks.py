@@ -401,8 +401,11 @@ class ParksGame(BaseGame):
                     return f"park {affordable[0][0] + 1}"
                 top = affordable[:min(2, len(affordable))]
                 return f"park {rand.choice(top)[0] + 1}"
-            return "photo"
 
+        # A photo is only worth taking when nothing else can be done. The
+        # season ends once every hiker reaches the trail end, so a player who
+        # keeps photographing instead of walking their remaining hiker stalls
+        # the season - and the game - forever.
         movable = [hi for hi in range(2) if self.hiker_positions[p][hi] < len(self.trail)]
         if not movable:
             return "photo"
