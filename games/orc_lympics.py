@@ -184,9 +184,12 @@ class OrcLympicsGame(BaseGame):
 
     def display(self):
         clear_screen()
-        event = self.events[self.current_event_idx]
+        # After the final event the index runs one past the end, and the
+        # engine displays the board once more before announcing the winner.
+        idx = min(self.current_event_idx, len(self.events) - 1)
+        event = self.events[idx]
         print(f"{'=' * 60}")
-        print(f"  ORC-LYMPICS - Event {self.current_event_idx + 1}/{len(self.events)}")
+        print(f"  ORC-LYMPICS - Event {idx + 1}/{len(self.events)}")
         print(f"{'=' * 60}")
 
         # Medal standings
