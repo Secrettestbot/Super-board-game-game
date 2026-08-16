@@ -440,6 +440,23 @@ class GemRushGame(BaseGame):
             return best_action
         return "pass"
 
+    def _can_craft_anything(self, player):
+        """True if the player's banked gems satisfy some recipe.
+
+        Counting gems is not enough: a Ring needs two *matching* gems, so a
+        player holding two different ones can craft nothing. Treating them as
+        able to act left both players passing at each other forever once the
+        mine bag ran out.
+        """
+        from itertools import combinations
+        safe = [g for g in self.banked_gems[player] if g in SAFE_GEMS]
+        for recipe in RECIPES.values():
+            for size in range(2, len(safe) + 1):
+                for combo in combinations(safe, size):
+                    if recipe["check"](list(combo)):
+                        return True
+        return False
+
     def check_game_over(self):
         """Check if the game is over."""
         # Win: reached target score
@@ -455,8 +472,7 @@ class GemRushGame(BaseGame):
             for pp in [1, 2]:
                 if self.hands[pp]:
                     can_act = True
-                safe_banked = [g for g in self.banked_gems[pp] if g in SAFE_GEMS]
-                if len(safe_banked) >= 2:
+                if self._can_craft_anything(pp):
                     can_act = True
             if not can_act:
                 self.game_over = True
