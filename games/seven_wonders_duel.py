@@ -446,7 +446,8 @@ class SevenWondersDuelGame(BaseGame):
             'coins': {str(k): v for k, v in self.coins.items()},
             'military': self.military,
             'tableaux': {str(k): v for k, v in self.tableaux.items()},
-            'science_symbols': {str(k): list(v) for k, v in self.science_symbols.items()},
+            # Sets have no order; sort so a resumed game re-saves identically.
+            'science_symbols': {str(k): sorted(v) for k, v in self.science_symbols.items()},
             'resources': {str(k): v for k, v in self.resources.items()},
             'pyramid': [
                 [{'card': s['card'], 'face_up': s['face_up'], 'taken': s['taken']} if s else None for s in row]

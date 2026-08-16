@@ -306,6 +306,9 @@ class AlquerqueGame(BaseGame):
         }
 
     def load_state(self, state):
+        # The adjacency graph is built in setup(), which a resumed game never
+        # runs, so rebuild it here or every move lookup raises AttributeError.
+        self.adjacency = self._build_adjacency()
         self.board = state["board"]
         self.pieces_count = {int(k): v for k, v in state["pieces_count"].items()}
         self.must_continue_from = state.get("must_continue_from")

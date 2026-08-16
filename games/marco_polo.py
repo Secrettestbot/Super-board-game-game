@@ -583,7 +583,8 @@ class MarcoPoloGame(BaseGame):
             'resources': {str(k): v for k, v in self.resources.items()},
             'characters': {str(k): v for k, v in self.characters.items()},
             'positions': {str(k): v for k, v in self.positions.items()},
-            'visited_cities': {str(k): list(v) for k, v in self.visited_cities.items()},
+            # Sets have no order; sort so a resumed game re-saves identically.
+            'visited_cities': {str(k): sorted(v) for k, v in self.visited_cities.items()},
             'dice': {str(k): v for k, v in self.dice.items()},
             'dice_count': {str(k): v for k, v in self.dice_count.items()},
             'contracts_held': {str(k): v for k, v in self.contracts_held.items()},
