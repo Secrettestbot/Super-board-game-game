@@ -52,6 +52,7 @@ class QwirkleGame(BaseGame):
     def __init__(self, variation=None):
         super().__init__(variation)
         self.bag = []
+        self.consecutive_swaps = 0
         self.hands = [[], []]
         self.scores = [0, 0]
         self.board = {}  # (row, col) -> (color, shape)
@@ -68,6 +69,7 @@ class QwirkleGame(BaseGame):
             self.colors = list(STANDARD_COLORS)
 
         # Build bag: each unique tile appears COPIES_PER_TILE times
+        self.consecutive_swaps = 0
         self.bag = []
         for color in self.colors:
             for shape in self.shapes:
@@ -168,9 +170,18 @@ class QwirkleGame(BaseGame):
         p = self.current_player - 1
 
         if action == 'x':
-            return self._do_swap(p, parts[1:])
+            ok = self._do_swap(p, parts[1:])
+            if ok:
+                # Swapping returns tiles to the bag, so the bag never empties
+                # and the "player went out" end condition is unreachable if
+                # neither side can ever place. Count the dry turns.
+                self.consecutive_swaps += 1
+            return ok
         elif action == 'p':
-            return self._do_place(p, parts[1:])
+            ok = self._do_place(p, parts[1:])
+            if ok:
+                self.consecutive_swaps = 0
+            return ok
         else:
             return False
 
@@ -491,8 +502,21 @@ class QwirkleGame(BaseGame):
 
         return f"p 1 0 0"
 
+    # Both players swapping this many turns running means nobody can place.
+    max_consecutive_swaps = 8
+
     def check_game_over(self):
         """Check if game is over: bag empty and a player has no tiles."""
+        if self.consecutive_swaps >= self.max_consecutive_swaps:
+            self.game_over = True
+            if self.scores[0] > self.scores[1]:
+                self.winner = 1
+            elif self.scores[1] > self.scores[0]:
+                self.winner = 2
+            else:
+                self.winner = None
+            return
+
         for p in range(2):
             if not self.hands[p] and not self.bag:
                 self.scores[p] += QWIRKLE_BONUS  # bonus for going out
@@ -550,11 +574,13 @@ class QwirkleGame(BaseGame):
             "board": board_serial,
             "shapes": list(self.shapes),
             "colors": list(self.colors),
+            "consecutive_swaps": self.consecutive_swaps,
         }
 
     def load_state(self, state):
         """Restore game state."""
         self.bag = [tuple(t) for t in state["bag"]]
+        self.consecutive_swaps = state.get("consecutive_swaps", 0)
         self.hands = [[tuple(t) for t in h] for h in state["hands"]]
         self.scores = list(state["scores"])
         self.board = {}

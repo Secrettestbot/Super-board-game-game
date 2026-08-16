@@ -479,6 +479,10 @@ class RaceForTheGalaxyGame(BaseGame):
         scored.sort(reverse=True)
         return scored[0][1]
 
+    # Neither tableau may ever reach the trigger and the VP pool may never
+    # drain, if the players cannot afford anything they draw.
+    max_turns = 500
+
     def check_game_over(self):
         """Check if any player has reached end condition."""
         for p in (1, 2):
@@ -486,6 +490,8 @@ class RaceForTheGalaxyGame(BaseGame):
                 self.game_over = True
                 break
         if self.vp_pool <= 0:
+            self.game_over = True
+        if self.turn_number >= self.max_turns:
             self.game_over = True
 
         if self.game_over:

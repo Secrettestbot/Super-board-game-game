@@ -219,8 +219,9 @@ class MexicaGame(BaseGame):
         cr, cc = self.founder_pos[player]
         dist = abs(target_r - cr) + abs(target_c - cc)
 
-        if dist > self.action_points:
-            return False
+        # The raw distance is not the cost - canal travel below reduces it to
+        # 1 AP. Rejecting on distance first made every canal move illegal
+        # while the AI (which costs moves correctly) kept offering them.
 
         target_cell = self.board[target_r][target_c]
         if target_cell.startswith("F") or target_cell.startswith("T"):
