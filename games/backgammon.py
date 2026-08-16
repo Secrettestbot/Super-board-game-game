@@ -550,6 +550,11 @@ class BackgammonGame(BaseGame):
         Returns True if valid."""
         if move is None:
             return False
+        # A turn is over once its moves are applied, so clear the dice. They
+        # are shared between players and only re-rolled when empty: an unused
+        # die left over from a blocked turn would otherwise carry to the
+        # opponent and stop either side from ever rolling again.
+        self.remaining_moves = []
         if move == 'no_moves':
             return True
         # Moves were already applied during get_move for interactive feedback

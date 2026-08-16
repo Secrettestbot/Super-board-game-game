@@ -186,6 +186,34 @@ class BlockadeGame(BaseGame):
             return False
         return True
 
+    def _has_any_pawn_move(self, player):
+        """True if *player* can step at least one pawn somewhere legal."""
+        for pr, pc in self.pawns[player]:
+            pawn_positions = self._get_all_pawn_positions()
+            pawn_positions.discard((pr, pc))
+            for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                if self._is_path_clear(pr, pc, pr + dr, pc + dc, pawn_positions):
+                    return True
+        return False
+
+    def _any_valid_wall_placement(self):
+        """True if some wall can legally be placed in the current position.
+
+        A move without a wall is only allowed when this is False, so the AI
+        and make_move must agree - hence one shared implementation.
+        """
+        for wr in range(self.rows):
+            for wc in range(self.cols):
+                for can_place, wall_set in ((self._can_place_h_wall, self.h_walls),
+                                            (self._can_place_v_wall, self.v_walls)):
+                    if can_place(wr, wc):
+                        wall_set.add((wr, wc))
+                        ok = self._wall_leaves_paths_open()
+                        wall_set.discard((wr, wc))
+                        if ok:
+                            return True
+        return False
+
     def display(self):
         """Display the board with pawns, walls, and coordinates."""
         var_label = "Standard 11x14" if self.variation == "standard" else "Small 7x8"
@@ -344,23 +372,7 @@ class BlockadeGame(BaseGame):
 
         # Validate and place wall
         if no_wall:
-            has_any_valid = False
-            for wr2 in range(self.rows):
-                for wc2 in range(self.cols):
-                    for wo2, can_place, wall_set in [('h', self._can_place_h_wall, self.h_walls),
-                                                      ('v', self._can_place_v_wall, self.v_walls)]:
-                        if can_place(wr2, wc2):
-                            wall_set.add((wr2, wc2))
-                            if self._wall_leaves_paths_open():
-                                has_any_valid = True
-                            wall_set.discard((wr2, wc2))
-                            if has_any_valid:
-                                break
-                    if has_any_valid:
-                        break
-                if has_any_valid:
-                    break
-            if has_any_valid:
+            if self._any_valid_wall_placement():
                 self.pawns[self.current_player][pawn_idx] = old_pos
                 return False
         else:
@@ -522,6 +534,14 @@ class BlockadeGame(BaseGame):
                             cr, cc = nr, nc
                         if not valid_path:
                             continue
+                        # Only legal if this move really leaves no wall to
+                        # place - make_move checks exactly that.
+                        old_pos = self.pawns[p][pi]
+                        self.pawns[p][pi] = (cr, cc)
+                        wall_exists = self._any_valid_wall_placement()
+                        self.pawns[p][pi] = old_pos
+                        if wall_exists:
+                            continue
                         if num_pawns == 1:
                             return f"{direction} {dist}"
                         return f"{pi + 1} {direction} {dist}"
@@ -555,6 +575,23 @@ class BlockadeGame(BaseGame):
                 self.game_over = True
                 self.winner = 2
                 return
+        # Walls and other pawns can box a pawn in completely. A player with
+        # no legal move loses; without this the engine keeps asking them for
+        # a move forever.
+        if not self._has_any_pawn_move(1):
+            self.game_over = True
+            self.winner = 2
+            return
+        if not self._has_any_pawn_move(2):
+            self.game_over = True
+            self.winner = 1
+            return
+
+        # Walls are unlimited and a path to the goal is always kept open, so
+        # two players can shuffle pawns indefinitely. Call a repeat a draw.
+        if self._repetition_draw():
+            self.game_over = True
+            self.winner = None
 
     def get_state(self):
         """Return serializable game state."""
@@ -562,8 +599,11 @@ class BlockadeGame(BaseGame):
             "cols": self.cols,
             "rows": self.rows,
             "pawns": {str(k): list(v) for k, v in self.pawns.items()},
-            "h_walls": [list(w) for w in self.h_walls],
-            "v_walls": [list(w) for w in self.v_walls],
+            # Sets have no order; sort so the saved state is deterministic
+            # (a resumed game re-saves identically, and repeated positions
+            # compare equal).
+            "h_walls": sorted(list(w) for w in self.h_walls),
+            "v_walls": sorted(list(w) for w in self.v_walls),
         }
 
     def load_state(self, state):

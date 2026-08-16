@@ -459,10 +459,15 @@ class StrategoGame(BaseGame):
         elif not p2_flag:
             self.game_over = True
             self.winner = 1
-        elif not p1_can_move and self.current_player == 1:
+        # check_game_over runs before the engine switches players, so
+        # current_player is the one who just moved - gating on it missed the
+        # case where the player about to move is the immobilised one, and the
+        # engine then asked them for a move forever. A player left with only
+        # bombs and a flag loses whichever turn it is.
+        elif not p1_can_move:
             self.game_over = True
             self.winner = 2
-        elif not p2_can_move and self.current_player == 2:
+        elif not p2_can_move:
             self.game_over = True
             self.winner = 1
 

@@ -435,7 +435,8 @@ class TwixTGame(BaseGame):
         return {
             "size": self.size,
             "board": [row[:] for row in self.board],
-            "links": [list(link) for link in self.links],  # list of [[r1,c1],[r2,c2]]
+            # Sorted so a resumed game re-saves identically (links is a set).
+            "links": sorted([list(a), list(b)] for a, b in self.links),
             "swap_available": self.swap_available,
             "first_move": list(self.first_move) if self.first_move else None,
         }
