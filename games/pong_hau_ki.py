@@ -193,6 +193,12 @@ class PongHauKiGame(BaseGame):
         if not self._has_moves(opponent):
             self.game_over = True
             self.winner = self.current_player
+            return
+        # Only four pieces on five points: with neither side able to force a
+        # block, both can slide back and forth forever. Call that a draw.
+        if self._repetition_draw():
+            self.game_over = True
+            self.winner = None
 
     def get_state(self):
         """Return serializable game state."""

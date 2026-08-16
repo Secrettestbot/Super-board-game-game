@@ -641,6 +641,12 @@ class XiangqiGame(BaseGame):
                 self.winner = self.current_player
             return
 
+        # Draw by repetition - without it two shuffling sides never finish.
+        if self._repetition_draw():
+            self.game_over = True
+            self.winner = None
+            return
+
     def get_state(self):
         return {
             'board': [row[:] for row in self.board],

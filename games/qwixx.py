@@ -297,6 +297,15 @@ class QwixxGame(BaseGame):
 
         return False
 
+    def switch_player(self):
+        """No-op: turn order is driven by the phase machine in make_move.
+
+        The engine calls switch_player() after every accepted move; letting it
+        flip current_player here would undo the phase transitions and the
+        round would never advance.
+        """
+        return
+
     def _advance_white(self):
         """After a white phase action, move to next player or color phase."""
         if self.current_player == 1:

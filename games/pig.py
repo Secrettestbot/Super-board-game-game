@@ -256,7 +256,38 @@ class PigGame(BaseGame):
     # ------------------------------------------------------------------ #
 
     def get_ai_move(self):
-        return 'roll'
+        """Roll or hold using the classic 'hold at 20' policy.
+
+        Always rolling means the AI can only ever lose its turn total to a 1,
+        so it never banks a point and the game never ends.
+        """
+        if self.must_roll_again:
+            return 'roll'
+        if not self.last_dice:
+            return 'roll'   # must roll at least once per turn
+
+        me = self.current_player
+        banked = self.total_scores[me]
+        if banked + self.turn_total >= self.target_score:
+            return 'hold'   # holding wins outright
+
+        difficulty = getattr(self, 'ai_difficulty', 'medium')
+        if difficulty == 'easy':
+            threshold = 12
+        elif difficulty == 'hard':
+            # Push harder when trailing, bank sooner when ahead.
+            opp = 2 if me == 1 else 1
+            deficit = self.total_scores[opp] - banked
+            threshold = 20 + max(0, min(15, deficit // 2))
+        else:
+            threshold = 20
+
+        # A single one wipes the turn in every variant, and big_pig/two_dice
+        # also cost banked points, so bank a little earlier there.
+        if self.variation in ('big_pig', 'two_dice'):
+            threshold = max(8, threshold - 6)
+
+        return 'hold' if self.turn_total >= threshold else 'roll'
 
     def check_game_over(self):
         """Check if a player has reached the target score."""
