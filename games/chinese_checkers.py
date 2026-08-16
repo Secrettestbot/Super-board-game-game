@@ -464,26 +464,35 @@ class ChineseCheckersGame(BaseGame):
             return results
 
         all_moves = []
+        any_moves = []   # ignores the strategic filters below
         for pos in pieces:
             r, c = pos
             start_d = gdist(r, c)
             for nr, nc in _hex_neighbors(r, c):
                 if (nr, nc) in self.positions and self.board.get((nr, nc), EMPTY) == EMPTY:
+                    adv = start_d - gdist(nr, nc)
+                    any_moves.append(([pos, (nr, nc)], adv))
                     if pos in goal and (nr, nc) not in goal:
                         continue
                     if (nr, nc) in opp_start and opp_start != goal:
                         continue
-                    adv = start_d - gdist(nr, nc)
                     all_moves.append(([pos, (nr, nc)], adv))
             for jpath in find_jump_paths(pos):
                 dest = jpath[-1]
+                adv = start_d - gdist(*dest)
+                any_moves.append((jpath, adv))
                 if pos in goal and dest not in goal:
                     continue
                 if dest in opp_start and opp_start != goal:
                     continue
-                adv = start_d - gdist(*dest)
                 all_moves.append((jpath, adv))
 
+        # Those filters keep pieces from leaving the goal or squatting in the
+        # opponent's start, but they can rule out every option. Returning None
+        # then leaves the engine asking for a move forever, so fall back to
+        # any legal move.
+        if not all_moves:
+            all_moves = any_moves
         if not all_moves:
             return None
 
@@ -521,9 +530,18 @@ class ChineseCheckersGame(BaseGame):
         if p1_wins:
             self.game_over = True
             self.winner = 1
+            return
         elif p2_wins:
             self.game_over = True
             self.winner = 2
+            return
+
+        # Draw by repetition: nothing forces progress here, and two
+        # deterministic players will otherwise cycle the same position
+        # forever.
+        if self._repetition_draw():
+            self.game_over = True
+            self.winner = None
 
     # ------------------------------------------------------------------
     # Save / Load

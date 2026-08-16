@@ -505,6 +505,13 @@ class AbaloneGame(BaseGame):
                 self.winner = player
                 return
 
+        # Draw by repetition: nothing forces progress here, and two
+        # deterministic players will otherwise cycle the same position
+        # forever.
+        if self._repetition_draw():
+            self.game_over = True
+            self.winner = None
+
     def get_state(self):
         """Return serializable game state."""
         # Convert tuple keys to strings for JSON serialization

@@ -576,6 +576,14 @@ class MorrisGame(BaseGame):
         if not self._has_valid_move(next_player):
             self.game_over = True
             self.winner = self.current_player
+            return
+
+        # Draw by repetition: nothing forces progress here, and two
+        # deterministic players will otherwise cycle the same position
+        # forever.
+        if self._repetition_draw():
+            self.game_over = True
+            self.winner = None
 
     def _has_valid_move(self, player):
         """True if player can make at least one move."""

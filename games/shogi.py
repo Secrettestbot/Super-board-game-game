@@ -633,14 +633,26 @@ class ShogiGame(BaseGame):
         opp = 3 - self.current_player
         self.in_check[opp] = self._is_in_check(opp)
 
-        if self.in_check[opp] and not self._has_legal_moves(opp):
+        # A player with no legal move loses whether or not they are in check
+        # (checkmate or stalemate). Gating this on being in check left a
+        # stalemated player to be asked for a move forever.
+        if not self._has_legal_moves(opp):
             self.game_over = True
             self.winner = self.current_player
+            return
 
         # Also check if current player's king was captured (shouldn't happen but safety)
         if not self._find_king(opp):
             self.game_over = True
             self.winner = self.current_player
+            return
+
+        # Draw by repetition: nothing forces progress here, and two
+        # deterministic players will otherwise cycle the same position
+        # forever.
+        if self._repetition_draw():
+            self.game_over = True
+            self.winner = None
 
     def get_state(self):
         board_state = {}
