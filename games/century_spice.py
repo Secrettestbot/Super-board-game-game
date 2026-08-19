@@ -570,9 +570,17 @@ class CenturySpiceGame(BaseGame):
         # game, but return rest to avoid returning None.
         return "rest"
 
+    # Both players can run out of anything useful to do: no merchant cards
+    # left to acquire and only spices that no point card in the row wants.
+    max_turns = 2000
+
     def check_game_over(self):
         pi = self.current_player - 1
         if not self.final_round and len(self.player_claimed[pi]) >= self.target_cards:
+            self.final_round = True
+            self.final_round_last_player = pi
+
+        if not self.final_round and self.turn_number >= self.max_turns:
             self.final_round = True
             self.final_round_last_player = pi
 
