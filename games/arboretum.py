@@ -336,8 +336,32 @@ class ArboretumGame(BaseGame):
         }
 
     def make_move(self, move):
+        """Apply a turn atomically.
+
+        A turn draws, plays and discards; validation happens along the way, so
+        snapshot the mutated collections and roll back if any step fails.
+        Otherwise a rejected move leaves drawn cards in hand and the deck
+        short, corrupting the game.
+        """
         if move is None:
             return False
+        cp = str(self.current_player)
+        opp = "2" if cp == "1" else "1"
+        snapshot = (
+            list(self.deck),
+            list(self.hands[cp]),
+            list(self.discard_piles[cp]),
+            list(self.discard_piles[opp]),
+            dict(self.tableaus[cp]),
+            list(self.log),
+        )
+        if self._apply_move(move):
+            return True
+        (self.deck, self.hands[cp], self.discard_piles[cp],
+         self.discard_piles[opp], self.tableaus[cp], self.log) = snapshot
+        return False
+
+    def _apply_move(self, move):
         cp = str(self.current_player)
 
         if move.get("action") != "turn":
@@ -468,17 +492,23 @@ class ArboretumGame(BaseGame):
         sorted_hand = sorted(hand, key=lambda c: (c[0], c[1]))
 
         # Draw sources
+        # Track how much each pile is drained during this turn so the second
+        # draw never names a source the first one emptied.
         draws = []
+        left = {"deck": len(self.deck),
+                "opponent_discard": len(self.discard_piles[opp]),
+                "own_discard": len(self.discard_piles[cp])}
         for _ in range(2):
-            sources = ["deck"]
-            if self.discard_piles[opp]:
-                sources.append("opponent_discard")
-            if self.discard_piles[cp]:
-                sources.append("own_discard")
+            sources = [s for s in ("deck", "opponent_discard", "own_discard")
+                       if left[s] > 0]
+            if not sources:
+                break
             if difficulty == 'easy':
-                draws.append({"source": random.choice(sources)})
+                source = random.choice(sources)
             else:
-                draws.append({"source": "deck"})
+                source = "deck" if left["deck"] > 0 else sources[0]
+            left[source] -= 1
+            draws.append({"source": source})
 
         # Choose card to play
         if not sorted_hand:

@@ -320,7 +320,11 @@ class QuixoGame(BaseGame):
         elif p2_wins:
             self.game_over = True
             self.winner = 2
-        # No draw condition in standard Quixo (the board can always be played)
+        # Standard Quixo has no draw, but two players can slide the same
+        # cubes back and forth forever, so treat a repeat as a draw.
+        elif self._repetition_draw():
+            self.game_over = True
+            self.winner = None
 
     def _has_five(self, player):
         """Return True if `player` has 5 in a row (horizontal, vertical, or diagonal)."""

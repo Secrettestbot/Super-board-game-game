@@ -427,9 +427,10 @@ class RaceForTheGalaxyGame(BaseGame):
         """Worlds without goods produce a good. Chooser's homeworld also produces."""
         for p in (1, 2):
             produced = 0
-            worlds_with_goods = {g[0] for g in self.goods[p]}
+            # Cards are dicts, so key the set on the unique card name.
+            worlds_with_goods = {g[0]["name"] for g in self.goods[p]}
             for card in self.tableau[p]:
-                if card["produces"] and card not in worlds_with_goods:
+                if card["produces"] and card["name"] not in worlds_with_goods:
                     # Chooser bonus: also produce on home world
                     self.goods[p].append((card, card["good"]))
                     produced += 1
@@ -442,19 +443,11 @@ class RaceForTheGalaxyGame(BaseGame):
 
     # ---------------------------------------------------- check_game_over
     def get_ai_move(self):
-        import random as rand
-        difficulty = getattr(self, 'ai_difficulty', 'medium')
-        p = self.current_player
-
-        ai_role = self._ai_pick_role(p, difficulty, rand)
-        roles_chosen = {}
-        roles_chosen[p] = ai_role
-
-        opp = 3 - p
-        opp_role = self._pick_role(opp)
-        roles_chosen[opp] = opp_role
-
-        return ("turn", roles_chosen)
+        # A turn covers role selection for both players, so reuse get_move():
+        # it already picks AI roles for AI-controlled seats and prompts only
+        # genuinely human ones. Choosing roles here directly would prompt the
+        # human even when both seats are computer-controlled.
+        return self.get_move()
 
     def _ai_pick_role(self, player, difficulty, rand):
         if difficulty == "easy":
@@ -467,7 +460,8 @@ class RaceForTheGalaxyGame(BaseGame):
         scored = []
         devs = [c for c in hand if c["type"] == DEVELOPMENT]
         worlds = [c for c in hand if c["type"] == WORLD]
-        prod_without_goods = [c for c in tableau if c["produces"] and c not in {g[0] for g in goods}]
+        goods_names = {g[0]["name"] for g in goods}
+        prod_without_goods = [c for c in tableau if c["produces"] and c["name"] not in goods_names]
 
         explore_score = 5 + (3 if len(hand) < 4 else 0)
         develop_score = len(devs) * 4 if devs else 0
@@ -485,6 +479,10 @@ class RaceForTheGalaxyGame(BaseGame):
         scored.sort(reverse=True)
         return scored[0][1]
 
+    # Neither tableau may ever reach the trigger and the VP pool may never
+    # drain, if the players cannot afford anything they draw.
+    max_turns = 500
+
     def check_game_over(self):
         """Check if any player has reached end condition."""
         for p in (1, 2):
@@ -492,6 +490,8 @@ class RaceForTheGalaxyGame(BaseGame):
                 self.game_over = True
                 break
         if self.vp_pool <= 0:
+            self.game_over = True
+        if self.turn_number >= self.max_turns:
             self.game_over = True
 
         if self.game_over:

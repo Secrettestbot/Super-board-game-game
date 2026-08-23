@@ -183,6 +183,10 @@ class IsleOfSkyeGame(BaseGame):
                 if self.drawn_tiles[pj]:
                     print(f"\n  P{pj+1}'s drawn tiles:")
                     for j, tile in enumerate(self.drawn_tiles[pj]):
+                        if tile is None:
+                            # Slot emptied when the tile was bought this round.
+                            print(f"    {j+1}. [SOLD]")
+                            continue
                         ts = TERRAIN_SHORT[tile["terrain"]]
                         features = []
                         if tile["has_road"]:

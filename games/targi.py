@@ -100,6 +100,7 @@ class TargiGame(BaseGame):
         self.phase = "place_workers"  # place_workers, resolve, buy
         self.workers_placed = 0
         self.robber_pos = 0  # Robber moves around border each round
+        self.round_number = 1
         self.log = []
 
     def setup(self):
@@ -125,6 +126,7 @@ class TargiGame(BaseGame):
             self.worker_positions[sp] = []
 
         self.robber_pos = 0
+        self.round_number = 1
         self.phase = "place_workers"
         self.workers_placed = 0
         self.log = ["Game started! Place your workers on the border."]
@@ -354,11 +356,11 @@ class TargiGame(BaseGame):
                 self.current_player = 1  # P1 resolves first
                 return True
 
-            # Alternate placement: after each worker, switch player
-            if len(self.worker_positions[sp]) < 3:
-                # Don't switch yet if current player needs more workers
-                # But alternate: each player places 1 at a time
-                pass
+            # Alternate placement explicitly: switch_player() is a no-op
+            # here because the resolve/buy phases drive turn order themselves.
+            opp = 2 if cp == 1 else 1
+            if len(self.worker_positions[str(opp)]) < 3:
+                self.current_player = opp
             return True
 
         if action == "resolve":
@@ -419,6 +421,7 @@ class TargiGame(BaseGame):
                 self.robber_pos = (self.robber_pos + 1) % len(BORDER_POSITIONS)
                 self.phase = "place_workers"
                 self.current_player = 1
+                self.round_number += 1
             self.log.append(f"{self.players[cp-1]} finished buying.")
             return True
 
@@ -441,6 +444,7 @@ class TargiGame(BaseGame):
                 r, c = rand.choice(available)
                 return {"action": "place_worker", "row": r, "col": c}
             scored = []
+            placed = self.worker_positions[sp]
             for r, c in available:
                 s = 0.0
                 card, idx = self._get_border_card(r, c)
@@ -452,6 +456,22 @@ class TargiGame(BaseGame):
                             s += amt * 1.5
                 elif card and card["type"] == "action":
                     s += 2
+                # Tribe cards are only buyable where a worker's row crosses
+                # another worker's column inside the grid. Placing purely for
+                # resource yield can leave a player with no intersection at
+                # all, so it never buys a card and the game never ends.
+                rows = {pr for pr, _ in placed} | {r}
+                cols = {pc for _, pc in placed} | {c}
+                buyable = sum(
+                    1 for rr in rows for cc in cols
+                    if self._is_interior(rr, cc)
+                    and self.interior_cards[rr - 1][cc - 1] is not None
+                )
+                # Weighted well above any resource yield: buying tribe cards
+                # is the win condition and resources are only a means to it.
+                # A tempting resource card would otherwise keep the AI from
+                # ever forming an intersection over a card it could buy.
+                s += buyable * 25
                 if difficulty == "medium":
                     s += rand.uniform(-1, 1)
                 scored.append((s, r, c))
@@ -484,30 +504,45 @@ class TargiGame(BaseGame):
 
         return None
 
+    def switch_player(self):
+        """No-op: turn order is driven by the phase machine in make_move.
+
+        The engine calls switch_player() after every accepted move; letting it
+        flip current_player here would undo the phase transitions, leaving the
+        game stuck in one phase forever.
+        """
+        return
+
+    # Safety net for a board state neither player can make progress from.
+    max_rounds = 200
+
     def check_game_over(self):
-        for p in [1, 2]:
-            sp = str(p)
-            if len(self.tribe_cards_owned[sp]) >= self.target_tribes:
-                self.game_over = True
-                # Score comparison
-                s1 = sum(tc["points"] for tc in self.tribe_cards_owned["1"])
-                s2 = sum(tc["points"] for tc in self.tribe_cards_owned["2"])
-                # Bonus for remaining resources: 1 pt per 3 resources
-                for p2 in [1, 2]:
-                    sp2 = str(p2)
-                    total_res = sum(self.resources[sp2].values())
-                    bonus = total_res // 3
-                    if p2 == 1:
-                        s1 += bonus
-                    else:
-                        s2 += bonus
-                if s1 > s2:
-                    self.winner = 1
-                elif s2 > s1:
-                    self.winner = 2
-                else:
-                    self.winner = None
-                return
+        reached = any(len(self.tribe_cards_owned[str(p)]) >= self.target_tribes
+                      for p in (1, 2))
+        # The tribe deck and the interior grid can both empty out before either
+        # player reaches the target; with nothing left to buy the game can
+        # never end on its own, so end it here and score what was collected.
+        exhausted = (not self.interior_deck
+                     and all(card is None
+                             for row in self.interior_cards for card in row))
+        # The remaining cards can also be permanently unaffordable (a
+        # resource nobody produces) while workers keep cycling. Cap the
+        # rounds so the game is always decided on points.
+        if not (reached or exhausted or self.round_number > self.max_rounds):
+            return
+
+        self.game_over = True
+        s1 = sum(tc["points"] for tc in self.tribe_cards_owned["1"])
+        s2 = sum(tc["points"] for tc in self.tribe_cards_owned["2"])
+        # Bonus for remaining resources: 1 pt per 3 resources
+        s1 += sum(self.resources["1"].values()) // 3
+        s2 += sum(self.resources["2"].values()) // 3
+        if s1 > s2:
+            self.winner = 1
+        elif s2 > s1:
+            self.winner = 2
+        else:
+            self.winner = None
 
     def get_state(self):
         return {
@@ -520,6 +555,7 @@ class TargiGame(BaseGame):
                                  for k, v in self.worker_positions.items()},
             "phase": self.phase,
             "robber_pos": self.robber_pos,
+            "round_number": self.round_number,
             "workers_placed": self.workers_placed,
             "log": self.log,
         }
@@ -537,6 +573,7 @@ class TargiGame(BaseGame):
         }
         self.phase = state["phase"]
         self.robber_pos = state["robber_pos"]
+        self.round_number = state.get("round_number", 1)
         self.workers_placed = state.get("workers_placed", 0)
         self.log = state.get("log", [])
 

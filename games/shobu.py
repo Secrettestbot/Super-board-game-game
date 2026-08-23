@@ -538,6 +538,10 @@ class ShobuGame(BaseGame):
         top = scored[:3] if len(scored) >= 3 else scored
         return rand.choice(top)[1]
 
+    # A stand-off where neither side pushes a board clear would otherwise
+    # run forever.
+    max_turns = 400
+
     def check_game_over(self):
         """Check if any board has zero stones for either player."""
         for b in range(4):
@@ -555,6 +559,24 @@ class ShobuGame(BaseGame):
         if not self._has_any_moves(next_player):
             self.game_over = True
             self.winner = self.current_player
+            return
+
+        # Nothing forces progress, so two players can shuffle stones between
+        # the same squares forever. Call a repeated position a draw.
+        if self._repetition_draw():
+            self.game_over = True
+            self.winner = None
+            return
+
+        # Shuffling can also wander without ever repeating a position, so cap
+        # the game and award it to whoever is closest to clearing a board.
+        if self.turn_number >= self.max_turns:
+            self.game_over = True
+            worst = {p: min(self.stone_counts[p]) for p in (1, 2)}
+            if worst[1] != worst[2]:
+                self.winner = 1 if worst[2] < worst[1] else 2
+            else:
+                self.winner = None
 
     # ----------------------------------------------------------- state / save
     def get_state(self):

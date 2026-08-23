@@ -109,6 +109,7 @@ class NusfjordGame(BaseGame):
         if is_quick:
             self.building_pool = self.building_pool[:8]
         self.used_actions = []
+        self.passed_this_round = set()
         self.player_data = {}
         for i in range(1, len(self.players) + 1):
             p = _init_player()
@@ -190,6 +191,10 @@ class NusfjordGame(BaseGame):
 
         # Pass
         if choice == len(ACTION_SPACES) + 1:
+            # Passing retires this player from the round. Without recording
+            # it, the round-end check waited for workers that were never
+            # going to be placed and both players passed forever.
+            self.passed_this_round.add(self.current_player)
             self._check_round_end()
             return True
 
@@ -453,6 +458,7 @@ class NusfjordGame(BaseGame):
     def _check_round_end(self):
         all_done = all(
             self.player_data[str(i)]["workers_placed"] >= self.player_data[str(i)]["workers"]
+            or i in self.passed_this_round
             for i in range(1, len(self.players) + 1)
         )
         if all_done:
@@ -462,6 +468,7 @@ class NusfjordGame(BaseGame):
     def _start_new_round(self):
         self.current_round += 1
         self.used_actions = []
+        self.passed_this_round = set()
         for i in range(1, len(self.players) + 1):
             self.player_data[str(i)]["workers_placed"] = 0
             # Forest regrows slightly
@@ -582,6 +589,7 @@ class NusfjordGame(BaseGame):
             "elder_pool": self.elder_pool,
             "building_pool": self.building_pool,
             "used_actions": self.used_actions,
+            "passed_this_round": sorted(self.passed_this_round),
             "player_data": self.player_data,
             "message": self.message,
         }
@@ -593,6 +601,7 @@ class NusfjordGame(BaseGame):
         self.elder_pool = state["elder_pool"]
         self.building_pool = state["building_pool"]
         self.used_actions = state["used_actions"]
+        self.passed_this_round = set(state.get("passed_this_round", []))
         self.player_data = state["player_data"]
         self.message = state.get("message", "")
 

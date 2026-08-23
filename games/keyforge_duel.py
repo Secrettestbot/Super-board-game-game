@@ -186,6 +186,7 @@ class KeyforgeDuelGame(BaseGame):
         self.active_house = [None, None]
         self.phase = "choose_house"  # "choose_house", "play_use", "end_turn"
         self.actions_this_turn = 0
+        self._turn_ended = False
 
     def setup(self):
         if self.variation == "quick":
@@ -531,6 +532,7 @@ class KeyforgeDuelGame(BaseGame):
                 self._draw_card(p)
             self.phase = "choose_house"
             self.active_house[p] = None
+            self._turn_ended = True
             return True
 
         return False
@@ -661,6 +663,18 @@ class KeyforgeDuelGame(BaseGame):
                 print(f"  {dead['name']} destroyed!")
             print(f"  All damaged enemy creatures destroyed!")
 
+    def switch_player(self):
+        """Hand over only when the turn actually ends.
+
+        A turn spans choosing a house, playing/using cards and the end-of-turn
+        draw, but the engine calls switch_player() after every accepted
+        action. Swapping mid-turn left the incoming player in the play phase
+        with no active house, so neither side could ever play a card.
+        """
+        if self._turn_ended:
+            self._turn_ended = False
+            super().switch_player()
+
     def get_ai_move(self):
         import random
         difficulty = getattr(self, 'ai_difficulty', 'medium')
@@ -750,6 +764,7 @@ class KeyforgeDuelGame(BaseGame):
             "active_house": self.active_house,
             "phase": self.phase,
             "actions_this_turn": self.actions_this_turn,
+            "turn_ended": self._turn_ended,
         }
 
     def load_state(self, state):
@@ -765,6 +780,7 @@ class KeyforgeDuelGame(BaseGame):
         self.active_house = state["active_house"]
         self.phase = state["phase"]
         self.actions_this_turn = state["actions_this_turn"]
+        self._turn_ended = state.get("turn_ended", False)
 
     def get_tutorial(self):
         return """

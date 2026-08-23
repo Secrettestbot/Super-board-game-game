@@ -606,7 +606,11 @@ class WingspanCardGame(BaseGame):
                     if bird.habitat in HABITATS and len(self.habitats[pi][bird.habitat]) < 5:
                         has_food = all(self.food[pi].get(f, 0) >= 1 for f in bird.food_cost)
                         col = len(self.habitats[pi][bird.habitat])
-                        egg_cost = 1 if col >= 2 else (2 if col >= 4 else 0)
+                        # col >= 2 also matches col >= 4, so the nested form
+                        # never yielded 2: the AI under-counted the eggs a
+                        # column-5 placement needs, and make_move then
+                        # rejected the move it kept offering, forever.
+                        egg_cost = 2 if col >= 4 else (1 if col >= 2 else 0)
                         total_eggs = sum(b.eggs for h in HABITATS for b in self.habitats[pi][h])
                         if has_food and total_eggs >= egg_cost:
                             actions.append(("play", i, bird.habitat))
@@ -620,7 +624,7 @@ class WingspanCardGame(BaseGame):
                 continue
             has_food = all(self.food[pi].get(f, 0) >= 1 for f in bird.food_cost)
             col = len(self.habitats[pi][bird.habitat])
-            egg_cost = 1 if col >= 2 else (2 if col >= 4 else 0)
+            egg_cost = 2 if col >= 4 else (1 if col >= 2 else 0)
             total_eggs = sum(b.eggs for h in HABITATS for b in self.habitats[pi][h])
             if has_food and total_eggs >= egg_cost:
                 score = bird.points + bird.egg_capacity * 0.5

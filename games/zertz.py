@@ -387,14 +387,12 @@ class ZertzGame(BaseGame):
             if rem:
                 removable_after.append((pos, rem))
 
+        # removable_after already holds every legal (placement, removal) pair -
+        # the removal must be a *different* empty edge space that is still on
+        # the edge once the marble is down. If it is empty there is no legal
+        # placement at all.
         if not removable_after:
-            rem_spaces = self._removable_spaces()
-            if not rem_spaces or not empty_positions:
-                return ""
-            color = rand.choice(available_colors)
-            pos = rand.choice(empty_positions)
-            rp = rand.choice(rem_spaces)
-            return f"{color} {pos[0]},{pos[1]} remove {rp[0]},{rp[1]}"
+            return ""
 
         if difficulty == 'easy':
             color = rand.choice(available_colors)
@@ -467,6 +465,31 @@ class ZertzGame(BaseGame):
         # Update forced capture for next player
         if not self.game_over:
             self._check_forced_capture()
+
+        # Nobody can move (no captures and no legal placement): decide on
+        # captured marbles, otherwise it is a draw. Without this the game
+        # would loop forever rejecting every attempted move.
+        if not self.game_over and not self.must_capture and not self._has_legal_placement():
+            t1 = len(self.captured[1])
+            t2 = len(self.captured[2])
+            self.game_over = True
+            self.winner = (1 if t1 > t2 else 2) if t1 != t2 else None
+
+    def _has_legal_placement(self):
+        """True if a marble can be placed and some other edge space removed."""
+        if not any(n > 0 for n in self.pool.values()):
+            return False
+        for pos in self.board:
+            if self.board[pos] is not None:
+                continue
+            self.board[pos] = 'X'
+            try:
+                if any(p != pos and self.board[p] is None and self._is_edge(p)
+                       for p in self.board):
+                    return True
+            finally:
+                self.board[pos] = None
+        return False
 
     def switch_player(self):
         super().switch_player()

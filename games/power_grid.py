@@ -630,10 +630,14 @@ class PowerGridGame(BaseGame):
 
         return "pass"
 
+    # With the plant deck spent and nobody able to afford another city, the
+    # target is out of reach and the round loop would never end.
+    max_turns = 800
+
     def check_game_over(self):
         """Game ends when a player reaches target cities."""
         for pi in range(2):
-            if len(self.cities[pi]) >= self.cities_to_win:
+            if len(self.cities[pi]) >= self.cities_to_win or self.turn_number >= self.max_turns:
                 self.game_over = True
                 # Most powered cities wins
                 powered = [0, 0]

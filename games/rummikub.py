@@ -27,6 +27,7 @@ class RummikubGame(BaseGame):
         self.pool = []                 # draw pool
         self.table_melds = []          # list of melds on the table, each meld is a list of tiles
         self.initial_meld_done = [False, False]  # whether each player has made initial 30pt meld
+        self.consecutive_passes = 0
         # Turn state: snapshot before turn starts so we can rollback
         self._turn_snapshot_hands = None
         self._turn_snapshot_table = None
@@ -69,6 +70,7 @@ class RummikubGame(BaseGame):
         self.pool = tiles[28:]
         self.table_melds = []
         self.initial_meld_done = [False, False]
+        self.consecutive_passes = 0
         self._last_message = ""
 
     @staticmethod
@@ -414,6 +416,12 @@ class RummikubGame(BaseGame):
         """Apply the completed turn. Always returns True since validation is in get_move."""
         if move is None:
             return False
+        # Track consecutive passes so a stalemate can end the game; without
+        # this both players pass at each other forever once the pool is dry.
+        if move == "pass":
+            self.consecutive_passes += 1
+        else:
+            self.consecutive_passes = 0
         return True
 
     # --------------------------------------------------------- check_game_over
@@ -550,13 +558,10 @@ class RummikubGame(BaseGame):
                 self.winner = pidx + 1
                 return
 
-        # If pool is empty, check if both players passed (stuck)
-        if not self.pool:
-            # We'll let the game continue until someone empties hand
-            # or we detect a stalemate (both can't play).
-            # For simplicity, if pool is empty the game continues;
-            # the play() loop handles pass/done.
-            pass
+        # Pool exhausted and both players passed in a row: nobody can play
+        # another tile, so settle it on the tiles left in hand.
+        if self.consecutive_passes >= 2:
+            self.end_game_by_points()
 
     def end_game_by_points(self):
         """End game when pool is empty and no one can play. Fewest points wins."""
@@ -718,6 +723,7 @@ class RummikubGame(BaseGame):
             'pool': self.pool,
             'table_melds': self.table_melds,
             'initial_meld_done': self.initial_meld_done,
+            'consecutive_passes': self.consecutive_passes,
         }
 
     def load_state(self, state):
@@ -726,6 +732,7 @@ class RummikubGame(BaseGame):
         self.pool = [(t[0], t[1]) for t in state['pool']]
         self.table_melds = [[(t[0], t[1]) for t in m] for m in state['table_melds']]
         self.initial_meld_done = state['initial_meld_done']
+        self.consecutive_passes = state.get('consecutive_passes', 0)
         self._last_message = ""
 
     # ------------------------------------------------------------ tutorial

@@ -204,6 +204,12 @@ class TwixTGame(BaseGame):
         size = self.size
         max_col = chr(ord('a') + size - 1)
 
+        must_pass = not self._has_any_placement(self.current_player)
+        if must_pass:
+            print("  You have no legal placement left - your turn is passed.")
+            input_with_quit("  Press Enter to continue...")
+            return "pass"
+
         while True:
             prompt = f"  {player_name}, enter move (a-{max_col})(1-{size})"
             if self.swap_available:
@@ -260,6 +266,14 @@ class TwixTGame(BaseGame):
             self.swap_available = False
             return True
 
+        if move == "pass":
+            # Only legal when this player's usable intersections are all gone;
+            # the opponent may still have room on their own border rows/cols.
+            if self._has_any_placement(self.current_player):
+                return False
+            self.swap_available = False
+            return True
+
         row, col = move
 
         if not self._can_place(row, col, self.current_player):
@@ -303,7 +317,7 @@ class TwixTGame(BaseGame):
                     valid.append((r, c))
 
         if not valid:
-            return (0, 0)
+            return "pass"
 
         if difficulty == 'easy':
             r, c = rand.choice(valid)
@@ -353,6 +367,16 @@ class TwixTGame(BaseGame):
             self.game_over = True
             self.winner = 2
             return
+        # Board full for both players with nobody connected: a draw.
+        if not self._has_any_placement(1) and not self._has_any_placement(2):
+            self.game_over = True
+            self.winner = None
+
+    def _has_any_placement(self, player):
+        """True if *player* still has a legal peg placement."""
+        return any(self._can_place(r, c, player)
+                   for r in range(self.size)
+                   for c in range(self.size))
 
     def _check_connection(self, player):
         """BFS through the link graph (not just adjacency) to see if
@@ -411,7 +435,8 @@ class TwixTGame(BaseGame):
         return {
             "size": self.size,
             "board": [row[:] for row in self.board],
-            "links": [list(link) for link in self.links],  # list of [[r1,c1],[r2,c2]]
+            # Sorted so a resumed game re-saves identically (links is a set).
+            "links": sorted([list(a), list(b)] for a, b in self.links),
             "swap_available": self.swap_available,
             "first_move": list(self.first_move) if self.first_move else None,
         }

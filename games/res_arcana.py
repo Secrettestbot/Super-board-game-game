@@ -483,6 +483,16 @@ class ResArcanaGame(BaseGame):
                 actions.append("play")
             if self.decks[p]:
                 actions.append("draw")
+            # Places and monuments are most of the scoring. Without them the
+            # easy AI could never reach the target and the game never ended.
+            claimable_places = [i for i, pl in enumerate(self.available_places)
+                                if self._can_pay(p, pl["claim_cost"])]
+            if claimable_places:
+                actions.append("claimplace")
+            claimable_mons = [i for i, m in enumerate(self.available_monuments)
+                              if self._can_pay(p, m["claim_cost"])]
+            if claimable_mons:
+                actions.append("claimmon")
             choice = rand.choice(actions)
             if choice == "tap":
                 return f"tap {rand.choice(untapped) + 1}"
@@ -490,6 +500,10 @@ class ResArcanaGame(BaseGame):
                 return f"tapplace {rand.choice(untapped_places) + 1}"
             elif choice == "play":
                 return f"play {rand.choice(playable) + 1}"
+            elif choice == "claimplace":
+                return f"claim place {rand.choice(claimable_places) + 1}"
+            elif choice == "claimmon":
+                return f"claim mon {rand.choice(claimable_mons) + 1}"
             elif choice == "draw":
                 return "draw"
             return "pass"

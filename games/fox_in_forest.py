@@ -423,6 +423,13 @@ class FoxInTheForestGame(BaseGame):
                 return True
 
         elif kind == "draw_deck":
+            if not self.hands[pi]:
+                # Nothing to discard: the ability cannot be resolved, and no
+                # index would ever be accepted, so just clear it.
+                self.pending_ability = None
+                self.ability_message = None
+                self._check_more_abilities()
+                return True
             try:
                 idx = int(move) - 1
                 if idx < 0 or idx >= len(self.hands[pi]):
@@ -572,6 +579,8 @@ class FoxInTheForestGame(BaseGame):
                 if difficulty == 'easy':
                     return "n"
                 hand = self.hands[pi]
+                if not hand:
+                    return "n"
                 worst = min(range(len(hand)), key=lambda i: hand[i][0])
                 if hand[worst][0] < self.trump_card[0]:
                     return "y"
@@ -579,6 +588,8 @@ class FoxInTheForestGame(BaseGame):
 
             elif kind == "draw_deck":
                 hand = self.hands[pi]
+                if not hand:
+                    return "0"
                 worst = min(range(len(hand)), key=lambda i: hand[i][0])
                 return str(worst + 1)
 

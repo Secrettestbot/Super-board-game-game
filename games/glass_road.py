@@ -155,8 +155,9 @@ class GlassRoadGame(BaseGame):
                 card = SPECIALIST_CARDS[ci]
                 print(f"    {idx + 1}. {card['name']}")
         elif self.phase == "play":
-            print(f"  Cards to play ({len(p['selected']) - self.card_index} remaining):")
-            for idx in range(self.card_index, len(p["selected"])):
+            ci_start = self._card_index(p)
+            print(f"  Cards to play ({len(p['selected']) - ci_start} remaining):")
+            for idx in range(ci_start, len(p["selected"])):
                 ci = p["selected"][idx]
                 card = SPECIALIST_CARDS[ci]
                 top_desc = self._describe_action(card["top"])
@@ -231,10 +232,10 @@ class GlassRoadGame(BaseGame):
             if move not in ("t", "b", "s", "top", "bottom", "skip"):
                 self.message = "Enter 't' for top, 'b' for bottom, or 's' to skip."
                 return False
-            if self.card_index >= len(p["selected"]):
+            if self._card_index(p) >= len(p["selected"]):
                 self._advance_play_phase()
                 return True
-            ci = p["selected"][self.card_index]
+            ci = p["selected"][self._card_index(p)]
             card = SPECIALIST_CARDS[ci]
             if move.startswith("t"):
                 success = self._apply_action(card["top"], p)
@@ -253,8 +254,8 @@ class GlassRoadGame(BaseGame):
             if produced:
                 self.message += f" Auto-produced: {', '.join(produced)}!"
             p["played"].append(ci)
-            self.card_index += 1
-            if self.card_index >= len(p["selected"]):
+            self.card_index = self._card_index(p)
+            if self._card_index(p) >= len(p["selected"]):
                 self._advance_play_phase()
             return True
 
@@ -312,6 +313,15 @@ class GlassRoadGame(BaseGame):
         if "gain_vp" in action:
             p["vp"] += action["gain_vp"]
         return True
+
+    def _card_index(self, p):
+        """How far this player has got through their own selected cards.
+
+        A single shared card_index made the second player look finished as
+        soon as the first player played their five cards, so the play phase
+        could never complete and the round never advanced.
+        """
+        return len(p["played"])
 
     def _advance_play_phase(self):
         """Move to next player or to build phase."""
@@ -403,10 +413,10 @@ class GlassRoadGame(BaseGame):
 
     def _ai_play(self, difficulty, p):
         import random
-        if self.card_index >= len(p["selected"]):
+        if self._card_index(p) >= len(p["selected"]):
             return "s"
 
-        ci = p["selected"][self.card_index]
+        ci = p["selected"][self._card_index(p)]
         card = SPECIALIST_CARDS[ci]
 
         if difficulty == 'easy':

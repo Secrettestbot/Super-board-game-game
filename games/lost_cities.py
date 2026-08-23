@@ -114,6 +114,7 @@ class LostCitiesGame(BaseGame):
         self.discard_piles = {c: [] for c in self.colors}
         self.phase = 'play'
         self.pending_action = None
+        self._round_turns = 0
         # Deal 8 cards to each player
         for _ in range(8):
             self.hands[1].append(self.deck.pop())
@@ -214,8 +215,10 @@ class LostCitiesGame(BaseGame):
         phase, move_str = move
         if phase == 'play_phase':
             return self._handle_play_phase(move_str)
-        else:
-            return self._handle_draw_phase(move_str)
+        ok = self._handle_draw_phase(move_str)
+        if ok:
+            self._round_turns += 1   # a turn is one play plus one draw
+        return ok
 
     def _parse_card_input(self, parts):
         """Parse color and value from input parts. Returns (color, value) or None."""
@@ -424,15 +427,28 @@ class LostCitiesGame(BaseGame):
             top = self.discard_piles[color][-1]
             expedition = self.expeditions[cp][color]
             if self._can_play_on_expedition(expedition, top):
-                score = 10 if expedition else (5 if top[1] != INVESTMENT_SYMBOL and top[1] >= 7 else 1)
+                # Only take a discard that is genuinely worth having. Picking
+                # up any playable card meant both players kept taking the
+                # same unwanted card back off each other's discard piles, so
+                # the deck never ran down and the round never ended.
+                if expedition:
+                    score = 10
+                elif top[1] != INVESTMENT_SYMBOL and top[1] >= 7:
+                    score = 5
+                else:
+                    continue
                 if score > best_score:
                     best_score = score
                     best_draw = f'draw {color}'
         return ('draw_phase', best_draw)
 
+    # A round normally ends when the deck runs out; this bounds a round
+    # where both players only ever trade cards through the discard piles.
+    max_turns_per_round = 400
+
     def check_game_over(self):
         """Check if the round/game is over."""
-        if len(self.deck) == 0:
+        if len(self.deck) == 0 or self._round_turns >= self.max_turns_per_round:
             self._end_round()
 
     def _end_round(self):
@@ -495,6 +511,7 @@ class LostCitiesGame(BaseGame):
             'hands': {str(k): serialize_cards(v) for k, v in self.hands.items()},
             'expeditions': {str(k): serialize_expeditions(v) for k, v in self.expeditions.items()},
             'discard_piles': {c: serialize_cards(cards) for c, cards in self.discard_piles.items()},
+            'round_turns': self._round_turns,
             'round_number': self.round_number,
             'total_rounds': self.total_rounds,
             'round_scores': {str(k): v for k, v in self.round_scores.items()},
@@ -522,6 +539,7 @@ class LostCitiesGame(BaseGame):
         for pk, exp in state['expeditions'].items():
             self.expeditions[int(pk)] = {c: deserialize_cards(cards) for c, cards in exp.items()}
         self.discard_piles = {c: deserialize_cards(cards) for c, cards in state['discard_piles'].items()}
+        self._round_turns = state.get('round_turns', 0)
         self.round_number = state['round_number']
         self.total_rounds = state['total_rounds']
         self.round_scores = {int(k): v for k, v in state['round_scores'].items()}

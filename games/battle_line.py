@@ -151,6 +151,7 @@ class BattleLineGame(BaseGame):
         # 9 flags, each side has a list of cards
         self.flags = {i: {1: [], 2: []} for i in range(9)}
         self.flag_status = {i: 0 for i in range(9)}  # 0=unclaimed, 1=p1, 2=p2
+        self.consecutive_passes = 0
         self.flag_fog = {i: False for i in range(9)}
         self.flag_mud = {i: False for i in range(9)}
 
@@ -275,6 +276,15 @@ class BattleLineGame(BaseGame):
                 print("  Cannot claim that flag yet - formation not provably winning.")
                 return False
 
+        if move[0] == 'pass':
+            # Only legal with no playable card: every unclaimed flag is full
+            # for this player (or all flags are claimed).
+            if self._has_playable(cp):
+                print("  You still have a card you can play.")
+                return False
+            self.consecutive_passes += 1
+            return True
+
         if move[0] == 'play':
             card_idx, flag = move[1], move[2]
             if self.flag_status[flag] != 0:
@@ -297,6 +307,7 @@ class BattleLineGame(BaseGame):
 
             # Auto-claim completed flags
             self._auto_claim()
+            self.consecutive_passes = 0
             return True
 
         return False
@@ -311,7 +322,7 @@ class BattleLineGame(BaseGame):
             for i in range(9):
                 if self.flag_status[i] == 0 and self._try_claim(i, cp):
                     return ('claim', i)
-            return ('claim', 0)
+            return ('pass',)
 
         moves = []
         for ci, card in enumerate(hand):
@@ -338,7 +349,10 @@ class BattleLineGame(BaseGame):
                     break
 
         if not moves:
-            return ('play', 0, 0)
+            for i in range(9):
+                if self.flag_status[i] == 0 and self._try_claim(i, cp):
+                    return ('claim', i)
+            return ('pass',)
 
         if difficulty == 'easy':
             return random.choice(moves)
@@ -389,6 +403,18 @@ class BattleLineGame(BaseGame):
             top = scored[:max(3, len(scored) // 4)]
             return random.choice(top)[2]
         return scored[0][2]
+
+    def _has_playable(self, player):
+        """True if *player* can legally play any card to any open flag."""
+        if not self.hands[player]:
+            return False
+        for flag in range(9):
+            if self.flag_status[flag] != 0:
+                continue
+            max_cards = 4 if self.flag_mud[flag] else 3
+            if len(self.flags[flag][player]) < max_cards:
+                return True
+        return False
 
     def _auto_claim(self):
         """Check and auto-claim any provably won flags."""
@@ -497,6 +523,31 @@ class BattleLineGame(BaseGame):
                     self.winner = p
                     return
 
+        # Neither player can play any more: settle the remaining flags on the
+        # formations already on the table so the game cannot run forever.
+        if self.consecutive_passes >= 2:
+            for i in range(9):
+                if self.flag_status[i] != 0:
+                    continue
+                fog, mud = self.flag_fog[i], self.flag_mud[i]
+                f1 = _classify_formation(self.flags[i][1], fog=fog, mud=mud)
+                f2 = _classify_formation(self.flags[i][2], fog=fog, mud=mud)
+                if len(self.flags[i][1]) != len(self.flags[i][2]):
+                    self.flag_status[i] = (1 if len(self.flags[i][1])
+                                           > len(self.flags[i][2]) else 2)
+                elif _formation_beats(f1, f2):
+                    self.flag_status[i] = 1
+                elif _formation_beats(f2, f1):
+                    self.flag_status[i] = 2
+            # Exactly-tied flags stay unclaimed; end the game regardless, or
+            # the players would pass at each other forever.
+            self.game_over = True
+            p1_count = sum(1 for i in range(9) if self.flag_status[i] == 1)
+            p2_count = sum(1 for i in range(9) if self.flag_status[i] == 2)
+            self.winner = (1 if p1_count > p2_count
+                           else 2 if p2_count > p1_count else None)
+            return
+
         # Check if all flags are claimed
         if all(self.flag_status[i] != 0 for i in range(9)):
             self.game_over = True
@@ -528,6 +579,7 @@ class BattleLineGame(BaseGame):
             'tactics_deck': self.tactics_deck,
             'flags': {str(i): {str(p): self.flags[i][p] for p in (1, 2)} for i in range(9)},
             'flag_status': {str(i): self.flag_status[i] for i in range(9)},
+            'consecutive_passes': self.consecutive_passes,
             'flag_fog': {str(i): self.flag_fog[i] for i in range(9)},
             'flag_mud': {str(i): self.flag_mud[i] for i in range(9)},
             'hands': {str(p): self.hands[p] for p in (1, 2)},
@@ -544,6 +596,7 @@ class BattleLineGame(BaseGame):
             for p in (1, 2):
                 self.flags[i][p] = [tuple(c) for c in state['flags'][str(i)][str(p)]]
         self.flag_status = {int(k): v for k, v in state['flag_status'].items()}
+        self.consecutive_passes = state.get('consecutive_passes', 0)
         self.flag_fog = {int(k): v for k, v in state['flag_fog'].items()}
         self.flag_mud = {int(k): v for k, v in state['flag_mud'].items()}
         self.hands = {int(k): [tuple(c) for c in v] for k, v in state['hands'].items()}

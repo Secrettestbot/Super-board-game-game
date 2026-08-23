@@ -711,6 +711,15 @@ class CheckersGame(BaseGame):
         if self.must_continue_from:
             return
 
+        # Draw by repetition. Kings can shuffle without ever forcing a
+        # capture, so two deterministic players cycle the same position
+        # forever. This has to run before the "still has moves" early
+        # returns below, or it would never be reached.
+        if self._repetition_draw():
+            self.game_over = True
+            self.winner = None
+            return
+
         next_player = 3 - self.current_player
 
         # Check if next player has any pieces

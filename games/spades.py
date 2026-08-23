@@ -35,6 +35,10 @@ def make_deck():
 class SpadesGame(BaseGame):
     """Spades: A 2-player variant of the classic trick-taking card game."""
 
+    # Safety net: a long run of failed bids can walk both scores away from
+    # the target, so stop after this many hands and award it on points.
+    max_hands = 200
+
     name = "Spades"
     description = "A 2-player variant of the classic trick-taking card game"
     min_players = 2
@@ -394,7 +398,11 @@ class SpadesGame(BaseGame):
         if self.phase != "hand_over":
             return
 
-        either_reached = any(s >= self.target_score for s in self.scores)
+        # Scores can fall as well as rise, so a run of failed bids can walk
+        # both players away from the target indefinitely. Cap the number of
+        # hands and award it to whoever is ahead.
+        either_reached = (any(s >= self.target_score for s in self.scores)
+                          or self.hand_number >= self.max_hands)
         if either_reached:
             self.game_over = True
             if self.scores[0] > self.scores[1]:
@@ -450,7 +458,12 @@ class SpadesGame(BaseGame):
         if self.phase == "bid":
             hand = self.hands[cp]
             if difficulty == "easy":
-                return str(random.randint(1, 6))
+                # Bid loosely around the tricks a hand this size actually
+                # tends to win. A flat 1-6 bid on a 13-card hand undershoots
+                # every time, so the AI bags out at -100 a hand and both
+                # scores fall away from the target forever.
+                base = max(1, len(hand) // 2)
+                return str(random.randint(max(1, base - 3), base + 1))
             # Count high cards and spades for bidding
             spade_count = sum(1 for c in hand if c[1] == 'S')
             high_cards = sum(1 for c in hand if rank_index(c[0]) >= 10)  # J, Q, K, A

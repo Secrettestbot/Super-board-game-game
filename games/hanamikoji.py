@@ -58,8 +58,18 @@ class HanamikojiGame(BaseGame):
         self.geisha_cards = [{1: 0, 2: 0} for _ in range(self.num_geishas)]
         self.deck = []
         self.hands = {1: [], 2: []}
-        self.actions_remaining = {1: ["secret", "trade_off", "gift", "competition"],
-                                  2: ["secret", "trade_off", "gift", "competition"]}
+        self._draws_taken = {1: 0, 2: 0}
+        # Each action discards a fixed number of cards: secret 1, trade_off 2,
+        # gift 3, competition 4. A player must be dealt and draw exactly that
+        # many over the round, so the action set has to fit the deck. The
+        # 5-geisha "simple" deck only holds 14 cards, which cannot fund the
+        # 10 cards per player that all four actions need.
+        if self.variation == "simple":
+            self._round_actions = ["secret", "trade_off", "gift"]
+        else:
+            self._round_actions = ["secret", "trade_off", "gift", "competition"]
+        self.actions_remaining = {1: list(self._round_actions),
+                                  2: list(self._round_actions)}
         self.secret_cards = {1: None, 2: None}
         self.trade_off_cards = {1: None, 2: None}
         self.round_number = 1
@@ -79,7 +89,9 @@ class HanamikojiGame(BaseGame):
 
     def _deal(self):
         """Deal cards for a round: remove 1 face-down, deal 6 each (or 5 for simple)."""
-        hand_size = 6 if self.variation != "simple" else 5
+        # Deal enough that hand + one draw per turn exactly covers the round's
+        # action costs (6 + 4 = 10 for four actions, 3 + 3 = 6 for three).
+        hand_size = 3 if self.variation == "simple" else 6
         # Remove 1 card face-down (unknown to both players)
         if self.deck:
             self.deck.pop()
@@ -145,12 +157,32 @@ class HanamikojiGame(BaseGame):
             player = self.current_player
         return 2 if player == 1 else 1
 
+    def _draw_for_turn(self, player):
+        """Draw this player's card for the turn they are about to take.
+
+        A round deals 6 cards but the four actions cost 1+2+3+4 = 10, so a
+        player must draw one card at the start of each of their four turns.
+        Without it they run out of cards, no action is playable, and the round
+        can never finish.
+        """
+        # Before the k-th action (k = 1..4) the player should have drawn k
+        # times; actions_remaining shrinks from 4 down to 1 across those turns.
+        # Capped at one draw per action: a player who has spent all their
+        # actions must not keep drawing, or the opponent is left short.
+        target = min(len(self._round_actions),
+                     len(self._round_actions) + 1
+                     - len(self.actions_remaining[player]))
+        while self._draws_taken[player] < target and self.deck:
+            self.hands[player].append(self.deck.pop())
+            self._draws_taken[player] += 1
+
     def _start_new_round(self):
         """Set up a new round: rebuild deck, deal, reset round state."""
         self._build_deck()
         self._deal()
-        self.actions_remaining = {1: ["secret", "trade_off", "gift", "competition"],
-                                  2: ["secret", "trade_off", "gift", "competition"]}
+        self._draws_taken = {1: 0, 2: 0}
+        self.actions_remaining = {1: list(self._round_actions),
+                                  2: list(self._round_actions)}
         self.secret_cards = {1: None, 2: None}
         self.trade_off_cards = {1: None, 2: None}
         # Reset geisha card counts for this round
@@ -158,6 +190,7 @@ class HanamikojiGame(BaseGame):
         self._round_phase = "actions"
         self._pending_action = None
         self._add_log(f"--- Round {self.round_number} begins ---")
+        self._draw_for_turn(self.current_player)
 
     def _resolve_round_end(self):
         """Reveal secret cards and resolve favors."""
@@ -706,6 +739,8 @@ class HanamikojiGame(BaseGame):
             elif self.actions_remaining[self.current_player]:
                 pass  # Current player still has actions
             # else both done -- handled by round end
+        if not self.game_over:
+            self._draw_for_turn(self.current_player)
 
     # -------------------------------------------------------- save / load
     def get_state(self):
@@ -713,6 +748,7 @@ class HanamikojiGame(BaseGame):
             "favor": list(self.favor),
             "geisha_cards": [dict(gc) for gc in self.geisha_cards],
             "deck": list(self.deck),
+            "draws_taken": {str(k): v for k, v in self._draws_taken.items()},
             "hands": {str(k): list(v) for k, v in self.hands.items()},
             "actions_remaining": {str(k): list(v) for k, v in self.actions_remaining.items()},
             "secret_cards": {str(k): v for k, v in self.secret_cards.items()},
@@ -727,6 +763,8 @@ class HanamikojiGame(BaseGame):
         self.geisha_cards = [{int(k2): v2 for k2, v2 in gc.items()}
                              for gc in state["geisha_cards"]]
         self.deck = list(state["deck"])
+        self._draws_taken = {int(k): v for k, v
+                             in state.get("draws_taken", {"1": 0, "2": 0}).items()}
         self.hands = {int(k): list(v) for k, v in state["hands"].items()}
         self.actions_remaining = {int(k): list(v)
                                   for k, v in state["actions_remaining"].items()}

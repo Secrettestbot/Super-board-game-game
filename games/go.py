@@ -344,6 +344,23 @@ class GoGame(BaseGame):
         if self.consecutive_passes >= 2:
             self.game_over = True
             self._score_game()
+            return
+
+        # Positional superko: a whole-board position that keeps coming back
+        # means the players are locked in a capture-and-recapture cycle that
+        # would never end. Score the game as it stands.
+        if self._repetition_draw():
+            self.game_over = True
+            self._score_game()
+            return
+
+        # An AI that always finds some move to play never triggers the two
+        # passes that normally end a game, and capture-and-recapture keeps
+        # producing fresh positions that superko cannot catch. Cap the game
+        # at a length no real game reaches and score the board.
+        if self.turn_number >= self.size * self.size * 4:
+            self.game_over = True
+            self._score_game()
 
     def _score_game(self):
         """Score using Chinese (area) scoring: stones on board + territory.

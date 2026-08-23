@@ -721,32 +721,17 @@ class MachiKoroGame(BaseGame):
                     best_score = efficiency
                     best_purchase = f"build_building|{bname}"
 
-            for lname, built in self.landmarks[cp].items():
-                if built or ldefs[lname]["cost"] > self.coins[cp]:
-                    continue
-                score = 0
-                effect = ldefs[lname].get("effect", "")
-                if effect == "two_dice":
-                    score = 8
-                elif effect == "mall_bonus":
-                    score = 6
-                elif effect == "doubles":
-                    score = 5
-                elif effect == "reroll":
-                    score = 7
-                elif effect == "harbor_bonus":
-                    score = 6
-                elif effect == "city_hall":
-                    score = 3
-                elif effect == "airport":
-                    score = 4
-                cost = ldefs[lname]["cost"]
-                efficiency = score / cost if cost > 0 else score
-                if difficulty == 'hard':
-                    efficiency *= 2
-                if efficiency > best_score:
-                    best_score = efficiency
-                    best_purchase = f"build_landmark|{lname}"
+            # Building every landmark is the only way to win, and the
+            # expensive ones can never beat a cheap income building on
+            # coins-per-cost - scoring them the same way left the AI buying
+            # Wheat Fields forever. Take the cheapest one it can afford so it
+            # always makes progress towards the end of the game.
+            unbuilt = [(ldefs[lname]["cost"], lname)
+                       for lname, built in self.landmarks[cp].items() if not built]
+            if unbuilt:
+                cost, lname = min(unbuilt)
+                if cost <= self.coins[cp]:
+                    return f"build_landmark|{lname}"
 
             if best_purchase and best_score > 0:
                 return best_purchase

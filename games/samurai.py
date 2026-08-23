@@ -308,6 +308,7 @@ class SamuraiGame(BaseGame):
             return "pass"
 
         scored = []
+        legal = []
         for tile_name in hand:
             tile_info = TILE_TYPES[tile_name]
             tile_type, strength = tile_info
@@ -328,6 +329,7 @@ class SamuraiGame(BaseGame):
                             adj_figures.extend(self.figures[nkey])
                     if not adj_figures:
                         continue
+                    legal.append(f"{tile_name} {r} {c}")
 
                     score = 0
                     for fig in adj_figures:
@@ -345,6 +347,11 @@ class SamuraiGame(BaseGame):
                     scored.append((score, f"{tile_name} {r} {c}"))
 
         if not scored:
+            # No placement scores anything, but a legal placement still has to
+            # be made - there is no pass in Samurai, and passing back and
+            # forth would leave the game running forever.
+            if legal:
+                return rand.choice(legal)
             return "pass"
 
         scored.sort(key=lambda x: x[0], reverse=True)
@@ -353,6 +360,25 @@ class SamuraiGame(BaseGame):
         if difficulty == "hard":
             return scored[0][1]
         return rand.choice(scored[:3])[1] if len(scored) >= 3 else scored[0][1]
+
+    def _has_legal_placement(self, player):
+        """True if *player* holds a tile that can still be placed somewhere."""
+        if not self.hands[player]:
+            return bool(self.tile_pools[player])
+        for r in range(self.rows):
+            for c in range(self.cols):
+                if self.board[r][c] == SEA:
+                    continue
+                key = f"{r},{c}"
+                if key in self.played_tiles:
+                    continue
+                if key in self.figures and self.figures[key]:
+                    continue
+                for nr, nc in self._hex_neighbors(r, c):
+                    nkey = f"{nr},{nc}"
+                    if nkey in self.figures and self.figures[nkey]:
+                        return True
+        return False
 
     def check_game_over(self):
         # Game ends when all figures of one type are captured, or board is exhausted
@@ -369,6 +395,13 @@ class SamuraiGame(BaseGame):
 
         if not self.game_over:
             if all(len(self.hands[p]) == 0 and len(self.tile_pools[p]) == 0 for p in [1, 2]):
+                self.game_over = True
+
+        # Players can still hold tiles that have nowhere legal to go - every
+        # remaining cell is sea, already played on, or holds a figure. Both
+        # then pass at each other forever, so end the game here.
+        if not self.game_over:
+            if not any(self._has_legal_placement(p) for p in [1, 2]):
                 self.game_over = True
 
         if self.game_over:

@@ -54,8 +54,21 @@ class SkullRosesGame(BaseGame):
         """Coasters in hand (not yet placed on stack)."""
         hand = list(self.coasters[player])
         for c in self.stacks[player]:
-            hand.remove(c)
+            if c in hand:
+                hand.remove(c)
         return hand
+
+    def _lose_coaster(self, player, idx):
+        """Remove coaster `idx` from a player's set, keeping the stack valid.
+
+        A penalty is applied while the round's stacks are still on the table, so
+        the stack can end up holding a coaster the player no longer owns. Drop
+        the matching coaster from the stack too when that happens.
+        """
+        lost = self.coasters[player].pop(idx)
+        if self.stacks[player].count(lost) > self.coasters[player].count(lost):
+            self.stacks[player].remove(lost)
+        return lost
 
     # ------------------------------------------------------------------ setup
     def setup(self):
@@ -364,7 +377,7 @@ class SkullRosesGame(BaseGame):
     def _choose_remove(self, player):
         if len(self.coasters[player]) <= 1:
             if self.coasters[player]:
-                lost = self.coasters[player].pop(0)
+                lost = self._lose_coaster(player, 0)
                 self._add_log(f"{self.players[player - 1]} lost their last coaster ({lost}).")
                 print(f"  Lost your last coaster ({lost}).")
             return
@@ -372,7 +385,7 @@ class SkullRosesGame(BaseGame):
         if self.ai_player == player:
             flower_indices = [i for i, c in enumerate(self.coasters[player]) if c != "skull"]
             idx = flower_indices[0] if flower_indices else 0
-            lost = self.coasters[player].pop(idx)
+            lost = self._lose_coaster(player, idx)
             self._add_log(f"{self.players[player - 1]} lost a {lost}.")
             return
 
@@ -382,7 +395,7 @@ class SkullRosesGame(BaseGame):
         while True:
             choice = input_with_quit("  Choose number to lose: ").strip()
             if choice.isdigit() and 1 <= int(choice) <= len(self.coasters[player]):
-                lost = self.coasters[player].pop(int(choice) - 1)
+                lost = self._lose_coaster(player, int(choice) - 1)
                 self._add_log(f"{self.players[player - 1]} lost a {lost}.")
                 print(f"  You lost a {lost}.")
                 return
@@ -392,7 +405,7 @@ class SkullRosesGame(BaseGame):
         if not self.coasters[player]:
             return
         idx = random.randint(0, len(self.coasters[player]) - 1)
-        lost = self.coasters[player].pop(idx)
+        lost = self._lose_coaster(player, idx)
         self._add_log(f"{self.players[player - 1]} lost a coaster (removed face-down).")
         print(f"  A coaster was removed from your collection.")
 

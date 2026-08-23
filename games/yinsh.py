@@ -639,6 +639,12 @@ class YinshGame(BaseGame):
                 self.winner = p
                 return
 
+        # Nothing forces a row of five to appear, so two players can shuffle
+        # rings between the same squares forever. Call a repeat a draw.
+        if self._repetition_draw():
+            self.game_over = True
+            self.winner = None
+
     def switch_player(self):
         """Only switch if not in a removal phase."""
         if self.phase in ('remove_row', 'remove_ring'):
