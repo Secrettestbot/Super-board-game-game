@@ -1,8 +1,15 @@
 # Taking Super Board Game Game Mobile
 
 **Status:** analysis and planning only — no code changes proposed here have been made.
-**Scope:** what it would take to ship the 244-game library as an iOS + Android app.
+**Scope:** what it would take to run the 244-game library as an iOS + Android app.
+**Distribution:** **non-commercial, personal use.** Not for sale, not for public store
+distribution. This is a load-bearing assumption — several conclusions below depend on it, and
+they are marked *(personal-use)* where they do.
 **Date:** August 2026
+
+> **If this is ever distributed publicly — even free, even open source — re-read
+> §5 and §7.1.** Store review, the Play target-API deadline, EU accessibility law and the
+> trademark question all switch back on the moment the app leaves your own devices.
 
 ---
 
@@ -29,6 +36,12 @@ design handoff for the library shell and ~90 games. **It is a parallel reimpleme
 a port** — its rules live in `*_logic.jsx`, written independently of the Python. Reconciling
 those two codebases is a decision that has to be made early (§4.1), because it changes
 everything downstream.
+
+**What personal use changes:** it removes the app-store constraints, which is what made
+embedding Python unattractive — so the recommendation is to **keep the Python** rather than
+port 145k lines to TypeScript (§4.2). **What it does not change:** items 1 and 2 above. The
+64 blocking modules and the touch UI still have to be built, because those are consequences
+of the event loop and the screen, not of the store.
 
 ---
 
@@ -182,7 +195,8 @@ These will have diverged in rules and edge cases. **Do not plan to maintain both
 honest positions:
 
 1. **Python is truth; the JSX is a visual spec only.** Keeps the audited, tested logic. Costs
-   a Python runtime on device (§4.2 option B) or a transpile effort.
+   a Python runtime on device (§4.2 option B — which personal use makes the easy answer) or
+   a transpile effort.
 2. **JS is truth; retire the Python.** Best mobile-native path, but discards the 145k lines of
    audited logic and the bug-fix work, and the JSX covers ~90 games not 244.
 3. **Port Python → TypeScript game by game, with the Python as the conformance oracle.** Most
@@ -190,25 +204,37 @@ honest positions:
    vectors (seeded game transcripts) that the TS port must reproduce — this is a genuinely
    strong option because the state is already JSON-serializable.
 
-My recommendation is **(3), staged** — see §9. But this is a product/ownership call, not a
-technical one, and it should be made explicitly rather than by drift.
+For a personal build the answer is **(1): the Python is the source of truth, and the JSX is a
+visual spec.** It keeps the audited logic and the 244-game coverage, and it costs nothing to
+decide. Option (3) is the right call only if this later goes public. Either way, make the
+choice explicitly rather than by drift — the failure mode is quietly maintaining both.
 
 ### 4.2 Runtime options
 
-| Option | What it is | Verdict |
+| Option | What it is | Verdict *(personal-use)* |
 |---|---|---|
-| **A. Terminal emulator app** | Ship the TTY UI inside a mobile terminal | **Rejected.** 89% of games exceed a phone's usable column count (§3.3); also likely to fail App Store 4.2 "beyond a repackaged website / app-like" |
-| **B. Embedded CPython + native UI** | Bundle libPython (Tier 3 supported since 3.13 via PEP 730/738), native Swift/Kotlin UI calls into it | Viable and keeps the audited logic. Costs: no subprocess/multiprocessing/IPC on iOS; the stdlib needs patching to pass App Store automated checks; app size grows by the interpreter + stdlib; two native UIs to build |
-| **C. Python → WASM (Pyodide) in a webview** | Run the Python unmodified in a browser runtime | **Rejected for shipping.** Multi-megabyte runtime download, slow cold start, and materially slower than CPython — all cost paid for logic that is already cheap (§2) |
-| **D. Port logic to TypeScript, React Native / Expo UI** | One codebase, native shell, JS logic | Best mobile ergonomics and smallest binary; highest up-front port cost; directly reuses the existing React design work |
-| **E. Flutter / Dart** | One codebase, excellent rendering | Same port cost as D but throws away the existing React prototypes |
+| **A. Terminal emulator app** | Ship the TTY UI inside a mobile terminal | **Rejected.** 89% of games exceed a phone's usable column count (§3.3). The store objection no longer applies, but the screen still does |
+| **B. Python-native mobile framework** | Kivy (+Buildozer) or BeeWare (Briefcase + Toga) — Python end to end, packaged with an embedded interpreter | **Recommended.** Keeps all 145k lines of audited logic. Buildozer is the simplest route to an Android APK; iOS packaging requires a Mac either way. Briefcase covers both platforms from one config |
+| **C. Embedded CPython + hand-written native UI** | Bundle libPython, Swift/Kotlin UI calls into it | Viable, more control, but two native UIs to build. Reach for it only if B's widget layer proves too limiting |
+| **D. Python → WASM (Pyodide) in a webview** | Run the Python unmodified in a browser runtime | **Rejected.** Multi-megabyte runtime and slow cold start, paid for logic that is already cheap (§2) |
+| **E. Port logic to TypeScript, React Native** | One codebase, native shell, JS logic | **No longer recommended** — see below |
+| **F. Flutter / Dart** | One codebase, excellent rendering | Same port cost as E, and discards the existing React prototypes |
 
-**Recommendation: D**, using the Python suite as the conformance oracle for the port
-(§4.1 option 3). Rationale: the AI is cheap so there is no performance argument for keeping
-CPython; the design language already exists in React; and it sidesteps the App Store
-interpreter grey area entirely.
+**Recommendation: B.** For a personal build this is close to clear-cut, and it is a change
+from what the store-facing analysis would say:
 
-**If keeping Python is a hard requirement**, choose B, and read §5.1 carefully.
+- The two strongest arguments for porting to TypeScript were *sidestepping the App Store
+  interpreter grey area* and *binary size*. Personal use removes the first entirely and makes
+  the second nearly irrelevant.
+- What remains is a straight cost comparison, and porting 145,000 lines of audited game logic
+  to another language is by far the most expensive thing in this document. Avoiding it is
+  worth a great deal.
+- The audit that just ran verified this Python — every game, every variation, save/resume
+  included. A rewrite discards that evidence and has to re-earn it.
+
+**Option E is still the better answer if this ever goes public**, and §4.1's conformance-oracle
+idea (seeded transcripts as golden vectors) is the way to do it. It is simply not worth paying
+for now.
 
 ---
 
@@ -223,29 +249,45 @@ interpreter grey area entirely.
   "will either lock up, or crash." Not currently used by this codebase — keep it that way.
 - **Embedded mode only.** Python on iOS is usable only by writing a native app and embedding
   `libPython`.
-- **App Store review, guideline 2.5.2** (verbatim): *"Apps should be self-contained in their
-  bundles, and may not read or write data outside the designated container area, nor may they
+**These constraints hold regardless of how you distribute** — they are properties of the OS:
+
+- No console I/O, no subprocess, embedded mode only (above).
+
+**These are App Store review rules and do not apply to a personal build** *(personal-use)*:
+
+- **Guideline 2.5.2** — *"Apps should be self-contained in their bundles… nor may they
   download, install, or execute code which introduces or changes features or functionality of
-  the app…"* Bundling an interpreter to run your own bundled code is common and generally
-  accepted; **downloading** game logic post-review is not. This rules out over-the-air
-  content updates that ship new rules.
-- **Guideline 4.2 (minimum functionality)** — an app must be more than a repackaged website.
-  Relevant if the port is a thin webview wrapper.
-- **Guideline 4.7** explicitly permits HTML5/JavaScript mini-games, which is a point in
-  favour of the JS route.
-- The Python standard library "contains some code that is known to violate these automated
-  rules" and **must be modified** for an app to pass review — a real, ongoing maintenance tax
-  on option B.
+  the app."* This is the rule that makes embedding an interpreter a grey area, and it is a
+  review rule, not an OS restriction.
+- **Guideline 4.2 (minimum functionality)** and **4.7 (HTML5 mini-games)** — likewise.
+- The claim that the Python stdlib "must be modified" to pass review is specifically about
+  Apple's *automated review checks*. **Skip review, skip the patching.** This was the main
+  ongoing tax on embedding Python, and personal use removes it.
+
+**How you actually get it onto your own iPhone** *(personal-use)*:
+
+| Route | Cost | Signing lifetime | Notes |
+|---|---|---|---|
+| Free Apple ID ("personal team") | free | **7 days**, then re-sign | also capped at 3 apps; fine for tinkering, tedious for daily use |
+| Apple Developer Program | $99/yr | 1 year | the practical choice if you actually want to play it |
+| TestFlight | included with the above | 90 days per build | easiest way to also get it onto family devices |
+
+A Mac is required to build and sign for iOS in every case.
 
 ### 5.2 Android
 
-- **Target API level: Android 16 (API 36) is required for new apps and updates from
-  31 August 2026**, with an extension available to 1 November 2026. Existing apps must target
-  at least API 35 to stay available to new users on newer devices. This is a live deadline
-  *now*, not a future one.
+- **The Google Play target-API deadline does not apply** *(personal-use)*. Requiring
+  Android 16 (API 36) for new apps and updates from 31 August 2026 is a **Play Store policy**,
+  enforced at submission. A sideloaded APK is not submitted, so it is not enforced. You still
+  want a reasonably current `targetSdk` for behavioural correctness, but there is no deadline
+  hanging over you.
+- **Sideloading is genuinely easy here** — `buildozer android debug deploy` builds and pushes
+  an APK straight to a connected device. No account, no fee, no review. This is the single
+  biggest practical advantage of the personal-use scope, and it is why Android is the
+  sensible platform to build first.
 - Android does have a stdout, but it goes to logcat — again, not a user interface.
-- Larger device/OS matrix than iOS: plan for back-button handling, split-screen, foldables,
-  and aggressive process death (see §7.3).
+- Larger device/OS matrix than iOS, but for a personal build you only care about *your*
+  devices. Still plan for back-button handling and aggressive process death (§7.3).
 
 ### 5.3 Both
 
@@ -253,11 +295,13 @@ interpreter grey area entirely.
   dp with 8 dp spacing. A 19×19 Go board or a 24×24 TwixT board cannot present every
   intersection at 44 pt on a phone — those games need pan/zoom, or a magnifier loupe, or a
   tablet-only designation. This needs a decision per large-board game.
-- **Accessibility** is now a legal requirement in the EU under the European Accessibility Act
-  for apps in scope. Colour-only piece differentiation (used widely in the current ANSI
-  colouring) fails contrast/colour-independence requirements; screen-reader labelling of
-  board state is a substantial design problem for 244 games and should be scoped, not
-  discovered late.
+- **Accessibility** — the European Accessibility Act applies to products placed on the EU
+  market, so a personal build is **out of scope legally** *(personal-use)*. It is still worth
+  doing the cheap parts: the current colour-only piece differentiation (inherited from the
+  ANSI colouring) is hard to read for a meaningful fraction of people, and adding a shape or
+  glyph alongside colour costs almost nothing at design time and a lot to retrofit. Full
+  screen-reader labelling of board state across 244 games is a large project and a reasonable
+  thing to skip.
 
 ---
 
@@ -296,17 +340,21 @@ itself part of the work.
 
 ## 7. Considerations that are easy to miss
 
-### 7.1 Content and store listing
-- The README advertises **115 games; the registry actually contains 244.** Store metadata,
-  screenshots, and marketing all need reconciling against reality.
-- 482 KB of tutorial prose is a localization surface. English-only is a legitimate v1
-  decision, but make it deliberately.
-- Several games are recognizable implementations of **commercial, in-copyright designs**
-  (Wingspan, Splendor, Azul, Res Arcana, Patchwork, Power Grid, Ticket to Ride, Carcassonne,
-  and more). Game *mechanics* are generally not copyrightable but *names, artwork, and
-  themes* are trademarked. Shipping a commercial app using these names is a legal exposure
-  that must be reviewed before any store submission. This is the highest-severity non-technical
-  risk in this document.
+### 7.1 Content
+- **Third-party game designs** — several games are recognizable implementations of
+  commercial, in-copyright titles (Wingspan, Splendor, Azul, Res Arcana, Patchwork, Power
+  Grid, Ticket to Ride, Carcassonne, and more). Mechanics are generally not copyrightable;
+  *names, artwork and themes* are trademarked.
+  **For a private, non-commercial build on your own devices this is not a practical concern**
+  *(personal-use)* — no distribution, no commerce, no dilution. It becomes a real question
+  again the moment the app is published, given away, or open-sourced with the names intact.
+  Worth knowing where the line is rather than being surprised by it later. If publishing ever
+  becomes interesting, the cheap mitigation is renaming and re-theming; the mechanics can
+  stay.
+- The README advertises **115 games; the registry actually contains 244.** No longer a store
+  metadata problem, but still worth fixing so the project describes itself accurately.
+- 482 KB of tutorial prose is a localization surface. For a personal build, English-only is
+  obviously fine.
 
 ### 7.2 Persistence and sync
 - Saves are small JSON (§2) — well suited to iCloud/Play Games sync.
@@ -336,11 +384,18 @@ itself part of the work.
   termination. These are correct, but on mobile a game that ends in "draw by repetition" needs
   an explanation in the UI or it reads as a bug.
 
-### 7.6 Monetization, if relevant
-- 244 offline games with no network is an unusually good fit for a one-time purchase or a
-  small paid tier, and a poor fit for ads (which would require adding the network dependency
-  the app currently does not have, plus a privacy policy, ATT prompts on iOS, and a Play Data
-  Safety declaration).
+### 7.6 Scope — the biggest lever you have *(personal-use)*
+- Nothing about a personal build requires all 244 games. **The per-game cost is the dominant
+  cost of this project** (§9), and it is close to linear, so scope is the one variable with
+  real leverage.
+- A far better first target: **the ten or fifteen games you actually play.** That is a
+  finished, useful app in a fraction of the time, and it exercises every part of the
+  architecture — engine refactor, touch families, save/resume — before committing to volume.
+- The library can then grow opportunistically, one game at a time, when you want a specific
+  one on your phone. This is a much better fit for a personal project than a 244-game
+  migration that has to be finished before anything is playable.
+- Because there is no store listing, **there is no penalty for shipping a partial library** —
+  the menu simply lists what exists. Nothing about the registry design makes this awkward.
 
 ---
 
@@ -363,8 +418,10 @@ Worth stating explicitly, because it bounds the work:
 Sequenced to de-risk early rather than to look fast.
 
 **Phase 0 — Decisions (blocking everything).**
-Source-of-truth codebase (§4.1). Runtime option (§4.2). Legal review of game names (§7.1).
-Target device classes (phone-only vs phone+tablet, and what happens to 19×19 Go).
+Source-of-truth codebase (§4.1 — for personal use, the Python). Runtime option (§4.2 — Kivy or
+BeeWare). **Which games you actually want** (§7.6). Target device classes (phone-only vs
+phone+tablet, and what happens to 19×19 Go). Legal review is *not* required for a private
+build (§7.1).
 
 **Phase 1 — Engine separation, no UI.**
 Extract a headless core from `engine/`. Add `get_legal_moves()` and a versioned state schema.
@@ -372,22 +429,27 @@ Convert the 64 blocking-`make_move` modules to explicit state machines (§3.1). 
 This is valuable on its own and is a prerequisite for every option in §4.2.
 
 **Phase 2 — One game per interaction family, end to end.**
-Six or seven games (§6), shipped to a device, including store submission dry-runs on both
-platforms. Validates the touch model and the review process before committing to volume.
+Six or seven games (§6), installed on a real device — for personal use that means a
+`buildozer` deploy on Android, and a signing round-trip on iOS if you want it there too.
+Validates the touch model and the build/signing routine before committing to volume.
 
 **Phase 3 — Volume port.**
 The remaining games, family by family. This is where the per-game triage cost lands and it is
-roughly linear in game count — the honest planning assumption is that **244 games is the
-dominant cost of the project**, not the engine work.
+roughly linear in game count — the honest planning assumption is that **game count is the
+dominant cost of the project**, not the engine work. For a personal build this phase is
+optional and open-ended: port games when you want them, rather than treating 244 as a target
+(§7.6).
 
-**Phase 4 — Store readiness.**
-Accessibility pass, localization decision, Play target-API compliance (§5.2 — note the
-31 August 2026 deadline), privacy declarations, sync.
+**Phase 4 — Polish.** *(what would have been "store readiness")*
+Cheap accessibility wins (shape alongside colour), device sync if you want it across your own
+devices, and a signing routine you can live with — on iOS that most likely means the $99/yr
+developer account rather than re-signing every 7 days (§5.1).
 
 **On effort:** I am deliberately not giving a total figure. The engine work in Phase 1 is
-estimable (64 modules of known shape plus ~1,400 lines of engine). Phase 3 is not, until
-Phase 2 has produced a real per-game cost from a representative sample. Anyone quoting a
-number before Phase 2 is guessing.
+estimable (64 modules of known shape plus ~1,400 lines of engine) and is unavoidable at any
+scope. Phase 3 is not estimable until Phase 2 has produced a real per-game cost from a
+representative sample — and for a personal build, Phase 3 does not need a fixed end point at
+all. Anyone quoting a total before Phase 2 is guessing.
 
 ---
 
@@ -398,5 +460,12 @@ number before Phase 2 is guessing.
 - PEP 730, *Adding iOS as a supported platform* — https://peps.python.org/pep-0730/
 - PEP 738, *Adding Android as a supported platform* — https://peps.python.org/pep-0738/
 - Google Play, *Target API level requirements* — https://support.google.com/googleplay/android-developer/answer/11926878
+  *(store policy; does not apply to a sideloaded personal build — §5.2)*
+- Buildozer, *Packaging for Android* — https://buildozer.readthedocs.io/
+- Kivy, *Create a package for Android* — https://kivy.org/doc/stable/guide/packaging-android.html
+- BeeWare, *Briefcase* — https://briefcase.readthedocs.io/
 - Pyodide, *Downloading and deploying* — https://pyodide.org/en/stable/usage/downloading-and-deploying.html
 - `design/README.md` in this repository — the existing React design handoff
+
+The Apple and Google references above describe **store** requirements. They are recorded here
+because they bound a future public release, not because they gate a personal build.
